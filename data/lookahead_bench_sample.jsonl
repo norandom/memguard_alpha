@@ -1,0 +1,5 @@
+{"ticker": "AAPL", "date": "2021-04-28", "context": "Apple reports second quarter results. Revenue was $89.6 billion, up 54% year over year.", "target_direction": 1}
+{"ticker": "MSFT", "date": "2021-04-27", "context": "Microsoft Q3 earnings beat expectations, with strong growth in Azure cloud services.", "target_direction": 1}
+{"ticker": "TSLA", "date": "2024-07-23", "context": "Tesla's profit margins fall to a multi-year low amid price cuts and EV demand slowdown.", "target_direction": -1}
+{"ticker": "NVDA", "date": "2024-08-28", "context": "Nvidia crushes Q2 earnings estimates, driven by record data center revenue.", "target_direction": 1}
+{"ticker": "GOOGL", "date": "2021-07-27", "context": "Alphabet reports blockbuster Q2 earnings with record ad revenue growth.", "target_direction": 1}
