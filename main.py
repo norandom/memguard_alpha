@@ -47,6 +47,12 @@ def main():
         print(f"Initializing Recall Guard with model: {model_name}")
         print(f"{'='*40}")
 
+        import dspy
+        # Configure global DSPy LM for ChainOfThought so it can parse math reasoning
+        # The 'openai/' prefix tells litellm to use the OpenAI API spec, and we point it to NVIDIA.
+        dspy_lm = dspy.LM(f"openai/{model_name}", api_base="https://integrate.api.nvidia.com/v1", api_key=api_key)
+        dspy.configure(lm=dspy_lm)
+
         # 2. Initialize Models
         lm = NvidiaLM(api_key=api_key, model=model_name)
         predictor = RecallGuardPredictor(nvidia_lm=lm)

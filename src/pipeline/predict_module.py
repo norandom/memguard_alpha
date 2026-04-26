@@ -2,15 +2,22 @@ import dspy
 from src.pipeline.signature import FinancialPrediction
 from src.pipeline.mia_scorer import MIAScorer
 from src.models.nvidia_lm import NvidiaLM
+from src.pipeline.math_reasoning import InputMasker
 
 class RecallGuardPredictor(dspy.Module):
     def __init__(self, nvidia_lm: NvidiaLM):
         super().__init__()
         self.nvidia_lm = nvidia_lm
         self.mia_scorer = MIAScorer()
+        self.input_masker = InputMasker()
 
     def forward(self, ticker: str, date: str, context: str):
-        prompt = f"Given ticker {ticker} on {date} with context: {context}\nPredict the stock direction.\nFormat:\nDirection: [1/-1/0]\nConfidence: [0.0-1.0]"
+        # 1. Abstract the raw inputs
+        masked_result = self.input_masker(context=context)
+        abstracted_context = masked_result.abstracted_context
+        
+        # 2. Predict with masked inputs
+        prompt = f"Given an anonymous Asset X in the Current Period with the following mathematical context:\n{abstracted_context}\n\nPredict the stock direction.\nFormat:\nDirection: [1/-1/0]\nConfidence: [0.0-1.0]"
         content, logprobs = self.nvidia_lm.generate_with_logprobs(prompt)
         
         direction = 0
