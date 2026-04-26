@@ -13,6 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description="Recall Guard Pipeline")
     parser.add_argument("--data", type=str, default="data/lookahead_bench_sample.jsonl", help="Path to Look-Ahead-Bench dataset")
     parser.add_argument("--model", type=str, default="nvidia/nemotron-3-super-120b-a12b")
+    parser.add_argument("--all", action="store_true", help="Run through all specified models")
     args = parser.parse_args()
 
     api_key = os.environ.get("NVIDIA_API_KEY")
@@ -30,15 +31,15 @@ def main():
     trainset, devset = loader.load_split(train_ratio=0.8)
     print(f"Loaded {len(trainset)} train examples and {len(devset)} dev examples.")
 
-    models_to_run = [
-        "openai/gpt-oss-120b",
-        "openai/gpt-oss-20b",
-        "nvidia/nemotron-3-super-120b-a12b",
-        "nvidia/llama-3.3-nemotron-super-49b-v1.5",
-        "nvidia/nvidia-nemotron-nano-9b-v2"
-    ]
-    
-    if args.model:
+    if args.all:
+        models_to_run = [
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "nvidia/nemotron-3-super-120b-a12b",
+            "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            "nvidia/nvidia-nemotron-nano-9b-v2"
+        ]
+    else:
         models_to_run = [args.model]
 
     for model_name in models_to_run:
