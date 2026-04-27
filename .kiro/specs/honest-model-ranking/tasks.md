@@ -128,7 +128,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
   - _Boundary: harness.smoke_
 
-- [ ] 4.2 Implement the per-model evaluator
+- [x] 4.2 Implement the per-model evaluator
   - Create `src/harness/evaluator.py` exporting `Record`, `CIBound`, `ModelEvalResult`, `evaluate_model(...)`, and `compute_majority_baseline(eval_set, bootstrap_n=1000, seed=0)`.
   - For each eval row: parse `Direction:` strictly (only `-1, 0, 1` accepted); on parse failure set `parse_ok=False`, `predicted_direction=None`, `raw_confidence=None`, `penalized_confidence=None`. On parse success compute MIA features, standardise via `baseline`, run `mcs.predict_proba` to get `p_memorized`, set `penalized_confidence = raw_confidence * (1 - p_memorized)`.
   - Compute Raw Accuracy and MemGuard Accuracy CIs by bootstrapping over parse-OK records; compute MCS-AUC CI by bootstrapping over `(p_memorized, label)` pairs from the held-out IS/OOS rows; record `parse_success_rate`, `parse_failures`.
