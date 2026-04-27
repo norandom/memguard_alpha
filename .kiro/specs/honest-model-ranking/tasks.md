@@ -229,7 +229,7 @@
   - _Boundary: harness end-to-end_
   - _Depends: 5.1_
 
-- [ ] 6.3 (P) Small-N and class-imbalance warning integration test
+- [x] 6.3 (P) Small-N and class-imbalance warning integration test
   - In `tests/harness/test_warnings.py`, load a 30-row JSONL with 80% majority class via `load_eval_set`; capture log records and assert one `low statistical power` warning and one `class imbalance` warning are emitted, while loading still returns 30 rows.
   - Observable: caplog confirms both warnings present and `len(eval_set.rows) == 30`.
   - _Requirements: 2.2, 2.3, 2.4_
