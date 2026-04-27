@@ -32,7 +32,7 @@
   - _Boundary: data/calibration_
   - _Depends: 1.2, 1.4_
 
-- [ ] 1.4 (P) Author the per-model training-cutoff registry
+- [x] 1.4 (P) Author the per-model training-cutoff registry
   - Create `data/cutoffs.yaml` mapping each candidate model ID to its training cutoff (ISO date) under a top-level `models:` key.
   - Include the initial candidate pool the smoke test will exercise: at minimum the models referenced in `Qualified_Models.md` plus the planned reference model `meta/llama-3.2-1b-instruct`.
   - Source dates from NVIDIA model cards / vendor docs; if a date is unknown, omit the model so the runner fails fast rather than silently mis-evaluating it.
