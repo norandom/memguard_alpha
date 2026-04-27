@@ -99,7 +99,7 @@
   - _Requirements: 4.1, 4.2, 4.3_
   - _Boundary: mia.features_
 
-- [ ] 3.2 Implement the per-model control-corpus baseline
+- [x] 3.2 Implement the per-model control-corpus baseline
   - Create `src/mia/control.py` exporting a frozen `ControlBaseline` dataclass plus `build_baseline(model_lm, control_rows, ref_lm, min_valid=50)` and `standardise(features, baseline)`.
   - `build_baseline` calls the model on every control row, computes MIA features, drops rows where logprobs are missing, and stores per-feature mean and std; sets `is_calibrated = (n_valid >= min_valid)`.
   - `standardise` returns a dict of `(value - mean) / max(std, 1e-6)` for each feature and passes through `None` for `ref_delta` when disabled.
