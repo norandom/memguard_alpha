@@ -43,11 +43,15 @@ models:
   # NVIDIA-Nemotron-Nano-9B-v2 trained from scratch by NVIDIA. Card states
   # "The pretraining data has a cutoff date of September 2024."
   nvidia/nvidia-nemotron-nano-9b-v2: 2024-09-30  # https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2
-  # Nemotron-3-Super-120B-A12B documents BOTH "pre-training data has a cutoff
-  # date of June 2025" AND "post-training data has a cutoff date of February
-  # 2026" (specifically February 24, 2026). The post-training data is still
-  # memorisable, so the LATER date is the correct guard.
-  nvidia/nemotron-3-super-120b-a12b: 2026-02-24  # https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16
+  # Nemotron-3-Super-120B-A12B is INTENTIONALLY DEFERRED. Its post-training
+  # cutoff is 2026-02-24 (https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16);
+  # at today's date (2026-04-27) that leaves only ~2 months of post-cutoff
+  # window, which produces too few FMP articles to populate the OOS-control
+  # corpus at the design's target_per_corpus=100. Re-include this model once
+  # at least ~6 months of post-cutoff news exists (target: 2026-08-24).
+  # The fail-fast missing-from-registry behavior keeps the harness honest:
+  # if the model appears in --shortlist before that date, the runner aborts
+  # with CutoffViolation rather than silently mis-evaluating it.
 
   # --- OpenAI gpt-oss series (NVIDIA-hosted) ---
   # Both 20B and 120B share one cutoff. Section 2.4 of the gpt-oss model card
