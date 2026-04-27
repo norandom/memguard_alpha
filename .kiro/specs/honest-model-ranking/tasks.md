@@ -139,7 +139,7 @@
   - _Boundary: harness.evaluator_
   - _Depends: 2.1, 2.2, 2.3, 3.1, 3.2, 3.3_
 
-- [ ] 4.3 (P) Implement the composite ranker and top-3 writer
+- [x] 4.3 (P) Implement the composite ranker and top-3 writer
   - Create `src/harness/ranker.py` exporting `CompositeScore`, `composite_score(results, majority_baseline, formula=COMPOSITE_FORMULA, gates=GATES)`, and `write_top3(scores, path)`.
   - Composite formula: `memguard_acc.lo * mcs_auc.point * parse_success_rate`. Gates: `parse_min=0.8`, `mcs_auc_min=0.6`, plus accuracy lower CI > majority upper CI. Failing any gate sets `survives_gates=False` and `score=0.0`.
   - Apply warnings: `weak-calibration` when `mcs_auc.point < mcs_auc_min`, `parse-unreliable` when `parse_success_rate < parse_min`, `not-better-than-baseline` when accuracy lower CI ≤ majority upper CI, `uncalibrated` when the result was marked as such by the evaluator.
