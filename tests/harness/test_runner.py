@@ -128,6 +128,7 @@ def test_build_parser_has_required_flags() -> None:
     parser = runner_mod.build_parser()
     args = parser.parse_args(
         [
+            "build",
             "--eval-set",
             "x.jsonl",
             "--shortlist",
@@ -168,6 +169,7 @@ def _build_args(
     monkeypatch.setenv("NVIDIA_API_KEY", "test-api-key")
     parser = runner_mod.build_parser()
     cli: list[str] = [
+        "build",
         "--eval-set",
         str(eval_set),
         "--is-memorized",
@@ -249,6 +251,7 @@ def test_run_returns_nonzero_on_missing_api_key(
     parser = runner_mod.build_parser()
     args = parser.parse_args(
         [
+            "build",
             "--eval-set",
             str(TINY_EVAL),
             "--shortlist",

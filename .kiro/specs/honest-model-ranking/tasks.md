@@ -173,7 +173,7 @@
   - _Boundary: harness.runner_
   - _Depends: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 5.2 Implement replay-from-manifest
+- [x] 5.2 Implement replay-from-manifest
   - Add a `harness replay --from-manifest <path>` subcommand to `harness.py` that reads a manifest, re-loads the same inputs by hash check, re-runs the pipeline with the recorded seed, and writes a fresh artifact set to a new `--out-dir`.
   - On hash mismatch (input file changed since the manifest), abort with a clear error rather than running with stale inputs.
   - Compare the new ranking against the manifest's ranking; warn if they differ. Bit-for-bit identity is not required but the ranking must be stable within bootstrap CIs.
