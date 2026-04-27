@@ -163,7 +163,7 @@
 
 - [ ] 5. Integration: runner, replay, legacy cleanup, plotting, notebook
 
-- [ ] 5.1 Implement the runner CLI orchestrator
+- [x] 5.1 Implement the runner CLI orchestrator
   - Create `harness.py` (project root) and `src/harness/runner.py` exporting `run(args)` plus an argparse front-end accepting `--eval-set`, `--candidates | --shortlist`, `--is-memorized`, `--oos-control`, `--cutoffs`, `--out-dir`, `--seed`, `--bootstrap-n`, `--reference-model | --no-reference`.
   - Sequence: load eval set + corpora + cutoffs → smoke (or honour `--shortlist`) → for each model: build_baseline → train MCS → evaluate_model → collect result → ranker → render_terminal + write_records + write_summary_csv → write_top3 → write_manifest → print_artifact_paths.
   - On `assert_cutoff_safe` failure, exit non-zero before any HTTP call to a candidate model.

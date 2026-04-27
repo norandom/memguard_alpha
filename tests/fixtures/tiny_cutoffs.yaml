@@ -1,0 +1,7 @@
+# Test-only cutoff registry. Two cooperating models plus one model with a
+# late cutoff used to exercise the cutoff-violation path.
+models:
+  mockA: 2023-12-31
+  mockB: 2023-12-31
+  reference-model: 2023-12-31
+  late-cutoff-model: 2027-01-01

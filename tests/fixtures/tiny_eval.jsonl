@@ -1,0 +1,6 @@
+{"_cutoff_date": "2025-06-30"}
+{"prompt": "Eval prompt 1", "target_direction": 1, "metadata": {"ticker": "AAA"}}
+{"prompt": "Eval prompt 2", "target_direction": -1, "metadata": {"ticker": "BBB"}}
+{"prompt": "Eval prompt 3", "target_direction": 0, "metadata": {"ticker": "CCC"}}
+{"prompt": "Eval prompt 4", "target_direction": 1, "metadata": {"ticker": "DDD"}}
+{"prompt": "Eval prompt 5", "target_direction": -1, "metadata": {"ticker": "EEE"}}
