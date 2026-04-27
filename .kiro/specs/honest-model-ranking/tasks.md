@@ -108,7 +108,7 @@
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
   - _Boundary: mia.control_
 
-- [ ] 3.3 Implement the MCS calibrator
+- [x] 3.3 Implement the MCS calibrator
   - Create `src/mia/mcs.py` exporting a frozen `MCSCalibrator` dataclass and `train(model_lm, is_memorized, oos_control, baseline, ref_lm, min_auc=0.6, seed=0)`.
   - Train `sklearn.linear_model.LogisticRegression(class_weight="balanced", solver="liblinear")` on standardised features (using `mia.control.standardise`) labelled by corpus origin; split a held-out portion with the given seed; report `holdout_auc` via `sklearn.metrics.roc_auc_score`; set `is_weak = (holdout_auc < min_auc)`.
   - Provide `predict_proba(features, baseline) -> float` returning a probability in [0, 1].
