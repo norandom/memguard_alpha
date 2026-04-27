@@ -13,4 +13,5 @@ dependencies = [
     "python-dotenv>=1.0",
     "pytest>=8.0",
     "pytest-mock>=3.12",
+    "matplotlib>=3.8",
 ]

@@ -191,7 +191,7 @@
   - _Boundary: legacy cleanup_
   - _Depends: 5.1_
 
-- [ ] 5.4 (P) Implement paper-ready plotting helpers
+- [x] 5.4 (P) Implement paper-ready plotting helpers
   - Create `src/harness/plots.py` exporting `configure_paper_style()` and the five figure functions: `plot_mia_feature_distributions`, `plot_mcs_calibration`, `plot_accuracy_with_ci`, `plot_mcs_auc_with_ci`, `plot_composite_ranking`. Each returns a `matplotlib.figure.Figure`.
   - `configure_paper_style()` sets matplotlib `rcParams` once: `figure.figsize=(3.5, 2.5)`, `font.size=8`, `savefig.dpi=300`, `savefig.format="pdf"`, `savefig.bbox="tight"`, colorblind-safe palette `["#0072B2","#D55E00","#009E73","#CC79A7","#F0E442"]`, marker cycle that survives B&W reproduction.
   - Add `matplotlib >= 3.8` to `pyproject.toml` and run `uv sync`.
