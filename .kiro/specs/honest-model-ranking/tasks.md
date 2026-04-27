@@ -236,7 +236,7 @@
   - _Boundary: harness end-to-end_
   - _Depends: 2.2_
 
-- [ ] 6.4 (P) Majority-baseline gating integration test
+- [x] 6.4 (P) Majority-baseline gating integration test
   - In `tests/harness/test_majority_gate.py`, drive `runner.run` against an eval set with majority-class accuracy 0.8 and a mocked model whose Raw Accuracy lower CI is 0.78; assert the resulting `ModelEvalResult.warnings` includes `not-better-than-baseline` and `top3.md` reflects this.
   - Observable: the test asserts the warning string is present in both the in-memory result and the generated `top3.md`.
   - _Requirements: 6.2, 6.4_
