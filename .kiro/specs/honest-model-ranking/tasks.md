@@ -40,7 +40,7 @@
   - _Requirements: 2.5, 3.1_
   - _Boundary: data/cutoffs.yaml_
 
-- [ ] 1.5 Stratify the IS/OOS sampling in build_calibration
+- [x] 1.5 Stratify the IS/OOS sampling in build_calibration
   - The 1.3 run produced 100/100 rows but every IS row landed on a single day (2023-12-30, one day before earliest_cutoff=2023-12-31) and every OOS row on the most recent 3 days. The reviewer flagged this as a methodology weakness: edge-of-cutoff IS articles produce a weaker memorization signal than mid-history articles, and the MCS classifier in task 3.3 may not separate IS from OOS reliably enough to clear the design's `min_auc=0.6` gate.
   - Fix `src/dataset/fmp_corpora.py` so the IS sampling is chronologically stratified. Two viable approaches; pick whichever is simpler given FMP's actual API shape: (a) split `is_window = (epoch, earliest_cutoff)` into K equal sub-windows (default K=5 → ~3-year buckets across 2010-2024) and request `target_per_corpus // K` rows per sub-window; or (b) add a `sort_by` parameter to `fetch_articles`, default `"date_asc"` for IS and `"date_desc"` for OOS, so IS pulls from deep history rather than the cutoff edge.
   - Apply the same logic to OOS only if FMP's recent-history coverage is too dense at the latest pages (otherwise leave OOS as-is, since recent OOS articles are equally "unseen" by the model).

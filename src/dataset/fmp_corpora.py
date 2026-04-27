@@ -70,6 +70,14 @@ _PAGE_LIMIT = 100
 # Body field probe order. FMP varies by endpoint (per task spec).
 _BODY_FIELDS: tuple[str, ...] = ("text", "content", "body")
 
+# Date field probe order. ``news/general-latest`` and ``news/stock-latest``
+# expose ``publishedDate``; ``fmp-articles`` exposes ``date``.
+_DATE_FIELDS: tuple[str, ...] = ("publishedDate", "date")
+
+# URL field probe order. ``news/*`` endpoints expose ``url``;
+# ``fmp-articles`` exposes ``link``.
+_URL_FIELDS: tuple[str, ...] = ("url", "link")
+
 
 # ---------- public dataclass -------------------------------------------------
 
@@ -203,14 +211,25 @@ def _normalise_article(
     by the caller once date-bucketing has happened; we set 0 here as a
     safe placeholder that the caller MUST overwrite.
     """
-    url = str(article.get("url") or "").strip()
+    url = ""
+    for field in _URL_FIELDS:
+        v = article.get(field)
+        if isinstance(v, str) and v.strip():
+            url = v.strip()
+            break
     title = str(article.get("title") or "").strip()
 
-    published = _parse_published(article.get("publishedDate"))
+    raw_date: object = None
+    for field in _DATE_FIELDS:
+        v = article.get(field)
+        if v not in (None, ""):
+            raw_date = v
+            break
+    published = _parse_published(raw_date)
     if published is None:
         logger.warning(
             "skip article: unparseable publishedDate %r (url=%s)",
-            article.get("publishedDate"),
+            raw_date,
             url or "<missing>",
         )
         return None
@@ -268,15 +287,28 @@ def build_calibration(
     api_key: str | None = None,
     endpoints: Sequence[str] = DEFAULT_ENDPOINTS,
     today: date | None = None,
+    is_strata: int = 5,
 ) -> tuple[Path, Path]:
     """Build both calibration corpora from FMP news endpoints.
 
     Filters strictly by publication date (Req 11.2):
-      - IS rows: published BEFORE ``min(cutoffs.values())``
-      - OOS rows: published AFTER ``max(cutoffs.values())`` and on/before today
+      - IS rows: published BEFORE ``min(cutoffs.values())``; sampled across
+        ``is_strata`` equal-width chronological sub-windows of
+        ``(_EPOCH, earliest_cutoff)`` so the corpus does not cluster on the
+        cutoff edge (task 1.5). Per-bucket target is
+        ``target_per_corpus // is_strata``; the LAST bucket absorbs any
+        remainder so the totals always sum to ``target_per_corpus``.
+      - OOS rows: published AFTER ``max(cutoffs.values())`` and on/before
+        today. OOS clustering at "now" is acceptable: recent articles are
+        uniformly unseen by every in-registry model, so the OOS sampler
+        keeps a single full window (no stratification).
       - articles in the gap between earliest and latest cutoff are dropped
 
-    Deduplicates by URL exact-match and by sha256(title) (Req 11.3).
+    Deduplicates by URL exact-match and by sha256(title) (Req 11.3) across
+    ALL sub-windows and ALL endpoints -- a single set per side persists for
+    the whole run, so an article from sub-window 2 cannot reappear under a
+    different bucket in sub-window 3.
+
     Skips articles missing a body or a parseable ``publishedDate`` and emits
     one WARNING per skip (Req 11.4).
 
@@ -291,6 +323,8 @@ def build_calibration(
     """
     if not cutoffs:
         raise ValueError("cutoffs must be a non-empty mapping of model_id -> date.")
+    if is_strata < 1:
+        raise ValueError(f"is_strata must be >= 1, got {is_strata}.")
 
     api_key = _resolve_api_key(api_key)
     today = today or date.today()
@@ -312,73 +346,78 @@ def build_calibration(
     seen_urls: set[str] = set()
     seen_title_hashes: set[str] = set()
 
-    for endpoint in endpoints:
-        # Each endpoint paginated independently; we fetch IS via a wide
-        # historical window and OOS via the post-cutoff window. We issue
-        # both passes per endpoint so a single endpoint can contribute to
-        # both corpora.
-        for window_label, window_from, window_to, target_bucket in (
-            ("is", _EPOCH, earliest_cutoff - timedelta(days=1), is_records),
-            ("oos", latest_cutoff + timedelta(days=1), today, oos_records),
-        ):
-            if window_from > window_to:
-                # Degenerate window (should not happen for sane cutoff registries).
-                continue
-            page = 0
-            while (
-                len(target_bucket) < target_per_corpus
-                and page < _MAX_PAGES_PER_ENDPOINT
-            ):
-                articles = fetch_articles(
-                    endpoint=endpoint,
-                    api_key=api_key,
-                    from_date=window_from,
-                    to_date=window_to,
-                    page=page,
-                    limit=_PAGE_LIMIT,
-                )
-                if not articles:
-                    break
-                added_this_page = _ingest_page(
-                    articles=articles,
-                    source=endpoint,
-                    earliest_cutoff=earliest_cutoff,
-                    latest_cutoff=latest_cutoff,
-                    today=today,
-                    is_records=is_records,
-                    oos_records=oos_records,
-                    seen_urls=seen_urls,
-                    seen_title_hashes=seen_title_hashes,
-                    is_target=target_per_corpus,
-                    oos_target=target_per_corpus,
-                )
-                page += 1
-                # If the page produced nothing new and was full, the next
-                # page is unlikely to help either -- but still try until
-                # the safety cap.
-                if added_this_page == 0 and len(articles) < _PAGE_LIMIT:
-                    break
+    # ---- IS sampling: stratified across K equal-width sub-windows --------
+    is_buckets = _split_is_window(_EPOCH, earliest_cutoff, is_strata)
+    base_per_bucket = target_per_corpus // is_strata
+    remainder = target_per_corpus - base_per_bucket * is_strata
+    last_idx = is_strata - 1
 
-            if (
-                window_label == "is"
-                and len(is_records) >= target_per_corpus
-                and len(oos_records) >= target_per_corpus
-            ):
-                # Both targets reached; stop early.
+    for bucket_idx, (bucket_from, bucket_to) in enumerate(is_buckets):
+        bucket_target = base_per_bucket + (remainder if bucket_idx == last_idx else 0)
+        if bucket_target <= 0:
+            continue
+        bucket_start_count = len(is_records)
+        for endpoint in endpoints:
+            if len(is_records) - bucket_start_count >= bucket_target:
                 break
+            _paginate_window(
+                endpoint=endpoint,
+                api_key=api_key,
+                window_from=bucket_from,
+                window_to=bucket_to,
+                today=today,
+                earliest_cutoff=earliest_cutoff,
+                latest_cutoff=latest_cutoff,
+                is_records=is_records,
+                oos_records=oos_records,
+                seen_urls=seen_urls,
+                seen_title_hashes=seen_title_hashes,
+                is_target=bucket_start_count + bucket_target,
+                oos_target=0,  # no OOS pulled in IS sub-windows
+            )
+        added = len(is_records) - bucket_start_count
+        if added < bucket_target:
+            logger.warning(
+                "IS sub-window bucket %d (%s -> %s) came up short: %d / %d rows.",
+                bucket_idx,
+                bucket_from.isoformat(),
+                bucket_to.isoformat(),
+                added,
+                bucket_target,
+            )
 
-        if (
-            len(is_records) >= target_per_corpus
-            and len(oos_records) >= target_per_corpus
-        ):
-            break
+    # ---- OOS sampling: single full window (no stratification) ----------
+    # OOS clustering at 'now' is acceptable: recent articles are uniformly
+    # unseen by every in-registry model.
+    oos_window_from = latest_cutoff + timedelta(days=1)
+    if oos_window_from <= today:
+        for endpoint in endpoints:
+            if len(oos_records) >= target_per_corpus:
+                break
+            _paginate_window(
+                endpoint=endpoint,
+                api_key=api_key,
+                window_from=oos_window_from,
+                window_to=today,
+                today=today,
+                earliest_cutoff=earliest_cutoff,
+                latest_cutoff=latest_cutoff,
+                is_records=is_records,
+                oos_records=oos_records,
+                seen_urls=seen_urls,
+                seen_title_hashes=seen_title_hashes,
+                is_target=0,  # no IS pulled in the OOS window
+                oos_target=target_per_corpus,
+            )
 
     if len(is_records) < target_per_corpus:
         logger.warning(
-            "IS corpus came up short: %d / %d rows from endpoints %s.",
+            "IS corpus came up short of target: %d of %d rows from endpoints %s "
+            "across %d sub-windows.",
             len(is_records),
             target_per_corpus,
             list(endpoints),
+            is_strata,
         )
     if len(oos_records) < target_per_corpus:
         logger.warning(
@@ -391,6 +430,97 @@ def build_calibration(
     _write_jsonl(is_path, is_records)
     _write_jsonl(oos_path, oos_records)
     return is_path, oos_path
+
+
+def _split_is_window(
+    epoch: date, earliest_cutoff: date, k: int
+) -> list[tuple[date, date]]:
+    """Split ``[epoch, earliest_cutoff]`` into ``k`` equal-width sub-windows.
+
+    The LAST bucket's upper bound is ``earliest_cutoff`` exactly so we do
+    not lose cutoff-edge articles; intermediate boundaries are computed
+    from ``(earliest_cutoff - epoch) / k`` and the next bucket starts the
+    day after the previous bucket's upper bound to keep the windows
+    non-overlapping.
+    """
+    if k < 1:
+        raise ValueError(f"k must be >= 1, got {k}.")
+    total_days = (earliest_cutoff - epoch).days
+    if total_days <= 0:
+        return [(epoch, earliest_cutoff)] if k >= 1 else []
+    width = total_days // k
+    buckets: list[tuple[date, date]] = []
+    cursor = epoch
+    for i in range(k):
+        if i == k - 1:
+            upper = earliest_cutoff
+        else:
+            upper = cursor + timedelta(days=width)
+            if upper >= earliest_cutoff:
+                upper = earliest_cutoff
+        buckets.append((cursor, upper))
+        cursor = upper + timedelta(days=1)
+        if cursor > earliest_cutoff:
+            # Out of range: subsequent buckets are degenerate; stop early
+            # but keep `k` slots by collapsing to the cutoff itself.
+            for _ in range(i + 1, k - 1):
+                buckets.append((earliest_cutoff, earliest_cutoff))
+            if i < k - 1:
+                buckets.append((earliest_cutoff, earliest_cutoff))
+            return buckets[:k]
+    return buckets
+
+
+def _paginate_window(
+    *,
+    endpoint: str,
+    api_key: str,
+    window_from: date,
+    window_to: date,
+    today: date,
+    earliest_cutoff: date,
+    latest_cutoff: date,
+    is_records: list[ArticleRecord],
+    oos_records: list[ArticleRecord],
+    seen_urls: set[str],
+    seen_title_hashes: set[str],
+    is_target: int,
+    oos_target: int,
+) -> None:
+    """Paginate one ``(endpoint, window)`` pass and ingest into the buckets."""
+    if window_from > window_to:
+        return
+    page = 0
+    while (
+        len(is_records) < is_target
+        or len(oos_records) < oos_target
+    ) and page < _MAX_PAGES_PER_ENDPOINT:
+        articles = fetch_articles(
+            endpoint=endpoint,
+            api_key=api_key,
+            from_date=window_from,
+            to_date=window_to,
+            page=page,
+            limit=_PAGE_LIMIT,
+        )
+        if not articles:
+            break
+        added_this_page = _ingest_page(
+            articles=articles,
+            source=endpoint,
+            earliest_cutoff=earliest_cutoff,
+            latest_cutoff=latest_cutoff,
+            today=today,
+            is_records=is_records,
+            oos_records=oos_records,
+            seen_urls=seen_urls,
+            seen_title_hashes=seen_title_hashes,
+            is_target=is_target,
+            oos_target=oos_target,
+        )
+        page += 1
+        if added_this_page == 0 and len(articles) < _PAGE_LIMIT:
+            break
 
 
 def _ingest_page(
@@ -427,7 +557,11 @@ def _ingest_page(
             continue
 
         published = partial.published_at
-        if published < earliest_cutoff and len(is_records) < is_target:
+        # Include the cutoff date itself in IS: the registry records the
+        # LATER day of the documented cutoff month (e.g. 2023-12-31 for
+        # "December 2023"), and articles published on that date are still
+        # potentially memorisable per the registry's sourcing comment.
+        if published <= earliest_cutoff and len(is_records) < is_target:
             record = _with_label(partial, 1)
             is_records.append(record)
             if url:
@@ -624,6 +758,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Add the news/stock-latest endpoint to the default list.",
     )
+    p_build.add_argument(
+        "--is-strata",
+        type=int,
+        default=5,
+        help=(
+            "Number of equal-width chronological sub-windows to split the IS "
+            "window into for stratified sampling (default: 5). Per-bucket "
+            "target is target_per_corpus // is_strata; the last bucket "
+            "absorbs any remainder. OOS sampling is single-window."
+        ),
+    )
 
     p_update = sub.add_parser(
         "update",
@@ -668,6 +813,7 @@ def _cli_build(args: argparse.Namespace) -> int:
         cutoffs=cutoffs,
         target_per_corpus=args.target,
         endpoints=endpoints,
+        is_strata=args.is_strata,
     )
     is_n = sum(1 for _ in is_path.open("r", encoding="utf-8"))
     oos_n = sum(1 for _ in oos_path.open("r", encoding="utf-8"))
