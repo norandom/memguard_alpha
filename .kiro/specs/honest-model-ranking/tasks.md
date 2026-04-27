@@ -11,7 +11,7 @@
   - Observable: `uv sync` succeeds on a clean clone; `pytest` discovers zero new failures (no new tests yet).
   - _Requirements: 4.1, 5.1, 6.1, 9.1, 10.1_
 
-- [ ] 1.2 (P) Build the FMP calibration corpus builder
+- [x] 1.2 (P) Build the FMP calibration corpus builder
   - Create `src/dataset/__init__.py` and `src/dataset/fmp_corpora.py` exposing `ArticleRecord`, `build_calibration`, `update_oos`, and a small `fetch_articles(endpoint, api_key, from_date, to_date, page, limit)` helper.
   - `build_calibration(out_dir, cutoffs, target_per_corpus=100, api_key=None, endpoints=DEFAULT_ENDPOINTS)` paginates the FMP news endpoints (`fmp-articles`, `news/general-latest` by default; `news/stock-latest` opt-in via parameter), filters articles by publication date against `is_window = (epoch, earliest_cutoff)` and `oos_window = (latest_cutoff, today)` derived from the cutoff registry, deduplicates by URL and by sha256(title), and writes `is_memorized.jsonl` (label=1) + `oos_control.jsonl` (label=0) under `data/calibration/`.
   - `update_oos(out_dir, api_key=None, endpoints=...)` reads the existing `oos_control.jsonl`, fetches articles after its max `published_at`, dedups against existing rows, and appends. It must never modify `is_memorized.jsonl`.
