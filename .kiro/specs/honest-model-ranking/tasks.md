@@ -37,7 +37,7 @@
 
 - [ ] 2. Core layer: HTTP client, loader, bootstrap, manifest
 
-- [ ] 2.1 (P) Extend the NVIDIA LM client with temperature and reference-model support
+- [x] 2.1 (P) Extend the NVIDIA LM client with temperature and reference-model support
   - Move the existing client to `src/core/nvidia_lm.py` and add a `temperature` parameter (default 0.0) plus a frozen `CompletionResult` dataclass exposing `content`, `logprobs` (list of `TokenLogprob` with `top_logprobs`), and `raw_temperature_observed`.
   - Continue to send `logprobs=true, top_logprobs=20` and a 15 s timeout; on timeout raise `TimeoutError`, on missing `top_logprobs` in the response raise a clear error.
   - Move and extend `tests/core/test_nvidia_lm.py` to assert the request body contains `temperature: 0.0` and `top_logprobs: 20`, and that the response is parsed into `CompletionResult`.
