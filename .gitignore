@@ -12,3 +12,7 @@ wheels/
 # Environment variables
 .env
 papers/.env
+
+# Notebook-generated paper figures (Req 12.4 -- produced on demand by
+# notebooks/qualification.ipynb; not checked in).
+notebooks/figures/

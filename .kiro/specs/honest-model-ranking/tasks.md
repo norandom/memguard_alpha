@@ -201,7 +201,7 @@
   - _Boundary: harness.plots_
   - _Depends: 3.2, 3.3, 4.2, 4.3_
 
-- [ ] 5.5 Author the qualification notebook with public API and rendered equations
+- [x] 5.5 Author the qualification notebook with public API and rendered equations
   - Update `src/{core,mia,harness}/__init__.py` so `from src.core import NvidiaLM, EvalRow, EvalSet, load_eval_set, load_cutoffs, assert_cutoff_safe, bootstrap_ci, Manifest, write_manifest, read_manifest`, `from src.mia import MiaFeatures, compute_mia_features, ControlBaseline, build_baseline, MCSCalibrator, train_mcs`, and `from src.harness import smoke_test, evaluate_model, compute_majority_baseline, composite_score, write_top3, configure_paper_style, plot_mia_feature_distributions, plot_mcs_calibration, plot_accuracy_with_ci, plot_mcs_auc_with_ci, plot_composite_ranking, run` all succeed without internal-path imports.
   - Add `jupyter >= 1.0` (or `ipykernel + nbclient`) to `pyproject.toml` and run `uv sync`.
   - Author `notebooks/qualification.ipynb`. Required cells, in order: introduction; load cutoffs + eval set (display the cutoffs registry as a Markdown table sourced from `Qualified_Models.md` § "Training Cutoff Registry" so the reader sees which models are active, deferred, and omitted, and the derived `is_window` / `oos_window` dates); smoke shortlist; (Markdown LaTeX cell + compute cell + figure cell) for each of: Loss, Min-K%, Min-K%++, zlib ratio, ref-delta, control-baseline standardisation, MCS logistic regression, MemGuard penalty, bootstrap percentile CI, ROC-AUC, majority-class baseline, composite ranking score. Final cell saves all figures to `notebooks/figures/*.pdf`. All imports come from the public API roots — no `from src.harness.runner import _internal` paths.
