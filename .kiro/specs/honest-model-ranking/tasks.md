@@ -54,7 +54,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
   - _Boundary: core.loader_
 
-- [ ] 2.3 (P) Implement the bootstrap CI helper
+- [x] 2.3 (P) Implement the bootstrap CI helper
   - Create `src/core/bootstrap.py` exporting `bootstrap_ci(samples, statistic, n_resamples=1000, confidence=0.95, seed=0)` returning `(point, lo, hi)`.
   - Use `numpy.random.default_rng(seed)`; resample with replacement; statistic is computed on each resample; CI bounds via percentile.
   - Handle degenerate cases: if `len(samples) == 1` return `(point, point, point)`; if statistic raises on a resample (e.g., AUC with one class), drop that resample with a warning rather than crashing.
