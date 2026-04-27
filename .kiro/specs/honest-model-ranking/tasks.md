@@ -23,7 +23,7 @@
   - _Boundary: dataset.fmp_corpora_
   - _Depends: 1.4_
 
-- [ ] 1.3 Run build_calibration to produce both calibration JSONL files
+- [x] 1.3 Run build_calibration to produce both calibration JSONL files
   - With `FMP_API_KEY` set in `.env` and `data/cutoffs.yaml` present, run `python -m src.dataset.fmp_corpora build` to produce `data/calibration/is_memorized.jsonl` and `data/calibration/oos_control.jsonl`.
   - Confirm both files exist with row count ≥ `target_per_corpus` (default 100), each row well-formed against the corpus schema (`prompt`, `label`, `metadata.published_at`, `metadata.source`, `metadata.url`), label values strictly 1 and 0 respectively, and no duplicate URLs or title hashes within a file.
   - Spot-check 5 random rows from each corpus and confirm dates land cleanly on the expected side of the cutoff boundary.
@@ -39,6 +39,17 @@
   - Observable: `python -c "import yaml; print(len(yaml.safe_load(open('data/cutoffs.yaml'))['models']))"` returns ≥ 10.
   - _Requirements: 2.5, 3.1_
   - _Boundary: data/cutoffs.yaml_
+
+- [ ] 1.5 Stratify the IS/OOS sampling in build_calibration
+  - The 1.3 run produced 100/100 rows but every IS row landed on a single day (2023-12-30, one day before earliest_cutoff=2023-12-31) and every OOS row on the most recent 3 days. The reviewer flagged this as a methodology weakness: edge-of-cutoff IS articles produce a weaker memorization signal than mid-history articles, and the MCS classifier in task 3.3 may not separate IS from OOS reliably enough to clear the design's `min_auc=0.6` gate.
+  - Fix `src/dataset/fmp_corpora.py` so the IS sampling is chronologically stratified. Two viable approaches; pick whichever is simpler given FMP's actual API shape: (a) split `is_window = (epoch, earliest_cutoff)` into K equal sub-windows (default K=5 → ~3-year buckets across 2010-2024) and request `target_per_corpus // K` rows per sub-window; or (b) add a `sort_by` parameter to `fetch_articles`, default `"date_asc"` for IS and `"date_desc"` for OOS, so IS pulls from deep history rather than the cutoff edge.
+  - Apply the same logic to OOS only if FMP's recent-history coverage is too dense at the latest pages (otherwise leave OOS as-is, since recent OOS articles are equally "unseen" by the model).
+  - Update `tests/dataset/test_fmp_corpora.py` to assert the stratification: synthetic 5-year window with 100 articles per year → IS sample contains rows from at least K-1 distinct years.
+  - After the code change passes its tests, delete the existing `data/calibration/*.jsonl` and re-run `python -m src.dataset.fmp_corpora build`. Re-verify the same observables as task 1.3 plus a new check: `python -c "import json; from datetime import date; ds=[date.fromisoformat(json.loads(l)['metadata']['published_at']).year for l in open('data/calibration/is_memorized.jsonl')]; from collections import Counter; print(Counter(ds))"` — should show IS rows spread across ≥ 3 distinct years.
+  - Observable: `pytest tests/dataset/test_fmp_corpora.py` passes the new stratification test; the regenerated `is_memorized.jsonl` shows a year distribution covering ≥ 3 years; OOS distribution unchanged (still dense in recent months).
+  - _Requirements: 11.2_
+  - _Boundary: dataset.fmp_corpora_
+  - _Depends: 1.2, 1.3_
 
 - [ ] 2. Core layer: HTTP client, loader, bootstrap, manifest
 
