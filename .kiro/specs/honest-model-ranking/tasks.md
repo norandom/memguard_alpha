@@ -63,7 +63,7 @@
   - _Requirements: 6.1, 6.3, 6.5_
   - _Boundary: core.bootstrap_
 
-- [ ] 2.4 (P) Implement the run manifest
+- [x] 2.4 (P) Implement the run manifest
   - Create `src/core/manifest.py` exporting a frozen `Manifest` dataclass and `write_manifest(out_dir, manifest)` / `read_manifest(path)` functions.
   - Manifest fields: `harness_version`, `seed`, hashes (`eval_set`, `control_corpus`, `is_memorized`, `cutoffs`), `shortlist`, `composite_score` (formula + weights), `mcs_hyperparams`, `bootstrap_n`, `artifacts` (name → path).
   - Use `hashlib.sha256` over file bytes for hashes; serialize as `manifest.json`.
