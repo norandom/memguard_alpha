@@ -11,21 +11,26 @@
   - Observable: `uv sync` succeeds on a clean clone; `pytest` discovers zero new failures (no new tests yet).
   - _Requirements: 4.1, 5.1, 6.1, 9.1, 10.1_
 
-- [ ] 1.2 (P) Build the IS-memorized calibration corpus
-  - Author `data/calibration/is_memorized.jsonl` with rows of well-known pre-2023 text (canonical Wikipedia paragraphs about pre-2023 events plus the existing `data/lookahead_bench_sample.jsonl` rows reformatted to the new schema).
-  - Each row carries `prompt` (the memorizable text), `label: 1`, and an optional `metadata.source` field.
-  - Aim for ≥ 50 rows so MCS training has both classes in adequate volume.
-  - Observable: a `jq -c '.label' data/calibration/is_memorized.jsonl | sort | uniq -c` shows only `label: 1` and a count ≥ 50.
-  - _Requirements: 5.1, 5.2_
-  - _Boundary: data/calibration_
+- [ ] 1.2 (P) Build the FMP calibration corpus builder
+  - Create `src/dataset/__init__.py` and `src/dataset/fmp_corpora.py` exposing `ArticleRecord`, `build_calibration`, `update_oos`, and a small `fetch_articles(endpoint, api_key, from_date, to_date, page, limit)` helper.
+  - `build_calibration(out_dir, cutoffs, target_per_corpus=100, api_key=None, endpoints=DEFAULT_ENDPOINTS)` paginates the FMP news endpoints (`fmp-articles`, `news/general-latest` by default; `news/stock-latest` opt-in via parameter), filters articles by publication date against `is_window = (epoch, earliest_cutoff)` and `oos_window = (latest_cutoff, today)` derived from the cutoff registry, deduplicates by URL and by sha256(title), and writes `is_memorized.jsonl` (label=1) + `oos_control.jsonl` (label=0) under `data/calibration/`.
+  - `update_oos(out_dir, api_key=None, endpoints=...)` reads the existing `oos_control.jsonl`, fetches articles after its max `published_at`, dedups against existing rows, and appends. It must never modify `is_memorized.jsonl`.
+  - Articles missing a non-empty body or a parseable `publishedDate` are skipped with a single WARNING per skip.
+  - Provide a `__main__` so `python -m src.dataset.fmp_corpora build` and `... update [--since YYYY-MM-DD]` work as CLIs.
+  - Add `tests/dataset/__init__.py` and `tests/dataset/test_fmp_corpora.py` with `pytest-mock` patching `requests.get` to cover: date-window filter buckets correctly, URL+title dedup removes both kinds of duplicates, missing-body articles are rejected with a WARNING, `update_oos` only appends rows newer than the existing max date and never touches `is_memorized.jsonl`, and `build_calibration` writes both files atomically.
+  - Observable: `pytest tests/dataset/test_fmp_corpora.py` passes (≥ 6 tests); `python -m src.dataset.fmp_corpora --help` prints both subcommands; no real HTTP calls in the test run.
+  - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
+  - _Boundary: dataset.fmp_corpora_
+  - _Depends: 1.4_
 
-- [ ] 1.3 (P) Build the OOS-control calibration corpus
-  - Author `data/calibration/oos_control.jsonl` with rows of post-cutoff prose (sourced from content authored after every shortlisted candidate's training cutoff).
-  - Each row carries `prompt`, `label: 0`, and optional `metadata.source`. ≥ 50 rows.
-  - This file doubles as the per-model control distribution corpus consumed by `mia.control` and as the `label: 0` half of the MCS training set.
-  - Observable: file exists, `jq` confirms only `label: 0`, and the row count is ≥ 50.
-  - _Requirements: 3.1, 5.1_
+- [ ] 1.3 Run build_calibration to produce both calibration JSONL files
+  - With `FMP_API_KEY` set in `.env` and `data/cutoffs.yaml` present, run `python -m src.dataset.fmp_corpora build` to produce `data/calibration/is_memorized.jsonl` and `data/calibration/oos_control.jsonl`.
+  - Confirm both files exist with row count ≥ `target_per_corpus` (default 100), each row well-formed against the corpus schema (`prompt`, `label`, `metadata.published_at`, `metadata.source`, `metadata.url`), label values strictly 1 and 0 respectively, and no duplicate URLs or title hashes within a file.
+  - Spot-check 5 random rows from each corpus and confirm dates land cleanly on the expected side of the cutoff boundary.
+  - Observable: both JSONL files exist; `jq -c '.label' data/calibration/is_memorized.jsonl | sort | uniq -c` shows only `1` ≥ 100; same check on the OOS file shows only `0` ≥ 100; published dates respect the IS / OOS windows.
+  - _Requirements: 3.1, 5.1, 5.2, 11.1_
   - _Boundary: data/calibration_
+  - _Depends: 1.2, 1.4_
 
 - [ ] 1.4 (P) Author the per-model training-cutoff registry
   - Create `data/cutoffs.yaml` mapping each candidate model ID to its training cutoff (ISO date) under a top-level `models:` key.
@@ -145,7 +150,7 @@
   - _Boundary: harness.report_
   - _Depends: 4.2_
 
-- [ ] 5. Integration: runner, replay, legacy cleanup
+- [ ] 5. Integration: runner, replay, legacy cleanup, plotting, notebook
 
 - [ ] 5.1 Implement the runner CLI orchestrator
   - Create `harness.py` (project root) and `src/harness/runner.py` exporting `run(args)` plus an argparse front-end accepting `--eval-set`, `--candidates | --shortlist`, `--is-memorized`, `--oos-control`, `--cutoffs`, `--out-dir`, `--seed`, `--bootstrap-n`, `--reference-model | --no-reference`.
@@ -167,13 +172,34 @@
   - _Depends: 5.1, 2.4_
 
 - [ ] 5.3 Remove legacy code and stale artifacts
-  - Delete `main.py`, the entire `src/pipeline/` package, the entire `src/dataset/` package, `src/evaluate/metrics.py`, `src/utils/config_manager.py`, `data/lookahead_bench_2026_oos.jsonl`, `models_report.csv`, `test_fmp.py`, `test_timeout.py`, and the legacy tests (`tests/test_lookahead_loader.py`, `tests/test_metrics.py`, `tests/test_mia_scorer.py`, `tests/test_predict_module.py`, `tests/test_nvidia_lm.py`).
-  - Retain `data/lookahead_bench_sample.jsonl` only if rows are actually referenced by `is_memorized.jsonl`; otherwise remove it as well.
-  - Confirm the new code path imports nothing from the deleted directories; `python -c "import src.harness.runner"` must succeed and `git grep -nE 'src\\.pipeline|src\\.dataset|src\\.evaluate|src\\.utils\\.config_manager|main\\.py' src harness.py tests` must return zero matches.
+  - Delete `main.py`, the entire `src/pipeline/` package, the legacy `src/dataset/lookahead_loader.py` and `src/dataset/fmp_ingest.py` only (do NOT remove the `src/dataset/` package — it now hosts `fmp_corpora.py` from task 1.2), `src/evaluate/metrics.py`, `src/utils/config_manager.py`, `data/lookahead_bench_2026_oos.jsonl`, `models_report.csv`, `test_fmp.py`, `test_timeout.py`, and the legacy tests (`tests/test_lookahead_loader.py`, `tests/test_metrics.py`, `tests/test_mia_scorer.py`, `tests/test_predict_module.py`).
+  - `data/lookahead_bench_sample.jsonl` may be kept for reference; the FMP builder produces fresh calibration corpora and does not depend on it.
+  - Confirm the new code path imports nothing from the deleted modules; `python -c "import src.harness.runner"` must succeed and `git grep -nE 'src\\.pipeline|src\\.dataset\\.(lookahead_loader|fmp_ingest)|src\\.evaluate|src\\.utils\\.config_manager|main\\.py' src harness.py tests` must return zero matches.
   - Observable: `pytest` is green and `git status` shows the listed files removed without leaving import errors.
   - _Requirements: 5.5, 9.5_
   - _Boundary: legacy cleanup_
   - _Depends: 5.1_
+
+- [ ] 5.4 (P) Implement paper-ready plotting helpers
+  - Create `src/harness/plots.py` exporting `configure_paper_style()` and the five figure functions: `plot_mia_feature_distributions`, `plot_mcs_calibration`, `plot_accuracy_with_ci`, `plot_mcs_auc_with_ci`, `plot_composite_ranking`. Each returns a `matplotlib.figure.Figure`.
+  - `configure_paper_style()` sets matplotlib `rcParams` once: `figure.figsize=(3.5, 2.5)`, `font.size=8`, `savefig.dpi=300`, `savefig.format="pdf"`, `savefig.bbox="tight"`, colorblind-safe palette `["#0072B2","#D55E00","#009E73","#CC79A7","#F0E442"]`, marker cycle that survives B&W reproduction.
+  - Add `matplotlib >= 3.8` to `pyproject.toml` and run `uv sync`.
+  - Add `tests/harness/test_plots.py` with synthetic dataclass fixtures asserting each plot returns a `Figure`, the figure size matches the paper width (3.5 inches at native), axes have non-empty x/y labels, and `fig.savefig(tmp_path / "x.pdf")` round-trips without error. Pixel content is not asserted.
+  - Observable: `pytest tests/harness/test_plots.py` passes (≥ 5 tests, one per figure type); generated PDFs open at ~3.5" wide.
+  - _Requirements: 12.3, 12.4, 12.5_
+  - _Boundary: harness.plots_
+  - _Depends: 3.2, 3.3, 4.2, 4.3_
+
+- [ ] 5.5 Author the qualification notebook with public API and rendered equations
+  - Update `src/{core,mia,harness}/__init__.py` so `from src.core import NvidiaLM, EvalRow, EvalSet, load_eval_set, load_cutoffs, assert_cutoff_safe, bootstrap_ci, Manifest, write_manifest, read_manifest`, `from src.mia import MiaFeatures, compute_mia_features, ControlBaseline, build_baseline, MCSCalibrator, train_mcs`, and `from src.harness import smoke_test, evaluate_model, compute_majority_baseline, composite_score, write_top3, configure_paper_style, plot_mia_feature_distributions, plot_mcs_calibration, plot_accuracy_with_ci, plot_mcs_auc_with_ci, plot_composite_ranking, run` all succeed without internal-path imports.
+  - Add `jupyter >= 1.0` (or `ipykernel + nbclient`) to `pyproject.toml` and run `uv sync`.
+  - Author `notebooks/qualification.ipynb`. Required cells, in order: introduction; load cutoffs + eval set; smoke shortlist; (Markdown LaTeX cell + compute cell + figure cell) for each of: Loss, Min-K%, Min-K%++, zlib ratio, ref-delta, control-baseline standardisation, MCS logistic regression, MemGuard penalty, bootstrap percentile CI, ROC-AUC, majority-class baseline, composite ranking score. Final cell saves all figures to `notebooks/figures/*.pdf`. All imports come from the public API roots — no `from src.harness.runner import _internal` paths.
+  - Add `notebooks/figures/` to `.gitignore`.
+  - Add `tests/harness/test_notebook.py` that uses `nbclient.NotebookClient` to execute the notebook with a mocked LM fixture (the same fixture pattern as task 6.1 establishes) and asserts every cell finishes without exception.
+  - Observable: `jupyter nbconvert --execute notebooks/qualification.ipynb --to notebook --output /tmp/exec.ipynb` completes without error; `from src.harness import evaluate_model` succeeds at the Python REPL; `pytest tests/harness/test_notebook.py` passes.
+  - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
+  - _Boundary: src/{core,mia,harness}/__init__.py, notebooks/qualification.ipynb, tests/harness/test_notebook.py_
+  - _Depends: 5.1, 5.4_
 
 - [ ] 6. Validation: integration tests for the harness
 
