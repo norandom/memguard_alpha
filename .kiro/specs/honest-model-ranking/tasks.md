@@ -150,7 +150,7 @@
   - _Boundary: harness.ranker_
   - _Depends: 4.2_
 
-- [ ] 4.4 (P) Implement the structured report writers
+- [x] 4.4 (P) Implement the structured report writers
   - Create `src/harness/report.py` exporting `render_terminal(results, majority, scores)`, `write_records(results, path)`, `write_summary_csv(results, scores, path)`, and `print_artifact_paths(paths)`.
   - `render_terminal` uses `rich.table.Table` to print one row per shortlisted model with model ID, Raw Acc with CI, MemGuard Acc with CI, MCS-AUC with CI, parse-success rate, and warnings; include a separate row for the majority baseline.
   - `write_records` streams one JSON object per `Record` to `records.jsonl` so memory stays bounded for long runs.
