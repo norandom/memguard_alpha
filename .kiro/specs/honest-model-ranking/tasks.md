@@ -74,7 +74,7 @@
 
 - [ ] 3. MIA layer: features, control baseline, MCS calibrator
 
-- [ ] 3.1 Implement the five MIA features
+- [x] 3.1 Implement the five MIA features
   - Create `src/mia/features.py` exporting a frozen `MiaFeatures` dataclass and `compute_mia_features(response, logprobs, ref_logprobs, k=0.2)`.
   - Compute Loss (mean negative logprob), Min-K% (mean of bottom-K logprobs), Min-K%++ (per-token z-score using each position's `top_logprobs` mean and std), zlib ratio (`-sum(logprobs) / len(zlib.compress(response.encode()))`), and reference-model delta (`loss_self - loss_ref`; `None` if `ref_logprobs is None`).
   - Clip individual logprobs to a finite floor (e.g., `-30.0`) before averaging to avoid `-inf` poisoning.
