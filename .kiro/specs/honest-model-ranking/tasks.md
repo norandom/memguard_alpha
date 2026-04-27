@@ -214,7 +214,7 @@
 
 - [ ] 6. Validation: integration tests for the harness
 
-- [ ] 6.1 (P) End-to-end run + manifest replay integration test
+- [x] 6.1 (P) End-to-end run + manifest replay integration test
   - In `tests/harness/test_e2e.py`, drive `runner.run` against a 10-row in-memory eval set with two mocked models; assert `manifest.json`, `shortlist.json`, `records.jsonl`, `summary.csv`, and `top3.md` are written under the chosen `--out-dir`.
   - Replay from the written manifest into a second `--out-dir` and assert the top-3 ordering matches the first run.
   - Observable: both runs complete without errors; `top3.md` ordering is identical across the two runs.
