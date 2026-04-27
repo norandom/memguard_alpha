@@ -103,7 +103,7 @@
 
 - [ ] 4. Harness layer: smoke gate, evaluator, ranker, report
 
-- [ ] 4.1 (P) Implement the smoke-test gate
+- [x] 4.1 (P) Implement the smoke-test gate
   - Create `src/harness/smoke.py` exporting `SmokeOutcome`, `Shortlist`, and `smoke_test(candidates, api_key, smoke_prompts, max_size=10, timeout_s=15.0)`.
   - For each candidate, run N=5 fixed prompts; exclude on `TimeoutError`, missing `top_logprobs`, or unparseable `Direction:` value; record `fail_reason`.
   - Cap selected models at `max_size`; persist the `Shortlist` as JSON via the runner caller (smoke returns the dataclass).
