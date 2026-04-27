@@ -222,7 +222,7 @@
   - _Boundary: harness end-to-end_
   - _Depends: 5.1, 5.2_
 
-- [ ] 6.2 (P) Cutoff-guard rejection integration test
+- [x] 6.2 (P) Cutoff-guard rejection integration test
   - In `tests/harness/test_cutoff_guard.py`, set the eval-set `_cutoff_date` to a date that precedes a candidate model's cutoff in `cutoffs.yaml`; invoke `runner.run` and assert the runner exits non-zero before any HTTP call (the mocked LM's `generate` should not be called).
   - Observable: the test asserts `mock_lm.generate.call_count == 0` and that a `CutoffViolation` was raised or surfaced as a non-zero exit.
   - _Requirements: 2.5_
