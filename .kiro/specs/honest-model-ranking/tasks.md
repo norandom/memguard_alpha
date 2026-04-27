@@ -45,7 +45,7 @@
   - _Requirements: 4.1, 4.2, 10.3_
   - _Boundary: core.nvidia_lm_
 
-- [ ] 2.2 (P) Implement the generic JSONL loader with cutoff guard
+- [x] 2.2 (P) Implement the generic JSONL loader with cutoff guard
   - Create `src/core/loader.py` exporting `EvalRow`, `EvalSet`, `load_eval_set(path)`, `load_cutoffs(path)`, and `assert_cutoff_safe(eval_set, models, cutoffs)`.
   - `load_eval_set` validates every row has `prompt: str` and `target_direction: int in {-1,0,1}`; emits `logging` warnings (not exceptions) when N < 100 or majority-class share > 60%.
   - `assert_cutoff_safe` raises `CutoffViolation` if any model's cutoff post-dates `eval_set.cutoff_date` or if a shortlisted model is missing from the cutoff registry.
