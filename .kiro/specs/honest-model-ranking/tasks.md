@@ -205,3 +205,6 @@
   - _Requirements: 6.2, 6.4_
   - _Boundary: harness end-to-end_
   - _Depends: 5.1, 4.3_
+
+## Implementation Notes
+- 4.1 → 5.1 carryover: `harness.smoke` distinguishes `no_logprobs` from a generic `error` via a substring check on `RuntimeError` messages. Today this matches the wording in `src/core/nvidia_lm.py` (the parser raises with `"logprobs"`/`"top_logprobs"` in the message). When 5.1 wires the runner, consider promoting that distinction to a sentinel exception subclass so a future wording change in `nvidia_lm` does not silently demote `no_logprobs` failures to `error`.
