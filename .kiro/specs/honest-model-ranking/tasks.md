@@ -182,7 +182,7 @@
   - _Boundary: harness.runner_
   - _Depends: 5.1, 2.4_
 
-- [ ] 5.3 Remove legacy code and stale artifacts
+- [x] 5.3 Remove legacy code and stale artifacts
   - Delete `main.py`, the entire `src/pipeline/` package, the legacy `src/dataset/lookahead_loader.py` and `src/dataset/fmp_ingest.py` only (do NOT remove the `src/dataset/` package — it now hosts `fmp_corpora.py` from task 1.2), `src/evaluate/metrics.py`, `src/utils/config_manager.py`, `data/lookahead_bench_2026_oos.jsonl`, `models_report.csv`, `test_fmp.py`, `test_timeout.py`, and the legacy tests (`tests/test_lookahead_loader.py`, `tests/test_metrics.py`, `tests/test_mia_scorer.py`, `tests/test_predict_module.py`).
   - `data/lookahead_bench_sample.jsonl` may be kept for reference; the FMP builder produces fresh calibration corpora and does not depend on it.
   - Confirm the new code path imports nothing from the deleted modules; `python -c "import src.harness.runner"` must succeed and `git grep -nE 'src\\.pipeline|src\\.dataset\\.(lookahead_loader|fmp_ingest)|src\\.evaluate|src\\.utils\\.config_manager|main\\.py' src harness.py tests` must return zero matches.

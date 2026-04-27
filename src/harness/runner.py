@@ -133,7 +133,7 @@ HARNESS_VERSION: str = "0.1.0"
 #: NVIDIA-hosted, with well-known training data.
 DEFAULT_REFERENCE_MODEL: str = "meta/llama-3.2-1b-instruct"
 
-#: Default per-call timeout (seconds). Matches ``main.py`` and the smoke gate.
+#: Default per-call timeout (seconds). Matches the legacy default and the smoke gate.
 DEFAULT_TIMEOUT_S: float = 15.0
 
 #: Smoke-test fixed prompts. Five short directional queries that any viable

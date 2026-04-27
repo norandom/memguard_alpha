@@ -1,6 +1,6 @@
 """Top-level CLI entry point for the honest-model-ranking harness.
 
-Replaces the legacy ``main.py`` for evaluation runs. Delegates parsing and
+Replaces the legacy top-level entry point for evaluation runs. Delegates parsing and
 orchestration to :mod:`src.harness.runner`; this script exists only so the
 user can invoke ``python harness.py ...`` from the project root.
 
