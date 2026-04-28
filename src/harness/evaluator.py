@@ -44,7 +44,7 @@ from sklearn.metrics import roc_auc_score
 
 from src.core.bootstrap import bootstrap_ci
 from src.core.loader import EvalRow, EvalSet
-from src.core.nvidia_lm import NvidiaLM, TokenLogprob
+from src.core.nvidia_lm import NvidiaLM, TokenLogprob, generate_many
 from src.mia.control import ControlBaseline, standardise
 from src.mia.features import MiaFeatures, compute_mia_features
 from src.mia.mcs import MCSCalibrator
@@ -358,8 +358,14 @@ def evaluate_model(
     holdout_records: list[Record] | None = None,
     bootstrap_n: int = 1000,
     seed: int = 0,
+    max_workers: int = 1,
 ) -> ModelEvalResult:
     """Score one model against ``eval_set`` and assemble a ``ModelEvalResult``.
+
+    With ``max_workers > 1`` the per-row primary + reference LM calls
+    fan out via ``concurrent.futures.ThreadPoolExecutor`` (results are
+    paired with rows by index, so order is preserved). Post-processing
+    — parsing, MIA feature compute, MCS scoring — runs serially.
 
     See module docstring for the row-level pipeline. The function performs no
     I/O beyond the model HTTP calls; all artifact writing is owned by
@@ -369,27 +375,32 @@ def evaluate_model(
     records: list[Record] = []
     temperature_violated = False
 
-    for row in eval_set.rows:
+    prompts = [row.prompt for row in eval_set.rows]
+    primary_results = generate_many(model_lm, prompts, max_workers=max_workers)
+    ref_results: list = (
+        generate_many(ref_lm, prompts, max_workers=max_workers)
+        if ref_lm is not None else [None] * len(prompts)
+    )
+
+    for row, primary, ref_res in zip(eval_set.rows, primary_results, ref_results):
         prompt_hash = _hash_prompt(row.prompt)
-        # 1. Primary LM call ---------------------------------------------------
-        try:
-            primary = model_lm.generate(row.prompt)
-        except TimeoutError:
+        # 1. Primary LM call (already issued above, may have failed) ----------
+        if isinstance(primary, TimeoutError):
             records.append(
                 _failure_record(model_id, prompt_hash, row.target_direction, FAIL_TIMEOUT)
             )
             continue
-        except RuntimeError as exc:
+        if isinstance(primary, RuntimeError):
             records.append(
                 _failure_record(
                     model_id,
                     prompt_hash,
                     row.target_direction,
-                    _classify_runtime_error(exc),
+                    _classify_runtime_error(primary),
                 )
             )
             continue
-        except Exception:  # pragma: no cover - defensive, mirrors smoke gate
+        if isinstance(primary, Exception):  # pragma: no cover - defensive
             records.append(
                 _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR)
             )
@@ -407,8 +418,11 @@ def evaluate_model(
             )
             continue
 
-        # 3. Reference-model call (best-effort) --------------------------------
-        ref_logprobs = _safe_ref_logprobs(ref_lm, row.prompt)
+        # 3. Reference-model logprobs (already fetched in parallel) -----------
+        if ref_lm is None or isinstance(ref_res, Exception) or ref_res is None:
+            ref_logprobs = None
+        else:
+            ref_logprobs = ref_res.logprobs
 
         # 4. MIA features + MCS penalty ---------------------------------------
         try:

@@ -40,7 +40,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 
 from src.core.loader import EvalRow
-from src.core.nvidia_lm import NvidiaLM, TokenLogprob
+from src.core.nvidia_lm import NvidiaLM, TokenLogprob, generate_many
 from src.mia.control import ControlBaseline, standardise
 from src.mia.features import MiaFeatures, compute_mia_features
 
@@ -169,9 +169,12 @@ def _collect_features(
     feature_order: list[str],
     label: int,
     corpus_name: str,
+    max_workers: int = 1,
 ) -> tuple[list[list[float]], list[int]]:
     """Run the LM (and optional reference) over ``rows`` and return (X-rows, y).
 
+    With ``max_workers > 1`` the per-row LM calls fan out via
+    ``concurrent.futures.ThreadPoolExecutor`` while preserving input order.
     Skips rows where the model call fails, where the reference run
     fails *and* ``ref_delta`` is in ``feature_order``, or where MIA
     feature computation raises. Each skip emits exactly one
@@ -181,9 +184,15 @@ def _collect_features(
     y_rows: list[int] = []
     needs_ref = "ref_delta" in feature_order
 
-    for idx, row in enumerate(rows):
-        primary = _safe_generate(model_lm, row.prompt)
-        if primary is None:
+    prompts = [row.prompt for row in rows]
+    primary_results = generate_many(model_lm, prompts, max_workers=max_workers)
+    ref_results: list = (
+        generate_many(ref_lm, prompts, max_workers=max_workers)
+        if ref_lm is not None else [None] * len(prompts)
+    )
+
+    for idx, (primary, ref_res) in enumerate(zip(primary_results, ref_results)):
+        if isinstance(primary, Exception) or primary is None:
             logger.warning(
                 "mcs.train: skipping row %d in %s for model %s "
                 "(timeout or missing logprobs)",
@@ -192,12 +201,11 @@ def _collect_features(
                 model_lm.model,
             )
             continue
-        content, logprobs = primary
+        content, logprobs = primary.content, primary.logprobs
 
         ref_logprobs: list[TokenLogprob] | None = None
         if ref_lm is not None:
-            ref_result = _safe_generate(ref_lm, row.prompt)
-            if ref_result is None:
+            if isinstance(ref_res, Exception) or ref_res is None:
                 if needs_ref:
                     logger.warning(
                         "mcs.train: skipping row %d in %s for model %s "
@@ -209,7 +217,7 @@ def _collect_features(
                     )
                     continue
             else:
-                ref_logprobs = ref_result[1]
+                ref_logprobs = ref_res.logprobs
         elif needs_ref:
             # The baseline reports a ref_delta calibration but the caller
             # did not pass a reference LM — that is a configuration error.
@@ -256,6 +264,7 @@ def train(
     ref_lm: NvidiaLM | None,
     min_auc: float = 0.6,
     seed: int = 0,
+    max_workers: int = 1,
 ) -> MCSCalibrator:
     """Train the MCS classifier for one model.
 
@@ -306,6 +315,7 @@ def train(
         feature_order=feature_order,
         label=1,
         corpus_name="is_memorized",
+        max_workers=max_workers,
     )
     oos_x, oos_y = _collect_features(
         model_lm=model_lm,
@@ -315,6 +325,7 @@ def train(
         feature_order=feature_order,
         label=0,
         corpus_name="oos_control",
+        max_workers=max_workers,
     )
 
     n_valid_is = len(is_x)

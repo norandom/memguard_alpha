@@ -27,7 +27,7 @@ from typing import Iterable
 import numpy as np
 
 from src.core.loader import EvalRow
-from src.core.nvidia_lm import NvidiaLM, TokenLogprob
+from src.core.nvidia_lm import NvidiaLM, TokenLogprob, generate_many
 from src.mia.features import MiaFeatures, compute_mia_features
 
 logger = logging.getLogger(__name__)
@@ -106,6 +106,7 @@ def build_baseline(
     control_rows: list[EvalRow],
     ref_lm: NvidiaLM | None,
     min_valid: int = 50,
+    max_workers: int = 1,
 ) -> ControlBaseline:
     """Build a per-model control-corpus baseline.
 
@@ -128,22 +129,29 @@ def build_baseline(
 
     ``is_calibrated`` is set to ``n_valid >= min_valid``.
     """
+    # Fan out the model + ref calls in parallel (max_workers=1 keeps the
+    # original sequential ordering for tests that mock requests.post).
+    prompts = [row.prompt for row in control_rows]
+    primary_results = generate_many(model_lm, prompts, max_workers=max_workers)
+    ref_results: list = (
+        generate_many(ref_lm, prompts, max_workers=max_workers)
+        if ref_lm is not None else [None] * len(prompts)
+    )
+
     per_row_features: list[MiaFeatures] = []
-    for idx, row in enumerate(control_rows):
-        primary = _safe_generate(model_lm, row.prompt)
-        if primary is None:
+    for idx, (primary, ref_res) in enumerate(zip(primary_results, ref_results)):
+        if isinstance(primary, Exception) or primary is None:
             logger.warning(
                 "control baseline: skipping row %d for model %s (logprobs missing or timeout)",
                 idx,
                 model_lm.model,
             )
             continue
-        content, logprobs = primary
+        content, logprobs = primary.content, primary.logprobs
 
         ref_logprobs: list[TokenLogprob] | None = None
         if ref_lm is not None:
-            ref_result = _safe_generate(ref_lm, row.prompt)
-            if ref_result is None:
+            if isinstance(ref_res, Exception) or ref_res is None:
                 logger.warning(
                     "control baseline: ref-model %s failed on row %d; "
                     "ref_delta dropped for this row",
@@ -151,13 +159,11 @@ def build_baseline(
                     idx,
                 )
             else:
-                ref_logprobs = ref_result[1]
+                ref_logprobs = ref_res.logprobs
 
         try:
             features = compute_mia_features(content, logprobs, ref_logprobs)
         except ValueError:
-            # compute_mia_features raises on empty/missing top_logprobs — treat
-            # as an invalid row, mirroring the timeout/runtime-error path.
             logger.warning(
                 "control baseline: skipping row %d for model %s "
                 "(MIA feature computation failed)",

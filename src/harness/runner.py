@@ -133,8 +133,10 @@ HARNESS_VERSION: str = "0.1.0"
 #: NVIDIA-hosted, with well-known training data.
 DEFAULT_REFERENCE_MODEL: str = "meta/llama-3.2-1b-instruct"
 
-#: Default per-call timeout (seconds). Matches the legacy default and the smoke gate.
-DEFAULT_TIMEOUT_S: float = 15.0
+#: Default per-call timeout (seconds). 45s accommodates reasoning models
+#: (gpt-oss-*, nemotron-nano-*) that emit ~200-token reasoning chains
+#: before producing their final ``Direction:``/``Confidence:`` lines.
+DEFAULT_TIMEOUT_S: float = 45.0
 
 #: Smoke-test fixed prompts. Five short directional queries that any viable
 #: candidate must be able to answer cleanly. Mirrors the Open Defaults
@@ -263,6 +265,26 @@ def _add_build_arguments(parser: argparse.ArgumentParser) -> None:
         default=1000,
         help="Number of bootstrap resamples for every CI (Req 6.1, 6.3).",
     )
+    parser.add_argument(
+        "--min-call-interval",
+        type=float,
+        default=0.0,
+        help=(
+            "Minimum seconds between consecutive NVIDIA API calls per model "
+            "instance. Use 1.5-2.0 to pace requests under the rate limit "
+            "without burning retry overhead. Default 0.0 (no pacing)."
+        ),
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=8,
+        help=(
+            "How many NVIDIA API calls to run in parallel per model. Default 8. "
+            "Set to 1 for fully sequential calls (matches the original behaviour). "
+            "Higher = faster but may trigger rate limits."
+        ),
+    )
 
     ref_group = parser.add_mutually_exclusive_group()
     ref_group.add_argument(
@@ -388,6 +410,18 @@ def parse_argv(argv: list[str]) -> argparse.Namespace:
 def _default_lm_factory(api_key: str, model: str, timeout_s: float) -> NvidiaLM:
     """Construct a real ``NvidiaLM``. Overridable via ``run(..., lm_factory=...)``."""
     return NvidiaLM(api_key=api_key, model=model, timeout_s=timeout_s)
+
+
+def _make_paced_factory(min_call_interval_s: float):
+    """Factory variant that propagates a per-instance call-pacing interval."""
+    def _factory(api_key: str, model: str, timeout_s: float) -> NvidiaLM:
+        return NvidiaLM(
+            api_key=api_key,
+            model=model,
+            timeout_s=timeout_s,
+            min_call_interval_s=min_call_interval_s,
+        )
+    return _factory
 
 
 def _resolve_out_dir(raw: str | None) -> Path:
@@ -559,6 +593,7 @@ def _evaluate_one_model(
     lm_factory: LMFactory,
     seed: int,
     bootstrap_n: int,
+    max_workers: int = 1,
 ) -> ModelEvalResult:
     """Run baseline → MCS → evaluator for one model.
 
@@ -568,7 +603,11 @@ def _evaluate_one_model(
     model_lm = lm_factory(api_key, model_id, DEFAULT_TIMEOUT_S)
 
     baseline: ControlBaseline = build_baseline(
-        model_lm, oos_control_rows, ref_lm, min_valid=_MCS_HYPERPARAMS["min_valid"]
+        model_lm,
+        oos_control_rows,
+        ref_lm,
+        min_valid=_MCS_HYPERPARAMS["min_valid"],
+        max_workers=max_workers,
     )
     if not baseline.is_calibrated:
         logger.warning(
@@ -588,6 +627,7 @@ def _evaluate_one_model(
         ref_lm=ref_lm,
         min_auc=_MCS_HYPERPARAMS["min_auc"],
         seed=seed,
+        max_workers=max_workers,
     )
 
     return evaluate_model(
@@ -599,6 +639,7 @@ def _evaluate_one_model(
         holdout_records=None,
         bootstrap_n=bootstrap_n,
         seed=seed,
+        max_workers=max_workers,
     )
 
 
@@ -684,7 +725,11 @@ def run(
         (eval set, API key), ``3`` on cutoff violation, ``1`` on any other
         unrecovered error.
     """
-    factory: LMFactory = lm_factory or _default_lm_factory
+    if lm_factory is not None:
+        factory: LMFactory = lm_factory
+    else:
+        pace = float(getattr(args, "min_call_interval", 0.0) or 0.0)
+        factory = _make_paced_factory(pace) if pace > 0 else _default_lm_factory
 
     # 1. Environment + API key -----------------------------------------------
     load_dotenv()
@@ -781,6 +826,7 @@ def run(
                 lm_factory=factory,
                 seed=args.seed,
                 bootstrap_n=args.bootstrap_n,
+                max_workers=int(getattr(args, "max_workers", 1) or 1),
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception(
