@@ -608,6 +608,142 @@ def _build_manifest(
 # --- run() entry point --------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class _LoadedInputs:
+    eval_path: Path
+    eval_set: EvalSet
+    cutoffs_path: Path
+    cutoffs: dict
+    is_path: Path
+    is_memorized_rows: list[EvalRow]
+    oos_path: Path
+    oos_control_rows: list[EvalRow]
+
+
+def _load_all_inputs(args: argparse.Namespace) -> _LoadedInputs | int:
+    """Validate + load every input file. Returns a bundle, or an exit code on error."""
+    eval_path = Path(args.eval_set)
+    cutoffs_path = Path(args.cutoffs)
+    is_path = Path(args.is_memorized)
+    oos_path = Path(args.oos_control)
+    for label, p in (("--eval-set", eval_path), ("--cutoffs", cutoffs_path),
+                     ("--is-memorized", is_path), ("--oos-control", oos_path)):
+        if not p.exists():
+            sys.stderr.write(f"ERROR: {label} file not found: {p}\n")
+            return 2
+
+    try:
+        eval_set = load_eval_set(eval_path)
+    except (ValueError, OSError) as exc:
+        sys.stderr.write(f"ERROR: failed to load eval set {eval_path}: {exc}\n")
+        return 2
+    try:
+        cutoffs = load_cutoffs(cutoffs_path)
+    except (ValueError, OSError) as exc:
+        sys.stderr.write(f"ERROR: failed to load cutoffs {cutoffs_path}: {exc}\n")
+        return 2
+    try:
+        is_memorized_rows = _load_calibration_rows(is_path)
+        oos_control_rows = _load_calibration_rows(oos_path)
+    except (ValueError, OSError) as exc:
+        sys.stderr.write(f"ERROR: failed to load calibration corpus: {exc}\n")
+        return 2
+
+    return _LoadedInputs(
+        eval_path=eval_path, eval_set=eval_set,
+        cutoffs_path=cutoffs_path, cutoffs=cutoffs,
+        is_path=is_path, is_memorized_rows=is_memorized_rows,
+        oos_path=oos_path, oos_control_rows=oos_control_rows,
+    )
+
+
+def _evaluate_all_models(
+    *,
+    shortlist_models: list[str],
+    api_key: str,
+    inputs: _LoadedInputs,
+    ref_lm: NvidiaLM | None,
+    factory: LMFactory,
+    args: argparse.Namespace,
+) -> list[ModelEvalResult]:
+    """Run the per-model evaluation loop with defensive error handling."""
+    max_workers = int(getattr(args, "max_workers", 1) or 1)
+    results: list[ModelEvalResult] = []
+    for model_id in shortlist_models:
+        try:
+            result = _evaluate_one_model(
+                model_id=model_id, api_key=api_key,
+                eval_set=inputs.eval_set,
+                is_memorized_rows=inputs.is_memorized_rows,
+                oos_control_rows=inputs.oos_control_rows,
+                ref_lm=ref_lm, lm_factory=factory,
+                seed=args.seed, bootstrap_n=args.bootstrap_n,
+                max_workers=max_workers,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception(
+                "runner: unrecoverable error evaluating model %s; "
+                "marking uncalibrated and continuing.",
+                model_id,
+            )
+            sys.stderr.write(
+                f"WARNING: model {model_id} raised during evaluation ({exc!r}); "
+                "marking uncalibrated.\n"
+            )
+            result = _make_uncalibrated_stub(model_id)
+        results.append(result)
+    return results
+
+
+def _write_run_artifacts(
+    *,
+    out_dir: Path,
+    results: list[ModelEvalResult],
+    scores,
+    majority,
+    inputs: _LoadedInputs,
+    shortlist_models: list[str],
+    shortlist_path: Path | None,
+    args: argparse.Namespace,
+) -> dict[str, Path]:
+    """Write records, summary, top3, manifest. Returns the artifact-name → path map."""
+    records_path = out_dir / "records.jsonl"
+    summary_path = out_dir / "summary.csv"
+    top3_path = out_dir / "top3.md"
+    manifest_path_target = out_dir / "manifest.json"
+
+    write_records(results, records_path)
+    write_summary_csv(results, scores, majority, summary_path)
+    write_top3(scores, top3_path)
+
+    artifacts: dict[str, Path] = {
+        "records": records_path,
+        "summary": summary_path,
+        "top3": top3_path,
+        "manifest": manifest_path_target,
+    }
+    if shortlist_path is not None:
+        artifacts["shortlist"] = shortlist_path
+
+    paths = _ResolvedPaths(
+        eval_set=inputs.eval_path,
+        eval_set_hash=compute_file_hash(inputs.eval_path),
+        is_memorized=inputs.is_path,
+        is_memorized_hash=compute_file_hash(inputs.is_path),
+        oos_control=inputs.oos_path,
+        oos_control_hash=compute_file_hash(inputs.oos_path),
+        cutoffs=inputs.cutoffs_path,
+        cutoffs_hash=compute_file_hash(inputs.cutoffs_path),
+    )
+    manifest = _build_manifest(
+        seed=args.seed, bootstrap_n=args.bootstrap_n, paths=paths,
+        shortlist_models=shortlist_models, artifacts=artifacts,
+        reference_model=None if args.no_reference else args.reference_model,
+    )
+    write_manifest(out_dir, manifest)
+    return artifacts
+
+
 def run(
     args: argparse.Namespace,
     *,
@@ -628,7 +764,6 @@ def run(
         pace = float(getattr(args, "min_call_interval", 0.0) or 0.0)
         factory = _make_paced_factory(pace) if pace > 0 else _default_lm_factory
 
-    # 1. Environment + API key -----------------------------------------------
     load_dotenv()
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
@@ -638,159 +773,52 @@ def run(
         )
         return 2
 
-    # 2. Load eval set + cutoffs ---------------------------------------------
-    eval_path = Path(args.eval_set)
-    if not eval_path.exists():
-        sys.stderr.write(f"ERROR: --eval-set file not found: {eval_path}\n")
-        return 2
-
-    cutoffs_path = Path(args.cutoffs)
-    if not cutoffs_path.exists():
-        sys.stderr.write(f"ERROR: --cutoffs file not found: {cutoffs_path}\n")
-        return 2
-
-    is_path = Path(args.is_memorized)
-    if not is_path.exists():
-        sys.stderr.write(
-            f"ERROR: --is-memorized file not found: {is_path}\n"
-        )
-        return 2
-
-    oos_path = Path(args.oos_control)
-    if not oos_path.exists():
-        sys.stderr.write(
-            f"ERROR: --oos-control file not found: {oos_path}\n"
-        )
-        return 2
-
-    try:
-        eval_set = load_eval_set(eval_path)
-    except (ValueError, OSError) as exc:
-        sys.stderr.write(f"ERROR: failed to load eval set {eval_path}: {exc}\n")
-        return 2
-    try:
-        cutoffs = load_cutoffs(cutoffs_path)
-    except (ValueError, OSError) as exc:
-        sys.stderr.write(f"ERROR: failed to load cutoffs {cutoffs_path}: {exc}\n")
-        return 2
+    loaded = _load_all_inputs(args)
+    if isinstance(loaded, int):
+        return loaded
 
     out_dir = _resolve_out_dir(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # 3. Resolve shortlist ----------------------------------------------------
     try:
         shortlist_models, shortlist_path = _resolve_shortlist(args, api_key, out_dir)
     except (FileNotFoundError, ValueError) as exc:
         sys.stderr.write(f"ERROR: shortlist resolution failed: {exc}\n")
         return 2
 
-    # 4. Cutoff guard --------------------------------------------------------
-    # MUST run BEFORE any HTTP call (Req 2.5). With --shortlist this is the
-    # first opportunity; with --candidates the smoke gate has already issued
-    # HTTP calls, but those are quick connectivity probes — the main eval +
-    # baseline + MCS work has not started yet, which is what 2.5 protects
-    # against.
+    # Cutoff guard MUST run BEFORE the main eval/baseline/MCS work (Req 2.5).
     try:
-        assert_cutoff_safe(eval_set, shortlist_models, cutoffs)
+        assert_cutoff_safe(loaded.eval_set, shortlist_models, loaded.cutoffs)
     except CutoffViolation as exc:
         sys.stderr.write(f"ERROR: cutoff violation: {exc}\n")
         return 3
 
-    # 5. Load calibration corpora --------------------------------------------
-    try:
-        is_memorized_rows = _load_calibration_rows(is_path)
-        oos_control_rows = _load_calibration_rows(oos_path)
-    except (ValueError, OSError) as exc:
-        sys.stderr.write(f"ERROR: failed to load calibration corpus: {exc}\n")
-        return 2
-
-    # 6. Reference model ------------------------------------------------------
     ref_lm: NvidiaLM | None = None
     if not args.no_reference:
         ref_lm = factory(api_key, args.reference_model, DEFAULT_TIMEOUT_S)
 
-    # 7. Per-model loop -------------------------------------------------------
-    results: list[ModelEvalResult] = []
-    for model_id in shortlist_models:
-        try:
-            result = _evaluate_one_model(
-                model_id=model_id,
-                api_key=api_key,
-                eval_set=eval_set,
-                is_memorized_rows=is_memorized_rows,
-                oos_control_rows=oos_control_rows,
-                ref_lm=ref_lm,
-                lm_factory=factory,
-                seed=args.seed,
-                bootstrap_n=args.bootstrap_n,
-                max_workers=int(getattr(args, "max_workers", 1) or 1),
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.exception(
-                "runner: unrecoverable error evaluating model %s; "
-                "marking uncalibrated and continuing.",
-                model_id,
-            )
-            sys.stderr.write(
-                f"WARNING: model {model_id} raised during evaluation ({exc!r}); "
-                "marking uncalibrated.\n"
-            )
-            result = _make_uncalibrated_stub(model_id)
-        results.append(result)
+    results = _evaluate_all_models(
+        shortlist_models=shortlist_models, api_key=api_key, inputs=loaded,
+        ref_lm=ref_lm, factory=factory, args=args,
+    )
 
-    # 8. Majority baseline + composite score ---------------------------------
     majority = compute_majority_baseline(
-        eval_set, bootstrap_n=args.bootstrap_n, seed=args.seed
+        loaded.eval_set, bootstrap_n=args.bootstrap_n, seed=args.seed
     )
     scores = composite_score(results, majority)
 
-    # 9. Write artifacts -----------------------------------------------------
-    records_path = out_dir / "records.jsonl"
-    summary_path = out_dir / "summary.csv"
-    top3_path = out_dir / "top3.md"
-    manifest_path_target = out_dir / "manifest.json"
-
-    write_records(results, records_path)
-    write_summary_csv(results, scores, majority, summary_path)
-    write_top3(scores, top3_path)
-
-    artifacts: dict[str, Path] = {
-        "records": records_path,
-        "summary": summary_path,
-        "top3": top3_path,
-        "manifest": manifest_path_target,
-    }
-    if shortlist_path is not None:
-        artifacts["shortlist"] = shortlist_path
-
-    paths = _ResolvedPaths(
-        eval_set=eval_path,
-        eval_set_hash=compute_file_hash(eval_path),
-        is_memorized=is_path,
-        is_memorized_hash=compute_file_hash(is_path),
-        oos_control=oos_path,
-        oos_control_hash=compute_file_hash(oos_path),
-        cutoffs=cutoffs_path,
-        cutoffs_hash=compute_file_hash(cutoffs_path),
+    artifacts = _write_run_artifacts(
+        out_dir=out_dir, results=results, scores=scores, majority=majority,
+        inputs=loaded, shortlist_models=shortlist_models,
+        shortlist_path=shortlist_path, args=args,
     )
-    manifest = _build_manifest(
-        seed=args.seed,
-        bootstrap_n=args.bootstrap_n,
-        paths=paths,
-        shortlist_models=shortlist_models,
-        artifacts=artifacts,
-        reference_model=None if args.no_reference else args.reference_model,
-    )
-    write_manifest(out_dir, manifest)
 
-    # 10. Render terminal + print artifact paths -----------------------------
     try:
         render_terminal(results, majority, scores)
     except Exception:  # pragma: no cover - terminal rendering must never fail the run
         logger.exception("runner: render_terminal failed; continuing.")
 
     print_artifact_paths(artifacts)
-
     return 0
 
 

@@ -349,6 +349,71 @@ def _mcs_auc_ci(
 # --- Public API ---------------------------------------------------------------
 
 
+def _score_row(
+    *,
+    model_id: str,
+    row: EvalRow,
+    primary,
+    ref_res,
+    ref_lm: NvidiaLM | None,
+    baseline: ControlBaseline,
+    mcs: MCSCalibrator,
+) -> tuple[Record, bool]:
+    """Run the per-row pipeline. Returns (record, temperature_violated)."""
+    prompt_hash = _hash_prompt(row.prompt)
+
+    if isinstance(primary, TimeoutError):
+        return _failure_record(model_id, prompt_hash, row.target_direction, FAIL_TIMEOUT), False
+    if isinstance(primary, RuntimeError):
+        return (
+            _failure_record(
+                model_id, prompt_hash, row.target_direction,
+                _classify_runtime_error(primary),
+            ),
+            False,
+        )
+    if isinstance(primary, Exception):  # pragma: no cover - defensive
+        return _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR), False
+
+    temp_violated = not _temperature_honoured(primary.raw_temperature_observed)
+
+    direction = _parse_direction(primary.content)
+    confidence = _parse_confidence(primary.content)
+    if direction is None or confidence is None:
+        return _failure_record(model_id, prompt_hash, row.target_direction, FAIL_PARSE), temp_violated
+
+    if ref_lm is None or isinstance(ref_res, Exception) or ref_res is None:
+        ref_logprobs = None
+    else:
+        ref_logprobs = ref_res.logprobs
+
+    try:
+        features = compute_mia_features(primary.content, primary.logprobs, ref_logprobs)
+    except (ValueError, RuntimeError):
+        return _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR), temp_violated
+
+    standardised = standardise(features, baseline)
+    try:
+        p_memorized = float(mcs.predict_proba(features, baseline))
+    except ValueError:
+        return _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR), temp_violated
+
+    record = Record(
+        model=model_id,
+        prompt_hash=prompt_hash,
+        parse_ok=True,
+        predicted_direction=direction,
+        raw_confidence=float(confidence),
+        penalized_confidence=float(confidence) * (1.0 - p_memorized),
+        target_direction=row.target_direction,
+        features_raw=features,
+        features_standardised=standardised,
+        p_memorized=p_memorized,
+        fail_reason=None,
+    )
+    return record, temp_violated
+
+
 def evaluate_model(
     model_lm: NvidiaLM,
     eval_set: EvalSet,
@@ -372,8 +437,6 @@ def evaluate_model(
     ``harness.report`` and ``harness.runner``.
     """
     model_id = getattr(model_lm, "model", "<unknown>")
-    records: list[Record] = []
-    temperature_violated = False
 
     prompts = [row.prompt for row in eval_set.rows]
     primary_results = generate_many(model_lm, prompts, max_workers=max_workers)
@@ -382,91 +445,17 @@ def evaluate_model(
         if ref_lm is not None else [None] * len(prompts)
     )
 
+    records: list[Record] = []
+    temperature_violated = False
     for row, primary, ref_res in zip(eval_set.rows, primary_results, ref_results):
-        prompt_hash = _hash_prompt(row.prompt)
-        # 1. Primary LM call (already issued above, may have failed) ----------
-        if isinstance(primary, TimeoutError):
-            records.append(
-                _failure_record(model_id, prompt_hash, row.target_direction, FAIL_TIMEOUT)
-            )
-            continue
-        if isinstance(primary, RuntimeError):
-            records.append(
-                _failure_record(
-                    model_id,
-                    prompt_hash,
-                    row.target_direction,
-                    _classify_runtime_error(primary),
-                )
-            )
-            continue
-        if isinstance(primary, Exception):  # pragma: no cover - defensive
-            records.append(
-                _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR)
-            )
-            continue
-
-        if not _temperature_honoured(primary.raw_temperature_observed):
+        record, row_temp_violated = _score_row(
+            model_id=model_id, row=row, primary=primary, ref_res=ref_res,
+            ref_lm=ref_lm, baseline=baseline, mcs=mcs,
+        )
+        records.append(record)
+        if row_temp_violated:
             temperature_violated = True
 
-        # 2. Strict parse ------------------------------------------------------
-        direction = _parse_direction(primary.content)
-        confidence = _parse_confidence(primary.content)
-        if direction is None or confidence is None:
-            records.append(
-                _failure_record(model_id, prompt_hash, row.target_direction, FAIL_PARSE)
-            )
-            continue
-
-        # 3. Reference-model logprobs (already fetched in parallel) -----------
-        if ref_lm is None or isinstance(ref_res, Exception) or ref_res is None:
-            ref_logprobs = None
-        else:
-            ref_logprobs = ref_res.logprobs
-
-        # 4. MIA features + MCS penalty ---------------------------------------
-        try:
-            features = compute_mia_features(primary.content, primary.logprobs, ref_logprobs)
-        except (ValueError, RuntimeError):
-            # MIA computation failed (e.g., empty top_logprobs at some position).
-            # Per Error Strategy → "Per-row crash inside MIA computation": treat
-            # as a parse failure with the generic error label so the row is
-            # excluded from accuracy and the runner can keep going.
-            records.append(
-                _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR)
-            )
-            continue
-
-        standardised = standardise(features, baseline)
-        try:
-            p_memorized = float(mcs.predict_proba(features, baseline))
-        except ValueError:
-            # MCS could not score this row (e.g., baseline missing a feature
-            # the calibrator expects). Fall through to a generic error rather
-            # than misclassifying as a parse failure.
-            records.append(
-                _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR)
-            )
-            continue
-        penalized_confidence = float(confidence) * (1.0 - p_memorized)
-
-        records.append(
-            Record(
-                model=model_id,
-                prompt_hash=prompt_hash,
-                parse_ok=True,
-                predicted_direction=direction,
-                raw_confidence=float(confidence),
-                penalized_confidence=penalized_confidence,
-                target_direction=row.target_direction,
-                features_raw=features,
-                features_standardised=standardised,
-                p_memorized=p_memorized,
-                fail_reason=None,
-            )
-        )
-
-    # Aggregate -----------------------------------------------------------------
     n_rows = len(records)
     parse_failures = sum(1 for r in records if not r.parse_ok)
     parse_ok_records = [r for r in records if r.parse_ok]

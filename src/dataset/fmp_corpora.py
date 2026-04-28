@@ -346,7 +346,42 @@ def build_calibration(
     seen_urls: set[str] = set()
     seen_title_hashes: set[str] = set()
 
-    # ---- IS sampling: stratified across K equal-width sub-windows --------
+    _collect_is_records(
+        endpoints=endpoints, api_key=api_key, today=today,
+        earliest_cutoff=earliest_cutoff, latest_cutoff=latest_cutoff,
+        is_records=is_records, oos_records=oos_records,
+        seen_urls=seen_urls, seen_title_hashes=seen_title_hashes,
+        target_per_corpus=target_per_corpus, is_strata=is_strata,
+    )
+    _collect_oos_records(
+        endpoints=endpoints, api_key=api_key, today=today,
+        earliest_cutoff=earliest_cutoff, latest_cutoff=latest_cutoff,
+        is_records=is_records, oos_records=oos_records,
+        seen_urls=seen_urls, seen_title_hashes=seen_title_hashes,
+        target_per_corpus=target_per_corpus,
+    )
+    _warn_shortfall(is_records, oos_records, target_per_corpus, endpoints, is_strata)
+
+    _write_jsonl(is_path, is_records)
+    _write_jsonl(oos_path, oos_records)
+    return is_path, oos_path
+
+
+def _collect_is_records(
+    *,
+    endpoints: Sequence[str],
+    api_key: str,
+    today: date,
+    earliest_cutoff: date,
+    latest_cutoff: date,
+    is_records: list[ArticleRecord],
+    oos_records: list[ArticleRecord],
+    seen_urls: set[str],
+    seen_title_hashes: set[str],
+    target_per_corpus: int,
+    is_strata: int,
+) -> None:
+    """IS sampling stratified across K equal-width sub-windows."""
     is_buckets = _split_is_window(_EPOCH, earliest_cutoff, is_strata)
     base_per_bucket = target_per_corpus // is_strata
     remainder = target_per_corpus - base_per_bucket * is_strata
@@ -361,75 +396,72 @@ def build_calibration(
             if len(is_records) - bucket_start_count >= bucket_target:
                 break
             _paginate_window(
-                endpoint=endpoint,
-                api_key=api_key,
-                window_from=bucket_from,
-                window_to=bucket_to,
-                today=today,
-                earliest_cutoff=earliest_cutoff,
-                latest_cutoff=latest_cutoff,
-                is_records=is_records,
-                oos_records=oos_records,
-                seen_urls=seen_urls,
-                seen_title_hashes=seen_title_hashes,
+                endpoint=endpoint, api_key=api_key,
+                window_from=bucket_from, window_to=bucket_to, today=today,
+                earliest_cutoff=earliest_cutoff, latest_cutoff=latest_cutoff,
+                is_records=is_records, oos_records=oos_records,
+                seen_urls=seen_urls, seen_title_hashes=seen_title_hashes,
                 is_target=bucket_start_count + bucket_target,
-                oos_target=0,  # no OOS pulled in IS sub-windows
+                oos_target=0,
             )
         added = len(is_records) - bucket_start_count
         if added < bucket_target:
             logger.warning(
                 "IS sub-window bucket %d (%s -> %s) came up short: %d / %d rows.",
-                bucket_idx,
-                bucket_from.isoformat(),
-                bucket_to.isoformat(),
-                added,
-                bucket_target,
+                bucket_idx, bucket_from.isoformat(), bucket_to.isoformat(),
+                added, bucket_target,
             )
 
-    # ---- OOS sampling: single full window (no stratification) ----------
-    # OOS clustering at 'now' is acceptable: recent articles are uniformly
-    # unseen by every in-registry model.
+
+def _collect_oos_records(
+    *,
+    endpoints: Sequence[str],
+    api_key: str,
+    today: date,
+    earliest_cutoff: date,
+    latest_cutoff: date,
+    is_records: list[ArticleRecord],
+    oos_records: list[ArticleRecord],
+    seen_urls: set[str],
+    seen_title_hashes: set[str],
+    target_per_corpus: int,
+) -> None:
+    """OOS sampling: single full window. Clustering at 'now' is acceptable."""
     oos_window_from = latest_cutoff + timedelta(days=1)
-    if oos_window_from <= today:
-        for endpoint in endpoints:
-            if len(oos_records) >= target_per_corpus:
-                break
-            _paginate_window(
-                endpoint=endpoint,
-                api_key=api_key,
-                window_from=oos_window_from,
-                window_to=today,
-                today=today,
-                earliest_cutoff=earliest_cutoff,
-                latest_cutoff=latest_cutoff,
-                is_records=is_records,
-                oos_records=oos_records,
-                seen_urls=seen_urls,
-                seen_title_hashes=seen_title_hashes,
-                is_target=0,  # no IS pulled in the OOS window
-                oos_target=target_per_corpus,
-            )
+    if oos_window_from > today:
+        return
+    for endpoint in endpoints:
+        if len(oos_records) >= target_per_corpus:
+            break
+        _paginate_window(
+            endpoint=endpoint, api_key=api_key,
+            window_from=oos_window_from, window_to=today, today=today,
+            earliest_cutoff=earliest_cutoff, latest_cutoff=latest_cutoff,
+            is_records=is_records, oos_records=oos_records,
+            seen_urls=seen_urls, seen_title_hashes=seen_title_hashes,
+            is_target=0,
+            oos_target=target_per_corpus,
+        )
 
+
+def _warn_shortfall(
+    is_records: list[ArticleRecord],
+    oos_records: list[ArticleRecord],
+    target_per_corpus: int,
+    endpoints: Sequence[str],
+    is_strata: int,
+) -> None:
     if len(is_records) < target_per_corpus:
         logger.warning(
             "IS corpus came up short of target: %d of %d rows from endpoints %s "
             "across %d sub-windows.",
-            len(is_records),
-            target_per_corpus,
-            list(endpoints),
-            is_strata,
+            len(is_records), target_per_corpus, list(endpoints), is_strata,
         )
     if len(oos_records) < target_per_corpus:
         logger.warning(
             "OOS corpus came up short: %d / %d rows from endpoints %s.",
-            len(oos_records),
-            target_per_corpus,
-            list(endpoints),
+            len(oos_records), target_per_corpus, list(endpoints),
         )
-
-    _write_jsonl(is_path, is_records)
-    _write_jsonl(oos_path, oos_records)
-    return is_path, oos_path
 
 
 def _split_is_window(
@@ -600,6 +632,114 @@ def _extract_title(article: dict) -> str:
 # ---------- update_oos -------------------------------------------------------
 
 
+def _parse_meta_date(raw: object) -> date | None:
+    """Parse a ``metadata.published_at`` value (may be ISO string or other)."""
+    if not isinstance(raw, str):
+        return None
+    parsed = _parse_published(raw)
+    if parsed is not None:
+        return parsed
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _index_existing_oos(rows: list[dict]) -> tuple[set[str], set[str], date | None]:
+    """Build ``(urls, title_hashes, max_published)`` from the OOS file rows."""
+    urls: set[str] = set()
+    title_hashes: set[str] = set()
+    max_published: date | None = None
+    for row in rows:
+        meta = row.get("metadata") or {}
+        url = str(meta.get("url") or "")
+        if url:
+            urls.add(url)
+        # Older rows do not retain the title separately; approximate
+        # title-hash dedup via the prompt's first line.
+        prompt = str(row.get("prompt") or "")
+        first_line = prompt.split("\n", 1)[0].strip()
+        if first_line:
+            title_hashes.add(_title_hash(first_line))
+        parsed = _parse_meta_date(meta.get("published_at"))
+        if parsed is not None and (max_published is None or parsed > max_published):
+            max_published = parsed
+    return urls, title_hashes, max_published
+
+
+def _fetch_new_oos_records(
+    *,
+    endpoints: Sequence[str],
+    api_key: str,
+    from_date: date,
+    today: date,
+    since_date: date,
+    existing_urls: set[str],
+    existing_title_hashes: set[str],
+) -> list[ArticleRecord]:
+    """Paginate the FMP endpoints and return new (deduped, label=0) records."""
+    new_records: list[ArticleRecord] = []
+    for endpoint in endpoints:
+        for page in range(_MAX_PAGES_PER_ENDPOINT):
+            articles = fetch_articles(
+                endpoint=endpoint,
+                api_key=api_key,
+                from_date=from_date,
+                to_date=today,
+                page=page,
+                limit=_PAGE_LIMIT,
+            )
+            if not articles:
+                break
+            page_added = 0
+            for article in articles:
+                record = _try_make_oos_record(
+                    article=article,
+                    source=endpoint,
+                    since_date=since_date,
+                    today=today,
+                    existing_urls=existing_urls,
+                    existing_title_hashes=existing_title_hashes,
+                )
+                if record is None:
+                    continue
+                new_records.append(record)
+                page_added += 1
+            if page_added == 0 and len(articles) < _PAGE_LIMIT:
+                break
+    return new_records
+
+
+def _try_make_oos_record(
+    *,
+    article: dict,
+    source: str,
+    since_date: date,
+    today: date,
+    existing_urls: set[str],
+    existing_title_hashes: set[str],
+) -> ArticleRecord | None:
+    """Normalise one article into an OOS record, or ``None`` to skip.
+
+    Updates the dedup sets in place when the record is accepted.
+    """
+    partial = _normalise_article(article, source=source)
+    if partial is None:
+        return None
+    url = partial.url
+    if url and url in existing_urls:
+        return None
+    title_hash = _title_hash(_extract_title(article))
+    if title_hash in existing_title_hashes:
+        return None
+    if partial.published_at <= since_date or partial.published_at > today:
+        return None
+    if url:
+        existing_urls.add(url)
+    existing_title_hashes.add(title_hash)
+    return _with_label(partial, 0)
+
+
 def update_oos(
     out_dir: Path | str,
     api_key: str | None = None,
@@ -634,83 +774,23 @@ def update_oos(
             "Pass since=YYYY-MM-DD or rebuild via build_calibration."
         )
 
-    existing_urls: set[str] = set()
-    existing_title_hashes: set[str] = set()
-    max_published: date | None = None
-    for row in existing_rows:
-        meta = row.get("metadata") or {}
-        url = str(meta.get("url") or "")
-        if url:
-            existing_urls.add(url)
-        # The historical row schema uses {prompt, label, metadata}, with
-        # the title not separately retained -- dedup against the prompt's
-        # first line approximates the original title-hash.
-        prompt = str(row.get("prompt") or "")
-        first_line = prompt.split("\n", 1)[0].strip()
-        if first_line:
-            existing_title_hashes.add(_title_hash(first_line))
-        published_str = meta.get("published_at")
-        parsed = _parse_published(published_str) if isinstance(published_str, str) else None
-        # ``published_at`` in JSONL is ISO date only; try ISO directly too.
-        if parsed is None and isinstance(published_str, str):
-            try:
-                parsed = date.fromisoformat(published_str)
-            except ValueError:
-                parsed = None
-        if parsed is not None:
-            if max_published is None or parsed > max_published:
-                max_published = parsed
-
-    if since is not None:
-        since_date = since
-    else:
-        assert max_published is not None  # established by the empty-file guard above
-        since_date = max_published
+    existing_urls, existing_title_hashes, max_published = _index_existing_oos(existing_rows)
+    since_date = since if since is not None else max_published
+    assert since_date is not None  # established by the empty-file guard above
 
     from_date = since_date + timedelta(days=1)
     if from_date > today:
-        # Nothing to do.
-        return oos_path
+        return oos_path  # nothing to do
 
-    new_records: list[ArticleRecord] = []
-    for endpoint in endpoints:
-        page = 0
-        while page < _MAX_PAGES_PER_ENDPOINT:
-            articles = fetch_articles(
-                endpoint=endpoint,
-                api_key=api_key,
-                from_date=from_date,
-                to_date=today,
-                page=page,
-                limit=_PAGE_LIMIT,
-            )
-            if not articles:
-                break
-            page_added = 0
-            for article in articles:
-                partial = _normalise_article(article, source=endpoint)
-                if partial is None:
-                    continue
-                url = partial.url
-                title_hash = _title_hash(_extract_title(article))
-                if url and url in existing_urls:
-                    continue
-                if title_hash in existing_title_hashes:
-                    continue
-                if partial.published_at <= since_date:
-                    continue
-                if partial.published_at > today:
-                    continue
-                record = _with_label(partial, 0)
-                new_records.append(record)
-                if url:
-                    existing_urls.add(url)
-                existing_title_hashes.add(title_hash)
-                page_added += 1
-            page += 1
-            if page_added == 0 and len(articles) < _PAGE_LIMIT:
-                break
-
+    new_records = _fetch_new_oos_records(
+        endpoints=endpoints,
+        api_key=api_key,
+        from_date=from_date,
+        today=today,
+        since_date=since_date,
+        existing_urls=existing_urls,
+        existing_title_hashes=existing_title_hashes,
+    )
     if new_records:
         _append_jsonl(oos_path, new_records)
     return oos_path

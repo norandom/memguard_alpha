@@ -256,57 +256,23 @@ def _collect_features(
     return x_rows, y_rows
 
 
-def train(
+def _gather_train_xy(
     model_lm: NvidiaLM,
     is_memorized: list[EvalRow],
     oos_control: list[EvalRow],
     baseline: ControlBaseline,
     ref_lm: NvidiaLM | None,
-    min_auc: float = 0.6,
-    seed: int = 0,
-    max_workers: int = 1,
-) -> MCSCalibrator:
-    """Train the MCS classifier for one model.
+    feature_order: list[str],
+    max_workers: int,
+) -> tuple[np.ndarray, np.ndarray, int, int]:
+    """Collect labelled feature vectors for both corpora and stack them.
 
-    Parameters
-    ----------
-    model_lm:
-        The candidate model to score against IS/OOS prompts.
-    is_memorized:
-        Rows from the in-sample (pre-cutoff) corpus, label = 1.
-    oos_control:
-        Rows from the out-of-sample (post-cutoff) corpus, label = 0.
-    baseline:
-        The model's per-feature ``ControlBaseline`` (Req 3.x). Used both
-        to standardise eval-time features and to decide whether
-        ``ref_delta`` is in ``feature_order``.
-    ref_lm:
-        Optional reference model for the Min-K%-style ref-delta feature.
-        If ``None`` and the baseline reports a ref_delta calibration, a
-        ``ValueError`` is raised — the train-time and predict-time
-        feature vector shapes must agree.
-    min_auc:
-        Threshold for the ``is_weak`` flag (default 0.6 per Open
-        Defaults in requirements.md, Req 5.3).
-    seed:
-        Random seed used for both ``train_test_split`` and
-        ``LogisticRegression`` so the calibrator is fully deterministic
-        for fixed inputs.
-
-    Returns
-    -------
-    MCSCalibrator
-        Frozen dataclass with the fitted classifier and held-out AUC.
-
-    Raises
-    ------
-    ValueError
-        If after per-row skips fewer than 2 rows remain in either class
-        (logistic regression cannot train on a single-class half), or
-        the baseline / ref_lm configuration is inconsistent.
+    Returns ``(x, y, n_valid_is, n_valid_oos)`` where ``x`` is shape
+    ``(n_valid_is + n_valid_oos, len(feature_order))`` and ``y`` is the
+    matching label vector. Raises ``ValueError`` when either class ends
+    up with fewer than 2 valid rows after per-row skips — logistic
+    regression cannot train on single-class data.
     """
-    feature_order = _resolve_feature_order(baseline)
-
     is_x, is_y = _collect_features(
         model_lm=model_lm,
         rows=is_memorized,
@@ -330,20 +296,47 @@ def train(
 
     n_valid_is = len(is_x)
     n_valid_oos = len(oos_x)
-
     if n_valid_is < 2 or n_valid_oos < 2:
         raise ValueError(
             "mcs.train: both classes must be present with at least 2 valid rows "
             f"(got n_valid_is={n_valid_is}, n_valid_oos={n_valid_oos}). "
             "Cannot train a stratified holdout split with one-class data."
         )
-
     x = np.asarray(is_x + oos_x, dtype=np.float64)
     y = np.asarray(is_y + oos_y, dtype=np.int64)
+    return x, y, n_valid_is, n_valid_oos
+
+
+def train(
+    model_lm: NvidiaLM,
+    is_memorized: list[EvalRow],
+    oos_control: list[EvalRow],
+    baseline: ControlBaseline,
+    ref_lm: NvidiaLM | None,
+    min_auc: float = 0.6,
+    seed: int = 0,
+    max_workers: int = 1,
+) -> MCSCalibrator:
+    """Train the MCS classifier for one model.
+
+    Drives the LM over both labelled corpora (in parallel when
+    ``max_workers > 1``), fits a logistic regression on the standardised
+    features, and reports a held-out AUC. Raises ``ValueError`` if either
+    class ends up empty after per-row skips.
+    """
+    feature_order = _resolve_feature_order(baseline)
+    x, y, n_valid_is, n_valid_oos = _gather_train_xy(
+        model_lm=model_lm,
+        is_memorized=is_memorized,
+        oos_control=oos_control,
+        baseline=baseline,
+        ref_lm=ref_lm,
+        feature_order=feature_order,
+        max_workers=max_workers,
+    )
 
     x_train, x_holdout, y_train, y_holdout = train_test_split(
-        x,
-        y,
+        x, y,
         test_size=_HOLDOUT_FRACTION,
         random_state=seed,
         stratify=y,
@@ -363,11 +356,7 @@ def train(
     logger.info(
         "mcs.train: model=%s n_valid_is=%d n_valid_oos=%d "
         "holdout_auc=%.4f is_weak=%s",
-        model_lm.model,
-        n_valid_is,
-        n_valid_oos,
-        holdout_auc,
-        is_weak,
+        model_lm.model, n_valid_is, n_valid_oos, holdout_auc, is_weak,
     )
 
     return MCSCalibrator(

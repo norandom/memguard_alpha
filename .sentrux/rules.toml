@@ -1,0 +1,59 @@
+# Architectural constraints for the honest-model-ranking harness.
+#
+# Run `sentrux check` (or call the `check_rules` MCP tool) to verify.
+# These match design.md → Architecture: layered import graph,
+# core ← {dataset, mia} ← harness, no upward imports, no cycles.
+
+[constraints]
+max_cycles = 0          # No circular imports.
+max_cc = 25             # Per-function cyclomatic complexity ceiling.
+max_fn_lines = 120      # Per-function length ceiling. Slightly above the
+                        # 100-line default because evaluator's run-loop is
+                        # ~110 lines and refactoring it adds indirection.
+no_god_files = false    # Allowed for now. runner.py is large but cohesive.
+
+# --- Layer definitions ----------------------------------------------------
+# Higher order depends on lower order only. Anything imported across
+# layers in the wrong direction triggers a violation.
+
+[[layers]]
+name = "harness"
+paths = ["src/harness/*"]
+order = 0           # Top of the stack — the orchestrator, can depend on everything below.
+
+[[layers]]
+name = "dataset"
+paths = ["src/dataset/*"]
+order = 1
+
+[[layers]]
+name = "mia"
+paths = ["src/mia/*"]
+order = 1
+
+[[layers]]
+name = "core"
+paths = ["src/core/*"]
+order = 2           # Bottom of the stack — primitives, depended on by everything above.
+
+# --- Cross-sibling boundaries --------------------------------------------
+# Layers at the same order are siblings; sentrux's order-only check does
+# not forbid sibling imports automatically, so spell out the ones that
+# must stay separate.
+
+[[boundaries]]
+from = "src/dataset/*"
+to = "src/mia/*"
+reason = "dataset/ writes data files; it must not depend on the statistical layer."
+
+[[boundaries]]
+from = "src/mia/*"
+to = "src/dataset/*"
+reason = "mia/ computes features; the data builder is a sibling, not a dependency."
+
+# --- Legacy guards -------------------------------------------------------
+
+[[boundaries]]
+from = "src/*"
+to = "dspy"
+reason = "The harness deliberately dropped dspy when the spec was rewritten. Reintroducing it reverts the legacy DSPy-based pipeline."
