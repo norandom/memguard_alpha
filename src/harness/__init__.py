@@ -23,7 +23,7 @@ runner entry point from the package root::
         plot_accuracy_with_ci, plot_mcs_auc_with_ci,
         plot_composite_ranking,
         # runner
-        run, replay, build_parser,
+        run, build_parser,
     )
 
 The notebook in ``notebooks/qualification.ipynb`` consumes this surface
@@ -59,7 +59,7 @@ from src.harness.report import (
     write_records,
     write_summary_csv,
 )
-from src.harness.runner import build_parser, replay, run
+from src.harness.runner import build_parser, run
 from src.harness.smoke import Shortlist, SmokeOutcome, smoke_test
 
 __all__ = [
@@ -93,6 +93,5 @@ __all__ = [
     "plot_composite_ranking",
     # runner
     "run",
-    "replay",
     "build_parser",
 ]

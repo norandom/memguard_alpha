@@ -142,7 +142,6 @@ def _build_args(
     parser = runner_mod.build_parser()
     return parser.parse_args(
         [
-            "build",
             "--eval-set",
             str(TINY_EVAL),
             "--is-memorized",

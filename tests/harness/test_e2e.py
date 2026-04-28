@@ -140,7 +140,6 @@ def _build_args(
     monkeypatch.setenv("NVIDIA_API_KEY", "test-api-key")
     parser = runner_mod.build_parser()
     cli: list[str] = [
-        "build",
         "--eval-set",
         str(eval_set),
         "--is-memorized",
@@ -253,46 +252,6 @@ def test_e2e_writes_four_artifacts_with_shortlist_path(
     # Smoke skipped → no shortlist.json on the --shortlist path.
     assert not (out_dir / "shortlist.json").exists()
 
-
-def test_e2e_replay_reproduces_top3_ordering(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Req 10.2: Replay from manifest reproduces the original top-3 ordering.
-
-    Both runs use deterministic ``_FakeLM`` instances and the same seed /
-    bootstrap_n, so the bootstrap distributions and composite ranks should be
-    bit-for-bit identical, yielding the same model ordering in ``top3.md``.
-    """
-    eval_path = tmp_path / "eval10.jsonl"
-    _write_10_row_eval_set(eval_path)
-
-    original_dir = tmp_path / "original"
-    args = _build_args(monkeypatch, original_dir, eval_path)
-    fakes_orig = {"mockA": _FakeLM("mockA"), "mockB": _FakeLM("mockB")}
-    rc1 = runner_mod.run(args, lm_factory=_make_factory(fakes_orig))
-    assert rc1 == 0
-    assert (original_dir / "top3.md").exists()
-    original_top3 = (original_dir / "top3.md").read_text(encoding="utf-8")
-
-    replay_dir = tmp_path / "replay"
-    fakes_replay = {"mockA": _FakeLM("mockA"), "mockB": _FakeLM("mockB")}
-    rc2 = runner_mod.replay(
-        manifest_path=original_dir / "manifest.json",
-        out_dir=replay_dir,
-        lm_factory=_make_factory(fakes_replay),
-    )
-    assert rc2 == 0
-    assert (replay_dir / "top3.md").exists()
-    replay_top3 = (replay_dir / "top3.md").read_text(encoding="utf-8")
-
-    models = ("mockA", "mockB")
-    original_order = _extract_model_order(original_top3, models)
-    replay_order = _extract_model_order(replay_top3, models)
-    assert original_order, "top3.md from the original run must mention models"
-    assert original_order == replay_order, (
-        f"Top-3 ordering diverged between runs: "
-        f"original={original_order!r}, replay={replay_order!r}"
-    )
 
 
 def test_e2e_records_jsonl_has_one_line_per_eval_row_per_model(

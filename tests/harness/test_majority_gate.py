@@ -187,7 +187,6 @@ def _build_args(
     monkeypatch.setenv("NVIDIA_API_KEY", "test-api-key")
     parser = runner_mod.build_parser()
     cli = [
-        "build",
         "--eval-set",
         str(eval_set),
         "--is-memorized",

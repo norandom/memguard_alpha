@@ -193,7 +193,7 @@ class _ResolvedPaths:
 #: Names of the recognised subcommands. Exposed at module scope so the
 #: argv-fallback logic in ``parse_argv`` can detect a missing subcommand
 #: without re-introspecting the argparse object.
-SUBCOMMANDS: tuple[str, ...] = ("build", "replay")
+SUBCOMMANDS: tuple[str, ...] = ("build",)
 
 
 def _add_build_arguments(parser: argparse.ArgumentParser) -> None:
@@ -307,23 +307,7 @@ def _add_build_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Construct the top-level CLI parser with ``build`` and ``replay``
-    subcommands.
-
-    The harness CLI surface is documented in design.md (Components and
-    Interfaces → harness.runner → CLI Surface):
-
-    * ``harness build [...]`` — the historical end-to-end pipeline. ``build``
-      is the default subcommand: passing the build flags directly without
-      typing ``build`` (e.g. ``harness --eval-set X --shortlist Y``) is also
-      accepted for backwards compatibility (see :func:`parse_argv`).
-    * ``harness replay --from-manifest PATH --out-dir PATH`` — re-runs a
-      previously recorded run from its persisted manifest (Req 10.2).
-
-    Exposed for testability (so ``test_runner.py`` can parse synthetic argv
-    without spawning a subprocess) and for ``harness.py`` at the project
-    root.
-    """
+    """Top-level CLI parser. Single ``build`` flow."""
     parser = argparse.ArgumentParser(
         prog="harness",
         description=(
@@ -333,74 +317,20 @@ def build_parser() -> argparse.ArgumentParser:
             "ranking with bootstrap CIs."
         ),
     )
-
-    subparsers = parser.add_subparsers(
-        dest="subcommand",
-        metavar="{build,replay}",
-        help="Subcommand. Defaults to 'build' when omitted.",
-    )
-
-    build_p = subparsers.add_parser(
-        "build",
-        help="Run the full evaluation pipeline (default).",
-        description=(
-            "Run the full evaluation pipeline: load → smoke shortlist → "
-            "control baselines → MCS train → evaluate → rank → top-3."
-        ),
-    )
-    _add_build_arguments(build_p)
-
-    replay_p = subparsers.add_parser(
-        "replay",
-        help=(
-            "Reproduce a prior run from its manifest (Req 10.2). "
-            "Verifies input hashes before re-running."
-        ),
-        description=(
-            "Read a manifest produced by a prior 'harness build' run, verify "
-            "that every recorded input file still hashes to the value stored "
-            "in the manifest, then re-run the pipeline with the recorded seed "
-            "and bootstrap_n into a fresh --out-dir. Aborts non-zero on any "
-            "input hash mismatch (Req 10.2)."
-        ),
-    )
-    replay_p.add_argument(
-        "--from-manifest",
-        dest="from_manifest",
-        required=True,
-        help="Path to a manifest.json produced by a prior 'harness build' run.",
-    )
-    replay_p.add_argument(
-        "--out-dir",
-        dest="out_dir",
-        required=True,
-        help=(
-            "Directory to write the replay's artifacts to. Must differ from "
-            "the original run's out_dir to avoid clobbering."
-        ),
-    )
-
+    _add_build_arguments(parser)
     return parser
 
 
 def parse_argv(argv: list[str]) -> argparse.Namespace:
-    """Parse CLI arguments, defaulting to the ``build`` subcommand when omitted.
+    """Parse CLI arguments. ``build`` is the only mode now.
 
-    For backwards compatibility, invocations like
-    ``harness --eval-set X --shortlist Y`` (no explicit subcommand) are
-    rewritten to ``harness build --eval-set X --shortlist Y`` before
-    parsing. Any explicit subcommand wins. ``--help`` and ``-h`` at the top
-    level are routed through the top-level parser unchanged.
+    Accepts an optional leading ``build`` token for back-compat with
+    older scripts that wrote ``harness build --eval-set X``; it gets
+    stripped before parsing.
     """
     parser = build_parser()
-
-    # If the first non-flag token is already a known subcommand, parse as-is.
-    # Otherwise, prepend `build` so the legacy invocation pattern still works.
-    head_is_subcommand = bool(argv) and argv[0] in SUBCOMMANDS
-    head_is_help = bool(argv) and argv[0] in ("-h", "--help")
-    if argv and not head_is_subcommand and not head_is_help:
-        argv = ["build", *argv]
-
+    if argv and argv[0] == "build":
+        argv = argv[1:]
     return parser.parse_args(argv)
 
 
@@ -647,18 +577,6 @@ def _evaluate_one_model(
 
 
 #: Convention: input file paths are stored in ``Manifest.artifacts`` under
-#: keys prefixed with ``input_``. ``replay`` looks them up by these names so
-#: it can hash-verify and re-load the same inputs that produced the original
-#: ranking. Output artifact keys (``records``, ``summary``, ``top3``,
-#: ``manifest``, ``shortlist``) keep their bare names for backwards
-#: compatibility with the Task 5.1 manifest schema. (Req 10.2.)
-INPUT_ARTIFACT_PREFIX = "input_"
-INPUT_EVAL_SET_KEY = INPUT_ARTIFACT_PREFIX + "eval_set"
-INPUT_IS_MEMORIZED_KEY = INPUT_ARTIFACT_PREFIX + "is_memorized"
-INPUT_OOS_CONTROL_KEY = INPUT_ARTIFACT_PREFIX + "oos_control"
-INPUT_CUTOFFS_KEY = INPUT_ARTIFACT_PREFIX + "cutoffs"
-
-
 def _build_manifest(
     *,
     seed: int,
@@ -668,29 +586,8 @@ def _build_manifest(
     artifacts: dict[str, Path],
     reference_model: str | None,
 ) -> Manifest:
-    """Bundle everything the manifest needs into the Manifest dataclass.
-
-    The ``artifacts`` mapping is augmented with the absolute paths to the
-    four input files (eval set, IS-memorized corpus, OOS-control corpus,
-    cutoffs registry) keyed under the ``input_*`` namespace so that
-    ``replay`` can rehydrate the exact same inputs without an extra
-    schema field on Manifest itself.
-
-    The reference model id (or sentinel ``"__none__"`` for ``--no-reference``)
-    is recorded in ``mcs_hyperparams`` so ``replay`` can reconstruct the
-    reference-model wiring identically.
-    """
-    artifacts_with_inputs: dict[str, str] = {
-        name: str(p) for name, p in artifacts.items()
-    }
-    artifacts_with_inputs[INPUT_EVAL_SET_KEY] = str(paths.eval_set)
-    artifacts_with_inputs[INPUT_IS_MEMORIZED_KEY] = str(paths.is_memorized)
-    artifacts_with_inputs[INPUT_OOS_CONTROL_KEY] = str(paths.oos_control)
-    artifacts_with_inputs[INPUT_CUTOFFS_KEY] = str(paths.cutoffs)
-
+    """Bundle every input the manifest needs into the Manifest dataclass."""
     mcs_hyperparams = dict(_MCS_HYPERPARAMS)
-    # ``None`` survives JSON round-trip as ``null``; tests assert on the
-    # rehydrated dict, so we keep the sentinel explicit.
     mcs_hyperparams["reference_model"] = reference_model
 
     return Manifest(
@@ -704,7 +601,7 @@ def _build_manifest(
         composite_score={"formula": COMPOSITE_FORMULA, "gates": dict(GATES)},
         mcs_hyperparams=mcs_hyperparams,
         bootstrap_n=bootstrap_n,
-        artifacts=artifacts_with_inputs,
+        artifacts={name: str(p) for name, p in artifacts.items()},
     )
 
 
@@ -897,260 +794,12 @@ def run(
     return 0
 
 
-# --- replay() entry point ----------------------------------------------------
-
-
-#: Process exit code emitted when ``replay`` detects an input-hash mismatch
-#: against the manifest. Distinct from ``2`` (missing/invalid input) and ``3``
-#: (cutoff violation) so callers can disambiguate the two pre-flight aborts.
-EXIT_HASH_MISMATCH = 4
-
-
-def _read_top3_lines(path: Path) -> list[str]:
-    """Return ``top3.md`` as a list of lines, or ``[]`` if the file is missing."""
-    if not path.exists():
-        return []
-    return path.read_text(encoding="utf-8").splitlines()
-
-
-def _extract_ranked_models(top3_lines: list[str]) -> list[str]:
-    """Pull the ranked model order out of a ``top3.md`` file.
-
-    The ranker (see :func:`harness.ranker.write_top3`) renders surviving
-    models as numbered list entries of the form
-    ``"N. **<model>** — score = ..."``. We extract the model id by
-    string-matching on that pattern; the order in the returned list is the
-    ranking order.
-    """
-    out: list[str] = []
-    for raw in top3_lines:
-        line = raw.strip()
-        # Numbered list entries: "1. **<model>** — score = ..."
-        if not line or not line[0].isdigit():
-            continue
-        # Strip leading "<digits>. " so we can pull the bolded model id.
-        try:
-            after_num = line.split(". ", 1)[1]
-        except IndexError:
-            continue
-        if "**" not in after_num:
-            continue
-        # Between the first ** and the next ** is the model id.
-        try:
-            model = after_num.split("**", 2)[1]
-        except IndexError:
-            continue
-        if model and model not in out:
-            out.append(model)
-    return out
-
-
-def _reconstruct_args_from_manifest(
-    manifest: Manifest, *, out_dir: Path
-) -> argparse.Namespace:
-    """Build a build-subcommand argparse Namespace from a saved manifest.
-
-    Looks the four input paths up under the ``input_*`` keys in
-    ``manifest.artifacts`` (see :data:`INPUT_ARTIFACT_PREFIX`). The
-    reference-model wiring is pulled from ``mcs_hyperparams['reference_model']``
-    where ``None`` means ``--no-reference`` was set on the original run.
-
-    Raises :class:`KeyError` if the manifest predates Task 5.2 and is missing
-    any required ``input_*`` key — callers convert that into a user-facing
-    error.
-    """
-    artifacts = manifest.artifacts
-    missing = [
-        k
-        for k in (
-            INPUT_EVAL_SET_KEY,
-            INPUT_IS_MEMORIZED_KEY,
-            INPUT_OOS_CONTROL_KEY,
-            INPUT_CUTOFFS_KEY,
-        )
-        if k not in artifacts
-    ]
-    if missing:
-        raise KeyError(
-            "manifest is missing required input path key(s) "
-            f"{sorted(missing)}; this manifest predates the replay feature "
-            "and cannot be replayed."
-        )
-
-    ref_model_setting = manifest.mcs_hyperparams.get("reference_model")
-    no_reference = ref_model_setting is None
-    reference_model = ref_model_setting or DEFAULT_REFERENCE_MODEL
-
-    shortlist_csv = ",".join(manifest.shortlist)
-
-    return argparse.Namespace(
-        subcommand="build",
-        eval_set=artifacts[INPUT_EVAL_SET_KEY],
-        is_memorized=artifacts[INPUT_IS_MEMORIZED_KEY],
-        oos_control=artifacts[INPUT_OOS_CONTROL_KEY],
-        cutoffs=artifacts[INPUT_CUTOFFS_KEY],
-        candidates=None,
-        shortlist=shortlist_csv,
-        out_dir=str(out_dir),
-        seed=manifest.seed,
-        bootstrap_n=manifest.bootstrap_n,
-        reference_model=reference_model,
-        no_reference=no_reference,
-    )
-
-
-def replay(
-    manifest_path: Path | str,
-    out_dir: Path | str,
-    *,
-    lm_factory: LMFactory | None = None,
-) -> int:
-    """Re-run the pipeline against a saved manifest (Req 10.2).
-
-    Steps:
-
-    1. Read the manifest at ``manifest_path``.
-    2. Locate every input file by the ``input_*`` keys in
-       ``manifest.artifacts`` and recompute its sha256. Any mismatch (file
-       changed since the manifest was written) returns
-       :data:`EXIT_HASH_MISMATCH` and prints an error naming the offending
-       file. No HTTP work happens up to this point.
-    3. Reconstruct an argparse Namespace from the manifest fields and
-       delegate to :func:`run`. The runner re-derives the records, summary,
-       top-3, and a fresh manifest under ``out_dir``.
-    4. Compare the new ``top3.md`` ordering against the original (when
-       reachable via the ``top3`` path recorded in the manifest). When the
-       orderings differ, log a WARNING — the spec only requires stability
-       within bootstrap CIs, not byte-for-byte equality.
-
-    Parameters
-    ----------
-    manifest_path:
-        Path to a ``manifest.json`` previously written by ``harness build``.
-    out_dir:
-        Destination directory for the replay's artifacts. Must differ from
-        the original ``out_dir`` to avoid clobbering.
-    lm_factory:
-        Optional override forwarded to :func:`run` so tests can inject a
-        deterministic fake LM.
-
-    Returns
-    -------
-    int
-        ``0`` on success, ``2`` for missing/invalid manifest,
-        :data:`EXIT_HASH_MISMATCH` (=4) on input hash mismatch, or whatever
-        :func:`run` returns when it executes the inner build.
-    """
-    manifest_p = Path(manifest_path)
-    out_path = Path(out_dir)
-
-    # 1. Read the manifest. Failure surfaces a precise error path.
-    if not manifest_p.exists():
-        sys.stderr.write(
-            f"ERROR: --from-manifest file not found: {manifest_p}\n"
-        )
-        return 2
-    try:
-        manifest = read_manifest(manifest_p)
-    except (ValueError, OSError) as exc:
-        sys.stderr.write(
-            f"ERROR: failed to read manifest {manifest_p}: {exc}\n"
-        )
-        return 2
-
-    # 2. Reconstruct the build args namespace. Missing input paths means the
-    # manifest predates this feature.
-    try:
-        replay_args = _reconstruct_args_from_manifest(manifest, out_dir=out_path)
-    except KeyError as exc:
-        sys.stderr.write(f"ERROR: {exc}\n")
-        return 2
-
-    # 3. Hash-verify every input file before any work begins.
-    expected_hashes: list[tuple[str, Path, str]] = [
-        ("eval_set", Path(replay_args.eval_set), manifest.eval_set_hash),
-        (
-            "is_memorized",
-            Path(replay_args.is_memorized),
-            manifest.is_memorized_hash,
-        ),
-        (
-            "oos_control",
-            Path(replay_args.oos_control),
-            manifest.control_corpus_hash,
-        ),
-        ("cutoffs", Path(replay_args.cutoffs), manifest.cutoffs_hash),
-    ]
-    for name, path, expected in expected_hashes:
-        if not path.exists():
-            sys.stderr.write(
-                f"ERROR: replay input '{name}' not found at {path}; cannot "
-                "verify hash against manifest.\n"
-            )
-            return 2
-        actual = compute_file_hash(path)
-        if actual != expected:
-            sys.stderr.write(
-                f"ERROR: input hash mismatch for '{name}' at {path}: "
-                f"manifest expected {expected}, got {actual}. "
-                "The input file changed since the manifest was written; "
-                "aborting replay rather than running with stale inputs.\n"
-            )
-            return EXIT_HASH_MISMATCH
-
-    # 4. Capture the original top-3 ordering (best-effort) BEFORE running, so
-    # the inner run() does not overwrite it via a coincident out_dir choice.
-    original_top3_path: Path | None = None
-    if "top3" in manifest.artifacts:
-        candidate = Path(manifest.artifacts["top3"])
-        if candidate.exists():
-            original_top3_path = candidate
-    original_models = (
-        _extract_ranked_models(_read_top3_lines(original_top3_path))
-        if original_top3_path is not None
-        else []
-    )
-
-    # 5. Delegate to run() with the reconstructed args. The runner writes a
-    # fresh manifest into out_dir; we do not deduplicate against the
-    # original, that is the user's responsibility via --out-dir choice.
-    rc = run(replay_args, lm_factory=lm_factory)
-    if rc != 0:
-        return rc
-
-    # 6. Compare orderings. Differences are a warning, not a hard failure.
-    new_top3_path = out_path / "top3.md"
-    new_models = _extract_ranked_models(_read_top3_lines(new_top3_path))
-    if original_models and new_models and original_models != new_models:
-        logger.warning(
-            "replay: top3 ranking differs from original. "
-            "original=%s, replay=%s. The spec requires stability within "
-            "bootstrap CIs, not bit-for-bit identity.",
-            original_models,
-            new_models,
-        )
-        sys.stderr.write(
-            "WARNING: replay ranking differs from original top3.md ordering "
-            f"(original={original_models}, replay={new_models}). "
-            "This is not a failure — the spec only requires stability "
-            "within bootstrap CIs.\n"
-        )
-
-    return 0
-
-
 __all__ = [
     "DEFAULT_REFERENCE_MODEL",
     "DEFAULT_SMOKE_PROMPTS",
-    "EXIT_HASH_MISMATCH",
     "HARNESS_VERSION",
-    "INPUT_CUTOFFS_KEY",
-    "INPUT_EVAL_SET_KEY",
-    "INPUT_IS_MEMORIZED_KEY",
-    "INPUT_OOS_CONTROL_KEY",
     "LMFactory",
     "build_parser",
     "parse_argv",
-    "replay",
     "run",
 ]
