@@ -1,62 +1,92 @@
-# Design Document: honest-model-ranking
+# Design
+
+## How to read this doc
+
+This is the architectural plan that requirements.md was implemented against. Sections are ordered by what you usually need to find:
+
+1. **Overview** — what the harness is and what it replaces.
+2. **Boundary commitments** — what this spec owns, what it doesn't, and what the dependency rules are. Read this if you're modifying the code.
+3. **Architecture** — the three-layer module graph (core ← mia ← harness) and a Mermaid diagram of the run flow.
+4. **File structure plan** — where every file lives.
+5. **Components and interfaces** — per-module contracts, dataclasses, and signatures. Reference material.
+6. **Data models** and **error handling** — schemas and failure-mode tables.
+7. **Testing strategy** — what's covered.
+
+Implementation status (post-spec): the harness was built and validated under `/kiro-validate-impl`. Two follow-ups landed after validation: parallel API calls (`--max-workers`, default 8) and reasoning-model output handling (max_tokens=256, fallback to `reasoning_content` when `content` is empty).
 
 ## Overview
 
-**Purpose**: Rebuild the MemGuard-Alpha evaluation harness so it produces statistically defensible model rankings — replacing a 1-to-5-row devset, hardcoded MIA thresholds, and a flat point-estimate CSV with the paper's full statistical apparatus (5-feature MIA set, per-model control-prompt baseline, calibrated MCS classifier, bootstrap confidence intervals) and a structured CLI report that culminates in a `top3.md` model selection.
+The harness ranks NVIDIA-hosted language models on a financial-prediction task. It replaces an older script (`main.py`, deleted) that produced misleading numbers — 1-row dev set, hardcoded `Loss < 0.5` threshold, flat CSV output, no confidence intervals.
 
-**Users**: The sole quant researcher running this project. They will use the harness to (a) drop a candidate pool of NVIDIA-hosted models down to ~10, (b) score them on a labelled JSONL of `(prompt, target_direction)` rows, and (c) read off the top 3 from a single report.
+The user is one quant researcher. The flow is: drop a candidate pool down to about 10 working models with a smoke test, score each one against an eval set with bootstrap confidence intervals, train a per-model MCS classifier on labelled IS/OOS prompts, and produce a `top3.md` selection.
 
-**Impact**: Replaces `main.py`'s per-model loop, the hardcoded threshold path in `pipeline/mia_scorer.py`, the point-estimate evaluator in `evaluate/metrics.py`, and the flat `models_report.csv` artifact. Removes the input masker and FMP news ingest, both of which are out of the new boundary.
+Replaces:
+
+- `main.py` per-model loop → `harness.py build`
+- `pipeline/mia_scorer.py` hardcoded threshold → `mia.mcs.MCSCalibrator` (continuous probability)
+- `evaluate/metrics.py` point estimates → `harness.evaluator` with bootstrap CIs
+- `models_report.csv` flat CSV → run directory with five artifacts
+
+Out of boundary: input-side masking (deleted), FMP news ingest for the eval set itself (separate spec).
 
 ### Goals
-- Score every shortlisted model with the paper's 5 MIA features (Loss, Min-K%, Min-K%++, zlib, reference-model delta) and a per-model MCS classifier instead of a global threshold.
-- Report every accuracy and AUC metric with a bootstrap 95% CI alongside a majority-class baseline.
-- Surface parse failures as their own first-class metric rather than silently scoring them as `direction = 0`.
-- Decouple the harness from the input data shape so a future macro-indicators dataset can plug in without touching scoring code.
-- Emit a single defensible top-3 ranking (`top3.md`) and a manifest sufficient to reproduce the run.
 
-### Non-Goals
-- Sharpe-based portfolio backtesting / CMMD trading-signal debiasing (out of scope per requirements).
-- Macro-indicators data ingestion itself (separate spec).
-- Training, fine-tuning, or hosting models.
-- Any input-side abstraction or anonymization (the harness does not mutate prompts).
+- Compute the paper's full 5-feature MIA set per (model, prompt). No threshold step.
+- Bootstrap 95% CI on every accuracy and AUC, alongside a majority-class baseline.
+- Parse failures get their own warning class instead of being silently counted as wrong.
+- Eval input is a generic `(prompt, target_direction)` JSONL. Same harness, any input source.
+- Output: one `top3.md` plus a manifest that reproduces the run.
 
-## Boundary Commitments
+### Non-goals
 
-### This Spec Owns
-- The smoke-test gate that produces a ≤10-model shortlist from a candidate pool, and the `shortlist.json` artifact recording per-candidate pass/fail-reason.
-- The generic `(prompt, target_direction)` JSONL input contract and its cutoff-date guard.
-- The IS/OOS labelled calibration corpus (`data/calibration/{is_memorized,oos_control}.jsonl`) used jointly for control-prompt baselines and MCS training.
-- The FMP-backed calibration build script (`src/dataset/fmp_corpora.py`) producing both calibration files from real, dated news articles, plus an `update_oos` mode for incremental refresh of the OOS half.
-- Computation of all five MIA features per `(model, prompt)` pair.
-- The per-model MCS classifier (`p(memorized | features)`) and its standardisation against control-corpus baselines.
-- Bootstrap-CI accuracy, MemGuard accuracy, and MCS-AUC computation; majority-class baseline; parse-failure accounting.
-- Composite ranking, `top3.md` writer, structured CLI report, per-record JSONL/CSV artifacts, and the run manifest.
-- The new entry point script (`harness.py`) that replaces `main.py` for evaluation.
-- The paper-ready plotting helpers (`src/harness/plots.py`) consuming the harness dataclasses to produce single-column-width vector figures.
-- The stepwise qualification notebook (`notebooks/qualification.ipynb`) walking through every pipeline stage with rendered LaTeX equations and figure output.
-- The public API re-export discipline in `src/{core,mia,harness}/__init__.py` so notebook and external callers import from package roots, not internal module paths.
+- Sharpe / portfolio / CMMD backtesting (the paper's portfolio-level method).
+- Macro-indicator ingestion (its own spec).
+- Training or fine-tuning models.
+- Mutating prompts in any way (no input masking).
 
-### Out of Boundary
-- Construction of the evaluation JSONL itself (any future macro-indicators ingest is a separate spec).
-- Live trading, portfolio backtesting, Sharpe computation, CMMD.
-- Generation or curation of the candidate-model pool beyond what `config_manager.sync_models` already provides.
-- Removal of `dspy` from `pyproject.toml` (the new harness simply does not import dspy; full dependency cleanup is a follow-up).
+## Boundary commitments
+
+### This spec owns
+
+- The smoke-test gate that drops a candidate pool to ≤10 working models, and the `shortlist.json` outcome artifact.
+- The generic `(prompt, target_direction)` JSONL input contract and the cutoff-date guard around it.
+- The IS/OOS calibration corpus (`data/calibration/{is_memorized,oos_control}.jsonl`) used by both the control baseline and the MCS classifier.
+- The FMP-backed builder (`src/dataset/fmp_corpora.py`) that creates the corpora from real news. Includes a `build` and `update_oos` mode.
+- All five MIA features per (model, prompt): Loss, Min-K%, Min-K%++, zlib ratio, ref-model delta.
+- The per-model MCS classifier (`p(memorized | features)`) and the standardization against each model's control baseline.
+- Bootstrap-CI accuracy and MCS-AUC computation. Majority-class baseline. Parse-failure accounting.
+- Composite-score ranking, `top3.md` writer, the structured CLI report, the per-record JSONL/CSV artifacts, and the run manifest.
+- The CLI entry point (`harness.py`).
+- Paper-ready plot helpers (`src/harness/plots.py`).
+- The qualification notebook (`notebooks/qualification.ipynb`) plus a method-overview notebook and a results-visualizer notebook (added post-spec).
+- Public API re-exports from `src/{core,mia,harness}/__init__.py` so notebook code can write `from src.harness import evaluate_model`.
+
+### Out of boundary
+
+- Building the eval JSONL itself. A future macro-indicator spec owns that.
+- Live trading, portfolio backtesting, Sharpe, CMMD.
+- Curating which models go in the candidate pool. The user picks; the harness only filters via smoke test.
+- Removing `dspy` from `pyproject.toml`. The new harness doesn't import it; full dependency cleanup is a follow-up.
 - Any UI beyond the `rich`-rendered terminal report.
 
-### Allowed Dependencies
-- NVIDIA OpenAI-compatible chat completions endpoint with `logprobs=true, top_logprobs=20` (existing).
-- FMP news endpoints (`fmp-articles`, `news/general-latest`, `news/stock-latest`) and `historical-price-eod/light` for the calibration build script. API key via `FMP_API_KEY` env var.
-- Python stdlib (`hashlib`, `json`, `csv`, `pathlib`, `concurrent.futures`, `dataclasses`, `argparse`, `logging`, `zlib`).
-- New libraries: `numpy`, `scikit-learn`, `rich`, `pyyaml`, `matplotlib`, `jupyter`. Existing: `requests`, `python-dotenv`.
-- `data/cutoffs.yaml` (a hardcoded file maintained inside this spec) as the per-model training-cutoff registry.
+### Allowed dependencies
 
-### Revalidation Triggers
-- Any change to the `(prompt, target_direction)` JSONL contract (Req 2.1) → downstream macro-ingest spec must re-check its output schema.
-- Any change to the per-record artifact schema (`records.jsonl`) → downstream consumers re-validate.
-- Any change to the composite-score formula or default gating thresholds → user re-reviews `top3.md` interpretation.
-- Any change to the cutoff-date guard semantics → upstream model registry / cutoffs.yaml must update.
-- Any change to `harness.plots` figure signatures or the `ArticleRecord` schema → re-execute `notebooks/qualification.ipynb` to verify it still renders end-to-end.
+- NVIDIA OpenAI-compatible chat completions endpoint, with `logprobs=true, top_logprobs=20`.
+- FMP news endpoints (`fmp-articles`, `news/general-latest`, `news/stock-latest`) and `historical-price-eod/light` for the corpus builder. API key via `FMP_API_KEY`.
+- Python stdlib: `hashlib`, `json`, `csv`, `pathlib`, `concurrent.futures`, `dataclasses`, `argparse`, `logging`, `zlib`.
+- New deps: `numpy`, `scikit-learn`, `rich`, `pyyaml`, `matplotlib`, `jupyter`.
+- Existing deps: `requests`, `python-dotenv`.
+- `data/cutoffs.yaml` as the per-model training-cutoff registry.
+
+### Revalidation triggers
+
+If any of these change, the listed downstream needs to be re-checked:
+
+- The `(prompt, target_direction)` JSONL contract (Req 2.1) → any downstream eval-set builder.
+- The `records.jsonl` per-record schema → downstream consumers (notebooks, analysis scripts).
+- The composite-score formula or default gating thresholds → re-read `top3.md`; the ranking may change.
+- The cutoff-date guard semantics → `data/cutoffs.yaml` and any consumer that derives IS/OOS labels.
+- `harness.plots` figure signatures or the `ArticleRecord` schema → re-run `notebooks/qualification.ipynb` to make sure it still executes.
 
 ## Architecture
 
@@ -107,12 +137,15 @@ graph LR
     NVIDIA[NVIDIA API] -.->|HTTPS| LM
 ```
 
-**Architecture Integration**:
-- Pattern: layered pipeline; `core/` provides primitives (HTTP, JSONL I/O, bootstrap, manifest), `mia/` builds statistical features on top, `harness/` orchestrates and reports.
-- Boundary: each module owns exactly one concern (smoke gate, control baseline, MCS classifier, evaluator, ranker, report writer).
-- Existing patterns preserved: plain Python with type hints; unit tests using `pytest-mock`; raw `requests.post` for the logprob-bearing call (extended, not replaced).
-- New components rationale: see Components and Interfaces — every new module exists because no existing file owns the concern (smoke, control, MCS, bootstrap, manifest, ranker) or because the existing file mixes deleted-scope behaviour with kept-scope behaviour and is cleaner to rewrite (loader, evaluator).
-- Steering compliance: not applicable — `.kiro/steering/` is empty.
+**How the layers fit together:**
+
+- `core/` holds primitives: HTTP client, JSONL loader, bootstrap helper, manifest writer.
+- `mia/` builds statistical features on top of those primitives (the five MIA features, the per-model control baseline, the MCS classifier).
+- `harness/` is the orchestration layer: smoke gate, evaluator, ranker, report writer, runner.
+
+Each module owns one concern. Tests use `pytest-mock` against `requests.post` to avoid real HTTP. There's no DI framework, no abstract base classes — just plain Python with type hints.
+
+The `.kiro/steering/` directory is empty for this project, so there's no project-level steering content to comply with.
 
 ### Technology Stack
 

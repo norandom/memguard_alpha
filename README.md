@@ -1,74 +1,76 @@
-# Recall Guard (MemGuard-Alpha)
+# Recall Guard
 
-**A DSPy-based pipeline to mitigate look-ahead bias in financial quantitative agents using Membership Inference Attack (MIA) penalties and DSPy Math Reasoning.**
+A small CLI that ranks language models on a financial-prediction task without crediting them for what they memorized.
 
----
+## The problem
 
-## 📌 The Problem: Look-Ahead Bias
-Financial LLMs are often trained on web-scale data containing post-hoc market analyses and explicit descriptions of historical asset performance. When evaluating an LLM on historical financial data (like Apple's 2021 earnings), the model will often **regurgitate the answer from memory** rather than reasoning about the actual data. 
+A model trained on web text has read years of market commentary. Ask it "did SPY close up on 2023-06-15" and it can recall the answer instead of reasoning about it. That looks like skill in a backtest. It isn't.
 
-In a quantitative trading system, this causes extreme, false confidence, which leads to catastrophic overfitting in backtests.
+## The fix
 
-## 🚀 The Solution
-This project solves look-ahead bias through a two-layered DSPy pipeline:
+This follows the MemGuard-Alpha paper. For each candidate model, train a small classifier (the MCS classifier) that recognizes that model's own log-probability signature when it's regurgitating from memory versus when it's reasoning. Use the classifier to discount confidence on prompts that look memorized. Rank models by what's left.
 
-1. **Input Abstraction (DSPy Math Reasoning):** Uses `dspy.ChainOfThought` to intercept the raw financial context and mathematically extract pure metrics (e.g., "Revenue up 54% YoY") while stripping all identifiable entity names ("AAPL") and dates ("2021"). By breaking the temporal anchor, the model is forced to reason on abstract factors rather than cheat from memory.
-2. **Output Filtering (MIA Scorer):** Calculates the continuous token-level log-probabilities directly from the NVIDIA API. If the LLM generates tokens with unnaturally high probability (Loss < 0.5, Min-K% > -0.5), it detects the statistical signature of memorization and applies a strict penalty to the model's confidence.
+## What's in the repo
 
----
+- `harness.py` — the CLI. Two subcommands: `build` (full evaluation pipeline) and `replay` (reproduce a past run from its manifest).
+- `src/dataset/fmp_corpora.py` — pulls news from FMP and writes the IS-memorized and OOS-control calibration corpora.
+- `src/core/` — HTTP client (NVIDIA chat completions with logprobs), JSONL loader with cutoff guard, bootstrap CI helper, run manifest.
+- `src/mia/` — the five MIA features (Loss, Min-K%, Min-K%++, zlib ratio, ref-delta), per-model control baseline, MCS calibrator.
+- `src/harness/` — smoke gate, evaluator, ranker, report writers, plot helpers, runner.
+- `notebooks/qualification.ipynb` — methodology with twelve LaTeX equations and figure templates.
+- `notebooks/method_overview.ipynb` — what's in each calibration corpus and why.
+- `notebooks/visualize_run.ipynb` — load a finished run directory and render the paper-ready figures.
 
-## 🛠️ Setup & Installation
+## Setup
 
-This project is managed by `uv`.
+Python 3.14, [uv](https://github.com/astral-sh/uv), an NVIDIA chat-completions API key, an FMP API key.
 
-1. **Environment Setup:**
-   Make sure you have python 3.14. Install dependencies:
-   ```bash
-   uv sync
-   ```
-
-2. **API Keys:**
-   This pipeline relies on NVIDIA's inference endpoints to extract raw token `logprobs`. 
-   Create a `.env` file in the root directory (or in `papers/.env`) and add your API key:
-   ```env
-   NVIDIA_API_KEY="your_actual_key_here"
-   ```
-
-3. **Dataset:**
-   A sample dataset replicating the structure of `Look-Ahead-Bench` is located at `data/lookahead_bench_sample.jsonl`.
-
----
-
-## 🔬 How to Verify & Run (Step-by-Step)
-
-You can run the full pipeline to observe the "Scaling Paradox" and the effects of MemGuard.
-
-### Running a Specific Model
-To test a single model, run:
 ```bash
-uv run python main.py --model nvidia/nemotron-3-super-120b-a12b
+uv sync
+cat > .env <<EOF
+NVIDIA_API_KEY=...
+FMP_API_KEY=...
+EOF
 ```
 
-### Running the Entire Ensemble
-To evaluate all models and observe how different model sizes handle memorization, use the `--all` flag:
+## Run
+
+Three commands. Calibration corpora are built once. The eval set is per-experiment. The harness consumes both.
+
 ```bash
-uv run python main.py --all
+# 1. Calibration corpora (one-shot, writes data/calibration/*.jsonl)
+uv run python -m src.dataset.fmp_corpora build
+
+# 2. Eval set (the ETF starter; replace with your own builder later)
+uv run python scripts/build_etf_multiyear_eval.py
+
+# 3. Rank models
+uv run python harness.py build \
+  --eval-set data/eval/etf_direction_multiyear.jsonl \
+  --shortlist meta/llama-3.1-8b-instruct,openai/gpt-oss-20b \
+  --out-dir "runs/$(date +%Y%m%d_%H%M%S)" \
+  --no-reference \
+  --min-call-interval 1.0
 ```
 
----
+Each run writes five files into `--out-dir`:
 
-## 📊 Understanding the Results
+- `top3.md` — the ranking, plus a "why fewer than three" section when gates kicked models out.
+- `summary.csv` — every model's CIs (raw acc, MemGuard acc, MCS-AUC), parse-success rate, score, warnings.
+- `records.jsonl` — per-prompt logprobs and MIA feature values.
+- `manifest.json` — seed, input hashes, ranking — for `harness replay`.
+- `shortlist.json` — present only when the smoke gate ran (with `--candidates`).
 
-When you run the pipeline, you will see a comparison between **Raw Avg Confidence** and **MemGuard Avg Conf**.
+## Caveats
 
-### Scenario A: The Scaling Paradox (Without Input Abstraction)
-*If you were to disable the DSPy Input Masker*, here is what happens mathematically:
-- **120B Model (Heavy Memorization):** The massive model recognizes "AAPL 2021" and perfectly regurgitates the answer. Because it memorized the text, its token probabilities are unnaturally high (Loss < 0.5). MemGuard catches this "cheating" and slashes its 85% confidence to **42.5%**.
-- **9B Model (Standard Uncertainty):** The smaller model lacks the capacity to memorize specific dates. It guesses. Its token probabilities reflect standard uncertainty (Loss > 0.5). MemGuard realizes it is not cheating, and leaves its confidence at **85%**.
+The MCS classifier is only as good as the calibration corpora. The shipped IS corpus has 40 rows from 2020 and 2023 (FMP's older archive is thin); OOS has 100. If a model's MCS-AUC falls below 0.6 the harness flags it `weak-calibration` and drops it from the top-3 list. Check `summary.csv` after each run to see what fired.
 
-### Scenario B: DSPy Math Reasoning (Current Master)
-Because we have successfully integrated **DSPy ChainOfThought Input Abstraction**, the inputs are scrubbed before they reach the predictor. 
-- The 120B model only sees: *"Asset X with a 54% YoY revenue increase"*. 
-- Because the model can no longer "cheat" by looking up AAPL's history, its mathematical certainty normalizes. 
-- MemGuard correctly sees that the model is no longer regurgitating memorized data.
-- **Result:** You will see the `MemGuard Avg Conf` perfectly match the `Raw Avg Confidence`, proving that the temporal anchor has been successfully broken without destroying the underlying financial signal!
+NVIDIA's free-tier 70B endpoints are queue-heavy. Use `--min-call-interval 1.5` or higher for stability. The 8B–20B size range is a better starting point.
+
+The eval set you ship to the harness defines what "skill" means. The included ETF builder asks "did this ETF close higher or lower than the previous trading day," which is close to a coin flip even for an oracle. Better eval sets ask things the model can actually reason about (read this earnings report, predict the reaction).
+
+## See also
+
+- [`Qualified_Models.md`](./Qualified_Models.md) — the per-model training-cutoff registry, with sources.
+- [`papers/2603.26797v1.md`](./papers/2603.26797v1.md) — the MemGuard-Alpha paper this builds on.
+- [`.kiro/specs/honest-model-ranking/`](./.kiro/specs/honest-model-ranking/) — the spec the harness was built from.

@@ -1,4 +1,11 @@
-# Implementation Plan
+# Implementation plan
+
+This is the task list the spec was built against. Every box is checked. Each task has a `_Requirements: X.Y_` line tying it back to `requirements.md` and a `_Boundary:_` line tying it to a module in `design.md`.
+
+Two things landed after the spec was validated and aren't on this list:
+
+- Reasoning-model output handling. `nvidia/nvidia-nemotron-nano-9b-v2` and `openai/gpt-oss-20b` write their answers to `reasoning_content` instead of `content` when `max_tokens` cuts them off. `NvidiaLM._parse_response` now falls back to `reasoning_content` and the default `max_tokens` was raised from 64 to 256.
+- Parallel API calls (`--max-workers`, default 8). `generate_many` in `src/core/nvidia_lm.py` fans out per-prompt calls via `concurrent.futures.ThreadPoolExecutor`. `build_baseline`, `mcs.train`, and `evaluate_model` all accept `max_workers` and pass it through. Cuts a 200-row × 3-model run from ~2 hours to ~10 minutes.
 
 ## Tasks
 
