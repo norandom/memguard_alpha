@@ -56,7 +56,7 @@ on real data).
   - _Requirements: 5.1, 5.7, 7.2, 9.2_
   - _Boundary: portfolio.prices_
 
-- [ ] 2.2 (P) Implement `portfolio.cohens_d` and write per-(model, feature) artifact
+- [x] 2.2 (P) Implement `portfolio.cohens_d` and write per-(model, feature) artifact
   - Create `src/portfolio/cohens_d.py` exposing `compute_cohens_d(run_dir, cutoffs_path) -> pandas.DataFrame` plus the writer that produces `cohens_d.csv` and `cohens_d.md` in the run directory.
   - Read `records.jsonl`, group rows by `(model, feature_name)`, split each group into IS / OOS by joining `metadata.date` against the model's cutoff in `data/cutoffs.yaml`.
   - Compute Cohen's d on the raw (non-standardised) feature value with `pooled_std = sqrt(((n_is-1)*var_is + (n_oos-1)*var_oos) / (n_is+n_oos-2))`.
@@ -157,3 +157,6 @@ on real data).
 This section collects cross-cutting insights and gotchas discovered during
 implementation, so subsequent tasks (and re-runs of `/kiro-impl`) avoid
 the same mistakes. Add one-line entries here as work proceeds.
+
+- 2.2: `Record` schema does NOT carry `metadata.date`; recover via `prompt_hash` ↔ eval-set join (see `scripts/analyze_is_oos_gap.py`). Functions touching record dates need an `eval_path` argument.
+- 2.2: actual `MiaFeatures` field name is `min_k` (not `min_k_pct` as design says); use the runtime field name. summary.csv column is `mcs_auc_point` (mapped to artifact column `mcs_auc_holdout`).
