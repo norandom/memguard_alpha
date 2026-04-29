@@ -14,6 +14,7 @@ dependencies = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
     "matplotlib>=3.8",
+    "vectorbt==0.28.*",
     "jupyter>=1.0",
     "nbclient>=0.9",
     "nbformat>=5.9",
