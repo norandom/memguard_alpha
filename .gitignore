@@ -16,3 +16,11 @@ papers/.env
 # Notebook-generated paper figures (Req 12.4 -- produced on demand by
 # notebooks/qualification.ipynb; not checked in).
 notebooks/figures/
+
+# Per-run output. Regenerable from ./start.sh or scripts/run_cmmd_backtest.py.
+runs/
+
+# Per-machine agent / settings state.
+.agent/
+.claude/
+.kiro/settings/
