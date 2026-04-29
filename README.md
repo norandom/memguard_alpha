@@ -99,7 +99,26 @@ The eval-set builder samples trading days from `[today − 10 years, today]`, st
 
 ## Sample run
 
-Most recent live run: `runs/cmmd_20260429T070616Z` (`gpt-oss-20b`, 330 prompts × 3 tickers, 10-year window from 2016-04-27 to today). MCS holdout AUC = 0.728. Parse rate = 96.7%.
+Two reference runs from 2026-04-29 against the same 330-prompt, 10-year SWDA.L / XLK / IAU eval set:
+
+- `runs/20260429T073229Z/` — recall-guard check, four-model shortlist.
+- `runs/cmmd_20260429T070616Z/` — CMMD backtest, single signal model (`gpt-oss-20b`, MCS holdout AUC 0.728, parse rate 96.7%).
+
+### Per-model accuracy (recall-guard check)
+
+| Model | Parse % | Raw Acc (95% CI) | MCS-AUC | Warnings |
+| --- | ---: | --- | ---: | --- |
+| `openai/gpt-oss-20b`            | 95.5% | **0.5492** [0.4921–0.6032] | 0.976 | not-better-than-baseline |
+| `meta/llama-3.2-3b-instruct`    | 99.1% | 0.5352 [0.4801–0.5902]     | 0.996 | not-better-than-baseline |
+| `meta/llama-3.1-8b-instruct`    | 86.7% | 0.4860 [0.4301–0.5420]     | 1.000 | not-better-than-baseline |
+| `microsoft/phi-4-mini-instruct` | 48.5% | **0.3187** [0.2437–0.3875] | 0.854 | parse-unreliable, not-better-than-baseline |
+| `__majority_baseline__`         | —     | 0.5394 [0.4848–0.5970]     | —     | always-predict-the-majority-class |
+
+Notes worth keeping:
+
+- `gpt-oss-20b` is the only model whose point estimate beats the always-predict-up baseline (0.5492 vs 0.5394). The 95% CIs overlap, so it is not a "p<0.05" winner — but it sits where MemGuard-Alpha's own models live (40–52% directional accuracy across contamination quintiles).
+- `phi-4-mini` at 0.3187 is statistically anti-skilled. Its CI [0.244, 0.388] does not overlap the baseline's lower bound (0.485). The parse-unreliable warning at 48.5% means the estimate comes from a smaller-than-usual sample, but the direction is real; on a three-class task this reads as a flipped +1/−1 mapping rather than noise.
+- MCS-AUC near 1.0 for the three larger models means the calibrator can almost perfectly separate IS-memorised text from OOS-control text. `phi-4-mini` at 0.854 is the outlier — its log-probability signature is harder to discriminate.
 
 ### IS-vs-OOS memorization gap
 
