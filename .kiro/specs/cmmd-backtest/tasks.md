@@ -130,7 +130,7 @@ on real data).
   - _Boundary: scripts.run_cmmd_backtest_
   - _Depends: 1.3, 2.2, 2.4, 2.5, 3.1_
 
-- [ ] 3.3 Update README sample-run section with IS/OOS gap and backtest results
+- [x] 3.3 Update README sample-run section with IS/OOS gap and backtest results
   - Add an "IS-vs-OOS gap" subsection immediately after the existing accuracy table that includes the per-model gap numbers from `is_oos_gap.md`, and quote MemGuard-Alpha Section 5.3's IS 40.8 → 52.5% / OOS 47 → 42% finding for direct comparison.
   - Add a "Backtest" subsection below it that surfaces the raw-vs-CMMD Sharpe / mean-daily-return / max-drawdown table from `backtest_summary.md`, the relative Sharpe improvement, and an inline reference to `equity_curves.png`.
   - Use the latest reference run for the numbers; flag in the text that re-running `scripts/run_cmmd_backtest.py` regenerates them.
