@@ -19,4 +19,35 @@ dependencies = [
     "nbclient>=0.9",
     "nbformat>=5.9",
     "ipykernel>=6.29",
+    "pre-commit>=3.6",
+    "ruff>=0.7.0",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = [
+    "notebooks",
+    "data",
+    "papers",
+    "runs",
+    "scripts/build_method_overview_notebook.py",
+    "scripts/build_visualize_notebook.py",
+]
+
+[tool.ruff.lint]
+# E/W = pycodestyle, F = pyflakes, I = isort, B = bugbear, UP = pyupgrade.
+# E501 (line-too-long) is off because a few constants and formatted-string
+# lines (e.g. evaluator's direction-word tuples) intentionally run long;
+# the file-level ceiling is enforced by sentrux instead of ruff.
+# UP047 (PEP-695 type parameters) is off because rewriting `TypeVar`
+# generics is style-only churn that breaks the Protocol pattern in
+# portfolio.cmmd / portfolio.backtest.
+select = ["E", "W", "F", "I", "B", "UP"]
+ignore = ["E501", "B008", "UP047"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011"]                 # asserts in tests are fine
+"scripts/*.py" = ["E402"]                  # sys.path splice before src.* imports
+"scripts/build_etf_*.py" = ["E402"]
+"scripts/analyze_is_oos_gap.py" = ["E402"]

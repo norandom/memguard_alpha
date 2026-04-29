@@ -1,0 +1,16 @@
+# Pre-commit hooks. Install once with `uv run pre-commit install`; then
+# every `git commit` runs ruff against the staged Python files. Run on
+# the full tree with `uv run pre-commit run --all-files`.
+#
+# We intentionally only run `ruff` (the linter) and not `ruff-format`.
+# The codebase has hand-formatted multi-line comprehensions and string
+# tables that the formatter would collapse onto long single lines for
+# net-negative readability. If you want a one-shot format pass, run
+# `uv run ruff format` manually and review the diff.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff-check
+        args: [--fix, --exit-non-zero-on-fix]
