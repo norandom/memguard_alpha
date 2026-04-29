@@ -112,7 +112,7 @@ on real data).
   - _Requirements: 7.5, 8.2_
   - _Boundary: harness.runner, core.manifest_
 
-- [ ] 3.2 Build `scripts/run_cmmd_backtest.py` orchestrator
+- [x] 3.2 Build `scripts/run_cmmd_backtest.py` orchestrator
   - Create `scripts/run_cmmd_backtest.py` that ties everything together. The explicit internal order is:
     1. ensure the eval set exists (build via Task 1.3 if `data/eval/etf_portfolio.jsonl` is missing)
     2. invoke the harness for `openai/gpt-oss-20b` against that eval set into a fresh run directory (this writes `records.jsonl`, `summary.csv`, and the base `manifest.json`)
