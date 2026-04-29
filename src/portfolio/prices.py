@@ -1,21 +1,21 @@
 """FMP-backed EOD price fetcher for the cmmd-backtest universe.
 
-Implements requirements 5.1, 5.7, 7.2, 9.2 of the cmmd-backtest spec:
-fetch end-of-day close prices for the four-ticker universe (SWDA.L, XLK,
-IAU, BIL) from the Financial Modeling Prep ``historical-price-eod/light``
-endpoint, align them with an inner-join on `date`, and surface a single
-``pandas.DataFrame`` indexed by date with one column per ticker.
+Pulls end-of-day close prices for SWDA.L, XLK, IAU, and BIL from FMP's
+``historical-price-eod/light`` endpoint, aligns them with an inner-join
+on date, and returns a single ``pandas.DataFrame`` with one column per
+ticker. Covers Reqs 5.1, 5.7, 7.2, and 9.2.
 
-The module exposes two public symbols:
+Public surface:
 
-- ``PriceFetchError`` -- raised on HTTP failure or insufficient overlap.
-- ``fetch_universe_prices`` -- the single service entry point.
+- ``PriceFetchError`` is raised on HTTP failure or when the inner-join
+  has fewer than 30 aligned trading days.
+- ``fetch_universe_prices`` is the only entry point.
 
-This is the only place in the ``portfolio`` layer that performs HTTP I/O
-(``requests.get``); tests mock that call. The retry / API-key resolution
-pattern matches ``src.dataset.fmp_corpora.fetch_articles``, but the helper
-is duplicated locally rather than imported because the sentrux portfolio
-↔ dataset boundary forbids that import direction.
+This is the only place in the ``portfolio`` layer that performs HTTP
+I/O; tests mock ``requests.get``. The retry / API-key resolution
+pattern is the same one used by ``src.dataset.fmp_corpora.fetch_articles``,
+duplicated locally because the sentrux ``portfolio ↔ dataset`` boundary
+forbids the import.
 """
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ from datetime import date
 import pandas as pd
 import requests
 
-# Minimum number of aligned trading days the inner-joined frame must
-# contain. Below this, the joined sample is too small for the backtest
-# layer to do anything meaningful with, so we surface the failure here.
+# Below 30 aligned trading days, the joined sample is too small for the
+# backtest layer to produce meaningful Sharpe / drawdown numbers. Fail
+# here rather than letting downstream artifacts look authoritative.
 _MIN_OVERLAP_DAYS = 30
 
 
@@ -44,9 +44,9 @@ class PriceFetchError(RuntimeError):
 def _resolve_api_key(api_key: str | None) -> str:
     """Resolve an FMP API key from the explicit arg or the environment.
 
-    Mirrors ``src.dataset.fmp_corpora._resolve_api_key`` byte-for-byte —
-    duplicated rather than imported because the sentrux portfolio ↔
-    dataset boundary forbids that import direction.
+    Same logic as ``src.dataset.fmp_corpora._resolve_api_key``,
+    duplicated because the sentrux ``portfolio ↔ dataset`` boundary
+    forbids the import.
     """
     if api_key:
         return api_key
@@ -70,9 +70,14 @@ def _fetch_one_ticker(
     close prices as float values; the series is named after the ticker
     so downstream ``concat`` produces a clean column.
     """
+    # FMP's stable endpoints cap history at five years unless ``from`` /
+    # ``to`` are supplied; we pass the explicit window so the 10-year
+    # cmmd-backtest universe gets the full price history.
     url = (
         "https://financialmodelingprep.com/stable/historical-price-eod/light"
-        f"?symbol={ticker}&apikey={api_key}"
+        f"?symbol={ticker}"
+        f"&from={start.isoformat()}&to={end.isoformat()}"
+        f"&apikey={api_key}"
     )
     response = requests.get(url, timeout=30)
     if response.status_code != 200:
@@ -81,9 +86,9 @@ def _fetch_one_ticker(
         )
     payload = response.json()
     if not isinstance(payload, list):
-        # Defensive: FMP's documented shape is a top-level list. An
-        # unexpected shape means we can't trust the response, so fail
-        # loudly rather than silently emitting an empty series.
+        # FMP's documented shape is a top-level list. Anything else
+        # means the response is not what we expect, so fail loudly
+        # instead of returning an empty series.
         raise PriceFetchError(
             f"FMP price fetch for {ticker!r} returned non-list payload"
         )
@@ -107,9 +112,9 @@ def _fetch_one_ticker(
         rows.append((d, price))
 
     if not rows:
-        # Empty series with the right name; the inner-join will then
-        # collapse the joined frame to zero rows and the caller's
-        # min-overlap check will name this ticker.
+        # Return an empty named series. The inner-join will collapse
+        # the combined frame to zero rows and the caller's
+        # min-overlap check then names this ticker.
         return pd.Series(dtype=float, name=ticker)
 
     # Deduplicate by date (last write wins) and sort ascending.
@@ -171,33 +176,28 @@ def fetch_universe_prices(
     for ticker in tickers:
         series_by_ticker[ticker] = _fetch_one_ticker(ticker, api_key, start, end)
 
-    # Inner-join all per-ticker series so any date missing from any
-    # ticker is dropped from the combined frame.
+    # Inner-join across tickers: any date missing from any ticker is
+    # dropped from the combined frame.
     joined = pd.concat(
         [series_by_ticker[t] for t in tickers],
         axis=1,
         join="inner",
     )
-    # Preserve input column order explicitly (concat already does this
-    # but we re-assign defensively in case any series was empty).
+    # Re-assert input column order. ``concat`` already preserves it,
+    # but reassigning is cheap insurance against an empty series.
     joined.columns = list(tickers)
 
-    # Drop any residual NaN rows: a date where one ticker was reported
-    # but the price parsed to NaN would still survive concat's "inner"
-    # on the index. Inner-join uses the index, not values, so an
-    # explicit dropna is the simplest way to honour the "no NaN cells"
-    # postcondition.
+    # Drop residual NaN rows. ``concat(..., join='inner')`` only
+    # filters by the index, so a date present everywhere but with one
+    # NaN value would still survive without this.
     joined = joined.dropna(how="any")
 
     if len(joined) < _MIN_OVERLAP_DAYS:
-        # Identify the ticker(s) that contributed too few raw observations
-        # so the error message is actionable.
+        # Name the ticker that contributed the fewest raw rows so the
+        # caller knows where to look.
         per_ticker_counts = {
             t: len(series_by_ticker[t]) for t in tickers
         }
-        # Pick the worst offender for the message: the ticker with the
-        # fewest raw rows is the one most likely responsible for the
-        # joined frame being too small.
         worst_ticker = min(per_ticker_counts, key=per_ticker_counts.get)
         worst_n = per_ticker_counts[worst_ticker]
         raise PriceFetchError(

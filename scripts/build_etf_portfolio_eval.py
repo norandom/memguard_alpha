@@ -1,22 +1,20 @@
-"""Build the three-asset portfolio eval set for the cmmd-backtest spec.
+"""Build the three-asset eval set for the cmmd-backtest pipeline.
 
-Universe: ``SWDA.L``, ``XLK``, ``IAU``. ``BIL`` is the cash leg in the
-backtest and never receives a model signal, so we do not emit prompts
-for it (Req 3.1).
+Universe: SWDA.L, XLK, IAU. BIL holds residual cash in the backtest and
+is never prompted (Req 3.1).
 
-For each ticker we fetch the EOD price series from FMP and randomly
-sample at least 100 distinct trading days in the window
-``[2020-01-01, today]``. The sample is stratified so both
-pre-2024-07-01 and post-2024-07-01 days appear, which makes the eval
-set straddle the gpt-oss-20b training cutoff (Req 3.3) and lets CMMD
-filtering have anything to remove.
+For each ticker we pull the EOD price series from FMP and sample at
+least 100 distinct trading days from the last ten years
+(``[today - 10y, today]``). The sample is stratified across the
+gpt-oss-20b cutoff (2024-06-30) so both halves are populated, which is
+what Req 3.3 needs and what gives CMMD filtering anything to remove.
 
-The prompt template mirrors ``scripts/build_etf_multiyear_eval.py`` —
-the same "commitment" rubric (no refusal, no reasoning, two-line
-answer).
+The prompt template is the same "commitment" rubric used by
+``build_etf_multiyear_eval.py``: two-line answer, no refusal, no
+reasoning.
 
 Output: ``data/eval/etf_portfolio.jsonl`` with at least 300 rows
-(3 tickers × 100 days minimum).
+(3 tickers × 100 days).
 """
 from __future__ import annotations
 
@@ -25,7 +23,7 @@ import os
 import random
 import sys
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -38,10 +36,13 @@ ETFS: dict[str, str] = {
     "IAU": "iShares Gold Trust",
 }
 
-START_DATE = date(2020, 1, 1)
-CUTOFF_DATE = date(2024, 7, 1)  # gpt-oss-20b training cutoff (2024-06-30 + 1)
-MIN_PER_TICKER = 100  # Req 3.2 / 3.5 floor
-TARGET_PER_TICKER = 110  # margin so a few empty days don't drop us under 100
+# Ten-year backtest window. Recomputed at import time so re-runs always
+# pick up the trailing decade rather than a stale hardcoded boundary.
+WINDOW_YEARS = 10
+START_DATE = date.today() - timedelta(days=WINDOW_YEARS * 365 + 2)
+CUTOFF_DATE = date(2024, 7, 1)  # gpt-oss-20b cutoff is 2024-06-30; +1 day for half-open splits.
+MIN_PER_TICKER = 100  # Req 3.2 / 3.5 floor.
+TARGET_PER_TICKER = 110  # Sampling target with a small margin over the floor.
 DEFAULT_SEED = 0
 OUT_PATH = Path("data/eval/etf_portfolio.jsonl")
 
@@ -49,16 +50,27 @@ FetchFn = Callable[[str, str], list[dict]]
 
 
 def fetch_eod(ticker: str, api_key: str) -> list[dict]:
-    """FMP EOD light endpoint, identical pattern to the multiyear builder."""
+    """Fetch the EOD light endpoint for one ticker, scoped to the configured window.
+
+    FMP's stable endpoints only return the last five years unless ``from``
+    / ``to`` query params are supplied; passing them unlocks the full
+    10-year history needed by the cmmd-backtest spec.
+    """
     url = "https://financialmodelingprep.com/stable/historical-price-eod/light"
-    r = requests.get(url, params={"symbol": ticker, "apikey": api_key}, timeout=30)
+    params = {
+        "symbol": ticker,
+        "apikey": api_key,
+        "from": START_DATE.isoformat(),
+        "to": date.today().isoformat(),
+    }
+    r = requests.get(url, params=params, timeout=30)
     r.raise_for_status()
     payload = r.json()
     return payload if isinstance(payload, list) else []
 
 
 def _build_prompt(ticker: str, name: str, today_str: str) -> str:
-    """Same commitment template as ``build_etf_multiyear_eval.py``."""
+    """Build the two-line commitment prompt (same template as ``build_etf_multiyear_eval.py``)."""
     return (
         f"You are participating in a forecasting benchmark. You must "
         f"commit to a directional guess based on whatever you recall "
@@ -98,24 +110,24 @@ def _stratified_sample(
     rng: random.Random,
     target: int,
 ) -> list[tuple[dict, dict]]:
-    """Sample ``target`` pairs ensuring both pre- and post-CUTOFF_DATE dates.
+    """Sample ``target`` pairs with representation on both sides of the cutoff.
 
-    We split the candidate pool by ``today`` date relative to the cutoff,
-    then draw proportionally from each half so the resulting sample has
-    representation from both — which is what Req 3.3 needs.
+    Splits the candidate pool by the ``today`` date relative to
+    ``CUTOFF_DATE`` and draws proportionally from each half (Req 3.3).
     """
     pre = [p for p in pairs if date.fromisoformat(p[1]["date"]) < CUTOFF_DATE]
     post = [p for p in pairs if date.fromisoformat(p[1]["date"]) >= CUTOFF_DATE]
 
     if not pre or not post:
-        # Caller-side validation handles the empty-half case via the
-        # cross-ticker check; here we just return what we can.
+        # Either half is empty. The cross-ticker post-sample check
+        # surfaces this as a hard failure; here we just hand back what
+        # we have.
         if len(pairs) <= target:
             return list(pairs)
         return rng.sample(pairs, target)
 
-    # Proportional allocation, but guarantee at least 1 from each half if
-    # both halves have data and target >= 2.
+    # Proportional allocation with a floor of 1 row from each half when
+    # both have data and ``target >= 2``.
     target = min(target, len(pairs))
     pre_target = max(1, round(target * len(pre) / (len(pre) + len(post))))
     post_target = target - pre_target
@@ -166,10 +178,10 @@ def main(
     out_path: Path = OUT_PATH,
     seed: int = DEFAULT_SEED,
 ) -> int:
-    """Build the eval set. Returns a process exit code (0 on success).
+    """Build the eval set and return a process exit code (0 on success).
 
-    ``fetch_fn`` is dependency-injected so tests can mock FMP without
-    touching ``requests``.
+    ``fetch_fn`` is injected so tests can replace FMP with a mock
+    without touching ``requests``.
     """
     load_dotenv()
     api_key = os.environ.get("FMP_API_KEY")
@@ -204,10 +216,9 @@ def main(
 
         ticker_rows = sample_eval_rows(eod, ticker, name, rng, TARGET_PER_TICKER)
 
-        # Defensive: stratification can in theory hand back fewer rows
-        # than the floor if either half of the window is starved on this
-        # ticker. Surface that as a clear failure rather than writing a
-        # thin file.
+        # Stratification can return fewer rows than the floor when one
+        # half of the window is starved on a ticker. Fail clearly
+        # instead of writing a thin file.
         dates = [r["metadata"]["date"] for r in ticker_rows]
         n_pre = sum(1 for d in dates if date.fromisoformat(d) < CUTOFF_DATE)
         n_post = sum(1 for d in dates if date.fromisoformat(d) >= CUTOFF_DATE)

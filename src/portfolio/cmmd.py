@@ -1,29 +1,27 @@
-"""Top-quintile ``p_memorized`` filter for the cmmd-backtest spec.
+"""Top-quintile ``p_memorized`` filter for the cmmd-backtest pipeline.
 
-Implements Requirements 6.1, 6.2, and 6.4 of the cmmd-backtest spec:
+Covers Reqs 6.1, 6.2, and 6.4:
 
 - 6.1: drop the top ``(1 - quantile)`` slice of the parse-OK
   ``p_memorized`` distribution (default = top 20%).
-- 6.2: return the empirical threshold so the orchestrator can record it
-  in the manifest's ``backtest`` block for provenance.
-- 6.4: filter only — never mutate ``predicted_direction`` or any other
-  attribute of a surviving row, and never reorder them.
+- 6.2: return the empirical threshold so the orchestrator can record
+  it in the manifest's ``backtest`` block.
+- 6.4: filter only. Never mutate ``predicted_direction`` (or any
+  other attribute) of a surviving row, and never reorder.
 
-Layer rules (`.sentrux/rules.toml`):
+Layer rules (`.sentrux/rules.toml`)
+-----------------------------------
 
-The ``portfolio`` layer is order=1 and the ``harness`` layer is order=0
-(top of the stack). Order=1 cannot import from order=0, so this module
-must NOT import ``harness.evaluator.Record`` directly. Instead the
-public function takes any record-shaped object that exposes
-``parse_ok: bool`` and ``p_memorized: float | None`` attributes —
-structural typing via :class:`typing.Protocol`. This keeps the function
-trivially callable from the orchestrator (which holds real ``Record``
-instances) while staying inside the layer rules and remaining easy to
-unit-test with ``types.SimpleNamespace`` stand-ins.
+``portfolio`` is order=1 and ``harness`` is order=0, so this module
+cannot import ``harness.evaluator.Record`` directly. Instead the
+public function accepts any object exposing ``parse_ok: bool`` and
+``p_memorized: float | None`` (structural typing via
+:class:`typing.Protocol`). The orchestrator passes real ``Record``
+instances; the unit tests pass ``types.SimpleNamespace`` stand-ins.
 
-Order stability: surviving rows are returned in the order they appeared
-in the input, so callers can join the output back to their original
-``(date, ticker)`` indexing without an extra sort pass.
+Surviving rows come back in input order, so callers can join the
+output back to their original ``(date, ticker)`` indexing without
+re-sorting.
 """
 
 from __future__ import annotations

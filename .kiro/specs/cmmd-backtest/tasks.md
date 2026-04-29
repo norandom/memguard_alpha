@@ -35,7 +35,7 @@ on real data).
 - [x] 1.3 Build the three-asset eval-set builder
   - Create `scripts/build_etf_portfolio_eval.py` modelled on `scripts/build_etf_multiyear_eval.py`.
   - Fetch EOD price series from FMP for `SWDA.L`, `XLK`, `IAU` using the `historical-price-eod/light` endpoint; do not fetch `BIL` here (BIL is the cash leg, no signals required).
-  - Sample at least 100 distinct trading days from 2020-01-01 to today, drawing from both pre-2024-07-01 and post-2024-07-01 windows so the resulting set straddles the gpt-oss-20b cutoff.
+  - Sample at least 100 distinct trading days from the trailing 10-year window (`[today − 10y, today]`), drawing from both pre-2024-07-01 and post-2024-07-01 halves so the resulting set straddles the gpt-oss-20b cutoff.
   - For each `(date, ticker)` pair emit a prompt that follows the same "commitment" template the multiyear builder uses (no refusal, no reasoning, two-line answer).
   - Use a fixed `random.Random(seed)` and print the seed in the stdout summary.
   - If FMP returns fewer than 100 valid trading days for any ticker in the window, exit non-zero with a clear message naming the ticker.
