@@ -10,6 +10,7 @@ forwards argv.
 
 from __future__ import annotations
 
+import logging
 import sys
 
 from src.harness.runner import parse_argv, run
@@ -17,6 +18,11 @@ from src.harness.runner import parse_argv, run
 
 def main(argv: list[str] | None = None) -> int:
     """Parse argv and run the build pipeline. Returns the exit code."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     args = parse_argv(list(sys.argv[1:] if argv is None else argv))
     return run(args)
 

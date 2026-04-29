@@ -94,13 +94,15 @@ class NvidiaLM:
         self,
         prompt: str,
         temperature: float = 0.0,
-        max_tokens: int = 256,
+        max_tokens: int = 512,
     ) -> CompletionResult:
         """Send a single chat completion and return parsed logprobs.
 
-        Caps response length at ``max_tokens`` (default 64) so verbose
-        models cannot blow past ``timeout_s``; the harness's ``Direction:`` /
-        ``Confidence:`` parser only needs ~10 tokens.
+        Caps response length at ``max_tokens`` (default 512) so reasoning
+        models (gpt-oss-*, nemotron-nano-*) have enough budget to finish
+        their reasoning chain AND emit the final ``Direction:`` /
+        ``Confidence:`` lines. Non-reasoning models stop early on EOS so
+        the higher cap costs nothing for them.
 
         Raises
         ------
@@ -164,7 +166,11 @@ class NvidiaLM:
 
             if attempt < self.max_retries and retryable:
                 backoff = self.retry_backoff_s * (2 ** attempt)
-                _log.warning(
+                # Logged at DEBUG so a parallel run (8 workers * 50 prompts) does
+                # not spam stderr. Final failures still surface via the
+                # TimeoutError/RuntimeError raised below, which the evaluator
+                # converts into a fail_reason on the row.
+                _log.debug(
                     "NvidiaLM transient failure for %s (attempt %d/%d); retrying in %.1fs",
                     self.model, attempt + 1, self.max_retries + 1, backoff,
                 )
@@ -245,7 +251,7 @@ def generate_many(
     Returns a list aligned with ``prompts`` (preserves input order).
     Per-prompt failures are returned as the raised exception object so
     the caller can inspect or skip them; nothing is re-raised. The LM's
-    own ``generate`` defaults are used (temperature=0, max_tokens=256).
+    own ``generate`` defaults are used (temperature=0, max_tokens=512).
     """
     if not prompts:
         return []

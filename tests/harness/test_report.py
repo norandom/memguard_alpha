@@ -223,6 +223,7 @@ def test_write_records_includes_all_required_fields(tmp_path: Path) -> None:
         "features_standardised",
         "p_memorized",
         "fail_reason",
+        "raw_response_excerpt",
     }
     assert set(obj.keys()) == expected_keys
 

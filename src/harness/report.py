@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -145,6 +146,7 @@ def _record_to_jsonable(record: Record) -> dict[str, Any]:
         "features_standardised": features_standardised,
         "p_memorized": record.p_memorized,
         "fail_reason": record.fail_reason,
+        "raw_response_excerpt": record.raw_response_excerpt,
     }
 
 
@@ -241,10 +243,11 @@ def render_terminal(
         "",
     )
 
-    # Default to a wide console so the model column and warning strings do
-    # not get truncated under pytest's default 80-col capture. Callers can
+    # Auto-detect terminal width when stdout is a TTY; fall back to a wide
+    # 200-col console for redirected/captured stdout (pytest, pipes) so the
+    # model column and warning strings do not get truncated. Callers can
     # inject their own ``Console`` to override this.
-    target = console or Console(width=200)
+    target = console or Console(width=shutil.get_terminal_size((200, 20)).columns)
     target.print(table)
 
 

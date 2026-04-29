@@ -176,6 +176,91 @@ def test_record_and_modelevalresult_are_frozen_dataclasses() -> None:
 # --- Parse semantics ----------------------------------------------------------
 
 
+def test_parser_accepts_markdown_bold() -> None:
+    """**Direction:** 1 / **Confidence:** 0.7 — phi/llama instinct."""
+    from src.harness.evaluator import _parse_direction, _parse_confidence
+
+    content = "Final answer:\n**Direction:** 1\n**Confidence:** 0.7"
+    assert _parse_direction(content) == 1
+    assert _parse_confidence(content) == pytest.approx(0.7)
+
+
+def test_parser_accepts_signed_int_and_float() -> None:
+    from src.harness.evaluator import _parse_direction, _parse_confidence
+
+    assert _parse_direction("Direction: +1\nConfidence: 0.5") == 1
+    assert _parse_direction("Direction: -1.0\nConfidence: 0.5") == -1
+    assert _parse_confidence("Direction: 1\nConfidence: .65") == pytest.approx(0.65)
+
+
+def test_parser_accepts_annotated_lines() -> None:
+    from src.harness.evaluator import _parse_direction, _parse_confidence
+
+    content = "Direction: 1 (positive close)\nConfidence: 0.65 (moderate)"
+    assert _parse_direction(content) == 1
+    assert _parse_confidence(content) == pytest.approx(0.65)
+
+
+def test_parser_falls_back_to_json_block() -> None:
+    from src.harness.evaluator import _parse_direction, _parse_confidence
+
+    content = 'After analysis: {"direction": -1, "confidence": 0.42, "rationale": "..."}'
+    assert _parse_direction(content) == -1
+    assert _parse_confidence(content) == pytest.approx(0.42)
+
+
+def test_parser_falls_back_to_word_coercion_on_direction() -> None:
+    """When the model never emits 'Direction:' but states the answer in prose."""
+    from src.harness.evaluator import _parse_direction
+
+    assert _parse_direction("After review I believe SPY closed higher today.") == 1
+    assert _parse_direction("My conclusion: the ETF closed lower vs the prior session.") == -1
+    assert _parse_direction("It was unchanged on the day.") == 0
+
+
+def test_parser_falls_back_to_percent_for_confidence() -> None:
+    from src.harness.evaluator import _parse_confidence
+
+    assert _parse_confidence("Direction: 1\nConfidence: 65%") == pytest.approx(0.65)
+
+
+def test_parser_takes_last_match_when_model_restates() -> None:
+    """Reasoning models often restate 'Direction' inside their chain."""
+    from src.harness.evaluator import _parse_direction
+
+    content = (
+        "Initially I thought Direction: -1 but on review the Direction: 1 is correct."
+    )
+    assert _parse_direction(content) == 1
+
+
+def test_parser_rejects_genuine_prose() -> None:
+    """'the direction is X' (without colon/asterisk) must not match."""
+    from src.harness.evaluator import _parse_direction
+
+    # No structured marker, no directional keyword tail → should remain None.
+    assert _parse_direction("The number 7 appears in this sentence.") is None
+
+
+def test_parse_failure_captures_raw_excerpt() -> None:
+    """Failed parses store the model's response so the user can debug."""
+    rows = [_row("p0", 1)]
+    lm = _lm_returning(["I am thinking about it but not following format."])
+    result = evaluate_model(
+        model_lm=lm,
+        eval_set=_eval_set(rows),
+        baseline=_baseline(),
+        mcs=_mcs(),
+        ref_lm=None,
+        bootstrap_n=10,
+        seed=0,
+    )
+    assert result.records[0].parse_ok is False
+    assert result.records[0].fail_reason == "parse_failure"
+    assert result.records[0].raw_response_excerpt is not None
+    assert "thinking" in result.records[0].raw_response_excerpt
+
+
 def test_evaluate_model_parses_direction_and_confidence() -> None:
     rows = [_row(f"p{i}", 1) for i in range(3)]
     eval_set = _eval_set(rows)

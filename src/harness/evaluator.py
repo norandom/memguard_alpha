@@ -35,10 +35,11 @@ are emitted by the ranker, not here.
 from __future__ import annotations
 
 import hashlib
+import json as _json
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sklearn.metrics import roc_auc_score
 
@@ -65,13 +66,50 @@ _NO_LOGPROBS_MARKERS: tuple[str, ...] = ("logprobs", "top_logprobs")
 
 WARNING_TEMPERATURE_NOT_HONOURED = "temperature-not-honoured"
 
-# --- Strict response parsers --------------------------------------------------
-
-# Per-line parser; ``re.MULTILINE`` so ``^`` / ``$`` anchor each line and the
-# parser refuses freeform text wrapped around a Direction token.
-_DIRECTION_RE = re.compile(r"^\s*Direction:\s*(-?\d+)\s*$", re.MULTILINE)
-_CONFIDENCE_RE = re.compile(r"^\s*Confidence:\s*([0-9]*\.?[0-9]+)\s*$", re.MULTILINE)
+# --- Response parsers (layered coercion) -------------------------------------
+#
+# We coerce on the FIRST call's raw text only — never re-issue the LM. A
+# retry would change the logprob trace and contaminate the very signal MCS
+# is trying to learn. That rules out DSPy-style reprompt loops; instead, we
+# layer cheap post-hoc strategies in order of strictness.
+#
+# Layered strategies, applied in order (Direction):
+#   1. Markdown-tolerant regex on a "Direction: N" line.
+#   2. JSON object containing a "direction" key.
+#   3. Last-occurrence regex with a permissive 30-char gap (handles
+#      "**Final answer — Direction = 1**" variants).
+#   4. Word coercion: "higher" / "rose" / "up" → 1, etc.
+# Confidence has the same first three layers plus a percentage fallback
+# ("Confidence: 65%" → 0.65). We never invent values: if no layer fires we
+# return None and the row is marked parse_failure.
+_DIRECTION_RE = re.compile(
+    r"\bDirection\b[\s\*_:]*([+-]?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+_DIRECTION_RE_LOOSE = re.compile(
+    r"\bDirection\b[^\d\n]{0,30}([+-]?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+_CONFIDENCE_RE = re.compile(
+    r"\bConfidence\b[\s\*_:]*([0-9]*\.?[0-9]+)",
+    re.IGNORECASE,
+)
+_CONFIDENCE_RE_LOOSE = re.compile(
+    r"\bConfidence\b[^\d\n]{0,30}([0-9]*\.?[0-9]+)",
+    re.IGNORECASE,
+)
+_PERCENT_RE = re.compile(r"\bConfidence\b[^\d\n]{0,30}([0-9]+(?:\.[0-9]+)?)\s*%", re.IGNORECASE)
+_JSON_OBJECT_RE = re.compile(r"\{[^{}]*\}", re.DOTALL)
 _VALID_DIRECTIONS: frozenset[int] = frozenset({-1, 0, 1})
+
+_DIRECTION_WORDS_UP = ("higher", "rose ", "rises", "rising", "gained", "gains ", "up ", "bullish", "increase", "advanced", "positive close")
+_DIRECTION_WORDS_DOWN = ("lower", "fell ", "falls", "falling", "declined", "decline", "down ", "bearish", "decrease", "negative close")
+_DIRECTION_WORDS_FLAT = ("unchanged", "flat ", "no change", "no movement", "even close")
+
+#: How many characters of failed-parse responses to retain in the record
+#: for diagnostics. Long enough to see the model's intent, short enough to
+#: keep records.jsonl readable.
+_RAW_EXCERPT_CHARS = 400
 
 
 # --- Public dataclasses -------------------------------------------------------
@@ -112,6 +150,11 @@ class Record:
     fail_reason:
         One of ``"timeout"`` / ``"no_logprobs"`` / ``"parse_failure"`` /
         ``"error"`` on failure; ``None`` on success.
+    raw_response_excerpt:
+        First ~400 chars of the raw model response when the row failed to
+        parse. Always ``None`` for parse-OK rows (no need to bloat the
+        artifact). Use this to inspect *why* a parse failed without re-running
+        the model.
     """
 
     model: str
@@ -125,6 +168,7 @@ class Record:
     features_standardised: dict[str, float | None] | None
     p_memorized: float | None
     fail_reason: str | None
+    raw_response_excerpt: str | None = None
 
 
 @dataclass(frozen=True)
@@ -195,30 +239,116 @@ def _classify_runtime_error(exc: RuntimeError) -> str:
     return FAIL_ERROR
 
 
-def _parse_direction(content: str) -> int | None:
-    match = _DIRECTION_RE.search(content)
-    if match is None:
-        return None
+def _coerce_direction_int(raw: object) -> int | None:
+    """Best-effort coercion of any value to a Direction in {-1, 0, 1}."""
     try:
-        value = int(match.group(1))
-    except ValueError:
+        # Accept "1", "1.0", 1, 1.0, "+1", "-1.5" → -1.
+        value = int(float(str(raw)))
+    except (TypeError, ValueError):
         return None
     if value not in _VALID_DIRECTIONS:
         return None
     return value
 
 
-def _parse_confidence(content: str) -> float | None:
-    match = _CONFIDENCE_RE.search(content)
-    if match is None:
-        return None
+def _coerce_confidence_float(raw: object) -> float | None:
+    """Best-effort coercion of any value to a Confidence in [0, 1]."""
     try:
-        value = float(match.group(1))
-    except ValueError:
+        value = float(str(raw))
+    except (TypeError, ValueError):
         return None
     if not (0.0 <= value <= 1.0):
         return None
     return value
+
+
+def _try_extract_json(content: str) -> dict | None:
+    """Find the first balanced ``{...}`` block in content, parse as JSON dict."""
+    for match in _JSON_OBJECT_RE.finditer(content):
+        try:
+            obj = _json.loads(match.group(0))
+        except _json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
+
+
+def _direction_from_words(content: str) -> int | None:
+    """Last-resort: scan the trailing 600 chars of the response for a verbal answer."""
+    tail = content[-600:].lower()
+    last_up = max((tail.rfind(w) for w in _DIRECTION_WORDS_UP), default=-1)
+    last_down = max((tail.rfind(w) for w in _DIRECTION_WORDS_DOWN), default=-1)
+    last_flat = max((tail.rfind(w) for w in _DIRECTION_WORDS_FLAT), default=-1)
+    pos = max(last_up, last_down, last_flat)
+    if pos < 0:
+        return None
+    if pos == last_up:
+        return 1
+    if pos == last_down:
+        return -1
+    return 0
+
+
+def _parse_direction(content: str) -> int | None:
+    """Layered direction parser. See module-level comment for the strategy order."""
+    # Layer 1: strict markdown-tolerant regex (use the LAST match — models
+    # often restate "Direction" earlier in their reasoning).
+    matches = _DIRECTION_RE.findall(content)
+    if matches:
+        v = _coerce_direction_int(matches[-1])
+        if v is not None:
+            return v
+    # Layer 2: JSON object with a "direction" key.
+    obj = _try_extract_json(content)
+    if obj is not None:
+        for key in ("direction", "Direction", "DIRECTION"):
+            if key in obj:
+                v = _coerce_direction_int(obj[key])
+                if v is not None:
+                    return v
+    # Layer 3: looser gap regex (also use last match).
+    matches = _DIRECTION_RE_LOOSE.findall(content)
+    if matches:
+        v = _coerce_direction_int(matches[-1])
+        if v is not None:
+            return v
+    # Layer 4: word coercion on the response tail.
+    return _direction_from_words(content)
+
+
+def _parse_confidence(content: str) -> float | None:
+    """Layered confidence parser. Returns a float in [0, 1] or None."""
+    # Layer 1: strict regex.
+    matches = _CONFIDENCE_RE.findall(content)
+    if matches:
+        v = _coerce_confidence_float(matches[-1])
+        if v is not None:
+            return v
+    # Layer 2: JSON.
+    obj = _try_extract_json(content)
+    if obj is not None:
+        for key in ("confidence", "Confidence", "CONFIDENCE"):
+            if key in obj:
+                v = _coerce_confidence_float(obj[key])
+                if v is not None:
+                    return v
+    # Layer 3: looser gap regex.
+    matches = _CONFIDENCE_RE_LOOSE.findall(content)
+    if matches:
+        v = _coerce_confidence_float(matches[-1])
+        if v is not None:
+            return v
+    # Layer 4: percentage form ("Confidence: 65%" → 0.65).
+    pct_matches = _PERCENT_RE.findall(content)
+    if pct_matches:
+        try:
+            pct = float(pct_matches[-1]) / 100.0
+        except ValueError:
+            return None
+        if 0.0 <= pct <= 1.0:
+            return pct
+    return None
 
 
 def _temperature_honoured(observed: float | None) -> bool:
@@ -233,6 +363,7 @@ def _failure_record(
     prompt_hash: str,
     target: int,
     fail_reason: str,
+    raw_excerpt: str | None = None,
 ) -> Record:
     return Record(
         model=model,
@@ -246,6 +377,7 @@ def _failure_record(
         features_standardised=None,
         p_memorized=None,
         fail_reason=fail_reason,
+        raw_response_excerpt=raw_excerpt,
     )
 
 
@@ -376,11 +508,16 @@ def _score_row(
         return _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR), False
 
     temp_violated = not _temperature_honoured(primary.raw_temperature_observed)
+    excerpt = (primary.content or "")[:_RAW_EXCERPT_CHARS]
 
     direction = _parse_direction(primary.content)
     confidence = _parse_confidence(primary.content)
     if direction is None or confidence is None:
-        return _failure_record(model_id, prompt_hash, row.target_direction, FAIL_PARSE), temp_violated
+        return (
+            _failure_record(model_id, prompt_hash, row.target_direction,
+                            FAIL_PARSE, raw_excerpt=excerpt),
+            temp_violated,
+        )
 
     if ref_lm is None or isinstance(ref_res, Exception) or ref_res is None:
         ref_logprobs = None
@@ -390,13 +527,21 @@ def _score_row(
     try:
         features = compute_mia_features(primary.content, primary.logprobs, ref_logprobs)
     except (ValueError, RuntimeError):
-        return _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR), temp_violated
+        return (
+            _failure_record(model_id, prompt_hash, row.target_direction,
+                            FAIL_ERROR, raw_excerpt=excerpt),
+            temp_violated,
+        )
 
     standardised = standardise(features, baseline)
     try:
         p_memorized = float(mcs.predict_proba(features, baseline))
     except ValueError:
-        return _failure_record(model_id, prompt_hash, row.target_direction, FAIL_ERROR), temp_violated
+        return (
+            _failure_record(model_id, prompt_hash, row.target_direction,
+                            FAIL_ERROR, raw_excerpt=excerpt),
+            temp_violated,
+        )
 
     record = Record(
         model=model_id,
