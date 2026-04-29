@@ -68,7 +68,7 @@ on real data).
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 9.1_
   - _Boundary: portfolio.cohens_d_
 
-- [ ] 2.3 (P) Implement `portfolio.cmmd` filter
+- [x] 2.3 (P) Implement `portfolio.cmmd` filter
   - Create `src/portfolio/cmmd.py` exposing `apply_cmmd_filter(records, quantile=0.80) -> tuple[list[Record], float]`.
   - Filter out rows where `parse_ok` is False or `p_memorized` is None first, then drop rows whose `p_memorized` falls in the top `(1 - quantile)` slice of the surviving distribution.
   - Return the surviving records (in the original input order) and the empirical threshold value used, so the orchestrator can record it in the manifest.
@@ -160,3 +160,4 @@ the same mistakes. Add one-line entries here as work proceeds.
 
 - 2.2: `Record` schema does NOT carry `metadata.date`; recover via `prompt_hash` ↔ eval-set join (see `scripts/analyze_is_oos_gap.py`). Functions touching record dates need an `eval_path` argument.
 - 2.2: actual `MiaFeatures` field name is `min_k` (not `min_k_pct` as design says); use the runtime field name. summary.csv column is `mcs_auc_point` (mapped to artifact column `mcs_auc_holdout`).
+- 2.3: `portfolio` (order=1) cannot import from `harness` (order=0). Use `typing.Protocol` for structural typing of record-like inputs across the sentrux layer boundary.
