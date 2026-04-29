@@ -32,7 +32,7 @@ on real data).
   - Observable: `mcp__plugin_sentrux_sentrux__rescan` followed by `check_rules` reports `pass: true` and lists `portfolio` in the layer set; `uv run python -c "import src.portfolio"` succeeds.
   - _Requirements: 4.1, 5.1_
 
-- [ ] 1.3 Build the three-asset eval-set builder
+- [x] 1.3 Build the three-asset eval-set builder
   - Create `scripts/build_etf_portfolio_eval.py` modelled on `scripts/build_etf_multiyear_eval.py`.
   - Fetch EOD price series from FMP for `SWDA.L`, `XLK`, `IAU` using the `historical-price-eod/light` endpoint; do not fetch `BIL` here (BIL is the cash leg, no signals required).
   - Sample at least 100 distinct trading days from 2020-01-01 to today, drawing from both pre-2024-07-01 and post-2024-07-01 windows so the resulting set straddles the gpt-oss-20b cutoff.
