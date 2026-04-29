@@ -92,7 +92,7 @@ on real data).
   - _Boundary: portfolio.backtest_
   - _Depends: 2.1, 2.3_
 
-- [ ] 2.5 Implement backtest artifact writers (atomic)
+- [x] 2.5 Implement backtest artifact writers (atomic)
   - Add `write_backtest_artifacts(result, run_dir) -> dict[str, Path]` to `src/portfolio/backtest.py`. Build every artifact in memory (CSV bytes, MD string, PNG buffer) and only write to disk after every artifact has been successfully built; on any IO failure raise `BacktestArtifactError` with a clear path-and-reason message and leave the run directory untouched (no partial files).
   - Artifacts written: `backtest_summary.csv`, `backtest_summary.md`, `equity_curves.csv`, `equity_curves.png`, `daily_returns.csv`. The PNG plots `raw_alpha`, `cmmd`, and `buy_and_hold_swda` series with annotated max drawdowns and a legend.
   - The function returns the `{artifact_name: Path}` dict so `scripts.run_cmmd_backtest` can record those paths in the manifest's `backtest.artifacts` block.
