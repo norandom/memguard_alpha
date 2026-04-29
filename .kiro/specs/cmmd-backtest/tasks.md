@@ -104,7 +104,7 @@ on real data).
 
 - [ ] 3. Integration: manifest, orchestrator, README
 
-- [ ] 3.1 Extend the harness manifest writer with a backtest block
+- [x] 3.1 Extend the harness manifest writer with a backtest block
   - Modify `src/harness/runner.py::_build_manifest` (and the `Manifest` dataclass in `core.manifest` if needed) so callers can pass an optional `backtest` block — additive change; existing harness runs that do not pass it produce identical manifests.
   - The block records: `signal_model`, `universe` (list of tickers), `cash_ticker`, `cmmd_quantile`, `cmmd_threshold_value`, `fees_one_way`, `init_cash`, `seed`, `bootstrap_n`, `n_is_rows`, `n_oos_rows`, and an `artifacts` map for the new file names listed in the design.
   - Add or extend a unit test in `tests/harness/test_runner.py` (or `test_manifest.py`) that verifies: (a) when no backtest dict is passed, the serialised manifest matches the pre-existing schema; (b) when one is passed, every required key round-trips through JSON.

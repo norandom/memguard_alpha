@@ -58,6 +58,14 @@ class Manifest:
     mcs_hyperparams: dict
     bootstrap_n: int
     artifacts: dict[str, str]  # name -> path
+    # Optional cmmd-backtest extension (Req 7.5, 8.2). When ``None`` the
+    # manifest serialises to the pre-existing 11-key schema byte-identically;
+    # ``write_manifest`` deliberately omits the key in that case so old runs
+    # remain bit-stable. When a backtest block is supplied it must record the
+    # fields listed in design.md § Manifest extension (signal_model, universe,
+    # cash_ticker, cmmd_quantile, cmmd_threshold_value, fees_one_way,
+    # init_cash, seed, bootstrap_n, n_is_rows, n_oos_rows, artifacts).
+    backtest: dict | None = None
 
 
 def compute_file_hash(path: Path | str) -> str:
@@ -94,6 +102,13 @@ def write_manifest(out_dir: Path | str, manifest: Manifest) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     payload: dict[str, Any] = dataclasses.asdict(manifest)
+    # Keep the on-disk schema byte-identical for legacy (no-backtest) runs:
+    # absent the optional cmmd-backtest extension, ``backtest`` is omitted
+    # rather than serialised as ``null``. This preserves the pre-existing
+    # 11-key shape on which downstream tooling (and read_manifest's strict
+    # key validator) is built.
+    if payload.get("backtest") is None:
+        payload.pop("backtest", None)
 
     target = out_dir / "manifest.json"
     with target.open("w", encoding="utf-8") as fh:
@@ -121,9 +136,14 @@ def read_manifest(path: Path | str) -> Manifest:
         )
 
     expected = _expected_field_names()
+    # ``backtest`` is the sole optional field (cmmd-backtest extension,
+    # Req 7.5, 8.2): legacy manifests omit the key entirely, so it must not
+    # count as missing or extraneous.
+    optional = {"backtest"}
+    required = expected - optional
     actual = set(decoded.keys())
 
-    missing = expected - actual
+    missing = required - actual
     if missing:
         raise ValueError(
             f"Manifest at {p} is missing required key(s): {sorted(missing)}."
@@ -137,6 +157,8 @@ def read_manifest(path: Path | str) -> Manifest:
     # Pass through field-by-field; types come straight from the JSON decode and
     # match the Manifest annotations (str/int for primitives, list/dict for
     # the structured fields).
+    backtest_raw = decoded.get("backtest")
+    backtest = dict(backtest_raw) if isinstance(backtest_raw, dict) else None
     return Manifest(
         harness_version=decoded["harness_version"],
         seed=decoded["seed"],
@@ -149,6 +171,7 @@ def read_manifest(path: Path | str) -> Manifest:
         mcs_hyperparams=dict(decoded["mcs_hyperparams"]),
         bootstrap_n=decoded["bootstrap_n"],
         artifacts=dict(decoded["artifacts"]),
+        backtest=backtest,
     )
 
 

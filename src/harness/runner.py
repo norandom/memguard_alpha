@@ -530,8 +530,13 @@ def _evaluate_one_model(
     Returns either a fully-populated ``ModelEvalResult`` or an
     ``uncalibrated`` stub when the control baseline could not be calibrated.
     """
+    import time as _time
+
     model_lm = lm_factory(api_key, model_id, DEFAULT_TIMEOUT_S)
 
+    t0 = _time.monotonic()
+    logger.info("runner: %s — building control baseline (%d prompts)…",
+                model_id, len(oos_control_rows))
     baseline: ControlBaseline = build_baseline(
         model_lm,
         oos_control_rows,
@@ -541,14 +546,17 @@ def _evaluate_one_model(
     )
     if not baseline.is_calibrated:
         logger.warning(
-            "runner: model %s failed control-baseline calibration "
-            "(n_valid=%d < min_valid=%d); marking uncalibrated and skipping evaluation.",
-            model_id,
-            baseline.n_valid,
-            baseline.min_valid,
+            "runner: %s failed control-baseline calibration "
+            "(n_valid=%d < min_valid=%d) after %.1fs; marking uncalibrated and skipping.",
+            model_id, baseline.n_valid, baseline.min_valid,
+            _time.monotonic() - t0,
         )
         return _make_uncalibrated_stub(model_id)
 
+    t1 = _time.monotonic()
+    logger.info("runner: %s — baseline OK (n_valid=%d, %.1fs); training MCS (%d prompts)…",
+                model_id, baseline.n_valid, t1 - t0,
+                len(is_memorized_rows) + len(oos_control_rows))
     mcs: MCSCalibrator = mcs_train(
         model_lm=model_lm,
         is_memorized=is_memorized_rows,
@@ -560,7 +568,10 @@ def _evaluate_one_model(
         max_workers=max_workers,
     )
 
-    return evaluate_model(
+    t2 = _time.monotonic()
+    logger.info("runner: %s — MCS trained (%.1fs); evaluating eval set (%d prompts)…",
+                model_id, t2 - t1, len(eval_set.rows))
+    result = evaluate_model(
         model_lm=model_lm,
         eval_set=eval_set,
         baseline=baseline,
@@ -571,6 +582,10 @@ def _evaluate_one_model(
         seed=seed,
         max_workers=max_workers,
     )
+    logger.info("runner: %s — done in %.1fs (eval %.1fs); parse_rate=%.1f%%, raw_acc=%.3f",
+                model_id, _time.monotonic() - t0, _time.monotonic() - t2,
+                result.parse_success_rate * 100, result.raw_accuracy.point)
+    return result
 
 
 # --- Manifest assembly --------------------------------------------------------
@@ -585,8 +600,16 @@ def _build_manifest(
     shortlist_models: list[str],
     artifacts: dict[str, Path],
     reference_model: str | None,
+    backtest: dict | None = None,
 ) -> Manifest:
-    """Bundle every input the manifest needs into the Manifest dataclass."""
+    """Bundle every input the manifest needs into the Manifest dataclass.
+
+    ``backtest`` is the optional cmmd-backtest extension (Req 7.5, 8.2). Pass
+    ``None`` (the default) for ordinary harness runs; the manifest then
+    serialises to its pre-existing 11-key schema. Pass a dict matching
+    design.md § Manifest extension to record the backtest configuration
+    alongside the harness manifest.
+    """
     mcs_hyperparams = dict(_MCS_HYPERPARAMS)
     mcs_hyperparams["reference_model"] = reference_model
 
@@ -602,6 +625,7 @@ def _build_manifest(
         mcs_hyperparams=mcs_hyperparams,
         bootstrap_n=bootstrap_n,
         artifacts={name: str(p) for name, p in artifacts.items()},
+        backtest=backtest,
     )
 
 

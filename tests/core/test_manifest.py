@@ -151,3 +151,128 @@ def test_compute_file_hash_chunks_large_file(tmp_path: Path) -> None:
 
     expected = hashlib.sha256(payload).hexdigest()
     assert compute_file_hash(fp) == expected
+
+
+# --- cmmd-backtest manifest extension (Req 7.5, 8.2) -------------------------
+
+# The pre-existing on-disk schema. The cmmd-backtest manifest extension
+# (Req 7.5, 8.2) MUST be additive: when no backtest block is supplied, the
+# serialised JSON must contain exactly these keys, byte-for-byte unchanged
+# from the previous schema, and round-trip equality must still hold.
+_PREEXISTING_MANIFEST_KEYS: set[str] = {
+    "harness_version",
+    "seed",
+    "eval_set_hash",
+    "control_corpus_hash",
+    "is_memorized_hash",
+    "cutoffs_hash",
+    "shortlist",
+    "composite_score",
+    "mcs_hyperparams",
+    "bootstrap_n",
+    "artifacts",
+}
+
+
+def _backtest_block() -> dict:
+    """Build a representative backtest block matching design.md § Manifest extension."""
+    return {
+        "signal_model": "openai/gpt-oss-20b",
+        "universe": ["SWDA.L", "XLK", "IAU", "BIL"],
+        "cash_ticker": "BIL",
+        "cmmd_quantile": 0.80,
+        "cmmd_threshold_value": 0.873,
+        "fees_one_way": 0.00075,
+        "init_cash": 1.0,
+        "seed": 0,
+        "bootstrap_n": 1000,
+        "n_is_rows": 156,
+        "n_oos_rows": 178,
+        "artifacts": {
+            "backtest_summary_csv": "backtest_summary.csv",
+            "equity_curves_csv": "equity_curves.csv",
+            "equity_curves_png": "equity_curves.png",
+            "daily_returns_csv": "daily_returns.csv",
+            "cohens_d_csv": "cohens_d.csv",
+            "is_oos_gap_csv": "is_oos_gap.csv",
+        },
+    }
+
+
+def test_manifest_round_trip_without_backtest_matches_existing_schema(
+    tmp_path: Path,
+) -> None:
+    """Without a backtest block, the on-disk JSON must keep the pre-existing schema.
+
+    The cmmd-backtest extension is additive (Req 7.5, 8.2). For all runs that
+    do not opt into the backtest block, ``manifest.json`` must serialise to
+    exactly the 11-key shape that pre-cmmd-backtest harness runs produced —
+    no extra ``"backtest": null`` entry, no schema drift — and round-trip
+    equality must still hold.
+    """
+    manifest = _sample_manifest()
+    # Sanity: the default backtest field is absent.
+    assert getattr(manifest, "backtest", None) is None
+
+    path = write_manifest(tmp_path, manifest)
+    decoded = json.loads(path.read_text(encoding="utf-8"))
+
+    assert set(decoded.keys()) == _PREEXISTING_MANIFEST_KEYS
+    assert "backtest" not in decoded
+
+    # And the round-trip still gives back an equal Manifest.
+    assert read_manifest(path) == manifest
+
+
+def test_manifest_round_trip_with_backtest_block(tmp_path: Path) -> None:
+    """When a backtest block is passed, every required key round-trips through JSON.
+
+    Covers Requirements 7.5 (manifest extension records all listed fields)
+    and 8.2 (every run is reproducible from the manifest alone).
+    """
+    backtest = _backtest_block()
+    manifest = Manifest(
+        harness_version="0.1.0",
+        seed=0,
+        eval_set_hash="a" * 64,
+        control_corpus_hash="b" * 64,
+        is_memorized_hash="c" * 64,
+        cutoffs_hash="d" * 64,
+        shortlist=["openai/gpt-oss-20b"],
+        composite_score={"formula": "f", "weights": None},
+        mcs_hyperparams={"min_auc": 0.6},
+        bootstrap_n=1000,
+        artifacts={"records": "runs/x/records.jsonl"},
+        backtest=backtest,
+    )
+
+    path = write_manifest(tmp_path, manifest)
+    decoded = json.loads(path.read_text(encoding="utf-8"))
+
+    # On-disk schema: pre-existing keys + backtest.
+    assert set(decoded.keys()) == _PREEXISTING_MANIFEST_KEYS | {"backtest"}
+
+    # Every required key from design.md § Manifest extension must round-trip.
+    required_block_keys = {
+        "signal_model",
+        "universe",
+        "cash_ticker",
+        "cmmd_quantile",
+        "cmmd_threshold_value",
+        "fees_one_way",
+        "init_cash",
+        "seed",
+        "bootstrap_n",
+        "n_is_rows",
+        "n_oos_rows",
+        "artifacts",
+    }
+    assert set(decoded["backtest"].keys()) == required_block_keys
+
+    # Whole-block equality: dict round-trips byte-for-byte.
+    assert decoded["backtest"] == backtest
+
+    # And the dataclass round-trip preserves the block.
+    loaded = read_manifest(path)
+    assert loaded.backtest == backtest
+    assert loaded == manifest
