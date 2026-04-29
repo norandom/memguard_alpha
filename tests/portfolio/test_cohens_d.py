@@ -118,6 +118,81 @@ def _make_record(
     }
 
 
+_IS_DATES = ["2024-01-15", "2024-02-15", "2024-03-15", "2024-04-15"]
+_OOS_DATES = ["2024-08-15", "2024-09-15", "2024-10-15", "2024-11-15"]
+
+
+def _make_primary_records(
+    model: str,
+    is_loss_values: list[float],
+    oos_loss_values: list[float],
+) -> tuple[list[dict], list[dict]]:
+    eval_rows: list[dict] = []
+    records: list[dict] = []
+    for i, d in enumerate(_IS_DATES):
+        prompt = f"prompt-IS-{d}-XLK"
+        eval_rows.append({"prompt": prompt, "target_direction": 1,
+                          "metadata": {"date": d, "ticker": "XLK"}})
+        loss_v = is_loss_values[i] if i < len(is_loss_values) else is_loss_values[-1]
+        records.append(_make_record(
+            model=model, prompt=prompt, parse_ok=True, target_direction=1,
+            feature_values={"loss": loss_v, "min_k": -1.0 + 0.1 * i,
+                            "min_k_pp": 0.5 + 0.1 * i, "zlib_ratio": 0.3 + 0.05 * i,
+                            "ref_delta": 0.1 * i},
+        ))
+    for i, d in enumerate(_OOS_DATES):
+        prompt = f"prompt-OOS-{d}-XLK"
+        eval_rows.append({"prompt": prompt, "target_direction": 0,
+                          "metadata": {"date": d, "ticker": "XLK"}})
+        loss_v = oos_loss_values[i] if i < len(oos_loss_values) else oos_loss_values[-1]
+        records.append(_make_record(
+            model=model, prompt=prompt, parse_ok=True, target_direction=0,
+            feature_values={"loss": loss_v, "min_k": -1.5 + 0.1 * i,
+                            "min_k_pp": 0.4 + 0.1 * i, "zlib_ratio": 0.25 + 0.05 * i,
+                            "ref_delta": 0.05 + 0.1 * i},
+        ))
+    return eval_rows, records
+
+
+def _make_other_model_records(entry: dict) -> tuple[list[dict], list[dict]]:
+    other_model_id = entry["model"]
+    eval_rows: list[dict] = []
+    records: list[dict] = []
+    for i, d in enumerate(_IS_DATES):
+        prompt = f"prompt-IS-{d}-XLK-{other_model_id}"
+        eval_rows.append({"prompt": prompt, "target_direction": 1,
+                          "metadata": {"date": d, "ticker": "XLK"}})
+        records.append(_make_record(
+            model=other_model_id, prompt=prompt, parse_ok=True, target_direction=1,
+            feature_values={"loss": 0.7 + 0.01 * i, "min_k": -1.0,
+                            "min_k_pp": 0.5, "zlib_ratio": 0.3, "ref_delta": 0.0},
+        ))
+    for i, d in enumerate(_OOS_DATES):
+        prompt = f"prompt-OOS-{d}-XLK-{other_model_id}"
+        eval_rows.append({"prompt": prompt, "target_direction": 0,
+                          "metadata": {"date": d, "ticker": "XLK"}})
+        records.append(_make_record(
+            model=other_model_id, prompt=prompt, parse_ok=True, target_direction=0,
+            feature_values={"loss": 0.2 + 0.01 * i, "min_k": -1.5,
+                            "min_k_pp": 0.4, "zlib_ratio": 0.25, "ref_delta": 0.05},
+        ))
+    return eval_rows, records
+
+
+def _summary_row(model: str, mcs_auc_point: float, *,
+                 acc: str = "0.55", acc_lo: str = "0.50", acc_hi: str = "0.60",
+                 auc_lo: str = "0.78", auc_hi: str = "0.86") -> dict:
+    return {
+        "model": model,
+        "raw_acc_point": acc, "raw_acc_lo": acc_lo, "raw_acc_hi": acc_hi,
+        "memguard_acc_point": acc, "memguard_acc_lo": acc_lo, "memguard_acc_hi": acc_hi,
+        "mcs_auc_point": f"{mcs_auc_point:.6f}",
+        "mcs_auc_lo": auc_lo, "mcs_auc_hi": auc_hi,
+        "parse_success_rate": "1.0", "parse_failures": "0",
+        "score": acc, "survives_gates": "true", "warnings": "",
+    }
+
+
 def _build_fixture_run(
     tmp_path: Path,
     *,
@@ -134,8 +209,7 @@ def _build_fixture_run(
 
     ``is_loss_values`` and ``oos_loss_values`` set the ``loss`` feature
     on each side of the cutoff. The other four features are filled with
-    a deterministic ramp so they are computable but not interesting; the
-    interesting analytical d-values live on ``loss``.
+    a deterministic ramp; analytical d-values live on ``loss``.
     """
     if is_loss_values is None:
         is_loss_values = [0.5, 0.5, 0.5, 0.5]
@@ -145,132 +219,25 @@ def _build_fixture_run(
     run_dir = tmp_path / "run"
     run_dir.mkdir(parents=True)
 
-    # Build the eval set: one prompt per (date, ticker). We need at least
-    # two rows on each side of the cutoff to exercise n_is, n_oos >= 2.
-    is_dates = ["2024-01-15", "2024-02-15", "2024-03-15", "2024-04-15"]
-    oos_dates = ["2024-08-15", "2024-09-15", "2024-10-15", "2024-11-15"]
-
-    eval_rows: list[dict] = []
-    records: list[dict] = []
-
-    for i, d in enumerate(is_dates):
-        prompt = f"prompt-IS-{d}-XLK"
-        eval_rows.append({
-            "prompt": prompt,
-            "target_direction": 1,
-            "metadata": {"date": d, "ticker": "XLK"},
-        })
-        loss_v = is_loss_values[i] if i < len(is_loss_values) else is_loss_values[-1]
-        records.append(_make_record(
-            model=model,
-            prompt=prompt,
-            parse_ok=True,
-            target_direction=1,
-            feature_values={
-                "loss": loss_v,
-                "min_k": -1.0 + 0.1 * i,
-                "min_k_pp": 0.5 + 0.1 * i,
-                "zlib_ratio": 0.3 + 0.05 * i,
-                "ref_delta": 0.1 * i,
-            },
-        ))
-    for i, d in enumerate(oos_dates):
-        prompt = f"prompt-OOS-{d}-XLK"
-        eval_rows.append({
-            "prompt": prompt,
-            "target_direction": 0,
-            "metadata": {"date": d, "ticker": "XLK"},
-        })
-        loss_v = oos_loss_values[i] if i < len(oos_loss_values) else oos_loss_values[-1]
-        records.append(_make_record(
-            model=model,
-            prompt=prompt,
-            parse_ok=True,
-            target_direction=0,
-            feature_values={
-                "loss": loss_v,
-                "min_k": -1.5 + 0.1 * i,
-                "min_k_pp": 0.4 + 0.1 * i,
-                "zlib_ratio": 0.25 + 0.05 * i,
-                "ref_delta": 0.05 + 0.1 * i,
-            },
-        ))
-
-    # Optional: append records from another model that may or may not be
-    # registered in cutoffs.yaml (for the missing-model test).
+    eval_rows, records = _make_primary_records(model, is_loss_values, oos_loss_values)
     if other_models:
         for entry in other_models:
-            other_model_id = entry["model"]
-            for i, d in enumerate(is_dates):
-                prompt = f"prompt-IS-{d}-XLK-{other_model_id}"
-                eval_rows.append({
-                    "prompt": prompt,
-                    "target_direction": 1,
-                    "metadata": {"date": d, "ticker": "XLK"},
-                })
-                records.append(_make_record(
-                    model=other_model_id,
-                    prompt=prompt,
-                    parse_ok=True,
-                    target_direction=1,
-                    feature_values={
-                        "loss": 0.7 + 0.01 * i,
-                        "min_k": -1.0,
-                        "min_k_pp": 0.5,
-                        "zlib_ratio": 0.3,
-                        "ref_delta": 0.0,
-                    },
-                ))
-            for i, d in enumerate(oos_dates):
-                prompt = f"prompt-OOS-{d}-XLK-{other_model_id}"
-                eval_rows.append({
-                    "prompt": prompt,
-                    "target_direction": 0,
-                    "metadata": {"date": d, "ticker": "XLK"},
-                })
-                records.append(_make_record(
-                    model=other_model_id,
-                    prompt=prompt,
-                    parse_ok=True,
-                    target_direction=0,
-                    feature_values={
-                        "loss": 0.2 + 0.01 * i,
-                        "min_k": -1.5,
-                        "min_k_pp": 0.4,
-                        "zlib_ratio": 0.25,
-                        "ref_delta": 0.05,
-                    },
-                ))
+            extra_eval, extra_recs = _make_other_model_records(entry)
+            eval_rows.extend(extra_eval)
+            records.extend(extra_recs)
 
     eval_path = tmp_path / "eval.jsonl"
     _write_eval_jsonl(eval_path, eval_rows)
-
     _write_records_jsonl(run_dir / "records.jsonl", records)
 
-    summary_rows: list[dict] = [
-        {
-            "model": model,
-            "raw_acc_point": "0.55", "raw_acc_lo": "0.50", "raw_acc_hi": "0.60",
-            "memguard_acc_point": "0.55", "memguard_acc_lo": "0.50",
-            "memguard_acc_hi": "0.60",
-            "mcs_auc_point": f"{mcs_auc_point:.6f}",
-            "mcs_auc_lo": "0.78", "mcs_auc_hi": "0.86",
-            "parse_success_rate": "1.0", "parse_failures": "0",
-            "score": "0.55", "survives_gates": "true", "warnings": "",
-        },
-    ]
+    summary_rows: list[dict] = [_summary_row(model, mcs_auc_point)]
     if other_models:
         for entry in other_models:
-            summary_rows.append({
-                "model": entry["model"],
-                "raw_acc_point": "0.51", "raw_acc_lo": "0.46", "raw_acc_hi": "0.56",
-                "memguard_acc_point": "0.51", "memguard_acc_lo": "0.46",
-                "memguard_acc_hi": "0.56",
-                "mcs_auc_point": f"{entry.get('mcs_auc_point', 0.74):.6f}",
-                "mcs_auc_lo": "0.69", "mcs_auc_hi": "0.79",
-                "parse_success_rate": "1.0", "parse_failures": "0",
-                "score": "0.51", "survives_gates": "true", "warnings": "",
-            })
+            summary_rows.append(_summary_row(
+                entry["model"], entry.get("mcs_auc_point", 0.74),
+                acc="0.51", acc_lo="0.46", acc_hi="0.56",
+                auc_lo="0.69", auc_hi="0.79",
+            ))
     if extra_summary_rows:
         summary_rows.extend(extra_summary_rows)
     _write_summary_csv(run_dir / "summary.csv", summary_rows)
