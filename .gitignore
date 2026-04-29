@@ -24,3 +24,6 @@ runs/
 .agent/
 .claude/
 .kiro/settings/
+
+# Externally cloned reference dataset (nested git repo, not a submodule).
+data/lookaheadbench/
