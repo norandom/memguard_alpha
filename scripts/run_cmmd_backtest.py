@@ -38,9 +38,10 @@ import json
 import logging
 import subprocess
 import sys
-from datetime import date, datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # Make 'src' importable regardless of CWD (mirrors analyze_is_oos_gap.py).
 _ROOT = Path(__file__).resolve().parent.parent
@@ -61,6 +62,7 @@ from src.portfolio.prices import (  # noqa: E402
     PriceFetchError,
     fetch_universe_prices,
 )
+
 
 def _load_eval_builder() -> Any:
     """Lazy-import ``scripts.build_etf_portfolio_eval`` (Task 1.3).
@@ -337,7 +339,7 @@ def _resolve_run_dir(raw: Path | None) -> Path:
     """Mint a timestamped run dir under ``runs/cmmd_<UTC>`` if not given."""
     if raw is not None:
         return Path(raw)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return Path("runs") / f"cmmd_{ts}"
 
 

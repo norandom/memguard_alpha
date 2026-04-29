@@ -25,7 +25,6 @@ from src.harness.ranker import (
     write_top3,
 )
 
-
 # --- Fixtures -----------------------------------------------------------------
 
 

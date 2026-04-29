@@ -34,16 +34,16 @@ from __future__ import annotations
 import csv
 import json
 import shutil
+from collections.abc import Iterable
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
 
 from src.harness.evaluator import CIBound, ModelEvalResult, Record
 from src.harness.ranker import CompositeScore
-
 
 # --- Constants ----------------------------------------------------------------
 

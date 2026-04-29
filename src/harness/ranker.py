@@ -46,7 +46,6 @@ from pathlib import Path
 
 from src.harness.evaluator import CIBound, ModelEvalResult
 
-
 # --- Constants ----------------------------------------------------------------
 
 #: Human-readable composite-score formula. Persisted in ``top3.md`` and the run

@@ -17,7 +17,6 @@ import pytest
 
 from src.portfolio.prices import PriceFetchError, fetch_universe_prices
 
-
 # ---------- helpers ----------------------------------------------------------
 
 

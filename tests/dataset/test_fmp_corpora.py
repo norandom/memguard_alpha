@@ -26,7 +26,6 @@ from src.dataset.fmp_corpora import (
     update_oos,
 )
 
-
 # ---------- helpers ----------------------------------------------------------
 
 
@@ -245,7 +244,6 @@ def test_build_calibration_filters_by_date_window(tmp_path: Path, mocker) -> Non
     is_rows = _read_jsonl(is_path)
     oos_rows = _read_jsonl(oos_path)
 
-    is_titles = {r["metadata"]["url"].split("/")[-1] for r in is_rows}
     assert len(is_rows) == 2  # both pre-2024-01-01 articles
     assert all(r["label"] == 1 for r in is_rows)
 
@@ -895,7 +893,7 @@ def test_cli_build_exposes_is_strata_flag() -> None:
     from src.dataset.fmp_corpora import _build_arg_parser
 
     parser = _build_arg_parser()
-    help_text = parser.format_help()
+    parser.format_help()  # smoke-render the help text
     # Subparser help is rendered separately; assert by introspecting the build
     # subparser's actions directly.
     build_subparser = parser._subparsers._group_actions[0].choices["build"]

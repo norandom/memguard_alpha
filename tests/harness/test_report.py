@@ -32,7 +32,6 @@ from src.harness.report import (
 )
 from src.mia.features import MiaFeatures
 
-
 # --- Synthetic fixtures -------------------------------------------------------
 
 

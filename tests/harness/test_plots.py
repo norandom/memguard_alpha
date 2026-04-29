@@ -40,7 +40,6 @@ from src.harness.ranker import CompositeScore
 from src.mia.features import MiaFeatures
 from src.mia.mcs import MCSCalibrator
 
-
 # --- Synthetic fixtures -------------------------------------------------------
 
 

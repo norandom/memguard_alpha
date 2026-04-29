@@ -112,7 +112,7 @@ def _top_logprob_floats(entry: TokenLogprob, position: int) -> np.ndarray:
                 )
             floats.append(float(cand["logprob"]))
         else:
-            floats.append(float(getattr(cand, "logprob")))
+            floats.append(float(cand.logprob))
     return np.asarray(floats, dtype=np.float64)
 
 

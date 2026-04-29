@@ -35,10 +35,10 @@ import hashlib
 import json
 import logging
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Sequence
 
 import requests
 

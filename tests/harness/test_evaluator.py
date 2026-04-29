@@ -31,7 +31,6 @@ from src.harness.evaluator import (
 from src.mia.control import ControlBaseline
 from src.mia.mcs import MCSCalibrator
 
-
 # --- Test fixtures ------------------------------------------------------------
 
 
@@ -178,7 +177,7 @@ def test_record_and_modelevalresult_are_frozen_dataclasses() -> None:
 
 def test_parser_accepts_markdown_bold() -> None:
     """**Direction:** 1 / **Confidence:** 0.7 — phi/llama instinct."""
-    from src.harness.evaluator import _parse_direction, _parse_confidence
+    from src.harness.evaluator import _parse_confidence, _parse_direction
 
     content = "Final answer:\n**Direction:** 1\n**Confidence:** 0.7"
     assert _parse_direction(content) == 1
@@ -186,7 +185,7 @@ def test_parser_accepts_markdown_bold() -> None:
 
 
 def test_parser_accepts_signed_int_and_float() -> None:
-    from src.harness.evaluator import _parse_direction, _parse_confidence
+    from src.harness.evaluator import _parse_confidence, _parse_direction
 
     assert _parse_direction("Direction: +1\nConfidence: 0.5") == 1
     assert _parse_direction("Direction: -1.0\nConfidence: 0.5") == -1
@@ -194,7 +193,7 @@ def test_parser_accepts_signed_int_and_float() -> None:
 
 
 def test_parser_accepts_annotated_lines() -> None:
-    from src.harness.evaluator import _parse_direction, _parse_confidence
+    from src.harness.evaluator import _parse_confidence, _parse_direction
 
     content = "Direction: 1 (positive close)\nConfidence: 0.65 (moderate)"
     assert _parse_direction(content) == 1
@@ -202,7 +201,7 @@ def test_parser_accepts_annotated_lines() -> None:
 
 
 def test_parser_falls_back_to_json_block() -> None:
-    from src.harness.evaluator import _parse_direction, _parse_confidence
+    from src.harness.evaluator import _parse_confidence, _parse_direction
 
     content = 'After analysis: {"direction": -1, "confidence": 0.42, "rationale": "..."}'
     assert _parse_direction(content) == -1

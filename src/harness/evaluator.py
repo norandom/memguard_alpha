@@ -39,7 +39,7 @@ import json as _json
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from sklearn.metrics import roc_auc_score
 
@@ -592,7 +592,7 @@ def evaluate_model(
 
     records: list[Record] = []
     temperature_violated = False
-    for row, primary, ref_res in zip(eval_set.rows, primary_results, ref_results):
+    for row, primary, ref_res in zip(eval_set.rows, primary_results, ref_results, strict=True):
         record, row_temp_violated = _score_row(
             model_id=model_id, row=row, primary=primary, ref_res=ref_res,
             ref_lm=ref_lm, baseline=baseline, mcs=mcs,

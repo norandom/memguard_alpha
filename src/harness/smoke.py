@@ -12,8 +12,8 @@ this module deliberately does no I/O.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from src.core.nvidia_lm import DEFAULT_TIMEOUT_S, NvidiaLM
 

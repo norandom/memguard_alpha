@@ -23,7 +23,6 @@ import pytest
 from src.core.nvidia_lm import CompletionResult, TokenLogprob
 from src.harness import runner as runner_mod
 
-
 # --- Fixture paths -----------------------------------------------------------
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"

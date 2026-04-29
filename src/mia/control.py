@@ -21,8 +21,8 @@ Only ``build_baseline`` issues HTTP calls (via the injected ``NvidiaLM``).
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 import numpy as np
 
@@ -139,7 +139,7 @@ def build_baseline(
     )
 
     per_row_features: list[MiaFeatures] = []
-    for idx, (primary, ref_res) in enumerate(zip(primary_results, ref_results)):
+    for idx, (primary, ref_res) in enumerate(zip(primary_results, ref_results, strict=True)):
         if isinstance(primary, Exception) or primary is None:
             logger.warning(
                 "control baseline: skipping row %d for model %s (logprobs missing or timeout)",

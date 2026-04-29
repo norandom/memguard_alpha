@@ -51,7 +51,8 @@ def test_bootstrap_ci_brackets_known_mean() -> None:
 def test_bootstrap_ci_single_sample() -> None:
     """Single sample -> degenerate (point, point, point) (Req 6.1)."""
     samples = [42.0]
-    statistic = lambda s: float(s[0])
+    def statistic(s):
+        return float(s[0])
 
     point, lo, hi = bootstrap_ci(samples, statistic, n_resamples=1000, seed=0)
 

@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 import requests
 
@@ -241,7 +242,7 @@ class NvidiaLM:
 
 
 def generate_many(
-    lm: "NvidiaLM",
+    lm: NvidiaLM,
     prompts: Sequence[str],
     *,
     max_workers: int = 8,

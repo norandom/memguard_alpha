@@ -34,7 +34,8 @@ the dataclass actually carries.
 
 from __future__ import annotations
 
-from typing import Literal, Sequence
+from collections.abc import Sequence
+from typing import Literal
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -337,7 +338,7 @@ def plot_composite_ranking(scores: Sequence[CompositeScore]) -> Figure:
     ax.set_yticks(ys)
     ax.set_yticklabels(bar_names)
 
-    for y, score in zip(ys, bar_scores):
+    for y, score in zip(ys, bar_scores, strict=True):
         if not score.survives_gates and score.warnings:
             failed = score.warnings[0]
             ax.text(

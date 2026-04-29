@@ -516,7 +516,7 @@ def _run_portfolio(
     prices: pd.DataFrame,
     fees_one_way: float,
     init_cash: float,
-) -> "vbt.Portfolio":
+) -> vbt.Portfolio:
     """Run vectorbt with target-percent rebalancing on the weight matrix.
 
     Uses ``size_type='targetpercent'``; vectorbt then handles rebalance
@@ -787,7 +787,7 @@ def write_backtest_artifacts(
     # ----- atomic write phase -------------------------------------------------
     written: list[Path] = []
     try:
-        for key, (path, blob, _is_text) in payloads.items():
+        for _key, (path, blob, _is_text) in payloads.items():
             path.write_bytes(blob)
             written.append(path)
     except OSError as exc:

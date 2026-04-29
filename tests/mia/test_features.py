@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from src.core.nvidia_lm import TokenLogprob
-from src.mia.features import LOGPROB_FLOOR, MiaFeatures, compute_mia_features
+from src.mia.features import LOGPROB_FLOOR, compute_mia_features
 
 
 def _tlp(logprob: float, top_logprobs: list[float] | None = None) -> TokenLogprob:

@@ -191,7 +191,7 @@ def _collect_features(
         if ref_lm is not None else [None] * len(prompts)
     )
 
-    for idx, (primary, ref_res) in enumerate(zip(primary_results, ref_results)):
+    for idx, (primary, ref_res) in enumerate(zip(primary_results, ref_results, strict=True)):
         if isinstance(primary, Exception) or primary is None:
             logger.warning(
                 "mcs.train: skipping row %d in %s for model %s "

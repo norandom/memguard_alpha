@@ -14,7 +14,6 @@ import pytest
 from src.core.nvidia_lm import CompletionResult
 from src.harness.smoke import Shortlist, SmokeOutcome, smoke_test
 
-
 SMOKE_PROMPTS: list[str] = [
     "prompt-1",
     "prompt-2",

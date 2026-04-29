@@ -23,9 +23,9 @@ import os
 import random
 import sys
 from collections import Counter
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Callable
 
 import requests
 from dotenv import load_dotenv

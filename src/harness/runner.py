@@ -76,10 +76,11 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -94,7 +95,6 @@ from src.core.loader import (
 from src.core.manifest import (
     Manifest,
     compute_file_hash,
-    read_manifest,
     write_manifest,
 )
 from src.core.nvidia_lm import NvidiaLM
@@ -118,7 +118,8 @@ from src.harness.report import (
 )
 from src.harness.smoke import Shortlist, smoke_test
 from src.mia.control import ControlBaseline, build_baseline
-from src.mia.mcs import MCSCalibrator, train as mcs_train
+from src.mia.mcs import MCSCalibrator
+from src.mia.mcs import train as mcs_train
 
 logger = logging.getLogger(__name__)
 
@@ -362,7 +363,7 @@ def _resolve_out_dir(raw: str | None) -> Path:
     """
     if raw:
         return Path(raw)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return Path("runs") / timestamp
 
 

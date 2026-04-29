@@ -27,7 +27,6 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-
 # ---------------------------------------------------------------------- helpers
 
 

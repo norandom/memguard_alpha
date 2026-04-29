@@ -37,38 +37,38 @@ def test_public_api_imports_succeed():
     from a package root, with no ``from src.harness.runner import _internal``
     paths anywhere in the public contract."""
     from src.core import (  # noqa: F401
-        NvidiaLM,
         EvalRow,
         EvalSet,
-        load_eval_set,
-        load_cutoffs,
+        Manifest,
+        NvidiaLM,
         assert_cutoff_safe,
         bootstrap_ci,
-        Manifest,
-        write_manifest,
+        load_cutoffs,
+        load_eval_set,
         read_manifest,
-    )
-    from src.mia import (  # noqa: F401
-        MiaFeatures,
-        compute_mia_features,
-        ControlBaseline,
-        build_baseline,
-        MCSCalibrator,
-        train_mcs,
+        write_manifest,
     )
     from src.harness import (  # noqa: F401
-        smoke_test,
-        evaluate_model,
-        compute_majority_baseline,
         composite_score,
-        write_top3,
+        compute_majority_baseline,
         configure_paper_style,
-        plot_mia_feature_distributions,
-        plot_mcs_calibration,
+        evaluate_model,
         plot_accuracy_with_ci,
-        plot_mcs_auc_with_ci,
         plot_composite_ranking,
+        plot_mcs_auc_with_ci,
+        plot_mcs_calibration,
+        plot_mia_feature_distributions,
         run,
+        smoke_test,
+        write_top3,
+    )
+    from src.mia import (  # noqa: F401
+        ControlBaseline,
+        MCSCalibrator,
+        MiaFeatures,
+        build_baseline,
+        compute_mia_features,
+        train_mcs,
     )
     # If every import resolved, the public API contract holds.
     assert callable(evaluate_model)

@@ -22,7 +22,6 @@ likewise.
 
 from __future__ import annotations
 
-from datetime import date
 from types import SimpleNamespace
 
 import pandas as pd
@@ -33,7 +32,6 @@ from src.portfolio.backtest import (
     BacktestResult,
     run_backtest,
 )
-
 
 # --------------------------------------------------------------------- helpers
 

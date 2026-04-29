@@ -27,7 +27,6 @@ from src.core.nvidia_lm import CompletionResult, TokenLogprob
 from src.harness import runner as runner_mod
 from src.harness.smoke import Shortlist, SmokeOutcome
 
-
 # --- Fixture paths used as templates for the in-memory eval set --------------
 
 REPO_FIXTURES = Path(__file__).parent.parent / "fixtures"

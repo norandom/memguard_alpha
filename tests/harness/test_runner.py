@@ -31,7 +31,6 @@ from src.core.nvidia_lm import CompletionResult, TokenLogprob
 # brief: ``lm_factory(api_key, model, timeout_s) -> NvidiaLM-like``.
 from src.harness import runner as runner_mod  # noqa: E402
 
-
 # --- Fixture paths -----------------------------------------------------------
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"

@@ -27,15 +27,13 @@ from typing import Any
 
 import pytest
 
+from src.core.loader import load_eval_set
 from src.core.nvidia_lm import CompletionResult, TokenLogprob
 from src.harness import runner as runner_mod
 from src.harness.evaluator import compute_majority_baseline
 from src.harness.ranker import (
     WARNING_NOT_BETTER_THAN_BASELINE,
-    composite_score,
 )
-from src.core.loader import load_eval_set
-
 
 # --- Fixture paths reused from the e2e harness tests --------------------------
 
