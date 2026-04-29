@@ -46,7 +46,7 @@ on real data).
 
 - [ ] 2. Core: the four `src/portfolio/` modules
 
-- [ ] 2.1 (P) Implement `portfolio.prices` for the universe
+- [x] 2.1 (P) Implement `portfolio.prices` for the universe
   - Create `src/portfolio/prices.py` exposing `fetch_universe_prices(tickers, start, end, api_key=None) -> pandas.DataFrame` and a `PriceFetchError` exception class.
   - Fetch EOD close prices from FMP `historical-price-eod/light` per ticker; use the same retry / API-key resolution pattern as `dataset.fmp_corpora.fetch_articles`.
   - Inner-join all per-ticker series on `date` so rows where any ticker is missing (e.g. LSE holiday vs NYSE) are dropped uniformly; the returned frame has no NaN cells.
