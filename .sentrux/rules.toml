@@ -32,6 +32,11 @@ paths = ["src/mia/*"]
 order = 1
 
 [[layers]]
+name = "portfolio"
+paths = ["src/portfolio/*"]
+order = 1
+
+[[layers]]
 name = "core"
 paths = ["src/core/*"]
 order = 2           # Bottom of the stack — primitives, depended on by everything above.
@@ -50,6 +55,26 @@ reason = "dataset/ writes data files; it must not depend on the statistical laye
 from = "src/mia/*"
 to = "src/dataset/*"
 reason = "mia/ computes features; the data builder is a sibling, not a dependency."
+
+[[boundaries]]
+from = "src/portfolio/*"
+to = "src/dataset/*"
+reason = "portfolio/ runs the CMMD backtest; the data builder is a sibling, not a dependency."
+
+[[boundaries]]
+from = "src/dataset/*"
+to = "src/portfolio/*"
+reason = "dataset/ writes data files; it must not depend on the portfolio backtest layer."
+
+[[boundaries]]
+from = "src/portfolio/*"
+to = "src/mia/*"
+reason = "portfolio/ runs the CMMD backtest; the statistical layer is a sibling, not a dependency."
+
+[[boundaries]]
+from = "src/mia/*"
+to = "src/portfolio/*"
+reason = "mia/ computes features; the portfolio backtest is a sibling, not a dependency."
 
 # --- Legacy guards -------------------------------------------------------
 

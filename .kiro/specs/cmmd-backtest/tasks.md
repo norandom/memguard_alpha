@@ -24,7 +24,7 @@ on real data).
   - Observable: `uv.lock` contains `vectorbt` and `matplotlib`, and the smoke import command prints nothing and exits 0.
   - _Requirements: 5.1_
 
-- [ ] 1.2 Register the `portfolio` layer with sentrux and create an empty package
+- [x] 1.2 Register the `portfolio` layer with sentrux and create an empty package
   - Add `[[layers]] name = "portfolio", paths = ["src/portfolio/*"], order = 1` to `.sentrux/rules.toml`.
   - Add two `[[boundaries]]` entries forbidding `portfolio ↔ dataset` and `portfolio ↔ mia` cross-imports, mirroring the existing `dataset ↔ mia` boundary.
   - Create `src/portfolio/__init__.py` as an empty module so the layer exists for sentrux to scan.
