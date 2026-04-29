@@ -247,12 +247,17 @@ def _count_is_oos(
     cutoffs_path: Path,
     *,
     model: str,
+    records_path: Path | None = None,
 ) -> tuple[int, int]:
-    """Count parse-OK eval rows that fall IS / OOS for ``model``.
+    """Count parse-OK records that fall IS / OOS for ``model``.
 
-    Reads the model's cutoff from ``cutoffs.yaml`` and labels every eval
-    row whose date is on/before the cutoff as IS. Rows lacking a parsable
-    date are skipped — they cannot be labelled.
+    Joins ``records.jsonl`` to the eval set on ``prompt_hash``,
+    filters to ``parse_ok=True``, and labels each surviving record
+    IS if its eval-set date is on/before ``cutoffs.yaml[model]``.
+
+    Req 4.1's validation rule wants ``n_is + n_oos`` to equal the
+    parse-OK count; that is achieved by filtering on parse_ok=True
+    here. Rows whose eval metadata lacks an ISO date are skipped.
     """
     import yaml
 
@@ -261,26 +266,45 @@ def _count_is_oos(
     cutoff_raw = models_block.get(model)
     if cutoff_raw is None:
         return 0, 0
-    if isinstance(cutoff_raw, date):
-        cutoff = cutoff_raw
-    else:
-        cutoff = date.fromisoformat(str(cutoff_raw))
+    cutoff = cutoff_raw if isinstance(cutoff_raw, date) else date.fromisoformat(
+        str(cutoff_raw)
+    )
+
+    metadata_by_hash: dict[str, dict] = {}
+    for row in eval_rows:
+        prompt = row.get("prompt")
+        if not isinstance(prompt, str):
+            continue
+        ph = _compute_prompt_hash(prompt)
+        metadata_by_hash[ph] = row.get("metadata") or {}
+
+    if records_path is None or not records_path.exists():
+        return 0, 0
 
     n_is = 0
     n_oos = 0
-    for row in eval_rows:
-        md = row.get("metadata") or {}
-        raw_date = md.get("date")
-        if not isinstance(raw_date, str):
-            continue
-        try:
-            d = date.fromisoformat(raw_date[:10])
-        except ValueError:
-            continue
-        if d <= cutoff:
-            n_is += 1
-        else:
-            n_oos += 1
+    with records_path.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            if rec.get("model") != model or not rec.get("parse_ok"):
+                continue
+            md = metadata_by_hash.get(rec.get("prompt_hash") or "")
+            if not md:
+                continue
+            raw_date = md.get("date")
+            if not isinstance(raw_date, str):
+                continue
+            try:
+                d = date.fromisoformat(raw_date[:10])
+            except ValueError:
+                continue
+            if d <= cutoff:
+                n_is += 1
+            else:
+                n_oos += 1
     return n_is, n_oos
 
 
@@ -576,7 +600,10 @@ def _run_post_harness_stages(
         sys.stderr.write(f"ERROR: backtest artifact write failed: {exc}\n")
         return EXIT_BACKTEST_ARTIFACT
 
-    n_is, n_oos = _count_is_oos(eval_rows, cutoffs_path, model=SIGNAL_MODEL)
+    n_is, n_oos = _count_is_oos(
+        eval_rows, cutoffs_path, model=SIGNAL_MODEL,
+        records_path=target_dir / "records.jsonl",
+    )
     backtest_block = _build_backtest_block(
         cmmd_threshold=result.cmmd.cmmd_threshold,
         seed=seed,

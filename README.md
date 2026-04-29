@@ -102,31 +102,34 @@ The MCS-AUC values near 1.0 indicate that the calibrator can perfectly separate 
 
 ### IS-vs-OOS memorization gap
 
-Per-model accuracy split by whether the prompt's resolution date falls *inside* (IS) or *after* (OOS) the model's training cutoff. A large positive `IS − OOS` gap is the memorization signature; a small or zero gap with healthy OOS accuracy is the desired honest behaviour.
+Per-(model, eval-row) split by whether the row's resolution date falls *inside* (IS) or *after* (OOS) the model's training cutoff. A large positive `IS − OOS` gap is the memorization signature; a small or zero gap with healthy OOS accuracy is the desired honest behaviour.
 
-| Model | Cutoff | IS Acc (95% CI) | OOS Acc (95% CI) | Gap |
-| --- | --- | --- | --- | ---: |
-| `openai/gpt-oss-20b`            | 2024-06-30 | 0.540 [0.470–0.610] | 0.500 [0.430–0.570] | +0.040 |
-| `meta/llama-3.2-3b-instruct`    | 2023-12-31 | 0.535 [0.465–0.605] | 0.520 [0.450–0.590] | +0.015 |
-| `meta/llama-3.1-8b-instruct`    | 2023-12-31 | 0.480 [0.395–0.565] | 0.460 [0.375–0.545] | +0.020 |
-| `microsoft/phi-4-mini-instruct` | 2024-06-30 | 0.305 [0.245–0.370] | 0.295 [0.235–0.360] | +0.010 |
+Live `runs/cmmd_20260429T064026Z/` against `openai/gpt-oss-20b` (eval set: 330 prompts × {SWDA.L, XLK, IAU} straddling the 2024-06-30 cutoff):
+
+| Model | Cutoff | n_IS | n_OOS | IS Acc (95% CI) | OOS Acc (95% CI) | Gap |
+| --- | --- | ---: | ---: | --- | --- | ---: |
+| `openai/gpt-oss-20b` | 2024-06-30 | 194 | 121 | 0.505 [0.438–0.577] | 0.612 [0.521–0.702] | **−0.106** |
+
+`n_IS + n_OOS = 315`, matching the `parse_ok=True` row count in `records.jsonl` (15 of 330 rows parse-failed and are excluded).
 
 > _MemGuard-Alpha Section 5.3 reports IS accuracy for ChatGPT rising 40.8 → 52.5% and OOS accuracy falling 47 → 42% over the same evaluation. A large positive gap is the memorization signature; a small/zero gap with healthy OOS accuracy is the desired honest behaviour._
 
-> _Numbers from a reference run; re-run `scripts/run_cmmd_backtest.py` to regenerate against your own gpt-oss-20b output._
+The negative gap on this run is the *opposite* of the paper's directional-trade contamination story: gpt-oss-20b actually does better on rows it could not have memorised (post-2024-06-30) than on rows it could. The Cohen's d artifact in the same run dir still shows a large IS↔OOS separation on the raw MIA features (`loss` d=+1.84, `zlib_ratio` d=+1.83), so the calibrator is detecting *something* — it just is not the directional-accuracy gap the paper flagged. Re-run `scripts/run_cmmd_backtest.py` to regenerate against your own gpt-oss-20b output.
 
 ### Backtest
 
-Daily long/short signals from each model variant are turned into a portfolio P&L stream and summarised with a stationary bootstrap (block length ≈ √N, 1000 resamples). `raw_alpha` uses the model's unmodified directional signal; `cmmd` discounts the signal by the MCS classifier's memorization probability before sizing.
+Daily long/short signals from gpt-oss-20b are turned into a long-short cross-sectional portfolio over `{SWDA.L, XLK, IAU}` (BIL as the cash leg) with leverage capped at 1×, daily rebalance on the close, and 15 bps round-trip transaction cost. `raw_alpha` uses every parse-OK row; `cmmd` drops the top-quintile rows by MCS-derived `p_memorized`. Bootstrap 95% CIs use 1000 resamples on Sharpe and mean daily return.
+
+Live numbers from `runs/cmmd_20260429T064026Z/backtest_summary.md`:
 
 | Variant | Sharpe (95% CI) | Mean daily bps (95% CI) | Max drawdown | Total return | n signals |
 | --- | --- | --- | ---: | ---: | ---: |
-| `raw_alpha` | 0.420 [0.180–0.660] | 1.85 [0.40–3.30] | -8.4% | +4.2% | 198 |
-| `cmmd`      | 0.610 [0.350–0.870] | 2.40 [0.95–3.85] | -6.1% | +6.8% | 198 |
+| `raw_alpha` | −2.030 [−2.750, −0.722] | −2.77 [−4.29, −1.28] | −29.15% | −29.04% | 315 |
+| `cmmd`      | −1.800 [−2.648, −0.539] | −2.27 [−3.62, −0.88] | −24.46% | −24.52% | 252 (cmmd_threshold = 0.347) |
 
-Relative Sharpe improvement `(cmmd − raw_alpha) / raw_alpha`: **+45.2%** _(reference run; regenerate via `scripts/run_cmmd_backtest.py`)_.
+Relative Sharpe improvement `(cmmd − raw_alpha) / raw_alpha`: **−11.3%** — meaning the CMMD-filtered Sharpe is *less negative* than `raw_alpha`'s. Both variants are net-losing on this universe and date span, so the "improvement" is a smaller loss rather than alpha. The paper's headline finding (CMMD lifts a borderline-positive Sharpe further into the green) does not reproduce on a single-model gpt-oss-20b run against this 3-asset ETF universe; this is consistent with the negative IS−OOS gap above.
 
-Equity curves for both variants and a passive `buy_and_hold_swda` benchmark are saved to `runs/<UTC-timestamp>/equity_curves.png` alongside the CSV/MD artifacts. Re-run `scripts/run_cmmd_backtest.py` to regenerate.
+Equity curves for both variants plus the passive `buy_and_hold_swda` benchmark are saved to `runs/cmmd_20260429T064026Z/equity_curves.png` alongside the CSV/MD artifacts. Re-run `scripts/run_cmmd_backtest.py` to regenerate.
 
 ## Caveats
 

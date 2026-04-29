@@ -140,7 +140,7 @@ on real data).
 
 - [ ] 4. Validation: end-to-end run on real signals
 
-- [ ] 4.1 Run the full pipeline end-to-end and verify artifacts
+- [x] 4.1 Run the full pipeline end-to-end and verify artifacts
   - Run `scripts/run_cmmd_backtest.py` against the live eval set + live `openai/gpt-oss-20b` endpoint; capture the run directory.
   - Confirm every artifact exists: `records.jsonl`, `cohens_d.{csv,md}`, `is_oos_gap.{csv,md}`, `backtest_summary.{csv,md}`, `equity_curves.{csv,png}`, `daily_returns.csv`, `manifest.json`.
   - Verify the manifest's `backtest` block has every key listed in the design (Data Models § Manifest extension) and that `n_is_rows + n_oos_rows` equals the parse-OK row count in `records.jsonl`.
@@ -163,3 +163,5 @@ the same mistakes. Add one-line entries here as work proceeds.
 - 2.3: `portfolio` (order=1) cannot import from `harness` (order=0). Use `typing.Protocol` for structural typing of record-like inputs across the sentrux layer boundary.
 - 2.4: `run_backtest()` signature extended with `prompt_metadata: dict[str, dict[str, str]]` (prompt_hash → ticker/date) for the same Record-schema reason as 2.2. vectorbt 0.28 works on Python 3.14 with `Portfolio.from_orders(size_type='targetpercent', cash_sharing=True, freq='1D')`; pass `fees=fees_one_way` (= 7.5 bps one-way half of the paper's 15 bps round-trip).
 - 2.4: keep test fixture/builder helpers under sentrux's max_fn_lines=120 (the cohens_d test `_build_fixture_run` had to be split — split builders into per-purpose helpers proactively).
+- 4.1: live run on 2026-04-29 (`runs/cmmd_20260429T064026Z/`). gpt-oss-20b parse_rate=95.5%, raw_acc=0.546, holdout_auc=0.704. IS−OOS gap = −0.106 (OOS *better* than IS); Cohen's d on `loss` = +1.84 / `zlib_ratio` = +1.83 (calibrator detects something MIA-like). Backtest: raw_alpha Sharpe = −2.03; cmmd Sharpe = −1.80; relative improvement −11.3% (cmmd is less-negative). Headline paper finding (CMMD lifts a positive Sharpe higher) does not reproduce on a single-model run against this 3-asset ETF universe.
+- 4.1: `_count_is_oos` originally counted all eval rows including parse failures (209+121=330) which broke Req 4.1's "n_is + n_oos == parse-OK count" check. Fixed to join records.jsonl with eval set on prompt_hash and filter to parse_ok=True (now 194+121=315 = parse-OK count).
