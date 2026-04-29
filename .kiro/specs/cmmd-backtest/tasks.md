@@ -78,7 +78,7 @@ on real data).
   - _Requirements: 6.1, 6.2, 6.4_
   - _Boundary: portfolio.cmmd_
 
-- [ ] 2.4 Implement `portfolio.backtest` engine core (weights → metrics)
+- [x] 2.4 Implement `portfolio.backtest` engine core (weights → metrics)
   - Create `src/portfolio/backtest.py` and define the `BacktestMetrics` and `BacktestResult` dataclasses described in `design.md` § Components and Interfaces.
   - Implement `run_backtest(records, prices, *, cmmd_quantile=0.80, fees_one_way=0.00075, init_cash=1.0, seed=0, bootstrap_n=1000) -> BacktestResult`.
   - Build the `(date × ticker)` weight matrix from the record stream where `weight[d, t] = direction[d, t] * confidence[d, t]`; cap leverage by row-scaling when `sum(|weights[d, :]|) > 1.0`; route the residual `1 - sum(|weights|)` into the `BIL` column so the row always sums to 1.
@@ -161,3 +161,5 @@ the same mistakes. Add one-line entries here as work proceeds.
 - 2.2: `Record` schema does NOT carry `metadata.date`; recover via `prompt_hash` ↔ eval-set join (see `scripts/analyze_is_oos_gap.py`). Functions touching record dates need an `eval_path` argument.
 - 2.2: actual `MiaFeatures` field name is `min_k` (not `min_k_pct` as design says); use the runtime field name. summary.csv column is `mcs_auc_point` (mapped to artifact column `mcs_auc_holdout`).
 - 2.3: `portfolio` (order=1) cannot import from `harness` (order=0). Use `typing.Protocol` for structural typing of record-like inputs across the sentrux layer boundary.
+- 2.4: `run_backtest()` signature extended with `prompt_metadata: dict[str, dict[str, str]]` (prompt_hash → ticker/date) for the same Record-schema reason as 2.2. vectorbt 0.28 works on Python 3.14 with `Portfolio.from_orders(size_type='targetpercent', cash_sharing=True, freq='1D')`; pass `fees=fees_one_way` (= 7.5 bps one-way half of the paper's 15 bps round-trip).
+- 2.4: keep test fixture/builder helpers under sentrux's max_fn_lines=120 (the cohens_d test `_build_fixture_run` had to be split — split builders into per-purpose helpers proactively).
