@@ -144,15 +144,6 @@ def _row_vector(standardised: dict[str, float | None], order: list[str]) -> np.n
     return out
 
 
-def _safe_generate(lm: NvidiaLM, prompt: str) -> tuple[str, list[TokenLogprob]] | None:
-    """Call ``lm.generate(prompt)`` and return ``(content, logprobs)`` or ``None``."""
-    try:
-        result = lm.generate(prompt)
-    except (TimeoutError, RuntimeError):
-        return None
-    return result.content, result.logprobs
-
-
 def _resolve_feature_order(baseline: ControlBaseline) -> list[str]:
     """Pick the column order based on whether the baseline supports ref_delta."""
     order = list(_BASE_FEATURE_ORDER)

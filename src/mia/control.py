@@ -77,20 +77,6 @@ class ControlBaseline:
     min_valid: int
 
 
-def _safe_generate(
-    lm: NvidiaLM, prompt: str
-) -> tuple[str, list[TokenLogprob]] | None:
-    """Call ``lm.generate(prompt)`` and return ``(content, logprobs)`` or ``None``.
-
-    ``None`` indicates the row should be skipped (timeout or missing logprobs).
-    """
-    try:
-        result = lm.generate(prompt)
-    except (TimeoutError, RuntimeError):
-        return None
-    return result.content, result.logprobs
-
-
 def _aggregate_mean_std(values: Iterable[float]) -> tuple[float, float]:
     """Mean and floored std (ddof=0) for a finite sequence of floats."""
     arr = np.asarray(list(values), dtype=np.float64)

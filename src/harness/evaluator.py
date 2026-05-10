@@ -45,7 +45,7 @@ from sklearn.metrics import roc_auc_score
 
 from src.core.bootstrap import bootstrap_ci
 from src.core.loader import EvalRow, EvalSet
-from src.core.nvidia_lm import NvidiaLM, TokenLogprob, generate_many
+from src.core.nvidia_lm import NvidiaLM, generate_many
 from src.mia.control import ControlBaseline, standardise
 from src.mia.features import MiaFeatures, compute_mia_features
 from src.mia.mcs import MCSCalibrator
@@ -379,24 +379,6 @@ def _failure_record(
         fail_reason=fail_reason,
         raw_response_excerpt=raw_excerpt,
     )
-
-
-def _safe_ref_logprobs(
-    ref_lm: NvidiaLM | None, prompt: str
-) -> list[TokenLogprob] | None:
-    """Best-effort reference-model call. Returns ``None`` on any failure."""
-    if ref_lm is None:
-        return None
-    try:
-        ref_result = ref_lm.generate(prompt)
-    except (TimeoutError, RuntimeError) as exc:  # ref failure does NOT abort row
-        logger.warning(
-            "evaluator: reference model %s failed on prompt: %s",
-            getattr(ref_lm, "model", "<unknown>"),
-            exc,
-        )
-        return None
-    return ref_result.logprobs
 
 
 def _accuracy_statistic(records: list[Record]) -> float:

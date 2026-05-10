@@ -64,19 +64,6 @@ def load_eval_metadata(eval_path: Path) -> dict[str, dict]:
     return metadata
 
 
-def _accuracy(records: list[dict]) -> float | None:
-    if not records:
-        return None
-    correct = sum(
-        1 for r in records
-        if r.get("parse_ok") and r.get("predicted_direction") == r.get("target_direction")
-    )
-    parse_ok_n = sum(1 for r in records if r.get("parse_ok"))
-    if parse_ok_n == 0:
-        return None
-    return correct / parse_ok_n
-
-
 def _accuracy_ci(records: list[dict], seed: int = 0) -> tuple[float, float, float] | None:
     parse_ok = [r for r in records if r.get("parse_ok")]
     if not parse_ok:
