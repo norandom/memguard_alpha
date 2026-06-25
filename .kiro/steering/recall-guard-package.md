@@ -79,6 +79,12 @@ accuracy.
 
 ## Status
 
-All 13 spec tasks complete and on `main`. **Deferred:** the live GitHub Actions runtime
-(PR CI, tag release, Pages deploy) needs a first push/tag to confirm end-to-end — the
-workflows are structurally validated and the Dagger functions are engine-verified.
+All 13 spec tasks complete and on `main`. **CI and Docs are verified green in GitHub
+Actions** — `ci.yml` (Dagger test matrix 3.12/3.14 + lint) and `docs.yml` (Dagger strict
+mkdocs build → GitHub Pages). Pages is enabled (Actions source); the site is live at
+<https://norandom.github.io/memguard_alpha/>. The default runner token cannot *create* the
+Pages site, so Pages must be enabled out-of-band (Settings → Pages → GitHub Actions, or
+`gh api -X POST repos/<owner>/<repo>/pages -f build_type=workflow`) — do not use
+`configure-pages` `enablement: true` (it fails with "Resource not accessible by
+integration"). **Remaining:** `release.yml` triggers only on a `v*` tag and has not been
+exercised yet; it reuses the same Dagger `test-matrix` + `build` steps already proven green.
