@@ -21,9 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true   # auto-enable Pages (GitHub Actions source) on first run
+      - uses: actions/configure-pages@v5   # Pages enabled out-of-band (Settings → Pages → GitHub Actions)
       - name: Install Dagger CLI
         run: |
           curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.21.4 BIN_DIR="$HOME/.local/bin" sh
