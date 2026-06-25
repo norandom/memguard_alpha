@@ -68,7 +68,8 @@ scorer.holdout_auc, scorer.is_weak    # calibrator quality
   ephemeral `GITHUB_TOKEN`.
 - **Distribution: GitHub Release only — no PyPI.** Consumers (e.g. Global_Macro_AI_Factors /
   `macro_framework`) install via:
-  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@<tag>"`.
+  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.0"`
+  (latest released tag).
 
 ## Purpose framing — carry forward
 
@@ -86,5 +87,8 @@ mkdocs build → GitHub Pages). Pages is enabled (Actions source); the site is l
 Pages site, so Pages must be enabled out-of-band (Settings → Pages → GitHub Actions, or
 `gh api -X POST repos/<owner>/<repo>/pages -f build_type=workflow`) — do not use
 `configure-pages` `enablement: true` (it fails with "Resource not accessible by
-integration"). **Remaining:** `release.yml` triggers only on a `v*` tag and has not been
-exercised yet; it reuses the same Dagger `test-matrix` + `build` steps already proven green.
+integration"). **Release verified:** `release.yml` ran on tag `v0.1.0` — Dagger
+`test-matrix` + `build` gates → published GitHub Release with the wheel + sdist. The release
+attaches only `dist/*.whl` + `dist/*.tar.gz` (a bare `dist/*` also catches the `.gitignore`
+that `uv build` writes, uploaded as `default.gitignore`). **All three workflows — CI, Docs,
+Release — are green.**
