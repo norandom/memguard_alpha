@@ -69,6 +69,8 @@ extend-exclude = [
     "data",
     "papers",
     "runs",
+    "ci",                 # self-contained Dagger module (own pyproject; vendors the SDK)
+    "site",               # mkdocs build output
     "scripts/build_method_overview_notebook.py",
     "scripts/build_visualize_notebook.py",
 ]
