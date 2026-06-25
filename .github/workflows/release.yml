@@ -30,5 +30,9 @@ jobs:
       - name: Create GitHub Release with artifacts
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
-          files: dist/*
+          # Explicit globs: uv build also drops a .gitignore into dist/, which a bare
+          # dist/* would attach (uploaded as "default.gitignore"). Attach only artifacts.
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
           generate_release_notes: true
