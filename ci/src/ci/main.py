@@ -12,9 +12,9 @@ Functions:
                     plugin tooling, which is not pip-installable into a container.
 - ``build``       — build the wheel + sdist; returns ``dist/`` (Req 6.1, 6.5).
 - ``docs``        — strict-build the documentation site; returns ``site/``.
-- ``publish``     — token-based upload to a package index (Req 6.1). CI publishing
-                    prefers OIDC trusted publishing via the release workflow, so this
-                    is the explicit-token / local fallback path.
+
+Distribution (the "publish" pipeline op) is a GitHub Release built from ``build``
+output, created by the release workflow; there is no PyPI publish.
 """
 
 import dagger
@@ -86,27 +86,4 @@ class Ci:
             .with_env_variable("DISABLE_MKDOCS_2_WARNING", "true")
             .with_exec(["uv", "run", "mkdocs", "build", "--strict", "--site-dir", "/site"])
             .directory("/site")
-        )
-
-    @function
-    async def publish(
-        self,
-        dist: dagger.Directory,
-        token: dagger.Secret,
-        index_url: str = "https://upload.pypi.org/legacy/",
-    ) -> str:
-        """Upload built artifacts to a package index with an explicit token (Req 6.1).
-
-        CI release publishing prefers OIDC trusted publishing (handled by the release
-        workflow's publish action), so this token path is the local / non-OIDC fallback.
-        """
-        return await (
-            dag.container()
-            .from_(_UV_IMAGE.format(python="3.12"))
-            .with_directory("/dist", dist)
-            .with_secret_variable("UV_PUBLISH_TOKEN", token)
-            .with_exec(
-                ["sh", "-c", f"uv publish --publish-url {index_url} /dist/*"]
-            )
-            .stdout()
         )

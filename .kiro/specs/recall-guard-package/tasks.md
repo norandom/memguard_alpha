@@ -128,8 +128,8 @@ Actions control plane → cross-cutting validation. Requirement IDs are from
   - _Boundary: Dagger pipeline module_
   - _Depends: 1.2, 3.1_
 
-- [ ] 5. GitHub Actions control plane
-- [ ] 5.1 (P) Continuous integration workflow
+- [x] 5. GitHub Actions control plane
+- [x] 5.1 (P) Continuous integration workflow
   - Add a workflow that, on pull request and push, calls the pipeline test operation across
     the matrix and the lint operation and reports a pass/fail status
   - Observable: opening or updating a pull request runs test and lint through the pipeline and
@@ -138,7 +138,7 @@ Actions control plane → cross-cutting validation. Requirement IDs are from
   - _Boundary: ci workflow_
   - _Depends: 4.1_
 
-- [ ] 5.2 (P) Release workflow
+- [x] 5.2 (P) Release workflow
   - Add a workflow that, on a version tag, calls the pipeline build, publishes the wheel to
     the configured index without storing long-lived credentials, and creates a release with
     the wheel and source distribution attached; any failed pipeline operation aborts before
@@ -149,7 +149,7 @@ Actions control plane → cross-cutting validation. Requirement IDs are from
   - _Boundary: release workflow_
   - _Depends: 4.2_
 
-- [ ] 5.3 (P) Documentation publish workflow
+- [x] 5.3 (P) Documentation publish workflow
   - Add a workflow that, on push to the default branch, calls the pipeline docs operation and
     publishes the generated site to the hosted documentation location
   - Observable: a push to the default branch publishes the regenerated site
@@ -157,8 +157,8 @@ Actions control plane → cross-cutting validation. Requirement IDs are from
   - _Boundary: docs workflow_
   - _Depends: 4.2_
 
-- [ ] 6. Cross-cutting validation
-- [ ] 6.1 Cross-version and structural validation
+- [x] 6. Cross-cutting validation
+- [x] 6.1 Cross-version and structural validation
   - Verify the suite passes on both supported Python versions through the pipeline matrix, the
     structural-architecture check passes (layer order, zero cycles, no banned dependency), and
     the existing CLIs still run their parsers unchanged
@@ -167,7 +167,7 @@ Actions control plane → cross-cutting validation. Requirement IDs are from
   - _Requirements: 2.2, 2.3, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 6.2_
   - _Depends: 4.1_
 
-- [ ] 6.2 End-to-end release and install dry-run
+- [x] 6.2 End-to-end release and install dry-run
   - Exercise the build and publish path end to end: confirm the pipeline build output equals
     what the release workflow would publish, run the release workflow in dry-run to confirm
     credential-free publish and failure-blocks-publish behavior, run the strict documentation
@@ -228,5 +228,27 @@ All requirement IDs 1.1–9.3 are mapped: 1.x → 1.1/1.2/1.3/1.4; 2.x → 1.2/6
   added to the repo ruff `extend-exclude` so the vendored SDK / build output don't pollute
   the lint gate (sentrux still 11/11). Scoping notes: the dagger `lint` runs ruff; the
   sentrux structural check stays a separate step (sentrux is an MCP plugin, not
-  pip-installable into a container). `publish` is the explicit-token path — CI release
-  publishing uses OIDC via the GitHub Actions workflow (Major 5).
+  pip-installable into a container).
+- **Distribution decision (2026-06-25, user): GitHub Release only — no PyPI.** Removed the
+  dagger `publish` function and the release workflow's PyPI/OIDC step; the dagger module is
+  now base/test/test_matrix/lint/build/docs (6 functions). Consumers install via the uv git
+  dependency or the GitHub Release asset. The "publish" pipeline op (Req 6.1) is realized by
+  the release workflow's GitHub Release step, not a dagger function.
+- **Major 5 done (2026-06-25)**: `.github/workflows/{ci,release,docs}.yml` — thin shims that
+  install the pinned Dagger CLI (v0.21.4) and call the `ci` module. ci: test (3.12+3.14
+  matrix) + lint on PR/push. release (`v*` tag): test-matrix + build gates, then a GitHub
+  Release with wheel+sdist attached (failure of either gate aborts before the release step —
+  Req 7.5). docs (main push): strict docs build -> GitHub Pages. Verified locally: all YAML
+  parses; every `dagger call` target resolves to a real module function; third-party action
+  (`softprops/action-gh-release`) pinned to a commit SHA per the semgrep hook; GitHub Release
+  uses the ephemeral `GITHUB_TOKEN` (no stored long-lived creds — Req 7.4).
+- **Major 6 (2026-06-25)**: 6.1 verified — full suite **258 passing on Python 3.12 and
+  3.14**, sentrux 11/11, ruff clean, both CLIs (`harness.py`, `run_cmmd_backtest.py`) still
+  parse post-rename. 6.2 verified locally where possible: `dagger call build` -> wheel+sdist
+  (the exact set the release workflow uploads), strict docs build, and fresh-venv lean
+  install all pass.
+- **Deferred live verification (no sandbox capability)**: the GitHub Actions *runtime* has
+  not executed — PR-triggered CI, tag-triggered GitHub Release creation, runtime
+  failure-blocks-release, and Pages deploy. The workflows are structurally validated (YAML +
+  resolvable dagger targets + pinned actions) and the Dagger functions they call are
+  engine-verified; a first push to GitHub is needed to confirm the triggers end-to-end.

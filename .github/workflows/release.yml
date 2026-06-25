@@ -1,0 +1,34 @@
+name: Release
+
+# On a version tag: test, build the wheel+sdist via the Dagger module, and attach them
+# to a GitHub Release. Distribution is the GitHub Release (and git installs); no PyPI.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write      # create the GitHub Release via the ephemeral GITHUB_TOKEN
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Dagger CLI
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.21.4 BIN_DIR="$HOME/.local/bin" sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Gate: a failing test or build aborts the job before any publish step (Req 7.5).
+      - name: Test matrix (gate)
+        run: dagger -m ci call test-matrix --source=.
+      - name: Build wheel + sdist
+        run: dagger -m ci call build --source=. export --path=dist
+      - name: List artifacts
+        run: ls -l dist
+
+      - name: Create GitHub Release with artifacts
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          files: dist/*
+          generate_release_notes: true
