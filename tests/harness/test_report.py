@@ -22,15 +22,15 @@ from pathlib import Path
 
 import pytest
 
-from src.harness.evaluator import CIBound, ModelEvalResult, Record
-from src.harness.ranker import CompositeScore
-from src.harness.report import (
+from recall_guard.harness.evaluator import CIBound, ModelEvalResult, Record
+from recall_guard.harness.ranker import CompositeScore
+from recall_guard.harness.report import (
     print_artifact_paths,
     render_terminal,
     write_records,
     write_summary_csv,
 )
-from src.mia.features import MiaFeatures
+from recall_guard.mia.features import MiaFeatures
 
 # --- Synthetic fixtures -------------------------------------------------------
 

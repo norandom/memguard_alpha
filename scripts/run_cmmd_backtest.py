@@ -6,25 +6,25 @@ Wires every component together:
 2. Invoke the harness for ``openai/gpt-oss-20b`` against the eval set,
    producing ``records.jsonl``, ``summary.csv`` and the base
    ``manifest.json``.
-3. Run :func:`src.portfolio.cohens_d.compute_cohens_d` on the run dir.
+3. Run :func:`recall_guard.portfolio.cohens_d.compute_cohens_d` on the run dir.
 4. Invoke ``scripts/analyze_is_oos_gap.py`` on the run dir as a
    subprocess.
 5. Fetch the universe prices via
-   :func:`src.portfolio.prices.fetch_universe_prices` for the date span
+   :func:`recall_guard.portfolio.prices.fetch_universe_prices` for the date span
    of the eval set.
-6. Run :func:`src.portfolio.backtest.run_backtest` followed by
-   :func:`src.portfolio.backtest.write_backtest_artifacts`.
+6. Run :func:`recall_guard.portfolio.backtest.run_backtest` followed by
+   :func:`recall_guard.portfolio.backtest.write_backtest_artifacts`.
 7. Extend the manifest in place with the ``backtest`` block (Task 3.1).
 8. Print every artifact path on success
-   (:func:`src.harness.report.print_artifact_paths`).
+   (:func:`recall_guard.harness.report.print_artifact_paths`).
 
 Failure modes (all exit non-zero, leave the harness artifacts intact):
 
 - harness ``run`` returned non-zero: pass through its exit code.
 - MCS calibration failed for ``openai/gpt-oss-20b`` (Req 9.3): exit 4.
 - ``scripts/analyze_is_oos_gap.py`` preconditions not met: exit 5.
-- :class:`src.portfolio.backtest.BacktestArtifactError` (Req 7.6): exit 6.
-- :class:`src.portfolio.prices.PriceFetchError`: exit 7.
+- :class:`recall_guard.portfolio.backtest.BacktestArtifactError` (Req 7.6): exit 6.
+- :class:`recall_guard.portfolio.prices.PriceFetchError`: exit 7.
 
 In every failure path the ``backtest`` manifest block is NOT written.
 """
@@ -48,17 +48,17 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from src.core.manifest import read_manifest, write_manifest  # noqa: E402
-from src.harness.report import print_artifact_paths  # noqa: E402
-from src.harness.runner import LMFactory, parse_argv  # noqa: E402
-from src.harness.runner import run as harness_run  # noqa: E402
-from src.portfolio.backtest import (  # noqa: E402
+from recall_guard.core.manifest import read_manifest, write_manifest  # noqa: E402
+from recall_guard.harness.report import print_artifact_paths  # noqa: E402
+from recall_guard.harness.runner import LMFactory, parse_argv  # noqa: E402
+from recall_guard.harness.runner import run as harness_run  # noqa: E402
+from recall_guard.portfolio.backtest import (  # noqa: E402
     BacktestArtifactError,
     run_backtest,
     write_backtest_artifacts,
 )
-from src.portfolio.cohens_d import compute_cohens_d  # noqa: E402
-from src.portfolio.prices import (  # noqa: E402
+from recall_guard.portfolio.cohens_d import compute_cohens_d  # noqa: E402
+from recall_guard.portfolio.prices import (  # noqa: E402
     PriceFetchError,
     fetch_universe_prices,
 )

@@ -15,7 +15,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from src.core.nvidia_lm import DEFAULT_TIMEOUT_S, NvidiaLM
+from recall_guard.core.nvidia_lm import DEFAULT_TIMEOUT_S, NvidiaLM
 
 # Documented fail_reason values (Req 1.2 / 1.3 / design.md harness.smoke).
 FAIL_TIMEOUT = "timeout"

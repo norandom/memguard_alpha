@@ -1,4 +1,4 @@
-"""Unit tests for ``src.portfolio.backtest.write_backtest_artifacts``.
+"""Unit tests for ``recall_guard.portfolio.backtest.write_backtest_artifacts``.
 
 Covers Requirements 7.1, 7.2, 7.3, 7.4, and 7.6 of the cmmd-backtest spec.
 
@@ -28,7 +28,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.portfolio.backtest import (
+from recall_guard.portfolio.backtest import (
     BacktestArtifactError,
     BacktestMetrics,
     BacktestResult,

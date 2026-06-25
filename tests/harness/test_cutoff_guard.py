@@ -3,7 +3,7 @@
 Requirement 2.5: when a shortlisted model's training cutoff post-dates the
 eval-set ``_cutoff_date``, ``runner.run`` MUST abort before any HTTP call to
 the candidate model. The runner converts the underlying
-:class:`src.core.loader.CutoffViolation` into a non-zero exit code (= 3 today,
+:class:`recall_guard.core.loader.CutoffViolation` into a non-zero exit code (= 3 today,
 exposed as the convention documented in ``runner.py``).
 
 This file is a parallel integration check to
@@ -20,8 +20,8 @@ from typing import Any
 
 import pytest
 
-from src.core.nvidia_lm import CompletionResult, TokenLogprob
-from src.harness import runner as runner_mod
+from recall_guard.core.nvidia_lm import CompletionResult, TokenLogprob
+from recall_guard.harness import runner as runner_mod
 
 # --- Fixture paths -----------------------------------------------------------
 

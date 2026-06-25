@@ -3,7 +3,7 @@ name = "recall-guard"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.26",
     "scikit-learn>=1.4",
@@ -11,21 +11,59 @@ dependencies = [
     "pyyaml>=6",
     "requests>=2.31",
     "python-dotenv>=1.0",
-    "pytest>=8.0",
-    "pytest-mock>=3.12",
+]
+
+# Runtime-optional features. The default install above is the lean
+# inference-without-recall surface; these extras add the CMMD backtest /
+# plotting stack and the documentation toolchain for consumers who want them.
+[project.optional-dependencies]
+backtest = [
     "matplotlib>=3.8",
     "vectorbt==0.28.*",
+]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+    "mkdocs-gen-files>=0.5",
+    "mkdocs-literate-nav>=0.6",
+]
+
+# Development / CI tooling. uv installs the ``dev`` group by default, so the full
+# test suite (which imports matplotlib/vectorbt and executes the notebook) runs
+# out of the box, while consumers inherit none of it.
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "ruff>=0.7.0",
+    "pre-commit>=3.6",
     "jupyter>=1.0",
+    "ipykernel>=6.29",
     "nbclient>=0.9",
     "nbformat>=5.9",
-    "ipykernel>=6.29",
-    "pre-commit>=3.6",
-    "ruff>=0.7.0",
+    "matplotlib>=3.8",
+    "vectorbt==0.28.*",
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+    "mkdocs-gen-files>=0.5",
+    "mkdocs-literate-nav>=0.6",
 ]
+pipeline = [
+    "dagger-io>=0.18",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["recall_guard"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py312"
 extend-exclude = [
     "notebooks",
     "data",
@@ -48,6 +86,6 @@ ignore = ["E501", "B008", "UP047"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["B011"]                 # asserts in tests are fine
-"scripts/*.py" = ["E402"]                  # sys.path splice before src.* imports
+"scripts/*.py" = ["E402"]                  # sys.path splice before recall_guard.* imports
 "scripts/build_etf_*.py" = ["E402"]
 "scripts/analyze_is_oos_gap.py" = ["E402"]

@@ -34,9 +34,9 @@ NOTEBOOK = Path(__file__).resolve().parents[2] / "notebooks" / "qualification.ip
 
 def test_public_api_imports_succeed():
     """Smokes Req 12.1: every name in the public API surface is importable
-    from a package root, with no ``from src.harness.runner import _internal``
+    from a package root, with no ``from recall_guard.harness.runner import _internal``
     paths anywhere in the public contract."""
-    from src.core import (  # noqa: F401
+    from recall_guard.core import (  # noqa: F401
         EvalRow,
         EvalSet,
         Manifest,
@@ -48,7 +48,7 @@ def test_public_api_imports_succeed():
         read_manifest,
         write_manifest,
     )
-    from src.harness import (  # noqa: F401
+    from recall_guard.harness import (  # noqa: F401
         composite_score,
         compute_majority_baseline,
         configure_paper_style,
@@ -62,7 +62,7 @@ def test_public_api_imports_succeed():
         smoke_test,
         write_top3,
     )
-    from src.mia import (  # noqa: F401
+    from recall_guard.mia import (  # noqa: F401
         ControlBaseline,
         MCSCalibrator,
         MiaFeatures,

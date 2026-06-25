@@ -16,8 +16,8 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from src.harness.evaluator import CIBound, ModelEvalResult
-from src.harness.ranker import (
+from recall_guard.harness.evaluator import CIBound, ModelEvalResult
+from recall_guard.harness.ranker import (
     COMPOSITE_FORMULA,
     GATES,
     CompositeScore,

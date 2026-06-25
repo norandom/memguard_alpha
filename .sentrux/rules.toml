@@ -18,27 +18,27 @@ no_god_files = false    # Allowed for now. runner.py is large but cohesive.
 
 [[layers]]
 name = "harness"
-paths = ["src/harness/*"]
+paths = ["recall_guard/harness/*"]
 order = 0           # Top of the stack — the orchestrator, can depend on everything below.
 
 [[layers]]
 name = "dataset"
-paths = ["src/dataset/*"]
+paths = ["recall_guard/dataset/*"]
 order = 1
 
 [[layers]]
 name = "mia"
-paths = ["src/mia/*"]
+paths = ["recall_guard/mia/*"]
 order = 1
 
 [[layers]]
 name = "portfolio"
-paths = ["src/portfolio/*"]
+paths = ["recall_guard/portfolio/*"]
 order = 1
 
 [[layers]]
 name = "core"
-paths = ["src/core/*"]
+paths = ["recall_guard/core/*"]
 order = 2           # Bottom of the stack — primitives, depended on by everything above.
 
 # --- Cross-sibling boundaries --------------------------------------------
@@ -47,38 +47,38 @@ order = 2           # Bottom of the stack — primitives, depended on by everyth
 # must stay separate.
 
 [[boundaries]]
-from = "src/dataset/*"
-to = "src/mia/*"
+from = "recall_guard/dataset/*"
+to = "recall_guard/mia/*"
 reason = "dataset/ writes data files; it must not depend on the statistical layer."
 
 [[boundaries]]
-from = "src/mia/*"
-to = "src/dataset/*"
+from = "recall_guard/mia/*"
+to = "recall_guard/dataset/*"
 reason = "mia/ computes features; the data builder is a sibling, not a dependency."
 
 [[boundaries]]
-from = "src/portfolio/*"
-to = "src/dataset/*"
+from = "recall_guard/portfolio/*"
+to = "recall_guard/dataset/*"
 reason = "portfolio/ runs the CMMD backtest; the data builder is a sibling, not a dependency."
 
 [[boundaries]]
-from = "src/dataset/*"
-to = "src/portfolio/*"
+from = "recall_guard/dataset/*"
+to = "recall_guard/portfolio/*"
 reason = "dataset/ writes data files; it must not depend on the portfolio backtest layer."
 
 [[boundaries]]
-from = "src/portfolio/*"
-to = "src/mia/*"
+from = "recall_guard/portfolio/*"
+to = "recall_guard/mia/*"
 reason = "portfolio/ runs the CMMD backtest; the statistical layer is a sibling, not a dependency."
 
 [[boundaries]]
-from = "src/mia/*"
-to = "src/portfolio/*"
+from = "recall_guard/mia/*"
+to = "recall_guard/portfolio/*"
 reason = "mia/ computes features; the portfolio backtest is a sibling, not a dependency."
 
 # --- Legacy guards -------------------------------------------------------
 
 [[boundaries]]
-from = "src/*"
+from = "recall_guard/*"
 to = "dspy"
 reason = "The harness deliberately dropped dspy when the spec was rewritten. Reintroducing it reverts the legacy DSPy-based pipeline."

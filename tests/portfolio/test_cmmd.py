@@ -1,4 +1,4 @@
-"""Unit tests for ``src.portfolio.cmmd.apply_cmmd_filter``.
+"""Unit tests for ``recall_guard.portfolio.cmmd.apply_cmmd_filter``.
 
 Covers Requirements 6.1, 6.2, and 6.4 of the cmmd-backtest spec:
 
@@ -19,7 +19,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from src.portfolio.cmmd import apply_cmmd_filter
+from recall_guard.portfolio.cmmd import apply_cmmd_filter
 
 
 def _mk(p_memorized: float | None, parse_ok: bool = True, tag: str | None = None) -> SimpleNamespace:

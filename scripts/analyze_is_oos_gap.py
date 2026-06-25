@@ -40,7 +40,7 @@ if str(_ROOT) not in sys.path:
 
 import yaml
 
-from src.core.bootstrap import bootstrap_ci
+from recall_guard.core.bootstrap import bootstrap_ci
 
 
 def compute_prompt_hash(prompt: str) -> str:

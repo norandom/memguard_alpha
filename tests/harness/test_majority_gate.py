@@ -27,11 +27,11 @@ from typing import Any
 
 import pytest
 
-from src.core.loader import load_eval_set
-from src.core.nvidia_lm import CompletionResult, TokenLogprob
-from src.harness import runner as runner_mod
-from src.harness.evaluator import compute_majority_baseline
-from src.harness.ranker import (
+from recall_guard.core.loader import load_eval_set
+from recall_guard.core.nvidia_lm import CompletionResult, TokenLogprob
+from recall_guard.harness import runner as runner_mod
+from recall_guard.harness.evaluator import compute_majority_baseline
+from recall_guard.harness.ranker import (
     WARNING_NOT_BETTER_THAN_BASELINE,
 )
 

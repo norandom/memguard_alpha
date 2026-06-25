@@ -9,14 +9,14 @@ standardised) value of every MIA feature. Writes ``cohens_d.csv`` and
 
 Design deviation: the design's ``compute_cohens_d`` signature lists only
 ``(run_dir, cutoffs_path)``, but ``records.jsonl`` carries ``prompt_hash``
-rather than ``metadata.date`` (see ``src.harness.evaluator.Record``). To
+rather than ``metadata.date`` (see ``recall_guard.harness.evaluator.Record``). To
 recover the date we have to join records back to the eval set on
 ``prompt_hash``, so the public signature accepts ``eval_path``
 explicitly. The orchestrator (task 3.2) supplies it.
 
 Sentrux boundaries:
 
-- Reads ``records.jsonl`` shape produced by ``src.harness.report``;
+- Reads ``records.jsonl`` shape produced by ``recall_guard.harness.report``;
   matches the harness's own ``_hash_prompt`` convention (sha256 hex,
   first 16 chars). Reproduced locally to keep the portfolio layer free
   of upward imports.
@@ -77,11 +77,11 @@ _INSUFFICIENT_NOTE: str = "insufficient samples"
 
 
 def _compute_prompt_hash(prompt: str) -> str:
-    """Reproduce ``src.harness.evaluator._hash_prompt`` (sha256 hex, 16 chars).
+    """Reproduce ``recall_guard.harness.evaluator._hash_prompt`` (sha256 hex, 16 chars).
 
     Reproduced locally rather than imported because importing across the
     harness↔portfolio direction would ripple a dependency on
-    ``src.harness`` into the portfolio layer for no functional gain.
+    ``recall_guard.harness`` into the portfolio layer for no functional gain.
     """
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
 
@@ -126,7 +126,7 @@ def _load_summary_auc(summary_path: Path) -> dict[str, float]:
     """Map ``model -> mcs_auc_point`` from ``summary.csv``.
 
     The harness writes per-model holdout AUC into the ``mcs_auc_point``
-    column (see ``src.harness.report.SUMMARY_CSV_COLUMNS``). The artifact
+    column (see ``recall_guard.harness.report.SUMMARY_CSV_COLUMNS``). The artifact
     column is named ``mcs_auc_holdout`` per the design schema.
     """
     auc_by_model: dict[str, float] = {}

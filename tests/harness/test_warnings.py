@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.loader import load_eval_set
+from recall_guard.core.loader import load_eval_set
 
 
 def _write_jsonl(path: Path, lines: list[dict]) -> None:
@@ -46,7 +46,7 @@ def test_load_eval_set_emits_low_n_and_imbalance_warnings(
     rows.extend(_row(-1, i) for i in range(24, 30))  # 6 minority (label=-1)
     _write_jsonl(eval_path, rows)
 
-    with caplog.at_level(logging.WARNING, logger="src.core.loader"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.core.loader"):
         eval_set = load_eval_set(eval_path)
 
     # Req 2.4: full set returned, no split.
@@ -90,7 +90,7 @@ def test_load_eval_set_no_warnings_when_well_formed(
     rows.extend(_row(-1, i) for i in range(50, 100))
     _write_jsonl(eval_path, rows)
 
-    with caplog.at_level(logging.WARNING, logger="src.core.loader"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.core.loader"):
         eval_set = load_eval_set(eval_path)
 
     assert len(eval_set.rows) == 100
@@ -98,7 +98,7 @@ def test_load_eval_set_no_warnings_when_well_formed(
     loader_warnings = [
         r
         for r in caplog.records
-        if r.levelno == logging.WARNING and r.name == "src.core.loader"
+        if r.levelno == logging.WARNING and r.name == "recall_guard.core.loader"
     ]
     assert loader_warnings == [], (
         "expected no loader WARNINGs for a well-formed 100-row balanced file, "

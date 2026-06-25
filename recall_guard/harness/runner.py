@@ -84,7 +84,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from src.core.loader import (
+from recall_guard.core.loader import (
     CutoffViolation,
     EvalRow,
     EvalSet,
@@ -92,34 +92,34 @@ from src.core.loader import (
     load_cutoffs,
     load_eval_set,
 )
-from src.core.manifest import (
+from recall_guard.core.manifest import (
     Manifest,
     compute_file_hash,
     write_manifest,
 )
-from src.core.nvidia_lm import NvidiaLM
-from src.harness.evaluator import (
+from recall_guard.core.nvidia_lm import NvidiaLM
+from recall_guard.harness.evaluator import (
     CIBound,
     ModelEvalResult,
     compute_majority_baseline,
     evaluate_model,
 )
-from src.harness.ranker import (
+from recall_guard.harness.ranker import (
     COMPOSITE_FORMULA,
     GATES,
     composite_score,
     write_top3,
 )
-from src.harness.report import (
+from recall_guard.harness.report import (
     print_artifact_paths,
     render_terminal,
     write_records,
     write_summary_csv,
 )
-from src.harness.smoke import Shortlist, smoke_test
-from src.mia.control import ControlBaseline, build_baseline
-from src.mia.mcs import MCSCalibrator
-from src.mia.mcs import train as mcs_train
+from recall_guard.harness.smoke import Shortlist, smoke_test
+from recall_guard.mia.control import ControlBaseline, build_baseline
+from recall_guard.mia.mcs import MCSCalibrator
+from recall_guard.mia.mcs import train as mcs_train
 
 logger = logging.getLogger(__name__)
 

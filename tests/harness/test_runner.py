@@ -24,12 +24,12 @@ from typing import Any
 
 import pytest
 
-from src.core.manifest import compute_file_hash, read_manifest
-from src.core.nvidia_lm import CompletionResult, TokenLogprob
+from recall_guard.core.manifest import compute_file_hash, read_manifest
+from recall_guard.core.nvidia_lm import CompletionResult, TokenLogprob
 
 # Import target-under-test. The factory contract is documented in the task
 # brief: ``lm_factory(api_key, model, timeout_s) -> NvidiaLM-like``.
-from src.harness import runner as runner_mod  # noqa: E402
+from recall_guard.harness import runner as runner_mod  # noqa: E402
 
 # --- Fixture paths -----------------------------------------------------------
 
@@ -301,7 +301,7 @@ def test_run_skips_uncalibrated_models(
 
     # Patch build_baseline to always report uncalibrated for mockA and
     # calibrated for mockB.
-    from src.mia.control import ControlBaseline
+    from recall_guard.mia.control import ControlBaseline
 
     def fake_build_baseline(model_lm, control_rows, ref_lm, min_valid=50):
         return ControlBaseline(

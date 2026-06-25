@@ -1,4 +1,4 @@
-"""Tests for src.core.loader: JSONL eval-set loader and cutoff guard.
+"""Tests for recall_guard.core.loader: JSONL eval-set loader and cutoff guard.
 
 Covers requirements 2.1, 2.2, 2.3, 2.4, 2.5 from the honest-model-ranking spec.
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.loader import (
+from recall_guard.core.loader import (
     CutoffViolation,
     EvalRow,
     EvalSet,
@@ -78,7 +78,7 @@ def test_load_eval_set_warns_on_small_n(tmp_path: Path, caplog: pytest.LogCaptur
     rows = [_row(d) for d in ([-1] * 10 + [0] * 10 + [1] * 10)]  # 30 balanced rows
     _write_jsonl(eval_path, rows)
 
-    with caplog.at_level(logging.WARNING, logger="src.core.loader"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.core.loader"):
         result = load_eval_set(eval_path)
 
     assert len(result.rows) == 30
@@ -94,7 +94,7 @@ def test_load_eval_set_warns_on_imbalance(tmp_path: Path, caplog: pytest.LogCapt
     rows = [_row(1) for _ in range(24)] + [_row(-1) for _ in range(6)]
     _write_jsonl(eval_path, rows)
 
-    with caplog.at_level(logging.WARNING, logger="src.core.loader"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.core.loader"):
         result = load_eval_set(eval_path)
 
     assert len(result.rows) == 30

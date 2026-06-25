@@ -93,8 +93,8 @@ import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
-from src.core.bootstrap import bootstrap_ci
-from src.portfolio.cmmd import apply_cmmd_filter
+from recall_guard.core.bootstrap import bootstrap_ci
+from recall_guard.portfolio.cmmd import apply_cmmd_filter
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-"""Tests for `src.mia.mcs` — per-model MCS logistic-regression calibrator.
+"""Tests for `recall_guard.mia.mcs` — per-model MCS logistic-regression calibrator.
 
 Validates Requirements 5.1, 5.2, 5.3, 5.4 and design.md → "Components and
 Interfaces → mia → mia.mcs".
@@ -25,11 +25,11 @@ import numpy as np
 import pytest
 from sklearn.linear_model import LogisticRegression
 
-from src.core.loader import EvalRow
-from src.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
-from src.mia.control import ControlBaseline
-from src.mia.features import MiaFeatures
-from src.mia.mcs import MCSCalibrator, train
+from recall_guard.core.loader import EvalRow
+from recall_guard.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
+from recall_guard.mia.control import ControlBaseline
+from recall_guard.mia.features import MiaFeatures
+from recall_guard.mia.mcs import MCSCalibrator, train
 
 # --- helpers -----------------------------------------------------------
 
@@ -277,7 +277,7 @@ def test_train_skips_rows_with_lm_failures_and_warns(mocker, caplog) -> None:
     lm = _fake_lm(mocker, is_completions + oos_completions)
     baseline = _baseline_no_ref()
 
-    with caplog.at_level(logging.WARNING, logger="src.mia.mcs"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.mia.mcs"):
         calib = train(
             model_lm=lm,
             is_memorized=is_rows,

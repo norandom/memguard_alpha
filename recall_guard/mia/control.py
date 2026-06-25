@@ -26,9 +26,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.core.loader import EvalRow
-from src.core.nvidia_lm import NvidiaLM, TokenLogprob, generate_many
-from src.mia.features import MiaFeatures, compute_mia_features
+from recall_guard.core.loader import EvalRow
+from recall_guard.core.nvidia_lm import NvidiaLM, TokenLogprob, generate_many
+from recall_guard.mia.features import MiaFeatures, compute_mia_features
 
 logger = logging.getLogger(__name__)
 

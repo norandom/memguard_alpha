@@ -2,7 +2,7 @@
 
 Exercises the orchestrator end-to-end on a 10-row miniature eval set
 without touching the real NVIDIA / FMP endpoints. The test patches
-``src.harness.runner.run`` to write a deterministic ``records.jsonl`` +
+``recall_guard.harness.runner.run`` to write a deterministic ``records.jsonl`` +
 ``summary.csv`` + base ``manifest.json`` (this is the simplified path
 authorised by the task brief — the full harness pipeline is exercised
 elsewhere). The FMP price fetcher is patched with a ``MagicMock`` that
@@ -205,7 +205,7 @@ def test_orchestrator_smoke_writes_every_artifact(
 
     Patches:
 
-    - ``src.harness.runner.run`` is replaced by a stub that writes a
+    - ``recall_guard.harness.runner.run`` is replaced by a stub that writes a
       deterministic ``records.jsonl``, ``summary.csv`` and base
       ``manifest.json``.
     - ``fmp_fetcher`` is a ``MagicMock`` returning a fixed pandas frame.

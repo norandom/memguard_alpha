@@ -13,7 +13,7 @@ Public surface:
 
 This is the only place in the ``portfolio`` layer that performs HTTP
 I/O; tests mock ``requests.get``. The retry / API-key resolution
-pattern is the same one used by ``src.dataset.fmp_corpora.fetch_articles``,
+pattern is the same one used by ``recall_guard.dataset.fmp_corpora.fetch_articles``,
 duplicated locally because the sentrux ``portfolio ↔ dataset`` boundary
 forbids the import.
 """
@@ -44,7 +44,7 @@ class PriceFetchError(RuntimeError):
 def _resolve_api_key(api_key: str | None) -> str:
     """Resolve an FMP API key from the explicit arg or the environment.
 
-    Same logic as ``src.dataset.fmp_corpora._resolve_api_key``,
+    Same logic as ``recall_guard.dataset.fmp_corpora._resolve_api_key``,
     duplicated because the sentrux ``portfolio ↔ dataset`` boundary
     forbids the import.
     """

@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-from src.core.nvidia_lm import TokenLogprob
+from recall_guard.core.nvidia_lm import TokenLogprob
 
 LOGPROB_FLOOR: float = -30.0
 """Lower bound for individual logprob values, applied before averaging.

@@ -23,9 +23,9 @@ from typing import Any
 
 import pytest
 
-from src.core.nvidia_lm import CompletionResult, TokenLogprob
-from src.harness import runner as runner_mod
-from src.harness.smoke import Shortlist, SmokeOutcome
+from recall_guard.core.nvidia_lm import CompletionResult, TokenLogprob
+from recall_guard.harness import runner as runner_mod
+from recall_guard.harness.smoke import Shortlist, SmokeOutcome
 
 # --- Fixture paths used as templates for the in-memory eval set --------------
 

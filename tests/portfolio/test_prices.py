@@ -1,9 +1,9 @@
-"""Tests for src.portfolio.prices: FMP EOD price fetch for the universe.
+"""Tests for recall_guard.portfolio.prices: FMP EOD price fetch for the universe.
 
 Covers requirements 5.1, 5.7, 7.2, 9.2 of cmmd-backtest, task 2.1.
 
 All HTTP traffic is mocked via ``pytest-mock`` patching
-``src.portfolio.prices.requests.get``; no test in this module should make
+``recall_guard.portfolio.prices.requests.get``; no test in this module should make
 a real outbound call.
 """
 
@@ -15,7 +15,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from src.portfolio.prices import PriceFetchError, fetch_universe_prices
+from recall_guard.portfolio.prices import PriceFetchError, fetch_universe_prices
 
 # ---------- helpers ----------------------------------------------------------
 
@@ -46,7 +46,7 @@ def _eod_payload(days: list[date], start_price: float = 100.0) -> list[dict[str,
 def _mock_get_factory(mocker, ticker_to_payload: dict[str, list[dict[str, Any]]]):
     """Patch the module-level ``requests.get`` so each ticker URL gets its payload.
 
-    We patch ``src.portfolio.prices.requests.get`` (NOT the global
+    We patch ``recall_guard.portfolio.prices.requests.get`` (NOT the global
     ``requests`` package) so the mock applies inside the module under
     test. The mock parses the `?symbol=` query argument out of the URL
     and returns the matching payload as a 200 response.
@@ -72,7 +72,7 @@ def _mock_get_factory(mocker, ticker_to_payload: dict[str, list[dict[str, Any]]]
             return _FakeResponse([], status_code=404)
         return _FakeResponse(ticker_to_payload[symbol], status_code=200)
 
-    return mocker.patch("src.portfolio.prices.requests.get", side_effect=_fake_get)
+    return mocker.patch("recall_guard.portfolio.prices.requests.get", side_effect=_fake_get)
 
 
 # ---------- happy-path -------------------------------------------------------
@@ -174,7 +174,7 @@ def test_api_key_missing_raises(monkeypatch, mocker):
     """No api_key argument and no FMP_API_KEY in env → RuntimeError."""
     monkeypatch.delenv("FMP_API_KEY", raising=False)
     # Mock so we'd notice if it ever called out. It must not.
-    mocked = mocker.patch("src.portfolio.prices.requests.get")
+    mocked = mocker.patch("recall_guard.portfolio.prices.requests.get")
 
     with pytest.raises(RuntimeError) as excinfo:
         fetch_universe_prices(
@@ -203,7 +203,7 @@ def test_non_200_raises(mocker):
         # Force a 503 on the first call (any ticker).
         return _FakeResponse(503)
 
-    mocker.patch("src.portfolio.prices.requests.get", side_effect=_fake_get)
+    mocker.patch("recall_guard.portfolio.prices.requests.get", side_effect=_fake_get)
 
     with pytest.raises(PriceFetchError) as excinfo:
         fetch_universe_prices(

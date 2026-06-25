@@ -1,4 +1,4 @@
-"""Tests for src.core.bootstrap: bootstrap CI helper.
+"""Tests for recall_guard.core.bootstrap: bootstrap CI helper.
 
 Covers requirements 6.1, 6.3, 6.5 from the honest-model-ranking spec:
 - Bootstrap 95% CIs on accuracy and AUC (>= 1000 resamples).
@@ -13,7 +13,7 @@ import math
 
 import pytest
 
-from src.core.bootstrap import bootstrap_ci
+from recall_guard.core.bootstrap import bootstrap_ci
 
 
 def test_bootstrap_ci_determinism() -> None:
@@ -89,7 +89,7 @@ def test_bootstrap_ci_drops_failing_resamples(
         # Synthetic AUC-like score: fraction of 1s.
         return sum(s) / len(s)
 
-    with caplog.at_level(logging.WARNING, logger="src.core.bootstrap"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.core.bootstrap"):
         point, lo, hi = bootstrap_ci(
             samples,
             picky_statistic,

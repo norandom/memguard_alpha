@@ -8,7 +8,7 @@ fetched via the Financial Modeling Prep (FMP) news endpoints, plus an
 the OOS corpus only.
 
 The module exposes three public symbols (re-exported from
-``src.dataset.__init__``):
+``recall_guard.dataset.__init__``):
 
 - ``ArticleRecord`` -- frozen dataclass describing one calibration row.
 - ``build_calibration`` -- one-shot builder driven by the cutoff registry.
@@ -18,11 +18,11 @@ It also exposes a small ``fetch_articles`` helper for direct FMP pagination
 which the build/update routines compose internally and which is the only
 location that performs HTTP I/O (``requests.get``). Tests mock that call.
 
-CLI surface (``python -m src.dataset.fmp_corpora --help``):
+CLI surface (``python -m recall_guard.dataset.fmp_corpora --help``):
 
-    python -m src.dataset.fmp_corpora build [--cutoffs PATH] [--out DIR]
+    python -m recall_guard.dataset.fmp_corpora build [--cutoffs PATH] [--out DIR]
                                             [--target N] [--include-stock-news]
-    python -m src.dataset.fmp_corpora update [--out DIR] [--since YYYY-MM-DD]
+    python -m recall_guard.dataset.fmp_corpora update [--out DIR] [--since YYYY-MM-DD]
 
 Both subcommands read ``FMP_API_KEY`` from the environment (with
 ``python-dotenv`` loading ``.env`` when present).
@@ -801,7 +801,7 @@ def update_oos(
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m src.dataset.fmp_corpora",
+        prog="python -m recall_guard.dataset.fmp_corpora",
         description=(
             "FMP-backed calibration corpus builder for the honest-model-ranking "
             "harness. Produces is_memorized.jsonl + oos_control.jsonl from "
@@ -881,7 +881,7 @@ def _load_dotenv_quiet() -> None:
 
 
 def _cli_build(args: argparse.Namespace) -> int:
-    from src.core.loader import load_cutoffs
+    from recall_guard.core.loader import load_cutoffs
 
     endpoints: tuple[str, ...] = DEFAULT_ENDPOINTS
     if args.include_stock_news:

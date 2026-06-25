@@ -1,4 +1,4 @@
-"""Tests for src.core.manifest: run-manifest write/read + file hashing.
+"""Tests for recall_guard.core.manifest: run-manifest write/read + file hashing.
 
 Covers requirements 6.5, 8.4, 10.1, 10.2 from the honest-model-ranking spec:
 - Manifest persists seed, hashes of inputs, shortlist, composite score formula
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.manifest import (
+from recall_guard.core.manifest import (
     Manifest,
     compute_file_hash,
     read_manifest,

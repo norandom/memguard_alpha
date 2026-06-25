@@ -19,17 +19,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.core.loader import EvalRow, EvalSet
-from src.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
-from src.harness.evaluator import (
+from recall_guard.core.loader import EvalRow, EvalSet
+from recall_guard.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
+from recall_guard.harness.evaluator import (
     CIBound,
     ModelEvalResult,
     Record,
     compute_majority_baseline,
     evaluate_model,
 )
-from src.mia.control import ControlBaseline
-from src.mia.mcs import MCSCalibrator
+from recall_guard.mia.control import ControlBaseline
+from recall_guard.mia.mcs import MCSCalibrator
 
 # --- Test fixtures ------------------------------------------------------------
 
@@ -177,7 +177,7 @@ def test_record_and_modelevalresult_are_frozen_dataclasses() -> None:
 
 def test_parser_accepts_markdown_bold() -> None:
     """**Direction:** 1 / **Confidence:** 0.7 — phi/llama instinct."""
-    from src.harness.evaluator import _parse_confidence, _parse_direction
+    from recall_guard.harness.evaluator import _parse_confidence, _parse_direction
 
     content = "Final answer:\n**Direction:** 1\n**Confidence:** 0.7"
     assert _parse_direction(content) == 1
@@ -185,7 +185,7 @@ def test_parser_accepts_markdown_bold() -> None:
 
 
 def test_parser_accepts_signed_int_and_float() -> None:
-    from src.harness.evaluator import _parse_confidence, _parse_direction
+    from recall_guard.harness.evaluator import _parse_confidence, _parse_direction
 
     assert _parse_direction("Direction: +1\nConfidence: 0.5") == 1
     assert _parse_direction("Direction: -1.0\nConfidence: 0.5") == -1
@@ -193,7 +193,7 @@ def test_parser_accepts_signed_int_and_float() -> None:
 
 
 def test_parser_accepts_annotated_lines() -> None:
-    from src.harness.evaluator import _parse_confidence, _parse_direction
+    from recall_guard.harness.evaluator import _parse_confidence, _parse_direction
 
     content = "Direction: 1 (positive close)\nConfidence: 0.65 (moderate)"
     assert _parse_direction(content) == 1
@@ -201,7 +201,7 @@ def test_parser_accepts_annotated_lines() -> None:
 
 
 def test_parser_falls_back_to_json_block() -> None:
-    from src.harness.evaluator import _parse_confidence, _parse_direction
+    from recall_guard.harness.evaluator import _parse_confidence, _parse_direction
 
     content = 'After analysis: {"direction": -1, "confidence": 0.42, "rationale": "..."}'
     assert _parse_direction(content) == -1
@@ -210,7 +210,7 @@ def test_parser_falls_back_to_json_block() -> None:
 
 def test_parser_falls_back_to_word_coercion_on_direction() -> None:
     """When the model never emits 'Direction:' but states the answer in prose."""
-    from src.harness.evaluator import _parse_direction
+    from recall_guard.harness.evaluator import _parse_direction
 
     assert _parse_direction("After review I believe SPY closed higher today.") == 1
     assert _parse_direction("My conclusion: the ETF closed lower vs the prior session.") == -1
@@ -218,14 +218,14 @@ def test_parser_falls_back_to_word_coercion_on_direction() -> None:
 
 
 def test_parser_falls_back_to_percent_for_confidence() -> None:
-    from src.harness.evaluator import _parse_confidence
+    from recall_guard.harness.evaluator import _parse_confidence
 
     assert _parse_confidence("Direction: 1\nConfidence: 65%") == pytest.approx(0.65)
 
 
 def test_parser_takes_last_match_when_model_restates() -> None:
     """Reasoning models often restate 'Direction' inside their chain."""
-    from src.harness.evaluator import _parse_direction
+    from recall_guard.harness.evaluator import _parse_direction
 
     content = (
         "Initially I thought Direction: -1 but on review the Direction: 1 is correct."
@@ -235,7 +235,7 @@ def test_parser_takes_last_match_when_model_restates() -> None:
 
 def test_parser_rejects_genuine_prose() -> None:
     """'the direction is X' (without colon/asterisk) must not match."""
-    from src.harness.evaluator import _parse_direction
+    from recall_guard.harness.evaluator import _parse_direction
 
     # No structured marker, no directional keyword tail → should remain None.
     assert _parse_direction("The number 7 appears in this sentence.") is None

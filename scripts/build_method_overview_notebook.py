@@ -73,7 +73,7 @@ NB.cells = [
         "import matplotlib.patches as mpatches\n"
         "import numpy as np\n"
         "\n"
-        "from src.harness import configure_paper_style\n"
+        "from recall_guard.harness import configure_paper_style\n"
         "configure_paper_style()\n"
         "\n"
         "FIGURES_DIR = ROOT / 'notebooks' / 'figures'\n"

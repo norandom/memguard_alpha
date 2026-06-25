@@ -1,4 +1,4 @@
-"""Tests for `src.mia.control` — per-model control-corpus baseline.
+"""Tests for `recall_guard.mia.control` — per-model control-corpus baseline.
 
 Validates Requirements 3.1, 3.2, 3.3, 3.4 and design.md → "Components and
 Interfaces → mia → mia.control".
@@ -22,15 +22,15 @@ import math
 import numpy as np
 import pytest
 
-from src.core.loader import EvalRow
-from src.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
-from src.mia.control import (
+from recall_guard.core.loader import EvalRow
+from recall_guard.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
+from recall_guard.mia.control import (
     _STD_FLOOR,
     ControlBaseline,
     build_baseline,
     standardise,
 )
-from src.mia.features import MiaFeatures, compute_mia_features
+from recall_guard.mia.features import MiaFeatures, compute_mia_features
 
 # --- helpers -----------------------------------------------------------
 
@@ -142,7 +142,7 @@ def test_build_baseline_skips_rows_with_runtime_error_and_warns(
     rows = [_row(f"p-{i}") for i in range(10)]
     lm = _fake_lm(mocker, completions)
 
-    with caplog.at_level(logging.WARNING, logger="src.mia.control"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.mia.control"):
         baseline = build_baseline(lm, rows, ref_lm=None, min_valid=5)
 
     assert baseline.n_valid == 9
@@ -158,7 +158,7 @@ def test_build_baseline_skips_rows_with_timeout_and_warns(mocker, caplog) -> Non
     rows = [_row(f"p-{i}") for i in range(10)]
     lm = _fake_lm(mocker, completions)
 
-    with caplog.at_level(logging.WARNING, logger="src.mia.control"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.mia.control"):
         baseline = build_baseline(lm, rows, ref_lm=None, min_valid=5)
 
     assert baseline.n_valid == 9

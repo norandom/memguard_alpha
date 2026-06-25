@@ -4,7 +4,7 @@ Single mode: build. Run a full evaluation pipeline (load → smoke shortlist →
 control baselines → MCS train → evaluate → rank → top-3) and write artifacts
 to the chosen --out-dir.
 
-Parsing and orchestration live in :mod:`src.harness.runner`; this script just
+Parsing and orchestration live in :mod:`recall_guard.harness.runner`; this script just
 forwards argv.
 """
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import sys
 
-from src.harness.runner import parse_argv, run
+from recall_guard.harness.runner import parse_argv, run
 
 
 def main(argv: list[str] | None = None) -> int:

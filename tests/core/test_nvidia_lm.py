@@ -3,7 +3,7 @@ import dataclasses
 import pytest
 import requests
 
-from src.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
+from recall_guard.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
 
 
 def _build_mock_response(mocker, content="Bullish", with_logprobs=True):

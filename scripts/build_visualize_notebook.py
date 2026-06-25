@@ -2,7 +2,7 @@
 
 The notebook is a stripped-down companion to qualification.ipynb: it loads a
 finished run directory's artifacts (records.jsonl, summary.csv, top3.md) and
-renders the paper-ready figures via src.harness.plots. No equations, no LaTeX
+renders the paper-ready figures via recall_guard.harness.plots. No equations, no LaTeX
 cells — just visualisation of a real run for paper inclusion.
 """
 from __future__ import annotations
@@ -55,7 +55,7 @@ NB.cells = [
         "Single-column width, colorblind-safe palette, B&W-distinguishable markers."
     ),
     code(
-        "from src.harness import configure_paper_style\n"
+        "from recall_guard.harness import configure_paper_style\n"
         "configure_paper_style()"
     ),
     md(
@@ -66,8 +66,8 @@ NB.cells = [
         "`CompositeScore` instances from the run files."
     ),
     code(
-        "from src.harness import Record, CIBound, ModelEvalResult, CompositeScore\n"
-        "from src.mia import MiaFeatures\n"
+        "from recall_guard.harness import Record, CIBound, ModelEvalResult, CompositeScore\n"
+        "from recall_guard.mia import MiaFeatures\n"
         "\n"
         "def _load_records(path: Path) -> dict[str, list[Record]]:\n"
         "    by_model: dict[str, list[Record]] = {}\n"
@@ -146,21 +146,21 @@ NB.cells = [
     ),
     md("## 5. Figure: Accuracy with bootstrap 95% CI vs majority baseline"),
     code(
-        "from src.harness import plot_accuracy_with_ci\n"
+        "from recall_guard.harness import plot_accuracy_with_ci\n"
         "fig = plot_accuracy_with_ci(results, majority)\n"
         "fig.savefig(FIGURES_DIR / 'accuracy_ci.pdf')\n"
         "fig"
     ),
     md("## 6. Figure: MCS-AUC with bootstrap 95% CI"),
     code(
-        "from src.harness import plot_mcs_auc_with_ci\n"
+        "from recall_guard.harness import plot_mcs_auc_with_ci\n"
         "fig = plot_mcs_auc_with_ci(results)\n"
         "fig.savefig(FIGURES_DIR / 'mcs_auc_ci.pdf')\n"
         "fig"
     ),
     md("## 7. Figure: Composite ranking"),
     code(
-        "from src.harness import plot_composite_ranking\n"
+        "from recall_guard.harness import plot_composite_ranking\n"
         "fig = plot_composite_ranking(scores)\n"
         "fig.savefig(FIGURES_DIR / 'composite_ranking.pdf')\n"
         "fig"

@@ -11,8 +11,8 @@ import dataclasses
 
 import pytest
 
-from src.core.nvidia_lm import CompletionResult
-from src.harness.smoke import Shortlist, SmokeOutcome, smoke_test
+from recall_guard.core.nvidia_lm import CompletionResult
+from recall_guard.harness.smoke import Shortlist, SmokeOutcome, smoke_test
 
 SMOKE_PROMPTS: list[str] = [
     "prompt-1",

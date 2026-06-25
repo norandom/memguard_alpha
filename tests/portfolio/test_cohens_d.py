@@ -1,4 +1,4 @@
-"""Tests for src.portfolio.cohens_d: per-(model, MIA-feature) Cohen's d.
+"""Tests for recall_guard.portfolio.cohens_d: per-(model, MIA-feature) Cohen's d.
 
 Covers requirements 1.1, 1.2, 1.3, 1.4, 1.5, 9.1 of cmmd-backtest, task 2.2.
 
@@ -8,7 +8,7 @@ matching ``records.jsonl`` keyed by ``prompt_hash``, a ``summary.csv``
 with the harness's standard column schema, and a ``cutoffs.yaml``.
 
 No real harness run is required. The tests deliberately reproduce the
-hashing convention from ``src.harness.evaluator._hash_prompt`` (sha256
+hashing convention from ``recall_guard.harness.evaluator._hash_prompt`` (sha256
 hex, first 16 chars) so the records' ``prompt_hash`` join lines up with
 the eval set's ``compute_prompt_hash``.
 """
@@ -36,7 +36,7 @@ _FEATURE_NAMES = ("loss", "min_k", "min_k_pp", "zlib_ratio", "ref_delta")
 
 
 def _hash_prompt(prompt: str) -> str:
-    """Match ``src.harness.evaluator._hash_prompt`` byte-for-byte."""
+    """Match ``recall_guard.harness.evaluator._hash_prompt`` byte-for-byte."""
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
 
 
@@ -59,7 +59,7 @@ def _write_records_jsonl(path: Path, records: list[dict]) -> None:
 def _write_summary_csv(path: Path, rows: list[dict]) -> None:
     """Write a summary.csv with the actual harness column schema.
 
-    The columns mirror ``src.harness.report.SUMMARY_CSV_COLUMNS``; only
+    The columns mirror ``recall_guard.harness.report.SUMMARY_CSV_COLUMNS``; only
     ``model`` and ``mcs_auc_point`` are load-bearing for Cohen's d, but
     we keep the full schema for fidelity with what the harness writes.
     """
@@ -280,7 +280,7 @@ def test_known_d_two_class_distribution(tmp_path: Path) -> None:
         oos_loss_values=oos_vals,
     )
 
-    from src.portfolio.cohens_d import compute_cohens_d
+    from recall_guard.portfolio.cohens_d import compute_cohens_d
 
     df = compute_cohens_d(run_dir, eval_path, cutoffs_path)
 
@@ -309,7 +309,7 @@ def test_identical_classes_yield_zero_d(tmp_path: Path) -> None:
         oos_loss_values=same_vals,
     )
 
-    from src.portfolio.cohens_d import compute_cohens_d
+    from recall_guard.portfolio.cohens_d import compute_cohens_d
     df = compute_cohens_d(run_dir, eval_path, cutoffs_path)
 
     loss_row = df[(df["model"] == "openai/gpt-oss-20b") & (df["feature"] == "loss")]
@@ -325,7 +325,7 @@ def test_zero_std_yields_nan_with_note(tmp_path: Path) -> None:
         oos_loss_values=[0.5, 0.5, 0.5, 0.5],
     )
 
-    from src.portfolio.cohens_d import compute_cohens_d
+    from recall_guard.portfolio.cohens_d import compute_cohens_d
     df = compute_cohens_d(run_dir, eval_path, cutoffs_path)
 
     loss_row = df[(df["model"] == "openai/gpt-oss-20b") & (df["feature"] == "loss")]
@@ -348,7 +348,7 @@ def test_missing_model_in_cutoffs_skipped(tmp_path: Path, caplog) -> None:
         other_models=[other],
     )
 
-    from src.portfolio.cohens_d import compute_cohens_d
+    from recall_guard.portfolio.cohens_d import compute_cohens_d
 
     with caplog.at_level("WARNING"):
         df = compute_cohens_d(run_dir, eval_path, cutoffs_path)
@@ -362,7 +362,7 @@ def test_artifact_files_written(tmp_path: Path) -> None:
     """Both cohens_d.csv and cohens_d.md exist with the documented schema."""
     run_dir, eval_path, cutoffs_path = _build_fixture_run(tmp_path)
 
-    from src.portfolio.cohens_d import compute_cohens_d
+    from recall_guard.portfolio.cohens_d import compute_cohens_d
     df = compute_cohens_d(run_dir, eval_path, cutoffs_path)
 
     csv_path = run_dir / "cohens_d.csv"

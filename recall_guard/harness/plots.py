@@ -43,9 +43,9 @@ import numpy as np
 from cycler import cycler
 from matplotlib.figure import Figure
 
-from src.harness.evaluator import CIBound, ModelEvalResult, Record
-from src.harness.ranker import CompositeScore
-from src.mia.mcs import MCSCalibrator
+from recall_guard.harness.evaluator import CIBound, ModelEvalResult, Record
+from recall_guard.harness.ranker import CompositeScore
+from recall_guard.mia.mcs import MCSCalibrator
 
 #: Wong (2011) colorblind-safe palette. Index 0 = IS / surviving model;
 #: index 1 = OOS / contrast; remaining entries cycle through additional

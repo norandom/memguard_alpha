@@ -1,4 +1,4 @@
-"""Tests for `src.mia.features.compute_mia_features`.
+"""Tests for `recall_guard.mia.features.compute_mia_features`.
 
 Validates Requirements 4.1, 4.2, 4.3 and design.md → "Components and
 Interfaces → mia → mia.features".
@@ -16,8 +16,8 @@ import zlib
 import numpy as np
 import pytest
 
-from src.core.nvidia_lm import TokenLogprob
-from src.mia.features import LOGPROB_FLOOR, compute_mia_features
+from recall_guard.core.nvidia_lm import TokenLogprob
+from recall_guard.mia.features import LOGPROB_FLOOR, compute_mia_features
 
 
 def _tlp(logprob: float, top_logprobs: list[float] | None = None) -> TokenLogprob:

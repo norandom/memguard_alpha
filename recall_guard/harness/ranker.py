@@ -44,7 +44,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.harness.evaluator import CIBound, ModelEvalResult
+from recall_guard.harness.evaluator import CIBound, ModelEvalResult
 
 # --- Constants ----------------------------------------------------------------
 

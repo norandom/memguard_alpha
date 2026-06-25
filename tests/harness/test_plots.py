@@ -26,8 +26,8 @@ import pytest
 from matplotlib.figure import Figure
 from sklearn.linear_model import LogisticRegression
 
-from src.harness.evaluator import CIBound, ModelEvalResult, Record
-from src.harness.plots import (
+from recall_guard.harness.evaluator import CIBound, ModelEvalResult, Record
+from recall_guard.harness.plots import (
     PAPER_PALETTE,
     configure_paper_style,
     plot_accuracy_with_ci,
@@ -36,9 +36,9 @@ from src.harness.plots import (
     plot_mcs_calibration,
     plot_mia_feature_distributions,
 )
-from src.harness.ranker import CompositeScore
-from src.mia.features import MiaFeatures
-from src.mia.mcs import MCSCalibrator
+from recall_guard.harness.ranker import CompositeScore
+from recall_guard.mia.features import MiaFeatures
+from recall_guard.mia.mcs import MCSCalibrator
 
 # --- Synthetic fixtures -------------------------------------------------------
 

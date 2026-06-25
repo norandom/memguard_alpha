@@ -43,12 +43,12 @@ from dataclasses import dataclass
 
 from sklearn.metrics import roc_auc_score
 
-from src.core.bootstrap import bootstrap_ci
-from src.core.loader import EvalRow, EvalSet
-from src.core.nvidia_lm import NvidiaLM, generate_many
-from src.mia.control import ControlBaseline, standardise
-from src.mia.features import MiaFeatures, compute_mia_features
-from src.mia.mcs import MCSCalibrator
+from recall_guard.core.bootstrap import bootstrap_ci
+from recall_guard.core.loader import EvalRow, EvalSet
+from recall_guard.core.nvidia_lm import NvidiaLM, generate_many
+from recall_guard.mia.control import ControlBaseline, standardise
+from recall_guard.mia.features import MiaFeatures, compute_mia_features
+from recall_guard.mia.mcs import MCSCalibrator
 
 logger = logging.getLogger(__name__)
 

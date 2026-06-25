@@ -42,8 +42,8 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
-from src.harness.evaluator import CIBound, ModelEvalResult, Record
-from src.harness.ranker import CompositeScore
+from recall_guard.harness.evaluator import CIBound, ModelEvalResult, Record
+from recall_guard.harness.ranker import CompositeScore
 
 # --- Constants ----------------------------------------------------------------
 

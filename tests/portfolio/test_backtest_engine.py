@@ -1,4 +1,4 @@
-"""Unit tests for ``src.portfolio.backtest.run_backtest``.
+"""Unit tests for ``recall_guard.portfolio.backtest.run_backtest``.
 
 Covers Requirements 5.1–5.8, 6.3, 6.5, and 9.4 of the cmmd-backtest spec
 on a deterministic 5-trading-day toy universe so every metric is
@@ -27,7 +27,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from src.portfolio.backtest import (
+from recall_guard.portfolio.backtest import (
     BacktestMetrics,
     BacktestResult,
     run_backtest,

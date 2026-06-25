@@ -5,7 +5,7 @@ qualification notebook, future external scripts, and the harness layers
 themselves — can import every primitive from the package root without ever
 touching internal module paths::
 
-    from src.core import (
+    from recall_guard.core import (
         NvidiaLM, CompletionResult, TokenLogprob,
         EvalRow, EvalSet, load_eval_set, load_cutoffs,
         assert_cutoff_safe, CutoffViolation,
@@ -13,13 +13,13 @@ touching internal module paths::
         Manifest, write_manifest, read_manifest, compute_file_hash,
     )
 
-The ``__all__`` list pins the documented names so ``from src.core import *``
+The ``__all__`` list pins the documented names so ``from recall_guard.core import *``
 behaves predictably and so a typo in a re-exported name fails fast at import
 time rather than at the first downstream lookup.
 """
 
-from src.core.bootstrap import bootstrap_ci
-from src.core.loader import (
+from recall_guard.core.bootstrap import bootstrap_ci
+from recall_guard.core.loader import (
     CutoffViolation,
     EvalRow,
     EvalSet,
@@ -27,13 +27,13 @@ from src.core.loader import (
     load_cutoffs,
     load_eval_set,
 )
-from src.core.manifest import (
+from recall_guard.core.manifest import (
     Manifest,
     compute_file_hash,
     read_manifest,
     write_manifest,
 )
-from src.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
+from recall_guard.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
 
 __all__ = [
     "NvidiaLM",

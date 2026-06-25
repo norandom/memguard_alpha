@@ -1,4 +1,4 @@
-"""Tests for src.dataset.fmp_corpora: FMP-backed calibration corpus builder.
+"""Tests for recall_guard.dataset.fmp_corpora: FMP-backed calibration corpus builder.
 
 Covers requirement 11.1-11.5 from the honest-model-ranking spec.
 
@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from src.dataset.fmp_corpora import (
+from recall_guard.dataset.fmp_corpora import (
     DEFAULT_ENDPOINTS,
     ArticleRecord,
     build_calibration,
@@ -321,7 +321,7 @@ def test_build_calibration_skips_missing_body_with_warning(
     ]
     _mock_response(mocker, [articles])
 
-    with caplog.at_level(logging.WARNING, logger="src.dataset.fmp_corpora"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.dataset.fmp_corpora"):
         is_path, _ = build_calibration(
             out_dir=tmp_path,
             cutoffs=cutoffs,
@@ -348,7 +348,7 @@ def test_build_calibration_skips_unparseable_date_with_warning(
     ]
     _mock_response(mocker, [articles])
 
-    with caplog.at_level(logging.WARNING, logger="src.dataset.fmp_corpora"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.dataset.fmp_corpora"):
         is_path, _ = build_calibration(
             out_dir=tmp_path,
             cutoffs=cutoffs,
@@ -741,7 +741,7 @@ def test_build_calibration_continues_after_empty_bucket(
         )
     _mock_response(mocker, [articles])
 
-    with caplog.at_level(logging.WARNING, logger="src.dataset.fmp_corpora"):
+    with caplog.at_level(logging.WARNING, logger="recall_guard.dataset.fmp_corpora"):
         is_path, _ = build_calibration(
             out_dir=tmp_path,
             cutoffs=cutoffs,
@@ -889,8 +889,8 @@ def test_build_calibration_default_is_strata_is_five(tmp_path: Path, mocker) -> 
 
 
 def test_cli_build_exposes_is_strata_flag() -> None:
-    """`python -m src.dataset.fmp_corpora build --help` lists --is-strata."""
-    from src.dataset.fmp_corpora import _build_arg_parser
+    """`python -m recall_guard.dataset.fmp_corpora build --help` lists --is-strata."""
+    from recall_guard.dataset.fmp_corpora import _build_arg_parser
 
     parser = _build_arg_parser()
     parser.format_help()  # smoke-render the help text

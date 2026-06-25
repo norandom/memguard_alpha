@@ -7,6 +7,12 @@ Two CLIs that grade language models on a financial-prediction task without givin
 
 The recall-guard check is the per-model leaderboard. The backtest takes the leaderboard's signal model and asks the harder question: does dropping the rows that look memorised actually improve trading Sharpe? Both run from the same harness path, so the numbers stay anchored to the same prompt stream.
 
+## What this measures (and why coin-flip accuracy is the point)
+
+Recall Guard is not a forecaster and is not trying to be. On a "did this ETF close up or down" task, near-coin-flip directional accuracy is the **expected, correct** result: without financial modelling, an LLM's predictive quality on raw price direction cannot beat chance, and a tool that reported otherwise would be measuring leaked lookahead rather than skill. What the harness actually measures is honesty — whether a model's apparent edge comes from reasoning it can defend out-of-sample or from text it memorised before its training cutoff. The MIA features and the per-model MCS `p_memorized` turn that distinction into a number.
+
+That number is the product. It is meant to be consumed downstream as a contamination / lookahead score on AI-derived signals — see [Use as a package](#use-as-a-package).
+
 ## Setup
 
 You need Python 3.14, [uv](https://github.com/astral-sh/uv), an NVIDIA chat-completions API key, and an FMP API key.
@@ -145,13 +151,21 @@ Relative Sharpe improvement `(cmmd − raw_alpha) / raw_alpha`: **−12.87%** �
 
 Equity curves for both variants plus the passive `buy_and_hold_swda` benchmark are saved to `runs/cmmd_20260429T070616Z/equity_curves.png`. Re-run `scripts/run_cmmd_backtest.py` to regenerate.
 
+This non-result is the expected outcome, not a failure of the method: a directional ETF signal with no financial modelling behind it has no honest alpha to harvest, so filtering memorised rows cannot manufacture one. The method is working — it is declining to invent skill that is not there.
+
+## Use as a package
+
+The longer-term goal is to consume Recall Guard as a library, not only as two CLIs. [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors) builds AI macro/risk factors; its Track A is a DSPy agent that emits Black-Litterman views from anonymised, z-scored macro state and deliberately never sees a date, a year, or a real ticker. That is recall-avoidance enforced by construction. Recall Guard supplies the missing half: a *measured* `p_memorized` per prompt, derived from per-token logprobs that DSPy hides, so contamination becomes an observable instead of an assumption. The inference is honest by the same mechanism the leaderboard uses; the factor pipeline downstream decides what to do with the score.
+
+Packaging this cleanly — installable as `recall_guard`, importable on Python 3.12, behind a small stable façade over the `NvidiaLM` + control-baseline + MCS stack — is specced under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/). Until that lands, import from the `src.*` layout in an editable checkout.
+
 ## Caveats
 
 The MCS classifier is only as good as the calibration corpora. The shipped IS corpus has 40 rows from 2020 and 2023 (FMP's older archive is thin); OOS has 100. If a model's MCS-AUC falls below 0.6 the harness flags it `weak-calibration` and drops it from the top-3 list. Check `summary.csv` after each run.
 
 NVIDIA's free-tier 70B endpoints are queue-heavy. Use `--min-call-interval 1.5` or higher for stability. The 8B–20B size range is a better starting point.
 
-The eval set you ship to the harness defines what "skill" means. The bundled ETF builder asks "did this ETF close higher or lower than the previous trading day," which is close to a coin flip even for an oracle. Better eval sets ask things the model can actually reason about (read this earnings report, predict the reaction).
+The eval set you ship to the harness defines what "skill" means. The bundled ETF builder asks "did this ETF close higher or lower than the previous trading day," which is close to a coin flip even for an oracle — and on this task that is the correct answer, not a defect (see [What this measures](#what-this-measures-and-why-coin-flip-accuracy-is-the-point)). The harness is measuring memorisation honesty on that stream, not trying to win it. If you want to study reasoning skill instead, ship an eval set that asks something a model can actually reason about (read this earnings report, predict the reaction); the memorisation machinery is identical either way.
 
 The CMMD backtest uses gpt-oss-20b only. Other models are evaluated by the recall-guard check but do not feed the backtest; the design keeps the comparison "raw vs cmmd on the same signal stream" rather than "model A vs model B".
 
@@ -161,3 +175,4 @@ The CMMD backtest uses gpt-oss-20b only. Other models are evaluated by the recal
 - [`papers/2603.26797v1.md`](./papers/2603.26797v1.md) — the MemGuard-Alpha paper.
 - [`.kiro/specs/honest-model-ranking/`](./.kiro/specs/honest-model-ranking/) — recall-guard spec.
 - [`.kiro/specs/cmmd-backtest/`](./.kiro/specs/cmmd-backtest/) — backtest spec.
+- [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/) — packaging spec (use as a library for AI macro-factor analysis).

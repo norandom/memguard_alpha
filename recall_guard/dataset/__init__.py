@@ -3,7 +3,7 @@
 Public API per design: ``ArticleRecord``, ``build_calibration``, ``update_oos``.
 
 The re-exports use a lazy ``__getattr__`` shim so that ``python -m
-src.dataset.fmp_corpora`` does not warn about double-import on package
+recall_guard.dataset.fmp_corpora`` does not warn about double-import on package
 initialisation.
 """
 
@@ -16,7 +16,7 @@ __all__ = ["ArticleRecord", "build_calibration", "update_oos"]
 
 def __getattr__(name: str) -> Any:
     if name in __all__:
-        from src.dataset import fmp_corpora
+        from recall_guard.dataset import fmp_corpora
 
         return getattr(fmp_corpora, name)
-    raise AttributeError(f"module 'src.dataset' has no attribute {name!r}")
+    raise AttributeError(f"module 'recall_guard.dataset' has no attribute {name!r}")
