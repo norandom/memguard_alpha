@@ -3,13 +3,13 @@
 Implements the ``mia.mcs`` component from the honest-model-ranking design.
 Satisfies Requirements 5.1, 5.2, 5.3, 5.4:
 
-- ``MCSCalibrator`` — frozen dataclass holding the trained
+- ``MCSCalibrator``: frozen dataclass holding the trained
   ``LogisticRegression`` estimator, the canonical ``feature_order`` used
   during training (so ``predict_proba`` cannot accidentally feed the
   classifier a permuted vector), the held-out AUC, and an ``is_weak``
   flag set when ``holdout_auc < min_auc``.
 - ``train(model_lm, is_memorized, oos_control, baseline, ref_lm,
-  min_auc=0.6, seed=0)`` — runs the model (and optional reference) on
+  min_auc=0.6, seed=0)``: runs the model (and optional reference) on
   every row, computes MIA features, standardises them against the
   per-model control baseline, splits a held-out portion via
   ``sklearn.model_selection.train_test_split`` (``test_size=0.25``,
@@ -17,7 +17,7 @@ Satisfies Requirements 5.1, 5.2, 5.3, 5.4:
   ``LogisticRegression(class_weight="balanced", solver="liblinear",
   random_state=seed)`` on the training half, scores
   ``roc_auc_score`` on the holdout half.
-- ``MCSCalibrator.predict_proba(features, baseline) -> float`` —
+- ``MCSCalibrator.predict_proba(features, baseline) -> float``,
   pure: standardises ``features`` against ``baseline``, builds the
   classifier input vector in ``feature_order``, and returns the
   ``predict_proba(...)[:, 1]`` value.
@@ -26,7 +26,7 @@ Per-row LM failures (``TimeoutError``, ``RuntimeError``,
 ``ValueError``) are skipped with a single WARNING per skip; every
 other code path is pure. The MemGuard penalty rule consumed downstream
 is ``penalized_confidence = raw_confidence * (1 - p_memorized)``
-(Req 5.4 — continuous, not threshold-based).
+(Req 5.4: continuous, not threshold-based).
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ class MCSCalibrator:
     classifier:
         The fitted ``sklearn.linear_model.LogisticRegression`` instance.
         sklearn estimators are mutable; ``frozen=True`` only prevents
-        reassignment of the field reference — that is the design intent.
+        reassignment of the field reference, which is the design intent.
     feature_order:
         Canonical order used to flatten the standardised feature dict
         into the classifier's input vector. Populated at train time and
@@ -127,7 +127,7 @@ class MCSCalibrator:
 def _row_vector(standardised: dict[str, float | None], order: list[str]) -> np.ndarray:
     """Flatten a standardised feature dict into a 1-D float64 array.
 
-    Raises ``ValueError`` if any value in ``order`` is ``None`` — that
+    Raises ``ValueError`` if any value in ``order`` is ``None``; that
     means the caller asked for a feature the classifier expects but
     cannot supply (e.g., asking for ``ref_delta`` when ref_logprobs
     were never recorded for this row).
@@ -211,7 +211,7 @@ def _collect_features(
                 ref_logprobs = ref_res.logprobs
         elif needs_ref:
             # The baseline reports a ref_delta calibration but the caller
-            # did not pass a reference LM — that is a configuration error.
+            # did not pass a reference LM; that is a configuration error.
             raise ValueError(
                 "mcs.train: baseline supports ref_delta but ref_lm is None; "
                 "feature_order would be inconsistent between train and predict."
@@ -261,7 +261,7 @@ def _gather_train_xy(
     Returns ``(x, y, n_valid_is, n_valid_oos)`` where ``x`` is shape
     ``(n_valid_is + n_valid_oos, len(feature_order))`` and ``y`` is the
     matching label vector. Raises ``ValueError`` when either class ends
-    up with fewer than 2 valid rows after per-row skips — logistic
+    up with fewer than 2 valid rows after per-row skips, since logistic
     regression cannot train on single-class data.
     """
     is_x, is_y = _collect_features(

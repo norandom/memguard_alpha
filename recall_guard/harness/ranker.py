@@ -6,8 +6,8 @@ Satisfies Requirements 5.3, 6.4, 7.4, 8.1, 8.2, 8.3, 8.4.
 
 Pipeline per ``ModelEvalResult``:
 
-1. Pull the three composite components — MemGuard accuracy lower CI bound,
-   MCS-AUC point estimate, and parse-success rate — into the
+1. Pull the three composite components (MemGuard accuracy lower CI bound,
+   MCS-AUC point estimate, and parse-success rate) into the
    ``CompositeScore.components`` dict (Req 8.1).
 2. Apply the four gating warnings:
 
@@ -20,7 +20,7 @@ Pipeline per ``ModelEvalResult``:
      result (Req 3.4 surfaced via the runner's ``ControlBaseline.is_calibrated``
      check).
 3. Pass through ``temperature-not-honoured`` (Req 10.3) without treating it as
-   a gate — it is purely informational (design.md "harness.ranker" — gates
+   a gate; it is purely informational (the design.md "harness.ranker" gates
    table makes it explicit that only the four listed warnings block).
 4. Multiplicative gate: any blocking warning sets
    ``survives_gates=False`` and ``score=0.0`` (Req 8.1, design Invariants).
@@ -30,7 +30,7 @@ Pipeline per ``ModelEvalResult``:
 ``write_top3`` (Req 8.2, 8.3, 8.4):
 
 * Sorts by ``score`` descending, stable on ties (input order preserved).
-* Top section lists at most three *surviving* models — gate-failed scores
+* Top section lists at most three *surviving* models; gate-failed scores
   never appear in the top-3 ledger because they would be misleading even
   with a zero score.
 * Whenever fewer than three models survive, a ``Why fewer than three models``
@@ -67,7 +67,7 @@ WARNING_UNCALIBRATED = "uncalibrated"
 WARNING_TEMPERATURE_NOT_HONOURED = "temperature-not-honoured"
 
 #: Warnings that block ``survives_gates``. ``temperature-not-honoured`` is
-#: deliberately excluded — it is informational only (see design.md harness.ranker).
+#: deliberately excluded; it is informational only (see design.md harness.ranker).
 _BLOCKING_WARNINGS: frozenset[str] = frozenset(
     {
         WARNING_WEAK_CALIBRATION,
@@ -158,7 +158,7 @@ def composite_score(
     """Convert per-model evaluation results into composite scores.
 
     The ``formula`` argument is persisted alongside the gates in ``top3.md``
-    (Req 8.4) but is not parsed at runtime — the multiplicative formula is the
+    (Req 8.4) but is not parsed at runtime; the multiplicative formula is the
     only one defined in this spec. A future variant would change both the
     component dict keys and the formula string in lockstep.
 
@@ -292,7 +292,7 @@ def write_top3(
 
     # Stable sort: descending by score, ties broken by input order.
     # ``sorted`` in CPython is stable, so reversing the indexed pairs is not
-    # needed — we sort by negated score directly.
+    # needed; we sort by negated score directly.
     indexed: list[tuple[int, CompositeScore]] = list(enumerate(scores))
     indexed.sort(key=lambda pair: -pair[1].score)
     sorted_scores = [s for _, s in indexed]

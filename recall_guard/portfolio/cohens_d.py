@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 #: Five MIA feature names as serialised into ``records.jsonl`` by the
 #: harness's ``_record_to_jsonable``. The artifact's ``feature`` column
-#: uses these literal names — the design-time table referred to
+#: uses these literal names; the design-time table referred to
 #: ``min_k_pct`` but the harness-side dataclass field is ``min_k``.
 _FEATURE_NAMES: tuple[str, ...] = (
     "loss",
@@ -90,7 +90,7 @@ def _load_eval_metadata(eval_path: Path) -> dict[str, dict]:
     """Map ``prompt_hash -> metadata`` for date / ticker lookup.
 
     Skips ``_cutoff_date``-only sentinel rows (some eval-set files prepend
-    one for OOS guards) — same handling as ``scripts/analyze_is_oos_gap``.
+    one for OOS guards), same handling as ``scripts/analyze_is_oos_gap``.
     """
     metadata: dict[str, dict] = {}
     with eval_path.open("r", encoding="utf-8") as fh:
@@ -173,7 +173,7 @@ def _collect_feature_splits(
     Records whose model has no cutoff entry in ``cutoffs`` are skipped
     here with a single warning per missing model. parse-OK rows whose
     ``prompt_hash`` is absent from ``metadata_by_hash`` (or whose
-    metadata lacks ``date``) are dropped silently — they cannot be
+    metadata lacks ``date``) are dropped silently; they cannot be
     labelled IS / OOS without a date.
     """
     buckets: dict[tuple[str, str], dict[str, list[float]]] = {}
@@ -224,7 +224,7 @@ def _collect_feature_splits(
             slot[side].append(value_f)
 
     # Make sure every (model, feature) pair appears even when one side
-    # has zero samples — the artifact must include each of the five
+    # has zero samples; the artifact must include each of the five
     # features per model with a clear "insufficient samples" note rather
     # than dropping the row.
     for model in seen_models:

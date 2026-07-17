@@ -128,7 +128,7 @@ def smoke_test(
     -------
     Shortlist
         `selected` capped at `max_size`, plus one `SmokeOutcome` per
-        candidate. The function performs no I/O — the runner persists
+        candidate. The function performs no I/O; the runner persists
         `outcomes` to `shortlist.json` (Req 1.4).
     """
     factory: LMFactory = lm_factory or _default_lm_factory

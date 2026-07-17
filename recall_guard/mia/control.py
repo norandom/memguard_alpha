@@ -3,18 +3,18 @@
 Implements the `mia.control` component from the honest-model-ranking design.
 Satisfies Requirements 3.1, 3.2, 3.3, 3.4:
 
-- ``ControlBaseline`` — frozen dataclass holding per-feature mean/std plus an
+- ``ControlBaseline``: frozen dataclass holding per-feature mean/std plus an
   ``is_calibrated`` flag derived from ``n_valid >= min_valid``.
-- ``build_baseline(model_lm, control_rows, ref_lm, min_valid=50)`` — calls the
+- ``build_baseline(model_lm, control_rows, ref_lm, min_valid=50)``: calls the
   model on every control row, computes MIA features, drops rows where logprobs
   are missing or the model timed out, and aggregates per-feature mean/std with
   ``numpy.mean`` and ``numpy.std(ddof=0)``. Std is floored at ``_STD_FLOOR``.
-- ``standardise(features, baseline)`` — pure function returning a per-feature
+- ``standardise(features, baseline)``: pure function returning a per-feature
   dict of ``(value - mean) / max(std, _STD_FLOOR)``. Passes through ``None`` for
   ``ref_delta`` when either the baseline or the eval-time features lack it.
 
 Only ``build_baseline`` issues HTTP calls (via the injected ``NvidiaLM``).
-``standardise`` is pure — no I/O. Skipped rows are reported at WARNING level
+``standardise`` is pure and does no I/O. Skipped rows are reported at WARNING level
 (one per skip with the row index); happy paths log nothing.
 """
 
@@ -102,7 +102,7 @@ def build_baseline(
       ``RuntimeError`` (e.g., missing logprobs) the row is dropped and a
       WARNING is logged with the row index.
     - When ``ref_lm`` is provided, also call ``ref_lm.generate(row.prompt)``.
-      A reference-side failure does **not** invalidate the row — it merely
+      A reference-side failure does not invalidate the row; it merely
       sets ``ref_logprobs = None`` for that row, so the four other features
       still contribute to the baseline.
     - Compute :class:`MiaFeatures` via :func:`compute_mia_features`.
@@ -204,7 +204,7 @@ def standardise(
     ``min_k_pp``, ``zlib_ratio`` returns ``(value - mean) / max(std, _STD_FLOOR)``.
 
     For ``ref_delta`` returns ``None`` whenever either the baseline or the
-    eval-time features have no reference value to standardise — i.e., the
+    eval-time features have no reference value to standardise, i.e., the
     field stays "off" rather than being silently coerced to ``0.0``.
     """
     out: dict[str, float | None] = {}

@@ -4,26 +4,26 @@ Implements the ``harness.plots`` component of the honest-model-ranking
 design (see design.md → Components and Interfaces → harness.plots).
 Satisfies Requirements 12.3, 12.4, 12.5:
 
-- 12.3 — each notebook step displays at least one figure that visualises
+- 12.3: each notebook step displays at least one figure that visualises
   the underlying statistical process: MIA feature distributions, MCS
   calibration, accuracy with bootstrap CIs, MCS-AUC with bootstrap CIs,
   composite ranking.
-- 12.4 — figures are paper-ready: vector PDF output, single-column width
+- 12.4: figures are paper-ready: vector PDF output, single-column width
   (3.5 inches), font sizes legible at native size, colorblind-safe
   palette, marker cycle that survives black-and-white reproduction.
-- 12.5 — every ``plot_*`` function consumes a harness/MIA dataclass
+- 12.5: every ``plot_*`` function consumes a harness/MIA dataclass
   (``Record``, ``ModelEvalResult``, ``CIBound``, ``MCSCalibrator``,
   ``CompositeScore``) and returns a ``matplotlib.figure.Figure`` so the
   notebook can ``fig.savefig(path)`` without writing any plotting
   boilerplate of its own.
 
 Pure presentation layer: no I/O, no logging, no global mutable state
-beyond ``matplotlib.rcParams`` — and the ``rcParams`` write happens only
+beyond ``matplotlib.rcParams``, and the ``rcParams`` write happens only
 inside ``configure_paper_style``, which is opt-in.
 
 Notes
 -----
-``MCSCalibrator`` retains only the held-out AUC scalar — not the
+``MCSCalibrator`` retains only the held-out AUC scalar, not the
 per-prompt held-out predictions / labels. A faithful reliability /
 calibration curve is therefore not constructible from the dataclass
 alone, so :func:`plot_mcs_calibration` renders the held-out AUC as a
@@ -73,7 +73,7 @@ PAPER_MARKERS: list[str] = ["o", "s", "^", "D", "v"]
 _MCS_AUC_GATE: float = 0.6
 _MCS_AUC_RANDOM: float = 0.5
 
-#: Color for failed-gate bars in the composite-ranking chart (Req 12.4 —
+#: Color for failed-gate bars in the composite-ranking chart (Req 12.4;
 #: must reproduce as grey under black-and-white printing).
 _FAILED_GATE_COLOR: str = "#999999"
 
@@ -91,7 +91,7 @@ def configure_paper_style() -> None:
 
     Sets:
 
-    * ``figure.figsize = (3.5, 2.5)`` — single column of a two-column
+    * ``figure.figsize = (3.5, 2.5)``: single column of a two-column
       manuscript at native size.
     * ``font.size = 8``; ``axes.titlesize = 9``; ``axes.labelsize = 8``;
       ``xtick.labelsize = 7``; ``ytick.labelsize = 7``;

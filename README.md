@@ -9,9 +9,9 @@ The recall-guard check is the per-model leaderboard. The backtest takes the lead
 
 ## What this measures (and why coin-flip accuracy is the point)
 
-Recall Guard is not a forecaster and is not trying to be. On a "did this ETF close up or down" task, near-coin-flip directional accuracy is the **expected, correct** result: without financial modelling, an LLM's predictive quality on raw price direction cannot beat chance, and a tool that reported otherwise would be measuring leaked lookahead rather than skill. What the harness actually measures is honesty — whether a model's apparent edge comes from reasoning it can defend out-of-sample or from text it memorised before its training cutoff. The MIA features and the per-model MCS `p_memorized` turn that distinction into a number.
+Recall Guard is not a forecaster and is not trying to be. On a "did this ETF close up or down" task, near-coin-flip directional accuracy is the expected, correct result: without financial modelling, an LLM's predictive quality on raw price direction cannot beat chance, and a tool that reported otherwise would be measuring leaked lookahead rather than skill. What the harness actually measures is honesty: whether a model's apparent edge comes from reasoning it can defend out-of-sample or from text it memorised before its training cutoff. The MIA features and the per-model MCS `p_memorized` turn that distinction into a number.
 
-That number is the product. It is meant to be consumed downstream as a contamination / lookahead score on AI-derived signals — see [Use as a package](#use-as-a-package).
+That number is the product. It is meant to be consumed downstream as a contamination / lookahead score on AI-derived signals; see [Use as a package](#use-as-a-package).
 
 ## Setup
 
@@ -107,8 +107,8 @@ The eval-set builder samples trading days from `[today − 10 years, today]`, st
 
 Two reference runs from 2026-04-29 against the same 330-prompt, 10-year SWDA.L / XLK / IAU eval set:
 
-- `runs/20260429T073229Z/` — recall-guard check, four-model shortlist.
-- `runs/cmmd_20260429T070616Z/` — CMMD backtest, single signal model (`gpt-oss-20b`, MCS holdout AUC 0.728, parse rate 96.7%).
+- `runs/20260429T073229Z/`: recall-guard check, four-model shortlist.
+- `runs/cmmd_20260429T070616Z/`: CMMD backtest, single signal model (`gpt-oss-20b`, MCS holdout AUC 0.728, parse rate 96.7%).
 
 ### Per-model accuracy (recall-guard check)
 
@@ -122,9 +122,9 @@ Two reference runs from 2026-04-29 against the same 330-prompt, 10-year SWDA.L /
 
 Notes worth keeping:
 
-- `gpt-oss-20b` is the only model whose point estimate beats the always-predict-up baseline (0.5492 vs 0.5394). The 95% CIs overlap, so it is not a "p<0.05" winner — but it sits where MemGuard-Alpha's own models live (40–52% directional accuracy across contamination quintiles).
+- `gpt-oss-20b` is the only model whose point estimate beats the always-predict-up baseline (0.5492 vs 0.5394). The 95% CIs overlap, so it is not a "p<0.05" winner, but it sits where MemGuard-Alpha's own models live (40–52% directional accuracy across contamination quintiles).
 - `phi-4-mini` at 0.3187 is statistically anti-skilled. Its CI [0.244, 0.388] does not overlap the baseline's lower bound (0.485). The parse-unreliable warning at 48.5% means the estimate comes from a smaller-than-usual sample, but the direction is real; on a three-class task this reads as a flipped +1/−1 mapping rather than noise.
-- MCS-AUC near 1.0 for the three larger models means the calibrator can almost perfectly separate IS-memorised text from OOS-control text. `phi-4-mini` at 0.854 is the outlier — its log-probability signature is harder to discriminate.
+- MCS-AUC near 1.0 for the three larger models means the calibrator can almost perfectly separate IS-memorised text from OOS-control text. `phi-4-mini` at 0.854 is the outlier; its log-probability signature is harder to discriminate.
 
 ### IS-vs-OOS memorization gap
 
@@ -136,7 +136,7 @@ Notes worth keeping:
 
 > _MemGuard-Alpha Section 5.3 reports IS accuracy for ChatGPT rising 40.8 → 52.5% and OOS accuracy falling 47 → 42% over the same evaluation. A large positive gap is the memorisation signature; a small or zero gap with healthy OOS accuracy is the desired honest behaviour._
 
-The gap is again *negative* — gpt-oss-20b does slightly better on rows it could not have memorised than on rows it could. The Cohen's d artifact in the same run dir reports large effect sizes on the raw MIA features (`loss` d = +2.23, `zlib_ratio` d = +2.00, `min_k_pp` d = −2.15), so the calibrator is detecting something MIA-shaped — just not the directional-accuracy gap the paper highlights. See `cohens_d.md` for the full feature breakdown.
+The gap is again *negative*: gpt-oss-20b does slightly better on rows it could not have memorised than on rows it could. The Cohen's d artifact in the same run dir reports large effect sizes on the raw MIA features (`loss` d = +2.23, `zlib_ratio` d = +2.00, `min_k_pp` d = −2.15), so the calibrator is detecting something MIA-shaped, just not the directional-accuracy gap the paper highlights. See `cohens_d.md` for the full feature breakdown.
 
 ### Backtest
 
@@ -147,17 +147,17 @@ The gap is again *negative* — gpt-oss-20b does slightly better on rows it coul
 | `raw_alpha` | −1.560 [−1.980, −0.622] | −1.14 [−1.66, −0.55] | −24.49% | −24.54% | 319 |
 | `cmmd`      | −1.360 [−1.791, −0.455] | −0.97 [−1.48, −0.40] | −21.30% | −21.36% | 255 |
 
-Relative Sharpe improvement `(cmmd − raw_alpha) / raw_alpha`: **−12.87%** — the CMMD-filtered Sharpe is *less negative* than `raw_alpha`'s. Both variants are net-losing on this universe and date span, so the "improvement" is a smaller loss rather than alpha. The paper's headline finding (CMMD lifts a borderline-positive Sharpe further into the green) does not reproduce on a single-model gpt-oss-20b run against three liquid ETFs over ten years; consistent with the negative IS−OOS gap above.
+Relative Sharpe improvement `(cmmd − raw_alpha) / raw_alpha`: **−12.87%**. The CMMD-filtered Sharpe is *less negative* than `raw_alpha`'s. Both variants are net-losing on this universe and date span, so the "improvement" is a smaller loss rather than alpha. The paper's headline finding (CMMD lifts a borderline-positive Sharpe further into the green) does not reproduce on a single-model gpt-oss-20b run against three liquid ETFs over ten years; consistent with the negative IS−OOS gap above.
 
 Equity curves for both variants plus the passive `buy_and_hold_swda` benchmark are saved to `runs/cmmd_20260429T070616Z/equity_curves.png`. Re-run `scripts/run_cmmd_backtest.py` to regenerate.
 
-This non-result is the expected outcome, not a failure of the method: a directional ETF signal with no financial modelling behind it has no honest alpha to harvest, so filtering memorised rows cannot manufacture one. The method is working — it is declining to invent skill that is not there.
+This non-result is the expected outcome, not a failure of the method: a directional ETF signal with no financial modelling behind it has no honest alpha to harvest, so filtering memorised rows cannot manufacture one. The method is working. It declines to invent skill that is not there.
 
 ## Use as a package
 
 The longer-term goal is to consume Recall Guard as a library, not only as two CLIs. [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors) builds AI macro/risk factors; its Track A is a DSPy agent that emits Black-Litterman views from anonymised, z-scored macro state and deliberately never sees a date, a year, or a real ticker. That is recall-avoidance enforced by construction. Recall Guard supplies the missing half: a *measured* `p_memorized` per prompt, derived from per-token logprobs that DSPy hides, so contamination becomes an observable instead of an assumption. The inference is honest by the same mechanism the leaderboard uses; the factor pipeline downstream decides what to do with the score.
 
-Packaging this cleanly — installable as `recall_guard`, importable on Python 3.12, behind a small stable façade over the `NvidiaLM` + control-baseline + MCS stack — is specced under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/). Until that lands, import from the `src.*` layout in an editable checkout.
+Packaging this cleanly (installable as `recall_guard`, importable on Python 3.12, behind a small stable façade over the `NvidiaLM` + control-baseline + MCS stack) is specced under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/). Until that lands, import from the `src.*` layout in an editable checkout.
 
 ## Caveats
 
@@ -165,14 +165,32 @@ The MCS classifier is only as good as the calibration corpora. The shipped IS co
 
 NVIDIA's free-tier 70B endpoints are queue-heavy. Use `--min-call-interval 1.5` or higher for stability. The 8B–20B size range is a better starting point.
 
-The eval set you ship to the harness defines what "skill" means. The bundled ETF builder asks "did this ETF close higher or lower than the previous trading day," which is close to a coin flip even for an oracle — and on this task that is the correct answer, not a defect (see [What this measures](#what-this-measures-and-why-coin-flip-accuracy-is-the-point)). The harness is measuring memorisation honesty on that stream, not trying to win it. If you want to study reasoning skill instead, ship an eval set that asks something a model can actually reason about (read this earnings report, predict the reaction); the memorisation machinery is identical either way.
+The eval set you ship to the harness defines what "skill" means. The bundled ETF builder asks "did this ETF close higher or lower than the previous trading day," which is close to a coin flip even for an oracle, and on this task that is the correct answer, not a defect (see [What this measures](#what-this-measures-and-why-coin-flip-accuracy-is-the-point)). The harness is measuring memorisation honesty on that stream, not trying to win it. If you want to study reasoning skill instead, ship an eval set that asks something a model can actually reason about (read this earnings report, predict the reaction); the memorisation machinery is identical either way.
 
 The CMMD backtest uses gpt-oss-20b only. Other models are evaluated by the recall-guard check but do not feed the backtest; the design keeps the comparison "raw vs cmmd on the same signal stream" rather than "model A vs model B".
 
+## Citation
+
+Recall Guard is an independent implementation and evaluation of the MemGuard-Alpha method; the [sample run](#sample-run) above documents where the paper's findings did and did not reproduce here.
+
+Roy, A., & Roy, D. (2026). MemGuard-Alpha: Detecting and Filtering Memorization-Contaminated Signals in LLM-Based Financial Forecasting via Membership Inference and Cross-Model Disagreement. arXiv:2603.26797.
+
+```bibtex
+@misc{roy2026memguardalpha,
+  title         = {MemGuard-Alpha: Detecting and Filtering Memorization-Contaminated
+                   Signals in LLM-Based Financial Forecasting via Membership Inference
+                   and Cross-Model Disagreement},
+  author        = {Roy, Anisha and Roy, Dip},
+  year          = {2026},
+  eprint        = {2603.26797},
+  archivePrefix = {arXiv},
+}
+```
+
 ## See also
 
-- [`Qualified_Models.md`](./Qualified_Models.md) — per-model training-cutoff registry with sources.
-- [`papers/2603.26797v1.md`](./papers/2603.26797v1.md) — the MemGuard-Alpha paper.
-- [`.kiro/specs/honest-model-ranking/`](./.kiro/specs/honest-model-ranking/) — recall-guard spec.
-- [`.kiro/specs/cmmd-backtest/`](./.kiro/specs/cmmd-backtest/) — backtest spec.
-- [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/) — packaging spec (use as a library for AI macro-factor analysis).
+- [`Qualified_Models.md`](./Qualified_Models.md): per-model training-cutoff registry with sources.
+- [`papers/2603.26797v1.md`](./papers/2603.26797v1.md): the MemGuard-Alpha paper.
+- [`.kiro/specs/honest-model-ranking/`](./.kiro/specs/honest-model-ranking/): recall-guard spec.
+- [`.kiro/specs/cmmd-backtest/`](./.kiro/specs/cmmd-backtest/): backtest spec.
+- [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/): packaging spec (use as a library for AI macro-factor analysis).

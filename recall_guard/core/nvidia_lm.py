@@ -262,7 +262,7 @@ def generate_many(
     def _one(prompt: str) -> CompletionResult | Exception:
         try:
             return lm.generate(prompt)
-        except Exception as exc:  # noqa: BLE001 — caller decides what to do
+        except Exception as exc:  # noqa: BLE001 - caller decides what to do
             return exc
 
     with ThreadPoolExecutor(max_workers=max_workers) as ex:

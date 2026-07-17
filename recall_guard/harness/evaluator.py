@@ -10,7 +10,7 @@ Pipeline per eval row:
    ``"no_logprobs"`` (message mentions ``logprobs`` / ``top_logprobs``) or the
    generic ``"error"`` bucket. Any other exception also falls into ``"error"``.
 2. On success, optionally call ``ref_lm.generate(prompt)`` to obtain reference
-   logprobs. A reference-side failure does not invalidate the row — it merely
+   logprobs. A reference-side failure does not invalidate the row; it merely
    sets ``ref_logprobs=None``.
 3. Parse ``Direction:`` strictly (only ``-1, 0, 1``) and ``Confidence:`` strictly
    (must be a float in ``[0, 1]``). Either parse failure → ``parse_ok=False``,
@@ -18,7 +18,7 @@ Pipeline per eval row:
 4. Compute MIA features, standardise against the per-model baseline, run
    ``mcs.predict_proba`` to get ``p_memorized``, and apply the continuous
    penalty ``penalized_confidence = raw_confidence * (1 - p_memorized)``
-   (Req 5.4 — no thresholds).
+   (Req 5.4: no thresholds).
 
 Bootstrap CIs (Req 6.1, 6.3) are computed via ``core.bootstrap.bootstrap_ci``
 over parse-OK rows for accuracy and over ``(p_memorized, label)`` pairs from
@@ -68,7 +68,7 @@ WARNING_TEMPERATURE_NOT_HONOURED = "temperature-not-honoured"
 
 # --- Response parsers (layered coercion) -------------------------------------
 #
-# We coerce on the FIRST call's raw text only — never re-issue the LM. A
+# We coerce on the FIRST call's raw text only and never re-issue the LM. A
 # retry would change the logprob trace and contaminate the very signal MCS
 # is trying to learn. That rules out DSPy-style reprompt loops; instead, we
 # layer cheap post-hoc strategies in order of strictness.
@@ -124,7 +124,7 @@ class Record:
     model:
         NVIDIA model ID this record was scored for.
     prompt_hash:
-        First 16 hex chars of ``sha256(prompt)`` — keeps records.jsonl readable
+        First 16 hex chars of ``sha256(prompt)``; keeps records.jsonl readable
         without leaking full prompts. Uniquely keys the record together with
         ``model`` (design § Data Models).
     parse_ok:
@@ -192,7 +192,7 @@ class ModelEvalResult:
         Bootstrap CI on ``predicted_direction == target_direction`` over
         parse-OK rows (Req 6.1, 7.3).
     memguard_accuracy:
-        Same accuracy denominator as ``raw_accuracy`` — in this spec the
+        Same accuracy denominator as ``raw_accuracy``: in this spec the
         MemGuard penalty discounts confidence but does not change the
         predicted direction, so the two CIs coincide. The field exists so a
         future confidence-thresholded variant can diverge without breaking
@@ -292,7 +292,7 @@ def _direction_from_words(content: str) -> int | None:
 
 def _parse_direction(content: str) -> int | None:
     """Layered direction parser. See module-level comment for the strategy order."""
-    # Layer 1: strict markdown-tolerant regex (use the LAST match — models
+    # Layer 1: strict markdown-tolerant regex (use the LAST match; models
     # often restate "Direction" earlier in their reasoning).
     matches = _DIRECTION_RE.findall(content)
     if matches:
@@ -399,7 +399,7 @@ def _accuracy_statistic(records: list[Record]) -> float:
 def _auc_statistic(samples: list[tuple[float, int]]) -> float:
     """ROC-AUC over (p_memorized, label) pairs.
 
-    Raises ``ValueError`` when the resample is single-class — bootstrap_ci
+    Raises ``ValueError`` when the resample is single-class; bootstrap_ci
     drops such resamples and warns once per call (see design § Implementation
     Notes for the AUC bootstrap fallback rationale).
     """
@@ -557,7 +557,7 @@ def evaluate_model(
     With ``max_workers > 1`` the per-row primary + reference LM calls
     fan out via ``concurrent.futures.ThreadPoolExecutor`` (results are
     paired with rows by index, so order is preserved). Post-processing
-    — parsing, MIA feature compute, MCS scoring — runs serially.
+    (parsing, MIA feature compute, MCS scoring) runs serially.
 
     See module docstring for the row-level pipeline. The function performs no
     I/O beyond the model HTTP calls; all artifact writing is owned by
@@ -592,8 +592,8 @@ def evaluate_model(
 
     raw_accuracy = _accuracy_ci(parse_ok_records, n=bootstrap_n, seed=seed)
     # MemGuard accuracy uses the same parse-OK denominator. The penalty
-    # affects confidence only — predicted_direction is unchanged in this
-    # spec — so the bootstrap statistic is identical. The dataclass field is
+    # affects confidence only (predicted_direction is unchanged in this
+    # spec), so the bootstrap statistic is identical. The dataclass field is
     # kept distinct so a future confidence-threshold variant may diverge
     # without breaking the report schema.
     memguard_accuracy = _accuracy_ci(parse_ok_records, n=bootstrap_n, seed=seed)

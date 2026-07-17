@@ -1,4 +1,4 @@
-"""recall_guard — measured inference-without-recall.
+"""recall_guard: measured inference-without-recall.
 
 The public entry point. A consumer typically needs only::
 
@@ -14,8 +14,8 @@ The public entry point. A consumer typically needs only::
     guarded.signal, guarded.p_memorized, guarded.memguard_confidence
 
 This module re-exports the façade plus a curated set of ``core`` and ``mia``
-primitives. It deliberately re-exports **no plotting symbol and nothing from the
-``portfolio`` (backtest) layer**, so ``import recall_guard`` never pulls in
+primitives. It deliberately re-exports no plotting symbol and nothing from the
+``portfolio`` (backtest) layer, so ``import recall_guard`` never pulls in
 matplotlib or vectorbt (Req 4.1, 4.3). The plotting helpers remain available, on
 demand, via ``recall_guard.harness`` (lazy) and the backtest engine via
 ``recall_guard.portfolio.backtest`` (requires the ``backtest`` extra).

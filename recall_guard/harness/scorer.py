@@ -1,14 +1,14 @@
 """Public inference-without-recall façade: :class:`MemoryGuardedScorer`.
 
 This is the stable surface that downstream projects (e.g. Global_Macro_AI_Factors'
-``macro_framework`` Track A) consume. It wraps the existing primitives — the NVIDIA
-LM client, the per-model control baseline, and the MCS contamination calibrator —
+``macro_framework`` Track A) consume. It wraps the existing primitives (the NVIDIA
+LM client, the per-model control baseline, and the MCS contamination calibrator)
 behind two phases:
 
 * :meth:`MemoryGuardedScorer.calibrate` runs the model over the control + IS/OOS
   corpora and trains the per-model calibrator (HTTP-heavy, done once).
 * :meth:`MemoryGuardedScorer.score` / :meth:`score_many` turn one prompt into a
-  :class:`GuardedScore` — the parsed directional signal, the raw MIA features, the
+  :class:`GuardedScore`: the parsed directional signal, the raw MIA features, the
   calibrated ``p_memorized``, and the MemGuard-discounted confidence.
 
 The score path reuses the evaluator's parser, the MIA feature computation, the

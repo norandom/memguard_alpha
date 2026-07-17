@@ -4,14 +4,14 @@ Implements the `mia.features` component from the honest-model-ranking
 design. Computes the five MIA features defined by Requirements 4.1, 4.2,
 and 4.3:
 
-- ``loss``       — mean negative logprob of the realised tokens.
-- ``min_k``      — mean of the bottom-K clipped logprobs.
-- ``min_k_pp``   — mean of the bottom-K per-position z-scores against each
-                   token's ``top_logprobs`` distribution (Min-K%++).
-- ``zlib_ratio`` — ``-sum(clipped_logprobs) / len(zlib.compress(response, 9))``.
-- ``ref_delta``  — ``loss_self - loss_ref`` (``None`` when no reference run).
+- ``loss``:       mean negative logprob of the realised tokens.
+- ``min_k``:      mean of the bottom-K clipped logprobs.
+- ``min_k_pp``:   mean of the bottom-K per-position z-scores against each
+                  token's ``top_logprobs`` distribution (Min-K%++).
+- ``zlib_ratio``: ``-sum(clipped_logprobs) / len(zlib.compress(response, 9))``.
+- ``ref_delta``:  ``loss_self - loss_ref`` (``None`` when no reference run).
 
-Pure function — no I/O, no global state. Numerical stability is enforced
+Pure function with no I/O and no global state. Numerical stability is enforced
 by clipping individual logprobs to a finite floor (``LOGPROB_FLOOR``)
 before any averaging, and by flooring per-position standard deviation at
 ``1e-6`` for the Min-K%++ z-score.

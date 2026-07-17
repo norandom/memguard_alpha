@@ -4,23 +4,23 @@ Implements the ``harness.runner`` component from the design document
 (see design.md → Components and Interfaces → harness.runner; System Flows
 → End-to-end Run Flow). Satisfies Requirements:
 
-* 1.5 — ``--shortlist`` override; smoke is skipped and no shortlist.json is
+* 1.5: ``--shortlist`` override; smoke is skipped and no shortlist.json is
   written.
-* 2.5 — Cutoff guard runs immediately after shortlist resolution and BEFORE
+* 2.5: Cutoff guard runs immediately after shortlist resolution and BEFORE
   any HTTP call to a candidate model.
-* 9.4 — Artifact paths are printed at the end of a successful run.
-* 10.1 — A per-run manifest is written containing input hashes, the seed,
+* 9.4: Artifact paths are printed at the end of a successful run.
+* 10.1: A per-run manifest is written containing input hashes, the seed,
   the resolved shortlist, the composite-score formula, MCS hyperparameters,
   the bootstrap resample count, and an artifact-name → path map. Input
   file paths are also stored under ``artifacts`` keys prefixed with
   ``input_`` (``input_eval_set``, ``input_is_memorized``,
   ``input_oos_control``, ``input_cutoffs``) so that ``replay`` can locate
   the original input bytes by name without an extra schema field.
-* 10.2 — ``replay --from-manifest PATH --out-dir PATH`` re-runs the
+* 10.2: ``replay --from-manifest PATH --out-dir PATH`` re-runs the
   pipeline with the recorded seed, verifying every input's sha256 against
   the manifest before any work begins. A hash mismatch aborts non-zero
   with a clear, file-naming error (no stale-input runs).
-* 10.3 — Temperature-0 violations are surfaced via the evaluator's per-model
+* 10.3: Temperature-0 violations are surfaced via the evaluator's per-model
   warnings (the runner does not need to do its own enforcement here).
 
 Pipeline (matches the sequence diagram in design.md):
@@ -30,7 +30,7 @@ Pipeline (matches the sequence diagram in design.md):
 2. Load the eval set + cutoffs registry. Missing eval-set file → exit code
    ``2``.
 3. Resolve the shortlist:
-   * ``--shortlist`` overrides — verbatim, smoke is skipped.
+   * ``--shortlist`` overrides verbatim; smoke is skipped.
    * Otherwise read ``--candidates`` newline-delimited, run
      :func:`harness.smoke.smoke_test`, and persist
      ``<out_dir>/shortlist.json`` for reproducibility (Req 1.4).
@@ -130,7 +130,7 @@ logger = logging.getLogger(__name__)
 #: schemas change in a backwards-incompatible way.
 HARNESS_VERSION: str = "0.1.0"
 
-#: Default reference model documented in the Open Defaults table — small,
+#: Default reference model documented in the Open Defaults table: small,
 #: NVIDIA-hosted, with well-known training data.
 DEFAULT_REFERENCE_MODEL: str = "meta/llama-3.2-1b-instruct"
 
@@ -383,7 +383,7 @@ def _load_calibration_rows(path: Path) -> list[EvalRow]:
     """Load a calibration JSONL into a list of :class:`EvalRow`.
 
     The calibration corpora share a *near* identical row schema with eval
-    sets — they carry ``prompt`` + ``label`` + ``metadata`` while eval rows
+    sets: they carry ``prompt`` + ``label`` + ``metadata`` while eval rows
     carry ``prompt`` + ``target_direction`` + ``metadata``. ``EvalRow`` is
     the type the rest of the harness wants, so we adapt here:
 

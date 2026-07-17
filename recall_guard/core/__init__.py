@@ -1,8 +1,8 @@
 """Public API for the ``core`` layer of the honest-model-ranking harness.
 
-Re-exports the consumer-facing surface (Req 12.1) so that callers — the
+Re-exports the consumer-facing surface (Req 12.1) so that callers (the
 qualification notebook, future external scripts, and the harness layers
-themselves — can import every primitive from the package root without ever
+themselves) can import every primitive from the package root without ever
 touching internal module paths::
 
     from recall_guard.core import (

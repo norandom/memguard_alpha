@@ -35,7 +35,7 @@ import numpy as np
 class _RecordLike(Protocol):
     """Minimal structural interface this module reads off each record.
 
-    Any object exposing these two attributes works — including
+    Any object exposing these two attributes works, including
     :class:`harness.evaluator.Record` (the real production type) and
     ad-hoc :class:`types.SimpleNamespace` stand-ins used in unit tests.
     """
@@ -55,8 +55,8 @@ def apply_cmmd_filter(
 
     Two-stage filter:
 
-    1. Drop rows where ``parse_ok`` is False or ``p_memorized`` is None
-       — the percentile is computed over the surviving distribution
+    1. Drop rows where ``parse_ok`` is False or ``p_memorized`` is None.
+       The percentile is computed over the surviving distribution
        only, so failed rows cannot bias the cutoff.
     2. Compute the empirical ``quantile``-th percentile of
        ``p_memorized`` on the survivors and keep rows where

@@ -1,18 +1,18 @@
 # recall_guard
 
-Measured **inference-without-recall**. recall_guard runs a NIM-hosted model on your
-prompt and returns the parsed directional signal **together with a calibrated
-`p_memorized`** — a per-prompt contamination score derived from per-token logprobs —
+Measured inference-without-recall. recall_guard runs a NIM-hosted model on your
+prompt and returns the parsed directional signal together with a calibrated
+`p_memorized`, a per-prompt contamination score derived from per-token logprobs,
 plus the MemGuard-discounted confidence.
 
-It is **not a forecaster**. Near-coin-flip directional accuracy on a raw price-direction
+It is not a forecaster. Near-coin-flip directional accuracy on a raw price-direction
 task is the expected, correct result; the product is the honesty signal, not alpha. Use
 `p_memorized` to discount or filter AI-derived factor signals that look memorized rather
 than reasoned.
 
 ## Install
 
-recall_guard is distributed from its Git repository, for uv-managed projects:
+recall_guard is distributed from its Git repository. For uv-managed projects:
 
 ```bash
 uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@<tag-or-commit>"
@@ -28,9 +28,9 @@ dependencies = [
 ]
 ```
 
-The default install is lean — `numpy`, `scikit-learn`, `rich`, `pyyaml`, `requests`,
+The default install is lean: `numpy`, `scikit-learn`, `rich`, `pyyaml`, `requests`,
 `python-dotenv`. Optional extras: `recall-guard[backtest]` (matplotlib + vectorbt for the
-CMMD backtest) and `recall-guard[docs]` (this site's toolchain). Requires **Python ≥ 3.12**
+CMMD backtest) and `recall-guard[docs]` (this site's toolchain). Requires Python ≥ 3.12
 and a valid `NVIDIA_API_KEY` at runtime.
 
 ## Minimal example
@@ -67,5 +67,5 @@ silently invalid score.
 | the prompts you want scored | `p_memorized` and the MemGuard discount |
 
 recall_guard does **not** own key provisioning/rotation, prompt construction, your factor
-pipeline, or any portfolio/allocation logic — those stay with the consumer (for example,
+pipeline, or any portfolio/allocation logic; those stay with the consumer (for example,
 `macro_framework`). Browse the full surface under **API reference** in the navigation.

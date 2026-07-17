@@ -120,7 +120,7 @@ def load_eval_set(path: Path | str) -> EvalSet:
     ``{"_cutoff_date": "YYYY-MM-DD"}``. All other lines must be row objects
     matching the input contract (Req 2.1). Logs WARNING records for low-N
     and class-imbalance conditions (Req 2.2, 2.3); never raises for those.
-    Returns the entire set as a single list — no train/dev split (Req 2.4).
+    Returns the entire set as a single list with no train/dev split (Req 2.4).
     """
     path = Path(path)
     cutoff: date | None = None

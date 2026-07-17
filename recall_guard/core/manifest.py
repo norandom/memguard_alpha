@@ -18,7 +18,7 @@ Implements the design's ``core.manifest`` interface (Req 6.5, 8.4, 10.1, 10.2):
 Design constraints honoured:
 - ``shortlist`` keeps the design's ``list[str]`` typing; this means a
   ``Manifest`` instance is frozen-immutable but not ``hash()``-able, which is
-  fine — we never use it as a dict key.
+  fine because we never use it as a dict key.
 - Serialisation goes via ``dataclasses.asdict`` so nested dicts/lists round-trip
   cleanly without bespoke encoders.
 """
@@ -86,7 +86,7 @@ def compute_file_hash(path: Path | str) -> str:
 
 
 def _expected_field_names() -> set[str]:
-    """Return the set of Manifest field names — single source of truth."""
+    """Return the set of Manifest field names (single source of truth)."""
     return {f.name for f in fields(Manifest)}
 
 

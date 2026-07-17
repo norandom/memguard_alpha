@@ -5,15 +5,15 @@ design (see design.md → Components and Interfaces → harness.report).
 
 Public surface
 --------------
-* :func:`render_terminal` — ``rich``-backed table rendering of one row per
+* :func:`render_terminal`: ``rich``-backed table rendering of one row per
   shortlisted model plus a ``__majority_baseline__`` row (Req 9.1, 9.2).
-* :func:`write_records` — streaming JSONL writer; one JSON object per
+* :func:`write_records`: streaming JSONL writer; one JSON object per
   ``Record`` (Req 9.3). Memory stays bounded by writing line-by-line rather
   than building an in-memory list of all records first.
-* :func:`write_summary_csv` — flat CSV with a 15-column schema plus a final
+* :func:`write_summary_csv`: flat CSV with a 15-column schema plus a final
   ``__majority_baseline__`` row that fills only the raw-accuracy CI cells
   (Req 9.3 schema half).
-* :func:`print_artifact_paths` — final-line summary of every artifact path so
+* :func:`print_artifact_paths`: final-line summary of every artifact path so
   the operator sees the run output up front (Req 9.4).
 
 Design choices
@@ -119,7 +119,7 @@ def _record_to_jsonable(record: Record) -> dict[str, Any]:
 
     ``MiaFeatures`` and ``features_standardised`` become plain dicts so the
     per-record artifact (Req 9.3) is a flat object rather than a stringified
-    dataclass repr — the test fixture asserts this explicitly.
+    dataclass repr; the test fixture asserts this explicitly.
     """
     if record.features_raw is None:
         features_raw: dict[str, Any] | None = None
@@ -171,7 +171,7 @@ def render_terminal(
     ``__majority_baseline__`` row always renders last so a reader can compare
     every model against it visually.
 
-    The majority row populates only the Raw Acc CI column — the other cells
+    The majority row populates only the Raw Acc CI column; the other cells
     are em-dashes since MemGuard accuracy, MCS-AUC, and the composite score
     are not defined for the baseline.
 
@@ -258,7 +258,7 @@ def write_records(results: Iterable[ModelEvalResult], path: Path) -> None:
     """Stream every ``Record`` from every result to ``records.jsonl`` (Req 9.3).
 
     Memory stays bounded for long runs because the writer opens the file once
-    and emits one ``json.dumps`` line per record before moving to the next —
+    and emits one ``json.dumps`` line per record before moving to the next;
     no all-records list is built in memory.
 
     The schema is documented in :func:`_record_to_jsonable` and audited by
@@ -282,7 +282,7 @@ def _result_row(
 ) -> dict[str, Any]:
     """Build the dict of CSV cells for one ``ModelEvalResult``."""
     if score is None:
-        # No matching CompositeScore — the model evaluated but the ranker
+        # No matching CompositeScore: the model evaluated but the ranker
         # failed to produce an entry for it. Fall back to a zero score with
         # the evaluator-side warnings so the CSV stays consistent.
         score_value = 0.0
@@ -346,7 +346,7 @@ def write_summary_csv(
     Notes
     -----
     The function signature includes ``majority`` even though the design's
-    Service Interface lists only three arguments — Task 4.4's observable
+    Service Interface lists only three arguments; Task 4.4's observable
     requires the majority row in the CSV, which forces the parameter through.
     """
     target = Path(path)

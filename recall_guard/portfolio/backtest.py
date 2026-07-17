@@ -4,7 +4,7 @@ Implements Requirements 5.1–5.8, 6.3, 6.5, and 9.4 of the
 ``cmmd-backtest`` spec: take a stream of harness ``Record`` objects plus
 a ``(date × ticker)`` close-price matrix, build a daily-rebalanced
 target-weight matrix where ``weight[d, t] = direction[d, t] *
-confidence[d, t]``, and run two backtests through ``vectorbt`` —
+confidence[d, t]``, and run two backtests through ``vectorbt``:
 ``raw_alpha`` (no filter) and ``cmmd`` (top-quintile ``p_memorized``
 rows removed). The two variants share one price matrix; the only
 difference is the surviving record stream.
@@ -22,8 +22,8 @@ The ``portfolio`` layer is order=1 in ``.sentrux/rules.toml`` and the
 order=0, so this module never imports ``harness.evaluator.Record``.
 Instead :func:`run_backtest` accepts any record-shaped object exposing
 the attributes ``parse_ok``, ``predicted_direction``, ``raw_confidence``,
-``p_memorized``, and ``prompt_hash`` — structural typing via
-:class:`typing.Protocol`. This matches the strategy already used by
+``p_memorized``, and ``prompt_hash`` (structural typing via
+:class:`typing.Protocol`). This matches the strategy already used by
 ``portfolio.cmmd``.
 
 The ``Record`` dataclass produced by ``harness.evaluator`` does not
@@ -33,7 +33,7 @@ eval-set side). To build a ``(date × ticker)`` weight matrix, this
 function therefore takes an additional ``prompt_metadata`` argument
 mapping each record's ``prompt_hash`` to ``{"ticker": str, "date": str
 (ISO-8601)}``. The orchestrator script (task 3.2) is responsible for
-joining the records to the eval-set rows and constructing this dict —
+joining the records to the eval-set rows and constructing this dict;
 the engine itself stays pure-compute.
 
 Determinism
@@ -69,7 +69,7 @@ vectorbt 0.28 conventions
   for ``Portfolio.sharpe_ratio()``.
 - The ``size`` matrix passed to ``from_orders`` already contains BIL's
   residual allocation, so vectorbt charges the BIL purchase as a real
-  trade — that matches Req 5.4's "BIL holds the residual" semantics
+  trade. That matches Req 5.4's "BIL holds the residual" semantics
   and Req 5.6's per-position cost.
 """
 
@@ -119,7 +119,7 @@ class BacktestArtifactError(RuntimeError):
 class _RecordLike(Protocol):
     """Structural interface this module reads off each record.
 
-    Any object exposing these attributes works — including
+    Any object exposing these attributes works, including
     ``harness.evaluator.Record`` (the production type) and
     ``types.SimpleNamespace`` stand-ins used in unit tests.
     """
@@ -138,7 +138,7 @@ class BacktestMetrics:
     All fields are JSON-friendly so downstream artifact writers (task
     2.5) can dump the dataclass directly. The ``sharpe_annualised`` and
     ``mean_daily_return_bps`` tuples are ``(point, lo, hi)`` from
-    ``core.bootstrap.bootstrap_ci`` — point estimate first, then the
+    ``core.bootstrap.bootstrap_ci``: point estimate first, then the
     95% percentile bounds.
     """
 
@@ -451,11 +451,11 @@ def _build_weight_matrix(
     2. For each record, set ``weight_raw[date, ticker] = direction *
        confidence``. If multiple records map to the same (date,
        ticker) the later record wins (last-write-wins by record list
-       position) — a contradiction in the eval set.
+       position), which signals a contradiction in the eval set.
     3. For each row, compute ``s = sum(|weights|)`` over risk assets
        (everything except BIL). If ``s > 1`` scale the row by ``1/s``
        so risk-asset absolute sum equals 1 and BIL = 0 (Req 5.5).
-       Else BIL = ``1 - s`` (Req 5.4 — long cash, never short).
+       Else BIL = ``1 - s`` (Req 5.4: long cash, never short).
     4. Days with no records map to ``BIL = 1`` (Req 5.8).
     """
     weights = pd.DataFrame(
@@ -467,7 +467,7 @@ def _build_weight_matrix(
 
     # Map each record onto the price calendar. Records whose date isn't
     # in the index (e.g., LSE holiday) or whose ticker isn't a column
-    # are silently dropped (Req 9.2 — single missing price → drop).
+    # are silently dropped (Req 9.2: single missing price → drop).
     index_dates = {ts.date(): ts for ts in prices.index}
 
     for record in records:
@@ -540,7 +540,7 @@ def _buy_and_hold_swda(prices: pd.DataFrame) -> pd.Series:
     """Buy-and-hold SWDA.L equity curve normalised to 1.0 at day 0.
 
     Falls back to a flat-1.0 curve when SWDA.L is missing from the
-    price matrix — e.g., a smoke test that drops the ETF column.
+    price matrix, e.g., a smoke test that drops the ETF column.
     """
     if "SWDA.L" not in prices.columns:
         return pd.Series(1.0, index=prices.index, name="buy_and_hold_swda")
@@ -744,7 +744,7 @@ def write_backtest_artifacts(
         ``{artifact_name: Path}`` for the five files written. Keys:
         ``backtest_summary_csv``, ``backtest_summary_md``,
         ``equity_curves_csv``, ``equity_curves_png``,
-        ``daily_returns_csv`` — matching the manifest's
+        ``daily_returns_csv``, matching the manifest's
         ``backtest.artifacts`` block in ``design.md``.
 
     Raises:
