@@ -36,4 +36,5 @@ plugins:
 
 nav:
   - Home: index.md
+  - PIT architecture: pit-architecture.md
   - API reference: reference/
