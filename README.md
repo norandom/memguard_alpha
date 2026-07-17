@@ -13,9 +13,26 @@ Recall Guard is not a forecaster and is not trying to be. On a "did this ETF clo
 
 That number is the product. It is meant to be consumed downstream as a contamination / lookahead score on AI-derived signals; see [Use as a package](#use-as-a-package).
 
-## Setup
+## Install (users)
 
-You need Python 3.14, [uv](https://github.com/astral-sh/uv), an NVIDIA chat-completions API key, and an FMP API key.
+Recall Guard ships as a package on GitHub Releases (no PyPI). Pin the latest
+release tag; Python 3.12 or newer:
+
+```bash
+uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.0"
+# or, with pip: install the wheel attached to the release
+pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.0/recall_guard-0.1.0-py3-none-any.whl
+```
+
+Then `from recall_guard import MemoryGuardedScorer` and bring your own NVIDIA
+API key at calibration time. The runtime dependency set is lean (numpy,
+scikit-learn, rich, pyyaml, requests, python-dotenv); plotting and backtest
+extras are opt-in (`recall-guard[backtest]`).
+
+## Develop (contributors)
+
+You need Python 3.12, [uv](https://github.com/astral-sh/uv), an NVIDIA
+chat-completions API key, and an FMP API key.
 
 ```bash
 uv sync
@@ -23,9 +40,11 @@ cat > .env <<EOF
 NVIDIA_API_KEY=...
 FMP_API_KEY=...
 EOF
+uv run pytest -q   # 258 tests, offline
 ```
 
-`uv sync` installs everything from `pyproject.toml` into `.venv/`. No system pip, no manual virtualenv.
+`uv sync` installs everything from `pyproject.toml` into `.venv/`, including
+the dev group. No system pip, no manual virtualenv.
 
 ## Workflow 1: Run the recall-guard check
 
@@ -157,7 +176,7 @@ This non-result is the expected outcome, not a failure of the method: a directio
 
 The longer-term goal is to consume Recall Guard as a library, not only as two CLIs. [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors) builds AI macro/risk factors; its Track A is a DSPy agent that emits Black-Litterman views from anonymised, z-scored macro state and deliberately never sees a date, a year, or a real ticker. That is recall-avoidance enforced by construction. Recall Guard supplies the missing half: a *measured* `p_memorized` per prompt, derived from per-token logprobs that DSPy hides, so contamination becomes an observable instead of an assumption. The inference is honest by the same mechanism the leaderboard uses; the factor pipeline downstream decides what to do with the score.
 
-Packaging this cleanly (installable as `recall_guard`, importable on Python 3.12, behind a small stable façade over the `NvidiaLM` + control-baseline + MCS stack) is specced under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/). Until that lands, import from the `src.*` layout in an editable checkout.
+Since v0.1.0 this is packaged: `recall_guard` installs from the GitHub Release (wheel + sdist, hatchling build) with a small stable façade over the `NvidiaLM` + control-baseline + MCS stack. See [Install (users)](#install-users) above; the packaging spec lives under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/).
 
 ## Caveats
 
