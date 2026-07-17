@@ -206,6 +206,24 @@ Roy, A., & Roy, D. (2026). MemGuard-Alpha: Detecting and Filtering Memorization-
 }
 ```
 
+The point-in-time evaluation problem this library addresses is also benchmarked
+independently by Look-Ahead-Bench:
+
+> Benhenda, M. (2026). *Look-Ahead-Bench: a Standardized Benchmark of Look-ahead
+> Bias in Point-in-Time LLMs for Finance.* arXiv:2601.13770.
+
+```bibtex
+@misc{benhenda2026lookaheadbench,
+  title  = {Look-Ahead-Bench: a Standardized Benchmark of Look-ahead Bias in
+            Point-in-Time LLMs for Finance},
+  author = {Benhenda, Mostapha},
+  year   = {2026},
+  eprint = {2601.13770},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.AI}
+}
+```
+
 ## See also
 
 - [`Qualified_Models.md`](./Qualified_Models.md): per-model training-cutoff registry with sources.
