@@ -1,5 +1,7 @@
 # Recall Guard
 
+[![DOI](https://zenodo.org/badge/1221761081.svg)](https://doi.org/10.5281/zenodo.21557232)
+
 Two CLIs for scoring language-model responses on a financial prompt stream and attaching a per-prompt contamination score.
 
 - `./start.sh` runs the **recall-guard check**: per-model accuracy, MIA features, MCS-AUC, and a top-3 ranking with bootstrap CIs.
