@@ -17,11 +17,11 @@ In this repository, `p_memorized` is a model-specific score produced by a logist
 
 ## Install (users)
 
-Recall Guard ships as a package on GitHub Releases (no PyPI). Pin a release tag; Python 3.12 or newer:
+Recall Guard ships as a package on GitHub Releases (no PyPI). Install the wheel from a tagged release; Python 3.12 or newer:
 
 ```bash
-uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.2"
-# or, with pip: install the wheel attached to the release
+uv pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.2/recall_guard-0.1.2-py3-none-any.whl
+# or:
 pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.2/recall_guard-0.1.2-py3-none-any.whl
 ```
 
@@ -29,9 +29,11 @@ Then `from recall_guard import MemoryGuardedScorer` and bring your own NVIDIA AP
 
 ## Develop (contributors)
 
-You need Python 3.12, [uv](https://github.com/astral-sh/uv), an NVIDIA chat-completions API key, and an FMP API key.
+To work on the code, check out the repository and sync the development environment:
 
 ```bash
+git clone https://github.com/norandom/memguard_alpha.git
+cd memguard_alpha
 uv sync
 cat > .env <<EOF
 NVIDIA_API_KEY=...
@@ -40,7 +42,7 @@ EOF
 uv run pytest -q   # 258 tests, offline
 ```
 
-`uv sync` installs everything from `pyproject.toml` into `.venv/`, including the dev group.
+You need Python 3.12 and [uv](https://github.com/astral-sh/uv). `uv sync` installs everything from `pyproject.toml` into `.venv/`, including the dev group.
 
 ## Workflow 1: run the recall-guard check
 
@@ -142,9 +144,17 @@ The `cmmd` backtest uses `gpt-oss-20b` only. Other models are evaluated by the r
 
 ## Citation
 
-Recall Guard is an independent implementation and evaluation of the MemGuard-Alpha method. The sample run above documents where this repository's implementation did and did not line up with the paper's reported behaviour.
+### Recall Guard
 
-Roy, A., & Roy, D. (2026). MemGuard-Alpha: Detecting and Filtering Memorization-Contaminated Signals in LLM-Based Financial Forecasting via Membership Inference and Cross-Model Disagreement. arXiv:2603.26797.
+If you want to cite the software itself, use the Zenodo DOI:
+
+- <https://doi.org/10.5281/zenodo.21557232>
+
+### Underlying papers
+
+Recall Guard is based on and evaluates ideas from MemGuard-Alpha and addresses the point-in-time evaluation problem also benchmarked by Look-Ahead-Bench.
+
+**MemGuard-Alpha**
 
 ```bibtex
 @misc{roy2026memguardalpha,
@@ -158,9 +168,7 @@ Roy, A., & Roy, D. (2026). MemGuard-Alpha: Detecting and Filtering Memorization-
 }
 ```
 
-The point-in-time evaluation problem this library addresses is also benchmarked independently by Look-Ahead-Bench:
-
-> Benhenda, M. (2026). *Look-Ahead-Bench: a Standardized Benchmark of Look-ahead Bias in Point-in-Time LLMs for Finance.* arXiv:2601.13770.
+**Look-Ahead-Bench**
 
 ```bibtex
 @misc{benhenda2026lookaheadbench,
