@@ -102,7 +102,7 @@ logger = logging.getLogger(__name__)
 
 #: Harness version recorded in the manifest. Bumped when on-disk artifact
 #: schemas change in a backwards-incompatible way.
-HARNESS_VERSION: str = "0.1.1"
+HARNESS_VERSION: str = "0.1.2"
 
 #: Default reference model documented in the Open Defaults table: small,
 #: NVIDIA-hosted, with well-known training data.

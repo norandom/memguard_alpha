@@ -7,6 +7,7 @@ strict: true
 # The reference generator is a build script, not a doc page — keep it out of site/.
 exclude_docs: |
   gen_ref_pages.py
+  gen_benchmark_page.py
 
 theme:
   name: material
@@ -20,6 +21,7 @@ plugins:
   - gen-files:
       scripts:
         - docs/gen_ref_pages.py
+        - docs/gen_benchmark_page.py
   - literate-nav:
       nav_file: SUMMARY.md
   - mkdocstrings:
@@ -38,5 +40,6 @@ nav:
   - Home: index.md
   - PIT architecture: pit-architecture.md
   - Twin-strategy contrast: twin-strategy-contrast.md
+  - Benchmark: benchmark.md
   - Latest run results: latest-run.md
   - API reference: reference/

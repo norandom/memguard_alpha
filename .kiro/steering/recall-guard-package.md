@@ -68,7 +68,7 @@ scorer.holdout_auc, scorer.is_weak    # calibrator quality
   ephemeral `GITHUB_TOKEN`.
 - **Distribution: GitHub Release only — no PyPI.** Consumers (e.g. Global_Macro_AI_Factors /
   `macro_framework`) install via:
-  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.1"`
+  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.2"`
   (latest released tag).
 
 ## Purpose framing — carry forward

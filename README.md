@@ -18,9 +18,9 @@ In this repository, `p_memorized` is a model-specific score produced by a logist
 Recall Guard ships as a package on GitHub Releases (no PyPI). Pin a release tag; Python 3.12 or newer:
 
 ```bash
-uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.1"
+uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.2"
 # or, with pip: install the wheel attached to the release
-pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.1/recall_guard-0.1.1-py3-none-any.whl
+pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.2/recall_guard-0.1.2-py3-none-any.whl
 ```
 
 Then `from recall_guard import MemoryGuardedScorer` and bring your own NVIDIA API key at calibration time. The runtime dependency set is lean (`numpy`, `scikit-learn`, `rich`, `pyyaml`, `requests`, `python-dotenv`); plotting and backtest extras are opt-in (`recall-guard[backtest]`).
@@ -117,61 +117,16 @@ Re-run the script any time. A fixed seed keeps the local sampling and bootstrap 
 
 The eval-set builder samples trading days from `[today − 10 years, today]`, stratified across the `gpt-oss-20b` cutoff (`2024-06-30`) so both halves are populated. `scripts/build_etf_portfolio_eval.py` recomputes the start date at import time, so re-running the orchestrator next month picks up the trailing decade automatically. The builder and the price fetcher both pass explicit `from` / `to` dates to FMP.
 
-## Sample run
+## Benchmark
 
-The examples below come from two local runs from 2026-04-29 against the same 330-prompt, 10-year `SWDA.L / XLK / IAU` eval set:
-
-- `runs/20260429T073229Z/`: recall-guard check, four-model shortlist.
-- `runs/cmmd_20260429T070616Z/`: single-model `cmmd` backtest (`gpt-oss-20b`, MCS holdout AUC 0.728, parse rate 96.7%).
-
-These paths are local run artifacts, not tracked repository files. Re-run the commands above to regenerate equivalents in your own checkout.
-
-### Per-model accuracy (recall-guard check)
-
-| Model | Parse % | Raw Acc (95% CI) | MCS-AUC | Warnings |
-| --- | ---: | --- | ---: | --- |
-| `openai/gpt-oss-20b`            | 95.5% | **0.5492** [0.4921–0.6032] | 0.976 | not-better-than-baseline |
-| `meta/llama-3.2-3b-instruct`    | 99.1% | 0.5352 [0.4801–0.5902]     | 0.996 | not-better-than-baseline |
-| `meta/llama-3.1-8b-instruct`    | 86.7% | 0.4860 [0.4301–0.5420]     | 1.000 | not-better-than-baseline |
-| `microsoft/phi-4-mini-instruct` | 48.5% | **0.3187** [0.2437–0.3875] | 0.854 | parse-unreliable, not-better-than-baseline |
-| `__majority_baseline__`         | —     | 0.5394 [0.4848–0.5970]     | —     | always-predict-the-majority-class |
-
-Notes:
-
-- `gpt-oss-20b` is the only model whose point estimate lands above the always-predict-up baseline (0.5492 vs 0.5394), but its interval still overlaps the baseline interval.
-- `phi-4-mini` performs poorly here, and the low parse rate means the estimate is based on a smaller usable subset than the other models.
-- MCS-AUC near 1.0 means the classifier cleanly separated the repository's shipped IS and OOS calibration corpora for that model. It does **not** by itself prove that the model memorized a specific eval prompt.
-
-### Pre-cutoff vs post-cutoff split
-
-`openai/gpt-oss-20b` shows a negative gap in this run: pre-cutoff accuracy is lower than post-cutoff accuracy.
-
-| Model | Cutoff | Pre-cutoff acc (95% CI) | Post-cutoff acc (95% CI) | Gap |
-| --- | --- | --- | --- | ---: |
-| `openai/gpt-oss-20b` | 2024-06-30 | 0.560 [0.502–0.622] | 0.617 [0.500–0.750] | **−0.057** |
-
-The same run also shows large effect sizes on the raw MIA features (`loss` d = +2.23, `zlib_ratio` d = +2.00, `min_k_pp` d = −2.15), so the classifier is picking up a real difference between the two calibration buckets. On this eval stream, that difference does not show up as higher pre-cutoff directional accuracy.
-
-### Backtest
-
-10-year long-short portfolio over `{SWDA.L, XLK, IAU}` with BIL as the cash leg, daily rebalance, 1× leverage cap, 15 bps round-trip cost. `raw_alpha` uses every parse-OK row; `cmmd` drops rows above the run's top-quintile `p_memorized` threshold (empirical threshold 0.1598 on this run). Bootstrap 95% CIs from 1000 resamples.
-
-| Variant | Sharpe (95% CI) | Mean daily bps (95% CI) | Max drawdown | Total return | n signals |
-| --- | --- | --- | ---: | ---: | ---: |
-| `raw_alpha` | −1.560 [−1.980, −0.622] | −1.14 [−1.66, −0.55] | −24.49% | −24.54% | 319 |
-| `cmmd`      | −1.360 [−1.791, −0.455] | −0.97 [−1.48, −0.40] | −21.30% | −21.36% | 255 |
-
-Relative Sharpe change `(cmmd − raw_alpha) / raw_alpha`: **−12.87%**. The filtered variant is still losing money, but less badly than `raw_alpha` on this run.
-
-This repository's single-model thresholded variant does not turn the strategy profitable on this universe and date span. It is evidence about this implementation, this model, and this prompt stream; it is not a claim about every CMMD-style setup.
-
-Equity curves for both variants plus the passive `buy_and_hold_swda` benchmark are saved in the run dir as `equity_curves.png`. Re-run `scripts/run_cmmd_backtest.py` to regenerate them locally.
+The model benchmark now lives in [`README.benchmark.md`](./README.benchmark.md).
+It includes the benchmark date, the per-model table, the `cmmd` backtest table, and a metric glossary.
 
 ## Use as a package
 
 The longer-term use case is to consume Recall Guard as a library rather than only through the two CLIs. [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors) is one consumer: it builds AI macro/risk factors and can feed prompts through `recall_guard` to get a per-call `p_memorized` score and a discounted confidence.
 
-Since v0.1.1 this is packaged: `recall_guard` installs from the GitHub Release (wheel + sdist, hatchling build) with a small stable façade over the `NvidiaLM` + control-baseline + MCS stack. See [Install (users)](#install-users) above; the packaging spec lives under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/).
+Since v0.1.2 this is packaged: `recall_guard` installs from the GitHub Release (wheel + sdist, hatchling build) with a small stable façade over the `NvidiaLM` + control-baseline + MCS stack. See [Install (users)](#install-users) above; the packaging spec lives under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/).
 
 ## Caveats
 
