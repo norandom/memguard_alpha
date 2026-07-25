@@ -1,8 +1,8 @@
 """NVIDIA chat-completions HTTP client with logprobs and configurable temperature.
 
-Implements the `core.nvidia_lm` component from the honest-model-ranking design:
-single request per call, 15 s hard timeout, always-on `logprobs=true,
-top_logprobs=20`, and a frozen `CompletionResult` return type.
+This client always requests `logprobs=true` and `top_logprobs=20` and returns
+frozen `CompletionResult` records. A logical `generate()` call may retry on
+retryable HTTP failures; the default per-attempt timeout is 15 seconds.
 """
 
 from __future__ import annotations

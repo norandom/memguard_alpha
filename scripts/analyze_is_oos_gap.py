@@ -33,7 +33,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-# Make 'src' importable regardless of where the script runs from.
+# Make the repository root importable regardless of where the script runs from.
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))

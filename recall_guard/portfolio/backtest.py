@@ -1,76 +1,62 @@
-"""Long-short cross-sectional backtest engine for the cmmd-backtest spec.
+"""Long-short cross-sectional backtest engine for the `cmmd` backtest.
 
-Implements Requirements 5.1–5.8, 6.3, 6.5, and 9.4 of the
-``cmmd-backtest`` spec: take a stream of harness ``Record`` objects plus
-a ``(date × ticker)`` close-price matrix, build a daily-rebalanced
-target-weight matrix where ``weight[d, t] = direction[d, t] *
-confidence[d, t]``, and run two backtests through ``vectorbt``:
-``raw_alpha`` (no filter) and ``cmmd`` (top-quintile ``p_memorized``
-rows removed). The two variants share one price matrix; the only
-difference is the surviving record stream.
+This module takes a stream of harness-style records plus a `(date x ticker)`
+close-price matrix, builds a daily-rebalanced target-weight matrix where
+`weight[d, t] = direction[d, t] * confidence[d, t]`, and runs two backtests
+through `vectorbt`:
 
-This module is the "engine core" of task 2.4. It owns the dataclasses
-:class:`BacktestMetrics` and :class:`BacktestResult`, plus the
-:func:`run_backtest` entry point. Task 2.5 will add an artifact writer
-in this same file.
+- `raw_alpha`: every surviving parse-OK row
+- `cmmd`: rows above the chosen `p_memorized` threshold removed
+
+The two variants share one price matrix; the difference is the surviving record
+stream. This file owns the `BacktestMetrics` and `BacktestResult` dataclasses,
+plus both the compute path (`run_backtest`) and the artifact writer.
 
 Layer rules and design deviation
 --------------------------------
 
-The ``portfolio`` layer is order=1 in ``.sentrux/rules.toml`` and the
-``harness`` layer is order=0 (top of stack). Order=1 cannot import from
-order=0, so this module never imports ``harness.evaluator.Record``.
-Instead :func:`run_backtest` accepts any record-shaped object exposing
-the attributes ``parse_ok``, ``predicted_direction``, ``raw_confidence``,
-``p_memorized``, and ``prompt_hash`` (structural typing via
-:class:`typing.Protocol`). This matches the strategy already used by
-``portfolio.cmmd``.
+The `portfolio` layer is order=1 in `.sentrux/rules.toml` and the `harness`
+layer is order=0. Order=1 cannot import from order=0, so this module never
+imports `harness.evaluator.Record`. Instead `run_backtest` accepts any
+record-shaped object exposing `parse_ok`, `predicted_direction`,
+`raw_confidence`, `p_memorized`, and `prompt_hash`.
 
-The ``Record`` dataclass produced by ``harness.evaluator`` does not
-carry ``metadata.date`` or ``metadata.ticker`` (the harness flattens
-metadata into ``prompt_hash`` indexes and stores the metadata on the
-eval-set side). To build a ``(date × ticker)`` weight matrix, this
-function therefore takes an additional ``prompt_metadata`` argument
-mapping each record's ``prompt_hash`` to ``{"ticker": str, "date": str
-(ISO-8601)}``. The orchestrator script (task 3.2) is responsible for
-joining the records to the eval-set rows and constructing this dict;
-the engine itself stays pure-compute.
+The `Record` dataclass produced by `harness.evaluator` does not carry
+`metadata.date` or `metadata.ticker`. To build a `(date x ticker)` weight
+matrix, the caller passes `prompt_metadata`, mapping each record's
+`prompt_hash` to `{"ticker": str, "date": str}`. The orchestrator builds that
+mapping from the eval set; the engine stays pure compute.
 
 Determinism
 -----------
 
-The engine is fully deterministic given identical ``records``,
-``prices``, ``prompt_metadata``, and ``seed``. Vectorbt's portfolio
-construction is itself deterministic; the only stochastic step is the
-bootstrap CI on Sharpe and mean daily return, which threads ``seed``
-through ``core.bootstrap.bootstrap_ci``.
+The engine is deterministic given identical `records`, `prices`,
+`prompt_metadata`, and `seed`. Vectorbt's portfolio construction is
+deterministic; the only stochastic step is the bootstrap CI on Sharpe and mean
+daily return, which threads `seed` through `core.bootstrap.bootstrap_ci`.
 
 Key contracts
 -------------
 
-- The returned ``BacktestResult.equity_curves`` DataFrame has columns
-  ``["raw_alpha", "cmmd", "buy_and_hold_swda"]`` in that exact order,
-  with the first row equal to ``[1.0, 1.0, 1.0]`` (Req 7.2).
-- ``BacktestResult.daily_returns_bps`` has columns ``["raw_alpha",
-  "cmmd"]`` and is denominated in basis points (×10⁴).
-- ``BacktestMetrics.max_drawdown_pct`` is signed: a negative number
-  reports a drawdown (e.g., -3.4 means -3.4%). The spec is ambiguous
-  on the sign so we pick signed-percent and document.
+- `BacktestResult.equity_curves` has columns
+  `["raw_alpha", "cmmd", "buy_and_hold_swda"]` in that exact order, with the
+  first row equal to `[1.0, 1.0, 1.0]`.
+- `BacktestResult.daily_returns_bps` has columns `["raw_alpha", "cmmd"]` and
+  is denominated in basis points (x10^4).
+- `BacktestMetrics.max_drawdown_pct` is signed: a negative number reports a
+  drawdown (for example, -3.4 means -3.4%).
 
 vectorbt 0.28 conventions
 -------------------------
 
-- ``size_type='targetpercent'`` rebalances to the target weight on every
-  bar. Combined with ``cash_sharing=True, group_by=True`` this gives
-  one portfolio across all tickers; vectorbt deducts trading fees on
-  the trade notional, which equals ``|Δw_t|`` × portfolio value at the
-  rebalance bar.
-- ``freq='1D'`` sets the annualisation factor (252 trading days/year)
-  for ``Portfolio.sharpe_ratio()``.
-- The ``size`` matrix passed to ``from_orders`` already contains BIL's
-  residual allocation, so vectorbt charges the BIL purchase as a real
-  trade. That matches Req 5.4's "BIL holds the residual" semantics
-  and Req 5.6's per-position cost.
+- `size_type='targetpercent'` rebalances to the target weight on every bar.
+  Combined with `cash_sharing=True, group_by=True` this gives one portfolio
+  across all tickers; vectorbt deducts trading fees on the trade notional,
+  which equals `|Δw_t| x portfolio value` at the rebalance bar.
+- `freq='1D'` sets the annualization factor (252 trading days/year) for
+  `Portfolio.sharpe_ratio()`.
+- The `size` matrix passed to `from_orders` already contains BIL's residual
+  allocation, so vectorbt charges the BIL purchase as a real trade.
 """
 
 from __future__ import annotations
@@ -553,9 +539,9 @@ def _buy_and_hold_swda(prices: pd.DataFrame) -> pd.Series:
 
 # ----------------------------------------------------------- artifact writers
 #
-# Task 2.5: build all five artifacts in memory, then write atomically.
+# Build all five artifacts in memory, then write atomically.
 # Any failure during the write phase rolls back files this call wrote
-# and re-raises as :class:`BacktestArtifactError` (Req 7.6).
+# and re-raises as :class:`BacktestArtifactError`.
 
 
 _SUMMARY_COLUMNS = (

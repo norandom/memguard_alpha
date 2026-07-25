@@ -1,5 +1,5 @@
 site_name: recall_guard
-site_description: Measured inference-without-recall — honest LLM signals with a calibrated memorization score.
+site_description: Measured inference-without-recall — per-prompt contamination scoring for LLM outputs.
 repo_url: https://github.com/norandom/memguard_alpha
 # Warnings (incl. unresolved references) are fatal, so a broken API reference fails
 # the build rather than publishing a broken page (Req 8.5).
@@ -37,4 +37,6 @@ plugins:
 nav:
   - Home: index.md
   - PIT architecture: pit-architecture.md
+  - Twin-strategy contrast: twin-strategy-contrast.md
+  - Latest run results: latest-run.md
   - API reference: reference/

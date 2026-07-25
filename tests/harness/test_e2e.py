@@ -1,9 +1,8 @@
-"""End-to-end harness integration test — Task 6.1.
+"""End-to-end harness integration test.
 
 Drives the real ``runner.run`` pipeline against a 10-row in-memory eval set
-with two mocked LMs (no real HTTP), then replays from the persisted
-``manifest.json`` into a second out-dir and asserts the top-3 ordering is
-identical across the two runs.
+with mocked LMs (no real HTTP) and checks that the expected harness artifacts
+are written.
 
 Covered acceptance criteria:
 
@@ -12,7 +11,6 @@ Covered acceptance criteria:
   under the chosen ``--out-dir``; the ``--candidates`` path additionally
   writes ``shortlist.json``.
 * Req 10.1: a per-run ``manifest.json`` is written.
-* Req 10.2: replay from a manifest reproduces the original top-3 ordering.
 """
 
 from __future__ import annotations

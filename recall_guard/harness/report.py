@@ -373,7 +373,7 @@ def print_artifact_paths(
 ) -> None:
     """Print the final ``Artifacts:`` summary block (Req 9.4).
 
-    Each key/value pair is rendered as ``<name>  <absolute path>`` so the
+    Each key/value pair is rendered as ``<name>  <path>`` so the
     operator can copy paths directly out of the terminal.
     """
     target = console or Console()

@@ -1,72 +1,46 @@
 """End-to-end run orchestrator for the honest-model-ranking harness.
 
-Implements the ``harness.runner`` component from the design document
-(see design.md → Components and Interfaces → harness.runner; System Flows
-→ End-to-end Run Flow). Satisfies Requirements:
+This module drives the current build-only harness flow:
 
-* 1.5: ``--shortlist`` override; smoke is skipped and no shortlist.json is
-  written.
-* 2.5: Cutoff guard runs immediately after shortlist resolution and BEFORE
-  any HTTP call to a candidate model.
-* 9.4: Artifact paths are printed at the end of a successful run.
-* 10.1: A per-run manifest is written containing input hashes, the seed,
-  the resolved shortlist, the composite-score formula, MCS hyperparameters,
-  the bootstrap resample count, and an artifact-name → path map. Input
-  file paths are also stored under ``artifacts`` keys prefixed with
-  ``input_`` (``input_eval_set``, ``input_is_memorized``,
-  ``input_oos_control``, ``input_cutoffs``) so that ``replay`` can locate
-  the original input bytes by name without an extra schema field.
-* 10.2: ``replay --from-manifest PATH --out-dir PATH`` re-runs the
-  pipeline with the recorded seed, verifying every input's sha256 against
-  the manifest before any work begins. A hash mismatch aborts non-zero
-  with a clear, file-naming error (no stale-input runs).
-* 10.3: Temperature-0 violations are surfaced via the evaluator's per-model
-  warnings (the runner does not need to do its own enforcement here).
+- resolve the shortlist (`--shortlist` directly or `--candidates` via the smoke test)
+- enforce the cutoff guard before any model calls
+- build the control baseline and per-model MCS classifier
+- evaluate the shortlisted models on the eval set
+- rank the results and write the run artifacts
 
-Pipeline (matches the sequence diagram in design.md):
+The successful run writes `records.jsonl`, `summary.csv`, `top3.md`, and
+`manifest.json`, then prints the artifact paths. When the run starts from
+`--candidates`, it also writes `shortlist.json`.
 
-1. Load ``.env`` and read ``NVIDIA_API_KEY`` from the environment. Missing
-   key → exit code ``2``.
-2. Load the eval set + cutoffs registry. Missing eval-set file → exit code
-   ``2``.
-3. Resolve the shortlist:
-   * ``--shortlist`` overrides verbatim; smoke is skipped.
-   * Otherwise read ``--candidates`` newline-delimited, run
-     :func:`harness.smoke.smoke_test`, and persist
-     ``<out_dir>/shortlist.json`` for reproducibility (Req 1.4).
-4. ``assert_cutoff_safe(eval_set, shortlist, cutoffs)``. Any
-   :class:`CutoffViolation` aborts the run with exit code ``3``. No HTTP
-   calls happen up to this point.
-5. Load the IS-memorized + OOS-control calibration corpora. Both files use a
-   superset of the eval-row schema (``label`` instead of ``target_direction``);
-   we read them inline via :func:`_load_calibration_rows` rather than reusing
-   :func:`load_eval_set` so the calibration schema stays decoupled.
-6. Construct the optional reference-model LM via the injected
-   ``lm_factory``. ``--no-reference`` short-circuits to ``None``.
-7. For each shortlisted model:
-   * ``build_baseline``. If ``is_calibrated`` is ``False`` we *skip*
-     evaluation, append a stub :class:`ModelEvalResult` carrying the
-     ``uncalibrated`` warning (Req 3.4), and continue. The ranker then sets
-     ``survives_gates=False`` for that row, propagating the warning into
-     ``summary.csv``, ``top3.md``, and the terminal report.
-   * Otherwise: ``train`` MCS, ``evaluate_model`` over the eval set, and
-     append the result.
-8. Compute the majority baseline, run the composite ranker, then write
-   ``records.jsonl``, ``summary.csv``, ``top3.md``, and ``manifest.json``
-   under ``--out-dir``. The manifest is the *last* thing written so it can
-   record actual artifact paths.
-9. Render the terminal table (Req 9.1, 9.2) and print the artifact-paths
-   summary (Req 9.4).
+Key behavior:
 
-Testability hooks
------------------
-``run(args, *, lm_factory=...)`` accepts a factory ``(api_key, model,
-timeout_s) -> NvidiaLM`` so tests inject a fake LM that records calls and
-returns scripted ``CompletionResult`` objects.
+* `--shortlist` skips the smoke test and does not write `shortlist.json`.
+* The cutoff guard runs immediately after shortlist resolution and before any
+  HTTP call to a candidate model.
+* The manifest records input hashes, the seed, the resolved shortlist, the
+  composite-score formula, MCS hyperparameters, the bootstrap count, and the
+  artifact path map.
+* Temperature-0 problems are surfaced through evaluator warnings rather than a
+  runner-specific enforcement layer.
 
-What this module deliberately does NOT do (out of scope for Task 5.2):
-* Plotting (Task 5.4).
-* Public-API re-export discipline in ``src/harness/__init__.py`` (Task 5.5).
+Pipeline summary:
+
+1. Load `.env` and read `NVIDIA_API_KEY`. Missing key -> exit code `2`.
+2. Load the eval set and cutoff registry. Missing eval-set file -> exit code `2`.
+3. Resolve the shortlist.
+4. Run `assert_cutoff_safe(eval_set, shortlist, cutoffs)`. Any
+   `CutoffViolation` aborts with exit code `3`.
+5. Load the IS and OOS calibration corpora.
+6. Construct the optional reference-model LM via the injected `lm_factory`.
+7. For each shortlisted model, build the control baseline. If it is not
+   calibrated, append a stub `ModelEvalResult` with the `uncalibrated` warning.
+   Otherwise train the MCS classifier and evaluate the model on the eval set.
+8. Compute the majority baseline, rank the models, and write the run artifacts.
+9. Render the terminal table and print the artifact-path summary.
+
+`run(args, *, lm_factory=...)` accepts a factory `(api_key, model, timeout_s) -> NvidiaLM`
+so tests can inject a fake LM that records calls and returns scripted `CompletionResult`
+objects.
 """
 
 from __future__ import annotations
@@ -128,7 +102,7 @@ logger = logging.getLogger(__name__)
 
 #: Harness version recorded in the manifest. Bumped when on-disk artifact
 #: schemas change in a backwards-incompatible way.
-HARNESS_VERSION: str = "0.1.0"
+HARNESS_VERSION: str = "0.1.1"
 
 #: Default reference model documented in the Open Defaults table: small,
 #: NVIDIA-hosted, with well-known training data.

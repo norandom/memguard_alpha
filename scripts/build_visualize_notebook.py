@@ -1,9 +1,9 @@
 """One-shot generator for notebooks/visualize_run.ipynb.
 
 The notebook is a stripped-down companion to qualification.ipynb: it loads a
-finished run directory's artifacts (records.jsonl, summary.csv, top3.md) and
-renders the paper-ready figures via recall_guard.harness.plots. No equations, no LaTeX
-cells — just visualisation of a real run for paper inclusion.
+completed local run directory's artifacts (`records.jsonl`, `summary.csv`, `top3.md`)
+and renders the plotting helpers from `recall_guard.harness`. No equations, no
+LaTeX cells, just figure reconstruction from on-disk artifacts.
 """
 from __future__ import annotations
 
@@ -37,8 +37,8 @@ NB.cells = [
         "import json\n"
         "import re\n"
         "\n"
-        "# Edit RUN_DIR to point at any completed run.\n"
-        "RUN_DIR = Path('runs/20260427_213853')\n"
+        "# Edit RUN_DIR to point at any completed local run.\n"
+        "RUN_DIR = Path('runs/cmmd_20260429T070616Z')\n"
         "\n"
         "RECORDS_PATH = RUN_DIR / 'records.jsonl'\n"
         "SUMMARY_PATH = RUN_DIR / 'summary.csv'\n"

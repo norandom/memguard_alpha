@@ -1,25 +1,14 @@
 # How this system achieves point-in-time (PIT) inference
 
-Reference description for the thesis illustration. Each component maps to code, so the
-diagram can cite its implementation. The measurement layer (3) and the guard concept live
-in this repository; the input discipline, task design, and portfolio layers are implemented
-by the consumer pipeline in [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors).
+Reference description for the thesis illustration. Each component maps to code or to a named external consumer component. The measurement layer and the `recall_guard` package live in this repository; the input discipline, task design, and portfolio layers referenced here live in the consumer pipeline at [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors).
 
 ## The problem with just prompting
 
-A naive prompt ("It is March 2022. CPI is 8.5%, the 10y-2y spread is -0.2. What
-happens to SPY?") hands the model three keys to its own training data: the
-date, the real ticker, and raw levels that fingerprint the period (a 9.1% CPI
-print *is* June 2022). A model trained through 2024 can answer from memory and
-the answer is indistinguishable from reasoning. There is no way, from the text
-alone, to tell inference from recall. That is lookahead leakage through the
-prompt, and it is the LLM version of an in-sample backtest.
+A naive prompt ("It is March 2022. CPI is 8.5%, the 10y-2y spread is -0.2. What happens to SPY?") gives the model three strong cues: the date, the real ticker, and raw levels that can fingerprint a period. A model trained through 2024 may answer partly from stored text. From the prompt alone, it is hard to separate recall from reasoning. That is the point-in-time problem this stack is trying to reduce and measure.
 
 ## The PIT stack: five layers
 
-The architecture treats contamination like a security problem: prevent what you
-can, constrain the attack surface, measure what leaks anyway, price the
-residual, and verify the whole thing with controls.
+The architecture uses the usual point-in-time controls first, then adds a measurement layer for what still leaks through.
 
 ```mermaid
 graph TB
@@ -34,7 +23,7 @@ graph TB
     subgraph "3 · Measure (recall_guard)"
         E[Logprob capture<br/>NvidiaLM: per-token logprobs]
         F[MIA features<br/>loss, min-k, zlib ratio]
-        G[Per-model calibrator<br/>identifying vs anonymized boundary<br/>-> p_memorized per prompt]
+        G[Per-model calibrator<br/>IS vs OOS calibration split<br/>-> p_memorized per prompt]
     end
     subgraph "4 · Price (the guard)"
         H[recall_guarded_adjust<br/>tilt x 1 minus p_memorized,<br/>discount only, no hard gate]
@@ -42,7 +31,7 @@ graph TB
     subgraph "5 · Verify (controls)"
         I[Non-PIT diagnostic twin<br/>same prompt + date/ticker/levels,<br/>never deployable]
         J[Certification screen<br/>per-model recall AUC + permutation p]
-        K[Post-cutoff natural experiment<br/>+ SSR luck-vs-skill on returns]
+        K[Post-cutoff natural experiment<br/>+ SSR on returns]
     end
     A --> D
     B --> D
@@ -57,59 +46,33 @@ graph TB
 
 ### Layer 1: prevent (input discipline)
 
-- **Anonymization** (`macro_framework/anonymize.py`, `AssetMap`): real tickers
-  never reach the prompt. Assets appear as `Asset_A..Asset_D` plus a category
-  word. Removes the identity key.
-- **De-dating and normalization** (`render_regime_loadings_prompt` in
-  `macro_framework/factor_scoring.py`): the macro state is z-scored against a
-  rolling window, raw levels are withheld, no calendar token appears, and the
-  prompt states the model does not know what year it is. Removes the date key
-  and the level fingerprint.
-- **As-of discipline** (`mf.build_walk_forward_targets`): classic backtest
-  hygiene. Every rebalance date is computed from data strictly before it,
-  including the z-score windows. Removes lookahead in the numeric inputs
-  themselves, independent of the LLM.
+- **Anonymization** (`macro_framework/anonymize.py`, `AssetMap`): real tickers do not reach the prompt. Assets appear as `Asset_A..Asset_D` plus a category word.
+- **De-dating and normalization** (`render_regime_loadings_prompt` in `macro_framework/factor_scoring.py`): the macro state is z-scored against a rolling window, raw levels are withheld, and no calendar token appears.
+- **As-of discipline** (`mf.build_walk_forward_targets`): every rebalance date is computed from data strictly before it, including the z-score windows.
 
 ### Layer 2: constrain (task design)
 
-The model characterizes the regime as continuous loadings on five named macro
-axes. It is never asked for a direction or an expected return, so even a fully
-contaminated reply has no channel to smuggle a forecast. Exposures come from a
-fixed, documented axis-to-asset table (`loadings_to_tilt_views`); the
-Black-Litterman conversion is reused unchanged.
+The model characterizes the regime as continuous loadings on five named macro axes. It is not asked for a return forecast. Exposures come from a fixed axis-to-asset table (`loadings_to_tilt_views`), and the Black-Litterman conversion is reused unchanged.
 
-### Layer 3: measure (recall_guard)
+### Layer 3: measure (`recall_guard`)
 
-Prevention is never total, so contamination is measured per prompt rather than
-assumed away. The scoring model's per-token logprobs (`NvidiaLM`) feed
-membership-inference features (loss, min-k probability, zlib ratio), and a
-per-model calibrator trained on the identifying-vs-anonymized boundary of the
-same macro states maps them to `p_memorized` in [0, 1]. Implementation: the
-[recall-guard](https://github.com/norandom/memguard_alpha) package (Roy & Roy
-2026, arXiv:2603.26797), wired in `FactorScorer`.
+Prevention is never total, so the repository measures a residual score per prompt rather than assuming the prompt is clean. The scoring model's per-token logprobs (`NvidiaLM`) feed membership-inference features (`loss`, `min_k`, `min_k_pp`, `zlib_ratio`, and optional `ref_delta`), and a per-model classifier trained on the repository's in-sample vs out-of-sample calibration split maps them to `p_memorized` in `[0, 1]`.
+
+Within this repository, that score is a model-specific contamination signal. It is not direct proof that a prompt was memorized.
 
 ### Layer 4: price (the guard)
 
-`recall_guarded_adjust`: every exposure tilt is scaled by (1 − p_memorized).
-A discount, not a gate: suspicious dates keep a voice, proportional to how
-honest their prompt measured. This is where contamination stops being a caveat
-and becomes a number in the portfolio math.
+`recall_guarded_adjust` scales each exposure tilt by `(1 - p_memorized)`. It is a discount, not a hard gate. Higher-score prompts still contribute, but with less weight.
 
 ### Layer 5: verify (controls)
 
-- **The non-PIT twin**: the same pipeline run with identifying prompts (date,
-  tickers, raw levels added; otherwise token-identical). It exists to measure
-  what the discipline prevents; it is never deployable. Measured gap in
-  p_memorized: +0.54 in-training.
-- **Certification screen**: before deployment, every candidate model is
-  screened for recall on the controlled boundary (AUC, bootstrap CI,
-  permutation p, positive control). Result here: no candidate was recall-free;
-  the selected model runs guarded.
-- **Post-cutoff experiment + SSR**: extending the stream past the model's
-  training cutoff decomposes the measured premium into form-sensitivity
-  (+0.36, persists on unseen dates) and true recall (~+0.18, only
-  in-training). The Sharpe Stability Ratio then tests whether any of it
-  survives in returns (it does not: differential SSR 0.02).
+The control layer shown here mostly belongs to the external consumer pipeline, not to this repository:
+
+- **The non-PIT twin** runs the same broader strategy with identifying prompt content restored (date, tickers, raw levels).
+- **Certification screen** checks candidate models on a controlled recall boundary before deployment.
+- **Post-cutoff experiments and return diagnostics** test whether any measured premium persists when the prompt dates move beyond the model's published training cutoff.
+
+Those controls are useful context for the thesis diagram, but the numerical results for them are not generated inside this repository.
 
 ## What "just prompting" lacks, in one table
 
@@ -120,11 +83,8 @@ and becomes a number in the portfolio math.
 | Level fingerprints | raw macro levels | rolling z-scores only |
 | Data lookahead | whatever the context holds | as-of walk-forward slices |
 | Forecast channel | model asked to predict | loadings only, no return ask |
-| Contamination | unknowable | measured per prompt (p_memorized) |
-| Residual memory | fully priced in | discounted by 1 − p_memorized |
-| Validation | none | non-PIT twin, screen, post-cutoff, SSR |
+| Contamination status | implicit | measured per prompt with `p_memorized` |
+| Residual memory handling | unpriced | discounted by `1 - p_memorized` |
+| Validation | none | external twin/control workflow + local scoring artifacts |
 
-The one-sentence version for the caption: *point-in-time inference is not a
-prompt style but a stack — anonymize, de-date, restrict the data, remove the
-forecast channel, then measure the leak that remains and charge it against the
-position size, with a diagnostic twin proving the discipline does something.*
+One-sentence caption version: *point-in-time inference here is a stack: anonymize, de-date, restrict the data, remove the direct forecast ask, then attach a per-prompt contamination score to what remains.*

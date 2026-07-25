@@ -1,38 +1,33 @@
 # Recall Guard
 
-Two CLIs that grade language models on a financial-prediction task without giving them credit for what they memorised.
+Two CLIs for scoring language-model responses on a financial prompt stream and attaching a per-prompt contamination score.
 
 - `./start.sh` runs the **recall-guard check**: per-model accuracy, MIA features, MCS-AUC, and a top-3 ranking with bootstrap CIs.
-- `scripts/run_cmmd_backtest.py` runs the **CMMD backtest**: turns one model's signal stream into a long-short portfolio over a 10-year window, with and without filtering the rows the MCS classifier flags as memorised.
+- `scripts/run_cmmd_backtest.py` runs the repository's **`cmmd` backtest**: one model's signal stream goes through a long-short portfolio over a 10-year window, with and without dropping the rows whose `p_memorized` score lands in the top quintile for that run.
 
-The recall-guard check is the per-model leaderboard. The backtest takes the leaderboard's signal model and asks the harder question: does dropping the rows that look memorised actually improve trading Sharpe? Both run from the same harness path, so the numbers stay anchored to the same prompt stream.
+The recall-guard check is the per-model leaderboard. The backtest then asks a narrower question: on this prompt stream, does filtering high-score rows change the downstream portfolio at all? Both workflows share the same harness path, so the artifacts stay comparable.
 
-## What this measures (and why coin-flip accuracy is the point)
+## What this measures
 
-Recall Guard is not a forecaster and is not trying to be. On a "did this ETF close up or down" task, near-coin-flip directional accuracy is the expected, correct result: without financial modelling, an LLM's predictive quality on raw price direction cannot beat chance, and a tool that reported otherwise would be measuring leaked lookahead rather than skill. What the harness actually measures is honesty: whether a model's apparent edge comes from reasoning it can defend out-of-sample or from text it memorised before its training cutoff. The MIA features and the per-model MCS `p_memorized` turn that distinction into a number.
+Recall Guard is not a forecaster. On a "did this ETF close up or down" task, near-coin-flip directional accuracy is an unsurprising result. The useful output here is not alpha. It is the per-prompt `p_memorized` score and the supporting artifacts around it.
 
-That number is the product. It is meant to be consumed downstream as a contamination / lookahead score on AI-derived signals; see [Use as a package](#use-as-a-package).
+In this repository, `p_memorized` is a model-specific score produced by a logistic classifier trained to separate the shipped in-sample and out-of-sample calibration corpora. It is useful as a contamination flag for downstream analysis. It is not proof that a prompt was memorized, and it should be read in the context of the calibration data used to train it.
 
 ## Install (users)
 
-Recall Guard ships as a package on GitHub Releases (no PyPI). Pin the latest
-release tag; Python 3.12 or newer:
+Recall Guard ships as a package on GitHub Releases (no PyPI). Pin a release tag; Python 3.12 or newer:
 
 ```bash
-uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.0"
+uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.1"
 # or, with pip: install the wheel attached to the release
-pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.0/recall_guard-0.1.0-py3-none-any.whl
+pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.1/recall_guard-0.1.1-py3-none-any.whl
 ```
 
-Then `from recall_guard import MemoryGuardedScorer` and bring your own NVIDIA
-API key at calibration time. The runtime dependency set is lean (numpy,
-scikit-learn, rich, pyyaml, requests, python-dotenv); plotting and backtest
-extras are opt-in (`recall-guard[backtest]`).
+Then `from recall_guard import MemoryGuardedScorer` and bring your own NVIDIA API key at calibration time. The runtime dependency set is lean (`numpy`, `scikit-learn`, `rich`, `pyyaml`, `requests`, `python-dotenv`); plotting and backtest extras are opt-in (`recall-guard[backtest]`).
 
 ## Develop (contributors)
 
-You need Python 3.12, [uv](https://github.com/astral-sh/uv), an NVIDIA
-chat-completions API key, and an FMP API key.
+You need Python 3.12, [uv](https://github.com/astral-sh/uv), an NVIDIA chat-completions API key, and an FMP API key.
 
 ```bash
 uv sync
@@ -43,10 +38,9 @@ EOF
 uv run pytest -q   # 258 tests, offline
 ```
 
-`uv sync` installs everything from `pyproject.toml` into `.venv/`, including
-the dev group. No system pip, no manual virtualenv.
+`uv sync` installs everything from `pyproject.toml` into `.venv/`, including the dev group.
 
-## Workflow 1: Run the recall-guard check
+## Workflow 1: run the recall-guard check
 
 ```bash
 ./start.sh
@@ -62,15 +56,16 @@ EVAL_SET=data/eval/etf_direction_multiyear.jsonl OUT_DIR=runs/quick ./start.sh
 ./start.sh --no-reference          # extra harness flags pass through
 ```
 
-You get five files in `OUT_DIR` (defaults to `runs/<UTC-timestamp>/`):
+The default `--shortlist` path writes four files to `OUT_DIR` (defaults to `runs/<UTC-timestamp>/`):
 
 | File | What it is |
 | --- | --- |
-| `top3.md` | The ranking, plus a "why fewer than three" section when gates kicked models out. |
-| `summary.csv` | Per-model raw acc, MemGuard acc, MCS-AUC with 95% CIs, parse rate, score, warnings. |
-| `records.jsonl` | One row per (model, prompt) with logprobs, the five MIA features, and `p_memorized`. |
-| `manifest.json` | Seed, input file hashes, artifact paths. |
-| `shortlist.json` | Only when the smoke gate ran (i.e., you used `--candidates` instead of `--shortlist`). |
+| `top3.md` | The ranking, plus a "why fewer than three" section when gates remove models. |
+| `summary.csv` | Per-model raw acc, MemGuard acc, MCS-AUC, parse rate, score, and warnings. |
+| `records.jsonl` | One row per `(model, prompt)` with parsed output, derived MIA features, standardized features, and `p_memorized`. |
+| `manifest.json` | Seed, input file hashes, artifact paths, and run metadata. |
+
+If you use `--candidates` instead of `--shortlist`, the harness also writes `shortlist.json`.
 
 To open the figures:
 
@@ -78,9 +73,9 @@ To open the figures:
 uv run jupyter-lab notebooks/visualize_run.ipynb
 ```
 
-Point the `RUN_DIR` cell at your run, execute. You get MIA-feature distributions, MCS calibration curves, accuracy and MCS-AUC with bootstrap CIs, and the composite ranking, all read straight from the artifacts.
+Point the `RUN_DIR` cell at your run and execute. The notebook reconstructs the figures from the artifacts on disk.
 
-## Workflow 2: Run the CMMD backtest
+## Workflow 2: run the `cmmd` backtest
 
 ```bash
 uv run python scripts/run_cmmd_backtest.py
@@ -91,43 +86,45 @@ This is the end-to-end pipeline:
 1. Build `data/eval/etf_portfolio.jsonl` if it is missing (10-year window, three risk tickers × 110 prompts).
 2. Run the harness on `openai/gpt-oss-20b` against that eval set.
 3. Compute per-(model, MIA-feature) Cohen's d.
-4. Run `scripts/analyze_is_oos_gap.py` for the IS-vs-OOS accuracy gap.
-5. Pull EOD prices for `{SWDA.L, XLK, IAU, BIL}` from FMP for the eval-set's date span.
-6. Run two backtests on the same prices: `raw_alpha` (every parse-OK row) and `cmmd` (top-quintile `p_memorized` rows dropped). Daily rebalance, 1× leverage cap, 15 bps round-trip cost.
+4. Run `scripts/analyze_is_oos_gap.py` for the pre-cutoff vs post-cutoff accuracy gap.
+5. Pull EOD prices for `{SWDA.L, XLK, IAU, BIL}` from FMP for the eval-set date span.
+6. Run two backtests on the same prices: `raw_alpha` (every parse-OK row) and `cmmd` (rows above the run's top-quintile `p_memorized` threshold dropped). Daily rebalance, 1× leverage cap, 15 bps round-trip cost.
 7. Write artifacts and extend `manifest.json` with the `backtest` block.
 
 You get this in the run dir (default `runs/cmmd_<UTC-timestamp>/`):
 
 | File | What it is |
 | --- | --- |
-| `records.jsonl`, `summary.csv`, `top3.md`, `manifest.json` | Standard harness artifacts (single-model run for `gpt-oss-20b`). The manifest now carries a `backtest` block with the universe, cmmd quantile + threshold, fees, seed, n_is_rows / n_oos_rows, and artifact paths. |
-| `cohens_d.csv`, `cohens_d.md` | Per-feature Cohen's d on the raw MIA values, IS vs OOS, with the model's holdout MCS-AUC for context. |
-| `is_oos_gap.csv`, `is_oos_gap.md` | Per-model IS / OOS accuracy with bootstrap 95% CIs and the gap. |
-| `backtest_summary.csv`, `backtest_summary.md` | Sharpe, mean daily bps, max drawdown, total return for both variants, with bootstrap CIs and the relative Sharpe improvement. |
-| `equity_curves.csv`, `equity_curves.png` | Daily equity for `raw_alpha`, `cmmd`, and a passive `buy_and_hold_swda` benchmark, normalised to 1.0 at the first trading day. |
+| `records.jsonl`, `summary.csv`, `top3.md`, `manifest.json` | Standard harness artifacts for the single-model `gpt-oss-20b` run. The manifest also carries a `backtest` block with the universe, quantile/threshold, fees, seed, and artifact paths. |
+| `cohens_d.csv`, `cohens_d.md` | Per-feature Cohen's d on the raw MIA values, split by the cutoff-based date buckets. |
+| `is_oos_gap.csv`, `is_oos_gap.md` | Per-model pre-cutoff / post-cutoff accuracy with bootstrap CIs and the gap. |
+| `backtest_summary.csv`, `backtest_summary.md` | Sharpe, mean daily bps, max drawdown, total return for both variants, with bootstrap CIs and the relative Sharpe change. |
+| `equity_curves.csv`, `equity_curves.png` | Daily equity for `raw_alpha`, `cmmd`, and a passive `buy_and_hold_swda` benchmark, normalized to 1.0 at the first trading day. |
 | `daily_returns.csv` | Daily returns in basis points for `raw_alpha` and `cmmd`. |
 
-If the run aborts before writing artifacts:
+If the run aborts before writing backtest artifacts:
 
 | Exit | Reason |
 | --- | --- |
-| 4 | MCS calibration failed for `gpt-oss-20b`. The harness writes the warning to `summary.csv`; the orchestrator refuses to write a misleading `backtest` block on top of it. |
-| 5 | `analyze_is_oos_gap.py` preconditions failed (records.jsonl missing, cutoffs missing, or no eval rows have an ISO date). |
+| 4 | MCS calibration failed for `gpt-oss-20b`. The harness writes the warning to `summary.csv`; the orchestrator does not add a misleading `backtest` block on top of that. |
+| 5 | `analyze_is_oos_gap.py` preconditions failed (`records.jsonl` missing, cutoffs missing, or no eval rows have an ISO date). |
 | 6 | `BacktestArtifactError` on the artifact write phase (disk full, permission denied). The run dir is rolled back to the pre-write state. |
-| 7 | `PriceFetchError` from FMP (HTTP error, or fewer than 30 aligned trading days across the 4-ticker inner-join). |
+| 7 | `PriceFetchError` from FMP (HTTP error, or fewer than 30 aligned trading days across the 4-ticker inner join). |
 
-Re-run the script any time. The eval set is deterministic for a fixed seed (default 0), so re-runs reproduce the same prompt stream and, given the same model and prices, the same numbers within bootstrap noise.
+Re-run the script any time. A fixed seed keeps the local sampling and bootstrap steps stable for a fixed input set. Hosted model responses, provider changes, and upstream price-data corrections can still move the resulting numbers.
 
 ## What "10-year window" means
 
-The eval-set builder samples trading days from `[today − 10 years, today]`, stratified across the gpt-oss-20b cutoff (2024-06-30) so both halves are populated. `scripts/build_etf_portfolio_eval.py` recomputes the start date at import time, so re-running the orchestrator next month picks up the trailing decade automatically. FMP's `historical-price-eod/light` endpoint caps history at 5 years unless `from`/`to` are supplied; both the eval-set builder and `portfolio.prices.fetch_universe_prices` pass them so the full 10 years comes back.
+The eval-set builder samples trading days from `[today − 10 years, today]`, stratified across the `gpt-oss-20b` cutoff (`2024-06-30`) so both halves are populated. `scripts/build_etf_portfolio_eval.py` recomputes the start date at import time, so re-running the orchestrator next month picks up the trailing decade automatically. The builder and the price fetcher both pass explicit `from` / `to` dates to FMP.
 
 ## Sample run
 
-Two reference runs from 2026-04-29 against the same 330-prompt, 10-year SWDA.L / XLK / IAU eval set:
+The examples below come from two local runs from 2026-04-29 against the same 330-prompt, 10-year `SWDA.L / XLK / IAU` eval set:
 
 - `runs/20260429T073229Z/`: recall-guard check, four-model shortlist.
-- `runs/cmmd_20260429T070616Z/`: CMMD backtest, single signal model (`gpt-oss-20b`, MCS holdout AUC 0.728, parse rate 96.7%).
+- `runs/cmmd_20260429T070616Z/`: single-model `cmmd` backtest (`gpt-oss-20b`, MCS holdout AUC 0.728, parse rate 96.7%).
+
+These paths are local run artifacts, not tracked repository files. Re-run the commands above to regenerate equivalents in your own checkout.
 
 ### Per-model accuracy (recall-guard check)
 
@@ -139,58 +136,56 @@ Two reference runs from 2026-04-29 against the same 330-prompt, 10-year SWDA.L /
 | `microsoft/phi-4-mini-instruct` | 48.5% | **0.3187** [0.2437–0.3875] | 0.854 | parse-unreliable, not-better-than-baseline |
 | `__majority_baseline__`         | —     | 0.5394 [0.4848–0.5970]     | —     | always-predict-the-majority-class |
 
-Notes worth keeping:
+Notes:
 
-- `gpt-oss-20b` is the only model whose point estimate beats the always-predict-up baseline (0.5492 vs 0.5394). The 95% CIs overlap, so it is not a "p<0.05" winner, but it sits where MemGuard-Alpha's own models live (40–52% directional accuracy across contamination quintiles).
-- `phi-4-mini` at 0.3187 is statistically anti-skilled. Its CI [0.244, 0.388] does not overlap the baseline's lower bound (0.485). The parse-unreliable warning at 48.5% means the estimate comes from a smaller-than-usual sample, but the direction is real; on a three-class task this reads as a flipped +1/−1 mapping rather than noise.
-- MCS-AUC near 1.0 for the three larger models means the calibrator can almost perfectly separate IS-memorised text from OOS-control text. `phi-4-mini` at 0.854 is the outlier; its log-probability signature is harder to discriminate.
+- `gpt-oss-20b` is the only model whose point estimate lands above the always-predict-up baseline (0.5492 vs 0.5394), but its interval still overlaps the baseline interval.
+- `phi-4-mini` performs poorly here, and the low parse rate means the estimate is based on a smaller usable subset than the other models.
+- MCS-AUC near 1.0 means the classifier cleanly separated the repository's shipped IS and OOS calibration corpora for that model. It does **not** by itself prove that the model memorized a specific eval prompt.
 
-### IS-vs-OOS memorization gap
+### Pre-cutoff vs post-cutoff split
 
-| Model | Cutoff | n_IS | n_OOS | IS Acc (95% CI) | OOS Acc (95% CI) | Gap |
-| --- | --- | ---: | ---: | --- | --- | ---: |
-| `openai/gpt-oss-20b` | 2024-06-30 | 259 | 60 | 0.560 [0.502–0.622] | 0.617 [0.500–0.750] | **−0.057** |
+`openai/gpt-oss-20b` shows a negative gap in this run: pre-cutoff accuracy is lower than post-cutoff accuracy.
 
-`n_IS + n_OOS = 319`, matching the parse-OK row count in `records.jsonl`. 11 rows parse-failed and are excluded.
+| Model | Cutoff | Pre-cutoff acc (95% CI) | Post-cutoff acc (95% CI) | Gap |
+| --- | --- | --- | --- | ---: |
+| `openai/gpt-oss-20b` | 2024-06-30 | 0.560 [0.502–0.622] | 0.617 [0.500–0.750] | **−0.057** |
 
-> _MemGuard-Alpha Section 5.3 reports IS accuracy for ChatGPT rising 40.8 → 52.5% and OOS accuracy falling 47 → 42% over the same evaluation. A large positive gap is the memorisation signature; a small or zero gap with healthy OOS accuracy is the desired honest behaviour._
-
-The gap is again *negative*: gpt-oss-20b does slightly better on rows it could not have memorised than on rows it could. The Cohen's d artifact in the same run dir reports large effect sizes on the raw MIA features (`loss` d = +2.23, `zlib_ratio` d = +2.00, `min_k_pp` d = −2.15), so the calibrator is detecting something MIA-shaped, just not the directional-accuracy gap the paper highlights. See `cohens_d.md` for the full feature breakdown.
+The same run also shows large effect sizes on the raw MIA features (`loss` d = +2.23, `zlib_ratio` d = +2.00, `min_k_pp` d = −2.15), so the classifier is picking up a real difference between the two calibration buckets. On this eval stream, that difference does not show up as higher pre-cutoff directional accuracy.
 
 ### Backtest
 
-10-year long-short portfolio over `{SWDA.L, XLK, IAU}` with BIL as the cash leg, daily rebalance, 1× leverage cap, 15 bps round-trip cost. `raw_alpha` uses every parse-OK row; `cmmd` drops the top quintile by `p_memorized` (empirical threshold 0.1598 on this run). Bootstrap 95% CIs from 1000 resamples.
+10-year long-short portfolio over `{SWDA.L, XLK, IAU}` with BIL as the cash leg, daily rebalance, 1× leverage cap, 15 bps round-trip cost. `raw_alpha` uses every parse-OK row; `cmmd` drops rows above the run's top-quintile `p_memorized` threshold (empirical threshold 0.1598 on this run). Bootstrap 95% CIs from 1000 resamples.
 
 | Variant | Sharpe (95% CI) | Mean daily bps (95% CI) | Max drawdown | Total return | n signals |
 | --- | --- | --- | ---: | ---: | ---: |
 | `raw_alpha` | −1.560 [−1.980, −0.622] | −1.14 [−1.66, −0.55] | −24.49% | −24.54% | 319 |
 | `cmmd`      | −1.360 [−1.791, −0.455] | −0.97 [−1.48, −0.40] | −21.30% | −21.36% | 255 |
 
-Relative Sharpe improvement `(cmmd − raw_alpha) / raw_alpha`: **−12.87%**. The CMMD-filtered Sharpe is *less negative* than `raw_alpha`'s. Both variants are net-losing on this universe and date span, so the "improvement" is a smaller loss rather than alpha. The paper's headline finding (CMMD lifts a borderline-positive Sharpe further into the green) does not reproduce on a single-model gpt-oss-20b run against three liquid ETFs over ten years; consistent with the negative IS−OOS gap above.
+Relative Sharpe change `(cmmd − raw_alpha) / raw_alpha`: **−12.87%**. The filtered variant is still losing money, but less badly than `raw_alpha` on this run.
 
-Equity curves for both variants plus the passive `buy_and_hold_swda` benchmark are saved to `runs/cmmd_20260429T070616Z/equity_curves.png`. Re-run `scripts/run_cmmd_backtest.py` to regenerate.
+This repository's single-model thresholded variant does not turn the strategy profitable on this universe and date span. It is evidence about this implementation, this model, and this prompt stream; it is not a claim about every CMMD-style setup.
 
-This non-result is the expected outcome, not a failure of the method: a directional ETF signal with no financial modelling behind it has no honest alpha to harvest, so filtering memorised rows cannot manufacture one. The method is working. It declines to invent skill that is not there.
+Equity curves for both variants plus the passive `buy_and_hold_swda` benchmark are saved in the run dir as `equity_curves.png`. Re-run `scripts/run_cmmd_backtest.py` to regenerate them locally.
 
 ## Use as a package
 
-The longer-term goal is to consume Recall Guard as a library, not only as two CLIs. [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors) builds AI macro/risk factors; its Track A is a DSPy agent that emits Black-Litterman views from anonymised, z-scored macro state and deliberately never sees a date, a year, or a real ticker. That is recall-avoidance enforced by construction. Recall Guard supplies the missing half: a *measured* `p_memorized` per prompt, derived from per-token logprobs that DSPy hides, so contamination becomes an observable instead of an assumption. The inference is honest by the same mechanism the leaderboard uses; the factor pipeline downstream decides what to do with the score.
+The longer-term use case is to consume Recall Guard as a library rather than only through the two CLIs. [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors) is one consumer: it builds AI macro/risk factors and can feed prompts through `recall_guard` to get a per-call `p_memorized` score and a discounted confidence.
 
-Since v0.1.0 this is packaged: `recall_guard` installs from the GitHub Release (wheel + sdist, hatchling build) with a small stable façade over the `NvidiaLM` + control-baseline + MCS stack. See [Install (users)](#install-users) above; the packaging spec lives under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/).
+Since v0.1.1 this is packaged: `recall_guard` installs from the GitHub Release (wheel + sdist, hatchling build) with a small stable façade over the `NvidiaLM` + control-baseline + MCS stack. See [Install (users)](#install-users) above; the packaging spec lives under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/).
 
 ## Caveats
 
-The MCS classifier is only as good as the calibration corpora. The shipped IS corpus has 40 rows from 2020 and 2023 (FMP's older archive is thin); OOS has 100. If a model's MCS-AUC falls below 0.6 the harness flags it `weak-calibration` and drops it from the top-3 list. Check `summary.csv` after each run.
+The MCS classifier is only as good as the calibration corpora. The shipped IS corpus is small, and the shipped IS/OOS split is also confounded by source, formatting, and publication period. Treat `p_memorized` as an implementation-specific score, not ground truth.
 
 NVIDIA's free-tier 70B endpoints are queue-heavy. Use `--min-call-interval 1.5` or higher for stability. The 8B–20B size range is a better starting point.
 
-The eval set you ship to the harness defines what "skill" means. The bundled ETF builder asks "did this ETF close higher or lower than the previous trading day," which is close to a coin flip even for an oracle, and on this task that is the correct answer, not a defect (see [What this measures](#what-this-measures-and-why-coin-flip-accuracy-is-the-point)). The harness is measuring memorisation honesty on that stream, not trying to win it. If you want to study reasoning skill instead, ship an eval set that asks something a model can actually reason about (read this earnings report, predict the reaction); the memorisation machinery is identical either way.
+The eval set you ship to the harness defines what "skill" means. The bundled ETF builder asks a next-day direction question that leaves little room for genuine forecasting edge. On this task the harness is mainly useful for comparing contamination-related signals across models and prompts. If you want to study reasoning skill instead, ship an eval set that asks something the model can plausibly reason about; the contamination machinery is the same either way.
 
-The CMMD backtest uses gpt-oss-20b only. Other models are evaluated by the recall-guard check but do not feed the backtest; the design keeps the comparison "raw vs cmmd on the same signal stream" rather than "model A vs model B".
+The `cmmd` backtest uses `gpt-oss-20b` only. Other models are evaluated by the recall-guard check but do not feed that portfolio run; the design keeps the comparison focused on one signal stream.
 
 ## Citation
 
-Recall Guard is an independent implementation and evaluation of the MemGuard-Alpha method; the [sample run](#sample-run) above documents where the paper's findings did and did not reproduce here.
+Recall Guard is an independent implementation and evaluation of the MemGuard-Alpha method. The sample run above documents where this repository's implementation did and did not line up with the paper's reported behaviour.
 
 Roy, A., & Roy, D. (2026). MemGuard-Alpha: Detecting and Filtering Memorization-Contaminated Signals in LLM-Based Financial Forecasting via Membership Inference and Cross-Model Disagreement. arXiv:2603.26797.
 
@@ -206,11 +201,9 @@ Roy, A., & Roy, D. (2026). MemGuard-Alpha: Detecting and Filtering Memorization-
 }
 ```
 
-The point-in-time evaluation problem this library addresses is also benchmarked
-independently by Look-Ahead-Bench:
+The point-in-time evaluation problem this library addresses is also benchmarked independently by Look-Ahead-Bench:
 
-> Benhenda, M. (2026). *Look-Ahead-Bench: a Standardized Benchmark of Look-ahead
-> Bias in Point-in-Time LLMs for Finance.* arXiv:2601.13770.
+> Benhenda, M. (2026). *Look-Ahead-Bench: a Standardized Benchmark of Look-ahead Bias in Point-in-Time LLMs for Finance.* arXiv:2601.13770.
 
 ```bibtex
 @misc{benhenda2026lookaheadbench,
@@ -230,4 +223,4 @@ independently by Look-Ahead-Bench:
 - [`papers/2603.26797v1.md`](./papers/2603.26797v1.md): the MemGuard-Alpha paper.
 - [`.kiro/specs/honest-model-ranking/`](./.kiro/specs/honest-model-ranking/): recall-guard spec.
 - [`.kiro/specs/cmmd-backtest/`](./.kiro/specs/cmmd-backtest/): backtest spec.
-- [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/): packaging spec (use as a library for AI macro-factor analysis).
+- [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/): packaging spec.

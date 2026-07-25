@@ -1,13 +1,13 @@
 """One-shot generator for notebooks/method_overview.ipynb.
 
-Companion notebook explaining what IS-memorized vs OOS-control means for the
-honest-model-ranking method. Reads on-disk data only (no API calls):
+Companion notebook explaining how the project uses the IS and OOS calibration
+corpora. Reads on-disk data only (no API calls):
   - data/cutoffs.yaml           (per-model training cutoffs)
-  - data/calibration/is_memorized.jsonl  (the "memorized" pile)
-  - data/calibration/oos_control.jsonl   (the "unseen" pile)
+  - data/calibration/is_memorized.jsonl  (the earlier-date corpus)
+  - data/calibration/oos_control.jsonl   (the later-date control corpus)
 
-Produces: cutoff timeline diagram, year-distribution histograms, sample-row
-table, and length-distribution comparison. All figures save to
+Produces a cutoff timeline diagram, year-distribution histograms, a sample-row
+table, and a length-distribution comparison. All figures save to
 notebooks/figures/method_*.pdf.
 """
 from __future__ import annotations
@@ -34,15 +34,15 @@ NB.cells = [
         "This notebook explains the data setup behind the honest-model-ranking method,\n"
         "for paper reviewers and anyone who hasn't read the spec end-to-end.\n"
         "\n"
-        "**The core idea in one paragraph.** Every LLM was trained up to a fixed date\n"
-        "(its *training cutoff*). Anything written before that date may be memorised by\n"
-        "the model; anything written after, the model has never seen. We construct two\n"
+        "**The core idea in one paragraph.** Every LLM in the registry has a documented\n"
+        "training cutoff. Material published before that cutoff could have been seen by\n"
+        "the model; material published after it was published later than the stated cutoff. We construct two\n"
         "labelled corpora drawn from real, dated FMP news articles:\n"
         "\n"
         "- **IS-memorized** — articles published *before* the earliest model cutoff,\n"
-        "  so every model has had the chance to memorise them.\n"
-        "- **OOS-control** — articles published *after* the latest model cutoff, so no\n"
-        "  model could possibly have memorised them.\n"
+        "  so they sit in the earlier-date bucket for every model in the registry.\n"
+        "- **OOS-control** — articles published *after* the latest model cutoff, so they sit\n"
+        "  in the later-date control bucket.\n"
         "\n"
         "We then ask each model to score those articles and observe its log-probability\n"
         "signature on each. The MCS classifier (Membership inference Contamination Score)\n"
@@ -62,9 +62,9 @@ NB.cells = [
         "from datetime import date\n"
         "import yaml\n"
         "\n"
-        "# Make 'src' importable regardless of where the notebook runs from.\n"
+        "# Make the repository root importable regardless of where the notebook runs from.\n"
         "ROOT = Path.cwd()\n"
-        "if not (ROOT / 'src').exists():\n"
+        "if not (ROOT / 'pyproject.toml').exists():\n"
         "    ROOT = ROOT.parent\n"
         "if str(ROOT) not in sys.path:\n"
         "    sys.path.insert(0, str(ROOT))\n"
@@ -104,9 +104,8 @@ NB.cells = [
         "## 3. The cutoff timeline\n"
         "\n"
         "Every model in the registry has a known training cutoff. The IS-memorized\n"
-        "window is everything *before* the earliest cutoff (so every model saw it during\n"
-        "training); the OOS-control window is everything *after* the latest cutoff (so\n"
-        "no model could have). Articles dated *between* the two cutoffs are\n"
+        "window is everything *before* the earliest cutoff; the OOS-control window is\n"
+        "everything *after* the latest cutoff. Articles dated *between* the two cutoffs are\n"
         "memorisable for some models but not others — this harness drops them entirely\n"
         "to keep the labels honest."
     ),
@@ -123,11 +122,11 @@ NB.cells = [
         "\n"
         "# Shade the three regions: IS, gap, OOS.\n"
         "ax.axvspan(date(x_min, 1, 1), earliest_cutoff, alpha=0.18, color='#0072B2',\n"
-        "           label='IS window (every model has seen)')\n"
+        "           label='IS window (earlier than every cutoff)')\n"
         "ax.axvspan(earliest_cutoff, latest_cutoff, alpha=0.18, color='#999999',\n"
-        "           label='gap (some models contaminated, some clean)')\n"
+        "           label='gap (model-specific eligibility differs)')\n"
         "ax.axvspan(latest_cutoff, date(x_max, 12, 31), alpha=0.18, color='#D55E00',\n"
-        "           label='OOS window (no model has seen)')\n"
+        "           label='OOS window (later than every cutoff)')\n"
         "\n"
         "# One row per model, vertical line at its cutoff.\n"
         "for i, (model, cutoff) in enumerate(sorted(cutoffs.items(), key=lambda kv: kv[1])):\n"
@@ -207,16 +206,16 @@ NB.cells = [
         "        lines.append(f'- **{date_s}** — {head}…  \\n  {url}')\n"
         "    return '\\n'.join(lines)\n"
         "\n"
-        "display(Markdown('### IS-memorized samples (label = 1, every model has seen)'))\n"
+        "display(Markdown('### IS-memorized samples (label = 1, earlier-date bucket)'))\n"
         "display(Markdown(_row_summary(is_rows)))\n"
-        "display(Markdown('### OOS-control samples (label = 0, no model has seen)'))\n"
+        "display(Markdown('### OOS-control samples (label = 0, later-date control bucket)'))\n"
         "display(Markdown(_row_summary(oos_rows)))"
     ),
     md(
         "## 6. Length distribution\n"
         "\n"
         "If the IS rows were systematically longer or shorter than the OOS rows, the\n"
-        "classifier would learn `length → label` instead of `memorization signature → label`,\n"
+        "classifier would learn `length -> label` instead of the intended feature signal,\n"
         "and the whole method becomes a length detector. This plot is the sanity check:\n"
         "the two distributions should overlap heavily."
     ),
@@ -249,7 +248,7 @@ NB.cells = [
         "\n"
         "Then it trains a per-model logistic regression on `(features, label)` pairs\n"
         "where label=1 for IS-memorized rows and label=0 for OOS-control rows. The\n"
-        "trained classifier becomes that model's `p(memorized | features)` estimator,\n"
+        "trained classifier becomes that model's `p(memorized | features)` score model,\n"
         "and the harness applies it to every row in the actual eval set during scoring.\n"
         "\n"
         "**The accuracy of that classifier on a held-out IS/OOS split** (the MCS-AUC\n"

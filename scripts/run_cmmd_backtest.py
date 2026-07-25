@@ -43,7 +43,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-# Make 'src' importable regardless of CWD (mirrors analyze_is_oos_gap.py).
+# Make the repository root importable regardless of CWD (mirrors analyze_is_oos_gap.py).
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -347,7 +347,7 @@ def _ensure_eval_set(eval_path: Path) -> int:
     """Build the eval set if missing; return non-zero on builder failure."""
     if eval_path.exists():
         return 0
-    logger.info("eval set %s missing; building via Task 1.3.", eval_path)
+    logger.info("eval set %s missing; building it now.", eval_path)
     eval_builder = _load_eval_builder()
     rc = eval_builder.main(out_path=eval_path)
     if rc != 0:
