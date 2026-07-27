@@ -17,12 +17,19 @@ In this repository, `p_memorized` is a model-specific score produced by a logist
 
 ## Install (users)
 
-Recall Guard ships as a package on GitHub Releases (no PyPI). Install the wheel from a tagged release; Python 3.12 or newer:
+Recall Guard ships from its Git repository and as a wheel on GitHub Releases (no PyPI). Python 3.12 or newer. In a uv-managed project, declare it as a dependency against a released tag:
 
 ```bash
+uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.2"
+# with the plotting/backtest extras:
+uv add "recall-guard[backtest] @ git+https://github.com/norandom/memguard_alpha.git@v0.1.2"
+```
+
+Or install the release wheel into an environment of its own:
+
+```bash
+uv venv
 uv pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.2/recall_guard-0.1.2-py3-none-any.whl
-# or:
-pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.2/recall_guard-0.1.2-py3-none-any.whl
 ```
 
 Then `from recall_guard import MemoryGuardedScorer` and bring your own NVIDIA API key at calibration time. The runtime dependency set is lean (`numpy`, `scikit-learn`, `rich`, `pyyaml`, `requests`, `python-dotenv`); plotting and backtest extras are opt-in (`recall-guard[backtest]`).
@@ -146,9 +153,12 @@ The `cmmd` backtest uses `gpt-oss-20b` only. Other models are evaluated by the r
 
 ### Recall Guard
 
-If you want to cite the software itself, use the Zenodo DOI:
+If you want to cite the software itself, use the Zenodo DOI. Cite the version you actually ran; the all-versions DOI always resolves to the latest release.
 
-- <https://doi.org/10.5281/zenodo.21557232>
+- v0.1.2: <https://doi.org/10.5281/zenodo.21557233>
+- all versions: <https://doi.org/10.5281/zenodo.21557232>
+
+`CITATION.cff` carries the same metadata for GitHub's "Cite this repository" widget.
 
 ### Underlying papers
 
