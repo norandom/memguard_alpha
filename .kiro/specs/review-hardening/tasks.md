@@ -1,0 +1,134 @@
+# Implementation Plan
+
+Tasks follow the design's dependency order: fail-fast runtime integrity first, then shared parser/LM correctness, then provenance and manifest strictness, then CMMD/backtest semantics, then dataset/builder fixes, and finally package/CI cleanup. This keeps false-success states from surviving while later correctness work is still in flight.
+
+- [x] 1. Restore fail-fast run integrity
+- [x] 1.1 Tighten harness run-failure boundaries
+  - Update the harness run path so unexpected per-model exceptions fail the run instead of being rewritten into `uncalibrated` stub results.
+  - Reject an empty smoke shortlist before ranking artifacts are written or a zero exit status is returned.
+  - Done looks like a harness run with no viable smoke candidates or an injected unexpected evaluation error now exits non-zero and does not present a success-looking result set.
+  - _Requirements: 1.1, 1.2_
+- [x] 1.2 Validate bootstrap counts before evaluation starts
+  - Reject `--bootstrap-n` values less than one during argument handling rather than after model calls have begun.
+  - Keep the existing successful CLI contract unchanged for valid values.
+  - Done looks like `--bootstrap-n 0` and `--bootstrap-n -1` failing immediately before any model work begins.
+  - _Requirements: 1.5_
+- [x] 1.3 Harden CMMD orchestration failure exits
+  - Expand the post-harness calibration-failure gate so `weak-calibration` aborts the orchestration path just like `uncalibrated`.
+  - Normalize price-fetch failure modes so documented fetch failures reach the orchestrator's typed exit path instead of an uncaught traceback.
+  - Done looks like weak-calibration runs stopping before post-harness analytics and price-fetch failures returning the documented failure exit path.
+  - _Requirements: 1.3, 1.4_
+
+- [x] 2. Unify parsing and LM-client correctness
+- [x] 2.1 Reuse one response-parsing contract across smoke, batch, and façade
+  - Remove the narrower smoke-only direction acceptance behavior and align smoke with the canonical evaluator parser.
+  - Reject malformed fractional directions and parse percentage confidences by their actual percentage meaning, including values at or below `1%`.
+  - Done looks like smoke, evaluator, and public scorer accepting the same valid response shapes and rejecting the same malformed ones.
+  - _Requirements: 2.1, 2.2, 2.3_
+  - _Boundary: harness.evaluator, harness.scorer, harness.smoke_
+- [x] 2.2 (P) Normalize malformed provider success payloads at the LM client boundary
+  - Harden the LM client so malformed HTTP-200 success payloads are turned into typed runtime failures instead of leaking unrelated parser exceptions.
+  - Enforce required logprob invariants, including realized token logprob presence and non-empty logprob structures.
+  - Done looks like malformed `choices` and malformed `logprobs` payloads returning typed runtime failures that the public scorer converts into failed scores.
+  - _Requirements: 2.4, 2.5_
+  - _Boundary: core.nvidia_lm, harness.scorer_
+- [x] 2.3 (P) Make per-instance pacing safe under concurrency
+  - Update the shared LM pacing path so concurrent requests honor the configured minimum spacing instead of racing on shared state.
+  - Keep ordered `generate_many` results intact while changing only the pacing behavior.
+  - Done looks like concurrent calls using one paced LM instance spacing requests according to the configured interval.
+  - _Requirements: 2.6_
+  - _Boundary: core.nvidia_lm_
+- [x] 2.4 Repair optional-reference degradation semantics
+  - Keep valid primary-model rows and façade scores usable when the optional reference-model call fails transiently.
+  - Tighten MCS holdout preconditions so unsupported tiny class counts fail early and clearly.
+  - Done looks like transient reference failures no longer turning otherwise valid rows into generic errors, and unsupported 2-vs-2 holdout cases failing before split-time exceptions.
+  - _Requirements: 2.7_
+  - _Boundary: harness.evaluator, harness.scorer, mia.mcs_
+
+- [x] 3. Rebuild provenance and manifest strictness
+- [x] 3.1 Capture consumed-input provenance once and reuse it
+  - Bind harness manifest hashes and paths to the input bytes consumed at load time instead of re-reading files from disk at artifact-write time.
+  - Preserve the current manifest artifact flow while removing the possibility of mid-run drift.
+  - Done looks like a long-running harness run keeping manifest hashes stable even if source files change on disk after loading.
+  - _Requirements: 3.1, 3.6_
+- [x] 3.2 Align loader and script input interpretation
+  - Make `_cutoff_date` recognition follow the documented first-non-empty-line rule.
+  - Unify post-harness date normalization so the orchestrator, gap analyzer, and backtest consumers accept the same eval metadata date forms.
+  - Done looks like leading-blank cutoff headers and ISO datetime metadata being interpreted consistently across the whole flow.
+  - _Requirements: 3.2, 3.3_
+- [x] 3.3 Reject malformed manifest nested fields instead of coercing them
+  - Make the manifest reader fail on malformed `shortlist` and `backtest` values rather than silently converting them into different valid-looking data.
+  - Preserve the optional nature of the `backtest` extension while tightening nested validation.
+  - Done looks like malformed manifest fixtures failing manifest reads instead of being silently rewritten into new content.
+  - _Requirements: 3.4_
+- [x] 3.4 Extend CMMD manifest provenance to the required row-level split
+  - Persist enough IS/OOS provenance in the backtest manifest block to reconstruct how each historical run classified rows.
+  - Keep the manifest extension readable through the canonical manifest boundary.
+  - Done looks like a historical CMMD run carrying recoverable per-row IS/OOS provenance rather than only aggregate counts.
+  - _Requirements: 3.5_
+
+- [x] 4. Repair CMMD and backtest output semantics
+- [x] 4.1 Make CMMD top-slice behavior deterministic under ties and non-finite scores
+  - Replace the current inclusive-threshold behavior with a deterministic top-slice rule that still removes the intended memorization slice when many rows tie.
+  - Reject or safely handle non-finite memorization scores before the CMMD quantile is computed.
+  - Done looks like tie-heavy and `NaN`-containing score sets no longer collapsing into “no filtering” or “drop everything” behavior.
+  - _Requirements: 4.1, 4.7_
+- [x] 4.2 Filter tradeability before thresholds, warnings, and signal counts
+  - Move unsupported ticker, malformed date, and missing-price-calendar filtering ahead of CMMD thresholding and reported signal counts.
+  - Keep raw and CMMD variants aligned to the same tradeable-row definition.
+  - Done looks like non-tradeable rows no longer inflating `n_signals_used`, low-row warnings, or CMMD thresholds.
+  - _Requirements: 4.2_
+- [x] 4.3 Make backtest outputs and artifact writes internally trustworthy
+  - Keep equity curves, daily returns, and summary metrics consistent with the same fee treatment.
+  - Replace the pseudo-atomic rerun writer with a writer that preserves the pre-write directory state on failure.
+  - Stop leaking vectorbt's global frequency setting out of `run_backtest`.
+  - Done looks like terminal equity matching summary/returns math, rerun write failures preserving prior artifacts, and vectorbt global settings unchanged after a backtest call.
+  - _Requirements: 4.3, 4.4, 4.5_
+- [x] 4.4 Add the missing one-sided CMMD warning path
+  - Detect IS-only and OOS-only eval spans before presenting the run as a normal CMMD comparison.
+  - Emit the required operator-facing warning while still allowing the supported continuation path.
+  - Done looks like one-sided eval sets producing a visible “nothing meaningful to remove” warning in the orchestrated run.
+  - _Requirements: 4.6_
+
+- [x] 5. Fix dataset and eval-builder trustworthiness
+- [x] 5.1 Accept valid article timestamps and enforce strict cutoff-day labeling
+  - Extend the FMP corpus parser to accept valid ISO-8601 timestamp variants.
+  - Apply the approved strict pre-cutoff IS labeling rule instead of treating cutoff-day rows as automatically in-sample.
+  - Done looks like valid ISO timestamps ingesting successfully and cutoff-day articles no longer entering the IS corpus by default.
+  - _Requirements: 5.1, 5.2_
+- [x] 5.2 Repair dedup and incremental-refresh boundary cases
+  - Stop collapsing distinct untitled body-only articles into one dedup bucket.
+  - Allow incremental OOS refresh to ingest same-day late-arriving articles when they were not seen previously.
+  - Done looks like multiple untitled valid articles surviving dedup and same-day late arrivals being appended on refresh.
+  - _Requirements: 5.3, 5.4_
+- [x] 5.3 Harden the legacy multiyear eval builder
+  - Make the multiyear ETF eval builder request explicit date bounds and fail clearly on empty or malformed upstream payloads.
+  - Keep its output contract consistent with the current orchestrator’s expectations if the script remains supported.
+  - Done looks like the builder refusing silent empty/truncated output and proving that the requested date window reached the provider call.
+  - _Requirements: 5.5, 5.6_
+
+- [x] 6. Align package and CI contracts with published behavior
+- [x] 6.1 Enforce the structural architecture gate in CI
+  - Extend the lint path so CI runs both the style/lint checks and the required structural-architecture validation.
+  - Keep this work within the existing dev-only automation plane.
+  - Done looks like a forbidden architecture dependency failing the CI lint path rather than slipping through Ruff-only validation.
+  - _Requirements: 6.1, 6.3_
+- [x] 6.2 Expose the promised installable extras contract
+  - Align package metadata with the documented `dev` and `pipeline` install contract, either by exporting real extras or by updating the contract source and docs to one truthful behavior.
+  - Preserve the lean default runtime boundary while doing so.
+  - Done looks like built package metadata and documentation agreeing on which extras are installable and default runtime installs remaining lean.
+  - _Requirements: 6.2, 6.3_
+
+- [x] 7. Validate the hardening program end-to-end
+- [x] 7.1 Run targeted regression suites for each repaired boundary (P)
+  - Execute the focused `tests/core`, `tests/harness`, `tests/mia`, `tests/portfolio`, `tests/dataset`, and `tests/scripts` subsets that correspond to the phases above.
+  - Record failures only as code defects to fix, not as “known flaky” exceptions.
+  - Done looks like every repaired boundary having an explicit regression test path that passes.
+  - _Requirements: 1.1, 2.1, 3.1, 4.1, 5.1, 6.1_
+  - _Boundary: tests/core, tests/harness, tests/mia, tests/portfolio, tests/dataset, tests/scripts_
+- [x] 7.2 Re-run the full project validation stack
+  - Run the full test suite, strict docs validation, package build, and the architecture gate after all boundary repairs land.
+  - Confirm that the final runtime, backtest, dataset, and package outputs still satisfy the repo’s current supported flows.
+  - Done looks like the full suite, strict docs/build path, and architecture gate all passing after the repair program completes.
+  - _Requirements: 1.1, 3.6, 6.1, 6.2, 6.3_
+  - _Depends: 7.1_
