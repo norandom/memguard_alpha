@@ -12,6 +12,7 @@ import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any
 
 import requests
@@ -89,6 +90,7 @@ class NvidiaLM:
         self.retry_backoff_s = retry_backoff_s
         self.min_call_interval_s = min_call_interval_s
         self._last_call_t: float | None = None
+        self._pace_lock = Lock()
         self.api_base = NVIDIA_CHAT_COMPLETIONS_URL
 
     def generate(
@@ -125,27 +127,28 @@ class NvidiaLM:
             "logprobs": True,
             "top_logprobs": TOP_LOGPROBS,
         }
-        # Pace requests to stay under the API's rate limit. Wait the
-        # remaining gap since the last call (per-instance) before issuing
-        # a new request.
-        if self.min_call_interval_s > 0 and self._last_call_t is not None:
-            elapsed = time.monotonic() - self._last_call_t
-            wait = self.min_call_interval_s - elapsed
-            if wait > 0:
-                time.sleep(wait)
-
-        last_timeout_exc: Exception | None = None
-        last_runtime_exc: Exception | None = None
-        for attempt in range(self.max_retries + 1):
-            try:
+        def _paced_post() -> requests.Response:
+            with self._pace_lock:
+                if self.min_call_interval_s > 0 and self._last_call_t is not None:
+                    elapsed = time.monotonic() - self._last_call_t
+                    wait = self.min_call_interval_s - elapsed
+                    if wait > 0:
+                        time.sleep(wait)
                 response = requests.post(
                     self.api_base,
                     headers=headers,
                     json=payload,
                     timeout=self.timeout_s,
                 )
-                response.raise_for_status()
                 self._last_call_t = time.monotonic()
+                return response
+
+        last_timeout_exc: Exception | None = None
+        last_runtime_exc: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = _paced_post()
+                response.raise_for_status()
                 return self._parse_response(response.json())
             except requests.exceptions.Timeout as exc:
                 last_timeout_exc = exc
@@ -196,8 +199,16 @@ class NvidiaLM:
             raise RuntimeError(
                 f"Model {self.model} response missing 'choices[0]': {data!r}"
             ) from exc
+        if not isinstance(choice, dict):
+            raise RuntimeError(
+                f"Model {self.model} response has malformed 'choices[0]': {choice!r}"
+            )
 
         message = choice.get("message", {}) or {}
+        if not isinstance(message, dict):
+            raise RuntimeError(
+                f"Model {self.model} response has malformed 'message': {message!r}"
+            )
         content = message.get("content")
         if not content:
             # Reasoning models (gpt-oss-*, nemotron-nano-*) put output under
@@ -207,25 +218,51 @@ class NvidiaLM:
             content = message.get("reasoning_content") or ""
 
         logprobs_section = choice.get("logprobs")
-        if not logprobs_section or "content" not in logprobs_section:
+        if not isinstance(logprobs_section, dict) or "content" not in logprobs_section:
             raise RuntimeError(
                 f"Model {self.model} response missing 'logprobs.content'; "
                 "cannot compute MIA features without per-token logprobs."
             )
 
         token_entries = logprobs_section["content"]
+        if not isinstance(token_entries, list) or not token_entries:
+            raise RuntimeError(
+                f"Model {self.model} response has empty or malformed 'logprobs.content'; "
+                "cannot compute MIA features without per-token logprobs."
+            )
         parsed: list[TokenLogprob] = []
         for idx, entry in enumerate(token_entries):
+            if not isinstance(entry, dict):
+                raise RuntimeError(
+                    f"Model {self.model} response token #{idx} is malformed: {entry!r}"
+                )
             if "top_logprobs" not in entry:
                 raise RuntimeError(
                     f"Model {self.model} response token #{idx} is missing "
                     "'top_logprobs'; required for MIA feature computation."
                 )
+            top_logprobs = entry["top_logprobs"]
+            if not isinstance(top_logprobs, list) or not top_logprobs:
+                raise RuntimeError(
+                    f"Model {self.model} response token #{idx} has empty or malformed "
+                    "'top_logprobs'; required for MIA feature computation."
+                )
+            if "logprob" not in entry:
+                raise RuntimeError(
+                    f"Model {self.model} response token #{idx} is missing 'logprob'; "
+                    "required for MIA feature computation."
+                )
+            try:
+                logprob = float(entry["logprob"])
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Model {self.model} response token #{idx} has non-numeric 'logprob'."
+                ) from exc
             parsed.append(
                 TokenLogprob(
-                    token=entry.get("token", ""),
-                    logprob=float(entry.get("logprob", 0.0)),
-                    top_logprobs=list(entry["top_logprobs"]),
+                    token=str(entry.get("token", "")),
+                    logprob=logprob,
+                    top_logprobs=list(top_logprobs),
                 )
             )
 

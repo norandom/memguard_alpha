@@ -32,6 +32,7 @@ is ``penalized_confidence = raw_confidence * (1 - p_memorized)``
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -106,12 +107,15 @@ class MCSCalibrator:
         Raises
         ------
         ValueError
-            If standardisation produces ``None`` for any feature in
-            ``self.feature_order`` (e.g., ``ref_delta`` is in the order
-            but the eval-time row lacks a reference logprob run, or the
-            baseline is uncalibrated).
+            If any of the four core features standardises to ``None``
+            (uncalibrated baseline). A missing ``ref_delta`` does NOT
+            raise: the reference feature is optional by contract, so it
+            is imputed at the control-baseline mean (standardised 0.0),
+            which contributes no memorization evidence either way.
         """
         standardised = standardise(features, baseline)
+        if "ref_delta" in self.feature_order and standardised.get("ref_delta") is None:
+            standardised = {**standardised, "ref_delta": 0.0}
         row = _row_vector(standardised, self.feature_order)
         # Estimator was trained on a 2-D matrix; predict on a 1-row matrix.
         proba = float(self.classifier.predict_proba(row.reshape(1, -1))[0, 1])
@@ -325,6 +329,20 @@ def train(
         feature_order=feature_order,
         max_workers=max_workers,
     )
+
+    # The stratified holdout needs at least one row per class in BOTH the
+    # train and holdout halves. Check up front so tiny corpora fail with a
+    # clear message instead of an opaque sklearn split error.
+    n_total = n_valid_is + n_valid_oos
+    n_holdout = math.ceil(_HOLDOUT_FRACTION * n_total)
+    if n_holdout < 2 or (n_total - n_holdout) < 2:
+        raise ValueError(
+            f"mcs.train: {n_total} valid rows "
+            f"(n_valid_is={n_valid_is}, n_valid_oos={n_valid_oos}) cannot "
+            f"support the stratified {_HOLDOUT_FRACTION:.0%} holdout split "
+            f"(holdout would hold {n_holdout} row(s), need >= 2 with both "
+            "classes). Provide more calibration rows."
+        )
 
     x_train, x_holdout, y_train, y_holdout = train_test_split(
         x, y,

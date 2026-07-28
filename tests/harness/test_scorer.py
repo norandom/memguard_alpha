@@ -206,6 +206,15 @@ def test_score_timeout_returns_failure_record_not_raise() -> None:
     assert gs.fail_reason == "timeout"
 
 
+def test_score_reference_failure_degrades_cleanly() -> None:
+    scorer = _calibrate(reference_model="ref")
+    scorer._ref_lm = _RaisingLM(TimeoutError("slow"), model="ref")  # noqa: SLF001
+    gs = scorer.score("prompt")
+    assert gs.parse_ok is True
+    assert gs.fail_reason is None
+    assert 0.0 <= gs.p_memorized <= 1.0
+
+
 def test_score_many_preserves_order() -> None:
     scorer = _calibrate()
     prompts = ["p0", "p1", "p2"]

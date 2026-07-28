@@ -11,21 +11,17 @@ this module deliberately does no I/O.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from recall_guard.core.nvidia_lm import DEFAULT_TIMEOUT_S, NvidiaLM
+from recall_guard.harness.evaluator import _parse_direction
 
 # Documented fail_reason values (Req 1.2 / 1.3 / design.md harness.smoke).
 FAIL_TIMEOUT = "timeout"
 FAIL_NO_LOGPROBS = "no_logprobs"
 FAIL_PARSE = "parse_failure"
 FAIL_ERROR = "error"
-
-# `Direction: <int>` parser; accepts only the values defined by Req 1.2.
-_DIRECTION_RE = re.compile(r"Direction:\s*(-?\d+)")
-_VALID_DIRECTIONS = frozenset({-1, 0, 1})
 
 # Substring used to distinguish "missing top_logprobs" RuntimeErrors from
 # unrelated runtime errors raised by NvidiaLM (e.g. network failures).
@@ -77,24 +73,6 @@ def _classify_runtime_error(exc: RuntimeError) -> str:
     if any(marker in message for marker in _NO_LOGPROBS_MARKERS):
         return FAIL_NO_LOGPROBS
     return FAIL_ERROR
-
-
-def _parse_direction(content: str) -> int | None:
-    """Return the integer direction if `content` carries a valid `Direction:` line.
-
-    Accepts `Direction: -1`, `Direction: 0`, or `Direction: 1`. Anything else
-    (missing line, non-integer, or out-of-range integer) yields `None`.
-    """
-    match = _DIRECTION_RE.search(content)
-    if match is None:
-        return None
-    try:
-        value = int(match.group(1))
-    except ValueError:
-        return None
-    if value not in _VALID_DIRECTIONS:
-        return None
-    return value
 
 
 def smoke_test(

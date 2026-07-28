@@ -140,6 +140,26 @@ def test_smoke_test_excludes_on_parse_failure() -> None:
     assert outcome.fail_reason == "parse_failure"
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "**Direction:** 1",
+        "Direction: +1",
+        'After analysis: {"direction": -1, "confidence": 0.42}',
+    ],
+)
+def test_smoke_test_reuses_evaluator_direction_contract(content: str) -> None:
+    fakes = {"model-a": _FakeLM(content=content)}
+    result = smoke_test(
+        candidates=["model-a"],
+        api_key="key",
+        smoke_prompts=SMOKE_PROMPTS,
+        lm_factory=_factory_for(fakes),
+    )
+    assert result.selected == ["model-a"]
+    assert result.outcomes[0].passed is True
+
+
 def test_smoke_test_caps_at_max_size() -> None:
     candidates = [f"model-{i:02d}" for i in range(15)]
     fakes = {model: _FakeLM(content="Direction: 0") for model in candidates}

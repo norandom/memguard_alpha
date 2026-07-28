@@ -192,6 +192,20 @@ def test_parser_accepts_signed_int_and_float() -> None:
     assert _parse_confidence("Direction: 1\nConfidence: .65") == pytest.approx(0.65)
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "Direction: 1.9\nConfidence: 0.5",
+        "Direction: -1.5\nConfidence: 0.5",
+        "Direction: 0.9\nConfidence: 0.5",
+    ],
+)
+def test_parser_rejects_fractional_directions(content: str) -> None:
+    from recall_guard.harness.evaluator import _parse_direction
+
+    assert _parse_direction(content) is None
+
+
 def test_parser_accepts_annotated_lines() -> None:
     from recall_guard.harness.evaluator import _parse_confidence, _parse_direction
 
@@ -221,6 +235,8 @@ def test_parser_falls_back_to_percent_for_confidence() -> None:
     from recall_guard.harness.evaluator import _parse_confidence
 
     assert _parse_confidence("Direction: 1\nConfidence: 65%") == pytest.approx(0.65)
+    assert _parse_confidence("Direction: 1\nConfidence: 1%") == pytest.approx(0.01)
+    assert _parse_confidence("Direction: 1\nConfidence: 0.5%") == pytest.approx(0.005)
 
 
 def test_parser_takes_last_match_when_model_restates() -> None:
@@ -599,6 +615,30 @@ def test_evaluate_model_records_in_eval_set_order() -> None:
         hashlib.sha256(p.encode("utf-8")).hexdigest()[:16] for p in prompts
     ]
     assert [r.prompt_hash for r in result.records] == expected
+
+
+def test_evaluate_model_reference_failure_degrades_cleanly() -> None:
+    rows = [_row("p1", 1)]
+    lm = _lm_returning(["Direction: 1\nConfidence: 0.9"])
+    ref_lm = _lm_with_per_call([TimeoutError("slow")])
+    baseline = _baseline()
+    baseline.feature_means["ref_delta"] = 0.0
+    baseline.feature_stds["ref_delta"] = 1.0
+    mcs = _mcs(p_memorized=0.2, holdout_auc=0.85)
+    mcs.feature_order = ["loss", "min_k", "min_k_pp", "zlib_ratio"]
+    result = evaluate_model(
+        model_lm=lm,
+        eval_set=_eval_set(rows),
+        baseline=baseline,
+        mcs=mcs,
+        ref_lm=ref_lm,
+        bootstrap_n=50,
+        seed=0,
+    )
+    rec = result.records[0]
+    assert rec.parse_ok is True
+    assert rec.fail_reason is None
+    assert rec.p_memorized == pytest.approx(0.2)
 
 
 def test_evaluate_model_holdout_records_drive_mcs_auc_ci() -> None:

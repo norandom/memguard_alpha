@@ -241,14 +241,17 @@ def _classify_runtime_error(exc: RuntimeError) -> str:
 
 def _coerce_direction_int(raw: object) -> int | None:
     """Best-effort coercion of any value to a Direction in {-1, 0, 1}."""
+    text = str(raw).strip()
     try:
-        # Accept "1", "1.0", 1, 1.0, "+1", "-1.5" → -1.
-        value = int(float(str(raw)))
+        value = float(text)
     except (TypeError, ValueError):
         return None
-    if value not in _VALID_DIRECTIONS:
+    if not value.is_integer():
         return None
-    return value
+    int_value = int(value)
+    if int_value not in _VALID_DIRECTIONS:
+        return None
+    return int_value
 
 
 def _coerce_confidence_float(raw: object) -> float | None:
@@ -319,27 +322,7 @@ def _parse_direction(content: str) -> int | None:
 
 def _parse_confidence(content: str) -> float | None:
     """Layered confidence parser. Returns a float in [0, 1] or None."""
-    # Layer 1: strict regex.
-    matches = _CONFIDENCE_RE.findall(content)
-    if matches:
-        v = _coerce_confidence_float(matches[-1])
-        if v is not None:
-            return v
-    # Layer 2: JSON.
-    obj = _try_extract_json(content)
-    if obj is not None:
-        for key in ("confidence", "Confidence", "CONFIDENCE"):
-            if key in obj:
-                v = _coerce_confidence_float(obj[key])
-                if v is not None:
-                    return v
-    # Layer 3: looser gap regex.
-    matches = _CONFIDENCE_RE_LOOSE.findall(content)
-    if matches:
-        v = _coerce_confidence_float(matches[-1])
-        if v is not None:
-            return v
-    # Layer 4: percentage form ("Confidence: 65%" → 0.65).
+    # Layer 1: percentage form ("Confidence: 65%" → 0.65).
     pct_matches = _PERCENT_RE.findall(content)
     if pct_matches:
         try:
@@ -348,6 +331,26 @@ def _parse_confidence(content: str) -> float | None:
             return None
         if 0.0 <= pct <= 1.0:
             return pct
+    # Layer 2: strict regex.
+    matches = _CONFIDENCE_RE.findall(content)
+    if matches:
+        v = _coerce_confidence_float(matches[-1])
+        if v is not None:
+            return v
+    # Layer 3: JSON.
+    obj = _try_extract_json(content)
+    if obj is not None:
+        for key in ("confidence", "Confidence", "CONFIDENCE"):
+            if key in obj:
+                v = _coerce_confidence_float(obj[key])
+                if v is not None:
+                    return v
+    # Layer 4: looser gap regex.
+    matches = _CONFIDENCE_RE_LOOSE.findall(content)
+    if matches:
+        v = _coerce_confidence_float(matches[-1])
+        if v is not None:
+            return v
     return None
 
 

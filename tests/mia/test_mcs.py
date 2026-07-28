@@ -403,6 +403,27 @@ def test_train_handles_no_reference_model(mocker) -> None:
     assert 0.0 <= p <= 1.0
 
 
+def test_train_rejects_class_counts_that_cannot_support_holdout(mocker) -> None:
+    n = 2
+    is_completions = _separable_completions(n, target_loss=-3.0, seed_offset=0)
+    oos_completions = _separable_completions(n, target_loss=+3.0, seed_offset=1)
+    is_rows = [_row(f"is-{i}") for i in range(n)]
+    oos_rows = [_row(f"oos-{i}") for i in range(n)]
+    lm = _fake_lm(mocker, is_completions + oos_completions)
+    baseline = _baseline_no_ref()
+
+    with pytest.raises(ValueError, match=r"holdout"):
+        train(
+            model_lm=lm,
+            is_memorized=is_rows,
+            oos_control=oos_rows,
+            baseline=baseline,
+            ref_lm=None,
+            min_auc=0.6,
+            seed=0,
+        )
+
+
 def test_train_uses_ref_delta_when_baseline_supports_it(mocker) -> None:
     """ref_lm provided + baseline ref_delta calibrated → feature_order includes ref_delta."""
     n = 30
