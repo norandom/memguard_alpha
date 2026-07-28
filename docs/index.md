@@ -1,8 +1,18 @@
 # recall_guard
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21557232.svg)](https://doi.org/10.5281/zenodo.21557232)
+
 `recall_guard` runs a NIM-hosted model on your prompt, parses a directional signal, computes membership-inference features from per-token logprobs, and returns a per-prompt `p_memorized` score plus the discounted confidence.
 
+Every release is archived on Zenodo. The concept DOI above resolves to the latest version; per-version DOIs (v0.2.0 is [10.5281/zenodo.21637978](https://doi.org/10.5281/zenodo.21637978)) pin the exact artifact you ran.
+
 It is not a forecaster. On the bundled raw price-direction task, near-coin-flip accuracy is not surprising. The useful output is the contamination score, not alpha. Use `p_memorized` to discount or filter AI-derived signals that look more like the repository's in-sample calibration corpus than its out-of-sample control corpus.
+
+## Where this fits
+
+`recall_guard` is the measurement layer of a point-in-time (PIT) inference process. Anonymization, de-dating, and as-of data discipline reduce what a model can recall; this package measures what still leaks through and turns it into a per-prompt score. The full stack is described in [How this system achieves PIT inference](pit-architecture.md).
+
+One example consumer is a macro overlay that multiplies each AI-generated Black-Litterman view by `(1 - p_memorized)` before it can move money, and falls back to its risk-parity core when a score or parse is missing. That setup also shows the honest boundary of this tool: in its model screen, every screenable model showed statistically significant recall, so the score works as a discount, never as proof that a model is recall-free.
 
 ## Install
 

@@ -45,16 +45,28 @@ class MiaFeatures:
     ----------
     loss:
         Mean negative logprob of the realised tokens (clipped at floor).
+        Low loss means the model found the text easy to predict, which is
+        what stored text looks like.
     min_k:
         Mean of the bottom ``int(len * k)`` clipped logprobs (Min-K%).
-        Negative; lower means more "memorized".
+        Negative; lower means more "memorized". Looks only at the hardest
+        tokens, because that is where memorization shows first: if the
+        model breezes through even those, it has probably seen the text.
     min_k_pp:
-        Mean of the bottom-K per-position z-scores (Min-K%++).
+        Mean of the bottom-K per-position z-scores (Min-K%++). Same idea as
+        ``min_k``, but each token is graded against its own candidate
+        distribution instead of an absolute scale.
     zlib_ratio:
         ``-sum(clipped_logprobs) / len(zlib.compress(response, 9))``.
-        ``0.0`` when ``response`` is empty.
+        ``0.0`` when ``response`` is empty. Dividing by the compressed size
+        cancels plain repetitiveness; a repetitive text is cheap to predict
+        AND cheap to compress, so what remains is the confidence the model
+        has beyond what the text's redundancy explains.
     ref_delta:
         ``loss_self - loss_ref``; ``None`` when ``ref_logprobs is None``.
+        The reference model anchors what "normal" confidence looks like
+        for the same text, so shared easiness cancels and model-specific
+        recall remains.
     """
 
     loss: float

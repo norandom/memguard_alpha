@@ -2,6 +2,8 @@
 
 [![DOI](https://zenodo.org/badge/1221761081.svg)](https://doi.org/10.5281/zenodo.21557232)
 
+Documentation: <https://norandom.github.io/memguard_alpha/> (install recipe, minimal example, PIT architecture, API reference)
+
 Two CLIs for scoring language-model responses on a financial prompt stream and attaching a per-prompt contamination score.
 
 - `./start.sh` runs the **recall-guard check**: per-model accuracy, MIA features, MCS-AUC, and a top-3 ranking with bootstrap CIs.
@@ -137,7 +139,9 @@ It includes the benchmark date, the per-model table, the `cmmd` backtest table, 
 
 The longer-term use case is to consume Recall Guard as a library rather than only through the two CLIs. [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors) is one consumer: it builds AI macro/risk factors and can feed prompts through `recall_guard` to get a per-call `p_memorized` score and a discounted confidence.
 
-Since v0.1.2 this is packaged: `recall_guard` installs from the GitHub Release (wheel + sdist, hatchling build) with a small stable façade over the `NvidiaLM` + control-baseline + MCS stack. See [Install (users)](#install-users) above; the packaging spec lives under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/).
+Since v0.1.2 this is packaged: `recall_guard` installs from the GitHub Release (wheel + sdist, hatchling build) with a small stable façade over the `NvidiaLM` + control-baseline + MCS stack. See [Install (users)](#install-users) above; the packaging spec lives under [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/). The integration recipe and API reference are on the [docs site](https://norandom.github.io/memguard_alpha/).
+
+One example of library use: a macro overlay multiplies each AI-generated Black-Litterman view by `(1 - p_memorized)` before it can move money, and falls back to its risk-parity core when a score or parse is missing. The score discounts exposure; it does not certify a model as recall-free.
 
 ## Caveats
 

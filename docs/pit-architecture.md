@@ -2,6 +2,8 @@
 
 Reference description for the thesis illustration. Each component maps to code or to a named external consumer component. The measurement layer and the `recall_guard` package live in this repository; the input discipline, task design, and portfolio layers referenced here live in the consumer pipeline at [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors).
 
+One applied evaluation of this stack is a multi-year walk-forward with a guarded macro overlay. There the strategy gives up absolute return against buy-and-hold in exchange for lower volatility, lower drawdown, and less market dependence. That design treats the two halves as equal pillars: this measurement stack governs experimental validity, and the portfolio construction governs exposure and loss scale. The limit: the controls reduce and measure recall risk. They do not prove lookahead has been removed.
+
 ## The problem with just prompting
 
 A naive prompt ("It is March 2022. CPI is 8.5%, the 10y-2y spread is -0.2. What happens to SPY?") gives the model three strong cues: the date, the real ticker, and raw levels that can fingerprint a period. A model trained through 2024 may answer partly from stored text. From the prompt alone, it is hard to separate recall from reasoning. That is the point-in-time problem this stack is trying to reduce and measure.

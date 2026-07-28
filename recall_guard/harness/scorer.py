@@ -16,6 +16,15 @@ control-baseline standardisation, and the calibrator's ``predict_proba`` verbati
 so ``p_memorized`` is bit-for-bit identical to what the batch harness produces for
 the same inputs (Req 3.3). The façade adds no statistics of its own.
 
+One example of consuming this façade: a macro overlay multiplies each
+AI-generated Black-Litterman view magnitude by ``(1 - p_memorized)`` before
+it can move money, which is the same discount ``memguard_confidence`` applies
+to ``raw_confidence``. A weak or missing score passes the raw exposure
+through, and parse failures fall back to the consumer's risk-parity core.
+The score is a discount, not a certificate; in that pipeline's model screen,
+every screenable model showed statistically significant recall, so no model
+is presumed clean.
+
 Layer note: this module lives in the ``harness`` layer (top of the stack), so it may
 depend on ``core``, ``mia``, and ``harness.evaluator``. It imports nothing from
 ``harness.plots`` or ``portfolio``, so re-exporting it from the package root keeps
