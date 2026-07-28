@@ -155,6 +155,7 @@ The `cmmd` backtest uses `gpt-oss-20b` only. Other models are evaluated by the r
 
 If you want to cite the software itself, use the Zenodo DOI. Cite the version you actually ran; the all-versions DOI always resolves to the latest release.
 
+- v0.2.0: <https://doi.org/10.5281/zenodo.21637978>
 - v0.1.2: <https://doi.org/10.5281/zenodo.21557233>
 - all versions: <https://doi.org/10.5281/zenodo.21557232>
 
