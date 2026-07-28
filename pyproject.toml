@@ -32,6 +32,10 @@ docs = [
 # Development / CI tooling. uv installs the ``dev`` group by default, so the full
 # test suite (which imports matplotlib/vectorbt and executes the notebook) runs
 # out of the box, while consumers inherit none of it.
+# Deliberately dependency GROUPS, not extras: dev/pipeline tooling is for
+# checkout-based work via ``uv sync`` and must never appear in the wheel's
+# provides-extras metadata (recall-guard-package Req 4.2, as amended by
+# review-hardening). tests/test_packaging.py pins this split.
 [dependency-groups]
 dev = [
     "pytest>=8.0",

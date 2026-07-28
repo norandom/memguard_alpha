@@ -8,8 +8,11 @@ Functions:
 - ``base``        — the project container (uv image + synced environment).
 - ``test``        — run the suite for one Python version.
 - ``test_matrix`` — run the suite across the supported Python matrix (Req 6.2).
-- ``lint``        — run ruff (Req 6.3). The sentrux structural check runs via its own
-                    plugin tooling, which is not pip-installable into a container.
+- ``lint``        — run ruff plus the structural-architecture gate (Req 6.3). The gate
+                    (``scripts/check_architecture.py``, stdlib-only) enforces the
+                    import-direction rules from ``.sentrux/rules.toml`` in-container;
+                    sentrux's own plugin tooling additionally covers complexity/cycle
+                    ceilings locally.
 - ``build``       — build the wheel + sdist; returns ``dist/`` (Req 6.1, 6.5).
 - ``docs``        — strict-build the documentation site; returns ``site/``.
 
@@ -61,9 +64,12 @@ class Ci:
 
     @function
     async def lint(self, source: dagger.Directory) -> str:
-        """Run ruff over the project (Req 6.3)."""
+        """Run ruff plus the structural-architecture gate (Req 6.3)."""
         return await (
-            self.base(source).with_exec(["uv", "run", "ruff", "check", "."]).stdout()
+            self.base(source)
+            .with_exec(["uv", "run", "ruff", "check", "."])
+            .with_exec(["uv", "run", "python", "scripts/check_architecture.py"])
+            .stdout()
         )
 
     @function

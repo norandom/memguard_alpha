@@ -32,7 +32,8 @@ package building and importing under its final name.
   import without `sys.path` edits); a relaxed Python floor (3.12) with the suite green on
   3.12 and 3.14; a stable public façade for inference-without-recall (signal,
   `p_memorized`, raw MIA features, discounted confidence); lean runtime dependencies with
-  dev / docs / plotting / pipeline extras; preservation of the layered architecture, the
+  `backtest`/`docs` consumer extras and `dev`/`pipeline` uv dependency groups;
+  preservation of the layered architecture, the
   DSPy ban, and all existing tests and CLI behaviour; a reproducible test/lint/build/docs/
   publish pipeline; GitHub-Actions-managed CI, release, and docs workflows; an
   autodoc API-documentation site; and a consumer integration recipe.
@@ -131,8 +132,12 @@ plotting, or pipeline tooling.
 
 1. When a consumer installs the default distribution, the recall_guard distribution shall
    install only the dependencies required for inference and memorisation scoring.
-2. The recall_guard distribution shall provide separate optional extras for development,
-   documentation, plotting/backtest, and pipeline tooling.
+2. The recall_guard distribution shall provide separate consumer-facing optional extras
+   for documentation (`docs`) and plotting/backtest (`backtest`); development and
+   pipeline tooling shall be kept out of the distribution metadata as uv dependency
+   groups (`dev`, `pipeline`), installed from a checkout via `uv sync`, never by
+   consumers. (Aligned with the as-built contract by the review-hardening spec:
+   the published install surface documents exactly the `backtest` and `docs` extras.)
 3. When the documentation, plotting, and development extras are not installed, the core
    inference and scoring API shall import and run without error.
 4. The recall_guard distribution shall declare a `vectorbt` requirement compatible with a
