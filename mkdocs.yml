@@ -16,6 +16,15 @@ theme:
     - navigation.sections
     - content.code.copy
 
+# Render ```mermaid fences as diagrams (Material's built-in Mermaid.js
+# integration); without this they publish as plain code blocks.
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
 plugins:
   - search
   - gen-files:
