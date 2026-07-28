@@ -18,7 +18,12 @@ theme:
 
 # Render ```mermaid fences as diagrams (Material's built-in Mermaid.js
 # integration); without this they publish as plain code blocks.
+# pymdownx.highlight turns on Pygments syntax highlighting for fenced
+# code blocks; inlinehilite covers `#!python inline` spans.
 markdown_extensions:
+  - pymdownx.highlight:
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
