@@ -191,11 +191,9 @@ def _load_records_jsonl(records_path: Path) -> list[Any]:
 def _mcs_calibration_failed(summary_path: Path, *, model: str) -> bool:
     """Return True when MCS calibration failed for ``model`` in summary.csv.
 
-    Detection signal: the model's ``warnings`` cell contains the substring
-    ``uncalibrated`` (added by the harness when ``build_baseline`` reports
-    ``is_calibrated=False`` — Req 9.3). A missing/empty warnings cell or
-    a different warning class (e.g., ``temperature-not-honoured``) is NOT
-    a calibration failure.
+    Detection signal: the model's ``warnings`` cell contains either
+    ``uncalibrated`` or ``weak-calibration``. Both represent a failed
+    calibration gate for the downstream CMMD pipeline.
     """
     import csv
 
@@ -206,7 +204,10 @@ def _mcs_calibration_failed(summary_path: Path, *, model: str) -> bool:
             if row.get("model", "").strip() != model:
                 continue
             warnings = row.get("warnings", "") or ""
-            return "uncalibrated" in warnings
+            return (
+                "uncalibrated" in warnings
+                or "weak-calibration" in warnings
+            )
     return False
 
 

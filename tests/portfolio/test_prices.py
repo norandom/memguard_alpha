@@ -14,6 +14,7 @@ from typing import Any
 
 import pandas as pd
 import pytest
+import requests
 
 from recall_guard.portfolio.prices import PriceFetchError, fetch_universe_prices
 
@@ -171,12 +172,12 @@ def test_under_30_days_raises(mocker):
 
 
 def test_api_key_missing_raises(monkeypatch, mocker):
-    """No api_key argument and no FMP_API_KEY in env → RuntimeError."""
+    """No api_key argument and no FMP_API_KEY in env → PriceFetchError."""
     monkeypatch.delenv("FMP_API_KEY", raising=False)
     # Mock so we'd notice if it ever called out. It must not.
     mocked = mocker.patch("recall_guard.portfolio.prices.requests.get")
 
-    with pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(PriceFetchError) as excinfo:
         fetch_universe_prices(
             tickers=["SWDA.L", "XLK", "IAU", "BIL"],
             start=date(2024, 1, 1),
@@ -214,3 +215,63 @@ def test_non_200_raises(mocker):
         )
     assert "503" in str(excinfo.value)
     assert "SWDA.L" in str(excinfo.value)
+
+
+def test_transport_error_raises_price_fetch_error(mocker):
+    mocker.patch(
+        "recall_guard.portfolio.prices.requests.get",
+        side_effect=requests.Timeout("boom"),
+    )
+
+    with pytest.raises(PriceFetchError) as excinfo:
+        fetch_universe_prices(
+            tickers=["SWDA.L"],
+            start=date(2024, 1, 1),
+            end=date(2024, 3, 1),
+            api_key="fake-key",
+        )
+    assert "SWDA.L" in str(excinfo.value)
+
+
+def test_invalid_json_raises_price_fetch_error(mocker):
+    class _FakeResponse:
+        status_code = 200
+
+        def json(self):
+            raise ValueError("bad json")
+
+    mocker.patch(
+        "recall_guard.portfolio.prices.requests.get",
+        return_value=_FakeResponse(),
+    )
+
+    with pytest.raises(PriceFetchError) as excinfo:
+        fetch_universe_prices(
+            tickers=["SWDA.L"],
+            start=date(2024, 1, 1),
+            end=date(2024, 3, 1),
+            api_key="fake-key",
+        )
+    assert "invalid JSON" in str(excinfo.value)
+
+
+def test_nondict_payload_entry_raises_price_fetch_error(mocker):
+    class _FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return [7]
+
+    mocker.patch(
+        "recall_guard.portfolio.prices.requests.get",
+        return_value=_FakeResponse(),
+    )
+
+    with pytest.raises(PriceFetchError) as excinfo:
+        fetch_universe_prices(
+            tickers=["SWDA.L"],
+            start=date(2024, 1, 1),
+            end=date(2024, 3, 1),
+            api_key="fake-key",
+        )
+    assert "non-object row payload" in str(excinfo.value)

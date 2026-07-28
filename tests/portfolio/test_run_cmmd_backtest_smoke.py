@@ -111,13 +111,14 @@ def _build_records_jsonl(eval_rows: list[dict], records_path: Path) -> None:
             fh.write(json.dumps(rec) + "\n")
 
 
-def _write_summary_csv(summary_path: Path) -> None:
-    """Write a deterministic ``summary.csv`` with a calibrated row.
-
-    The orchestrator reads only the ``warnings`` cell for the signal
-    model; populating the other cells with sensible numbers keeps any
-    downstream consumer happy.
-    """
+def _write_summary_csv(
+    summary_path: Path,
+    *,
+    mcs_auc_point: float = 0.72,
+    survives_gates: bool = True,
+    warnings: str = "",
+) -> None:
+    """Write a deterministic ``summary.csv`` row for the signal model."""
     header = (
         "model,raw_acc_point,raw_acc_lo,raw_acc_hi,memguard_acc_point,"
         "memguard_acc_lo,memguard_acc_hi,mcs_auc_point,mcs_auc_lo,"
@@ -126,7 +127,8 @@ def _write_summary_csv(summary_path: Path) -> None:
     )
     row = (
         "openai/gpt-oss-20b,0.55,0.45,0.65,0.55,0.45,0.65,"
-        "0.72,0.65,0.79,1.0,0,0.42,true,"
+        f"{mcs_auc_point},0.65,0.79,1.0,0,0.42,"
+        f"{'true' if survives_gates else 'false'},{warnings}"
     )
     summary_path.write_text(header + "\n" + row + "\n", encoding="utf-8")
 
@@ -156,7 +158,13 @@ def _write_base_manifest(run_dir: Path) -> None:
     )
 
 
-def _make_fake_harness_run(eval_rows: list[dict]):
+def _make_fake_harness_run(
+    eval_rows: list[dict],
+    *,
+    mcs_auc_point: float = 0.72,
+    survives_gates: bool = True,
+    warnings: str = "",
+):
     """Return a stub callable matching ``harness.runner.run``'s signature.
 
     The stub writes ``records.jsonl``, ``summary.csv`` and the base
@@ -168,7 +176,12 @@ def _make_fake_harness_run(eval_rows: list[dict]):
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         _build_records_jsonl(eval_rows, out_dir / "records.jsonl")
-        _write_summary_csv(out_dir / "summary.csv")
+        _write_summary_csv(
+            out_dir / "summary.csv",
+            mcs_auc_point=mcs_auc_point,
+            survives_gates=survives_gates,
+            warnings=warnings,
+        )
         _write_base_manifest(out_dir)
         # top3.md is harmless if absent for the orchestrator, but the
         # base writer does emit it; we skip it here because the

@@ -124,8 +124,7 @@ def _make_factory(
 
 
 def test_build_parser_has_required_flags() -> None:
-    parser = runner_mod.build_parser()
-    args = parser.parse_args(
+    args = runner_mod.parse_argv(
         [
             "--eval-set",
             "x.jsonl",
@@ -144,6 +143,23 @@ def test_build_parser_has_required_flags() -> None:
     # Defaults should be exposed:
     assert args.seed == 0
     assert args.bootstrap_n == 1000
+
+
+def test_parse_argv_rejects_nonpositive_bootstrap_n() -> None:
+    with pytest.raises(SystemExit):
+        runner_mod.parse_argv([
+            "--eval-set", "x.jsonl",
+            "--shortlist", "a",
+            "--cutoffs", "c.yaml",
+            "--bootstrap-n", "0",
+        ])
+    with pytest.raises(SystemExit):
+        runner_mod.parse_argv([
+            "--eval-set", "x.jsonl",
+            "--shortlist", "a",
+            "--cutoffs", "c.yaml",
+            "--bootstrap-n", "-1",
+        ])
 
 
 # --- Run-success path --------------------------------------------------------
@@ -236,6 +252,39 @@ def test_run_returns_nonzero_on_missing_eval_set(
     assert rc != 0
 
 
+def test_run_returns_nonzero_on_empty_shortlist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    out_dir = tmp_path / "empty-shortlist"
+    candidates = tmp_path / "candidates.txt"
+    candidates.write_text("mockA\nmockB\n", encoding="utf-8")
+    args = _build_args(monkeypatch, out_dir, shortlist=None, candidates=str(candidates))
+
+    def fake_smoke_test(*args, **kwargs):
+        return runner_mod.Shortlist(selected=[], outcomes=[])
+
+    monkeypatch.setattr(runner_mod, "smoke_test", fake_smoke_test)
+    rc = runner_mod.run(args, lm_factory=_make_factory({}))
+    assert rc != 0
+    assert not (out_dir / "summary.csv").exists()
+    assert not (out_dir / "records.jsonl").exists()
+
+
+def test_run_returns_nonzero_on_unexpected_model_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    out_dir = tmp_path / "unexpected-error"
+    args = _build_args(monkeypatch, out_dir, shortlist="mockA")
+
+    def boom(*args, **kwargs):
+        raise TypeError("boom")
+
+    monkeypatch.setattr(runner_mod, "_evaluate_one_model", boom)
+    rc = runner_mod.run(args, lm_factory=_make_factory({"mockA": _FakeLM("mockA")}))
+    assert rc != 0
+    assert not (out_dir / "summary.csv").exists()
+
+
 def test_run_returns_nonzero_on_missing_api_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -303,7 +352,7 @@ def test_run_skips_uncalibrated_models(
     # calibrated for mockB.
     from recall_guard.mia.control import ControlBaseline
 
-    def fake_build_baseline(model_lm, control_rows, ref_lm, min_valid=50):
+    def fake_build_baseline(model_lm, control_rows, ref_lm, min_valid=50, max_workers=1):
         return ControlBaseline(
             model=model_lm.model,
             n_valid=0 if model_lm.model == "mockA" else 60,

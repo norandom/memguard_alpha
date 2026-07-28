@@ -52,7 +52,7 @@ def _resolve_api_key(api_key: str | None) -> str:
         return api_key
     env_key = os.environ.get("FMP_API_KEY")
     if not env_key:
-        raise RuntimeError(
+        raise PriceFetchError(
             "FMP_API_KEY is not set; pass api_key= or export FMP_API_KEY."
         )
     return env_key
@@ -79,12 +79,22 @@ def _fetch_one_ticker(
         f"&from={start.isoformat()}&to={end.isoformat()}"
         f"&apikey={api_key}"
     )
-    response = requests.get(url, timeout=30)
+    try:
+        response = requests.get(url, timeout=30)
+    except requests.RequestException as exc:
+        raise PriceFetchError(
+            f"FMP price fetch for {ticker!r} failed: {exc}"
+        ) from exc
     if response.status_code != 200:
         raise PriceFetchError(
             f"FMP price fetch for {ticker!r} returned HTTP {response.status_code}"
         )
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise PriceFetchError(
+            f"FMP price fetch for {ticker!r} returned invalid JSON"
+        ) from exc
     if not isinstance(payload, list):
         # FMP's documented shape is a top-level list. Anything else
         # means the response is not what we expect, so fail loudly
@@ -95,6 +105,10 @@ def _fetch_one_ticker(
 
     rows: list[tuple[date, float]] = []
     for entry in payload:
+        if not isinstance(entry, dict):
+            raise PriceFetchError(
+                f"FMP price fetch for {ticker!r} returned non-object row payload"
+            )
         raw_date = entry.get("date")
         raw_price = entry.get("price")
         if not isinstance(raw_date, str) or raw_price is None:

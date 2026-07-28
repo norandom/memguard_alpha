@@ -306,7 +306,10 @@ def parse_argv(argv: list[str]) -> argparse.Namespace:
     parser = build_parser()
     if argv and argv[0] == "build":
         argv = argv[1:]
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.bootstrap_n < 1:
+        parser.error("--bootstrap-n must be >= 1")
+    return args
 
 
 # --- Helpers ------------------------------------------------------------------
@@ -427,6 +430,8 @@ def _resolve_shortlist(
     args: argparse.Namespace,
     api_key: str,
     out_dir: Path,
+    *,
+    lm_factory: LMFactory | None = None,
 ) -> tuple[list[str], Path | None]:
     """Return ``(shortlisted_model_ids, shortlist_json_path_or_None)``.
 
@@ -460,6 +465,7 @@ def _resolve_shortlist(
         api_key=api_key,
         smoke_prompts=DEFAULT_SMOKE_PROMPTS,
         timeout_s=DEFAULT_TIMEOUT_S,
+        lm_factory=lm_factory,
     )
     persisted = _persist_shortlist_outcomes(out_dir, shortlist)
     return list(shortlist.selected), persisted
@@ -679,17 +685,12 @@ def _evaluate_all_models(
                 seed=args.seed, bootstrap_n=args.bootstrap_n,
                 max_workers=max_workers,
             )
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception:
             logger.exception(
-                "runner: unrecoverable error evaluating model %s; "
-                "marking uncalibrated and continuing.",
+                "runner: unrecoverable error evaluating model %s; aborting run.",
                 model_id,
             )
-            sys.stderr.write(
-                f"WARNING: model {model_id} raised during evaluation ({exc!r}); "
-                "marking uncalibrated.\n"
-            )
-            result = _make_uncalibrated_stub(model_id)
+            raise
         results.append(result)
     return results
 
@@ -780,9 +781,16 @@ def run(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        shortlist_models, shortlist_path = _resolve_shortlist(args, api_key, out_dir)
+        shortlist_models, shortlist_path = _resolve_shortlist(
+            args, api_key, out_dir, lm_factory=factory
+        )
     except (FileNotFoundError, ValueError) as exc:
         sys.stderr.write(f"ERROR: shortlist resolution failed: {exc}\n")
+        return 2
+    if not shortlist_models:
+        sys.stderr.write(
+            "ERROR: smoke gate selected no models; aborting run before evaluation.\n"
+        )
         return 2
 
     # Cutoff guard MUST run BEFORE the main eval/baseline/MCS work (Req 2.5).
@@ -796,21 +804,26 @@ def run(
     if not args.no_reference:
         ref_lm = factory(api_key, args.reference_model, DEFAULT_TIMEOUT_S)
 
-    results = _evaluate_all_models(
-        shortlist_models=shortlist_models, api_key=api_key, inputs=loaded,
-        ref_lm=ref_lm, factory=factory, args=args,
-    )
+    try:
+        results = _evaluate_all_models(
+            shortlist_models=shortlist_models, api_key=api_key, inputs=loaded,
+            ref_lm=ref_lm, factory=factory, args=args,
+        )
 
-    majority = compute_majority_baseline(
-        loaded.eval_set, bootstrap_n=args.bootstrap_n, seed=args.seed
-    )
-    scores = composite_score(results, majority)
+        majority = compute_majority_baseline(
+            loaded.eval_set, bootstrap_n=args.bootstrap_n, seed=args.seed
+        )
+        scores = composite_score(results, majority)
 
-    artifacts = _write_run_artifacts(
-        out_dir=out_dir, results=results, scores=scores, majority=majority,
-        inputs=loaded, shortlist_models=shortlist_models,
-        shortlist_path=shortlist_path, args=args,
-    )
+        artifacts = _write_run_artifacts(
+            out_dir=out_dir, results=results, scores=scores, majority=majority,
+            inputs=loaded, shortlist_models=shortlist_models,
+            shortlist_path=shortlist_path, args=args,
+        )
+    except Exception as exc:  # pragma: no cover - top-level run guard
+        logger.exception("runner: unrecovered error; aborting run.")
+        sys.stderr.write(f"ERROR: harness run failed: {exc!r}\n")
+        return 1
 
     try:
         render_terminal(results, majority, scores)
