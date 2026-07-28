@@ -154,13 +154,14 @@ def _parse_published(raw: object) -> date | None:
         return None
     candidate = raw.strip()
     # FMP date conventions: "YYYY-MM-DD HH:MM:SS" is the common form, but
-    # a small subset of endpoints return bare "YYYY-MM-DD".
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(candidate, fmt).date()
-        except ValueError:
-            continue
-    return None
+    # endpoints also emit bare dates and full ISO-8601 timestamps
+    # ("2026-04-01T09:30:00Z", offsets, fractional seconds). All of those
+    # are valid publication dates and must not be skipped as unparseable;
+    # datetime.fromisoformat (3.11+) accepts every variant.
+    try:
+        return datetime.fromisoformat(candidate).date()
+    except ValueError:
+        return None
 
 
 def _extract_body(article: dict) -> str:
@@ -185,6 +186,17 @@ def _build_prompt(title: str, body: str) -> str:
 
 def _title_hash(title: str) -> str:
     return hashlib.sha256(title.strip().lower().encode("utf-8")).hexdigest()
+
+
+def _dedup_hash(article: dict, partial: ArticleRecord) -> str:
+    """Content hash used for title-based dedup.
+
+    Titled articles dedup by title. Untitled (body-only) articles fall back
+    to the built prompt, so distinct untitled articles do not all collapse
+    into the single empty-title bucket.
+    """
+    title = _extract_title(article)
+    return _title_hash(title if title else partial.prompt)
 
 
 def _record_to_jsonl(record: ArticleRecord) -> dict:
@@ -581,7 +593,7 @@ def _ingest_page(
             continue
 
         url = partial.url
-        title_hash = _title_hash(_extract_title(article))
+        title_hash = _dedup_hash(article, partial)
 
         if url and url in seen_urls:
             continue
@@ -589,11 +601,10 @@ def _ingest_page(
             continue
 
         published = partial.published_at
-        # Include the cutoff date itself in IS: the registry records the
-        # LATER day of the documented cutoff month (e.g. 2023-12-31 for
-        # "December 2023"), and articles published on that date are still
-        # potentially memorisable per the registry's sourcing comment.
-        if published <= earliest_cutoff and len(is_records) < is_target:
+        # IS means strictly BEFORE the earliest training cutoff (honest
+        # requirement 11.2). A cutoff-day article is boundary-ambiguous, so
+        # it falls into the dropped gap below rather than into IS.
+        if published < earliest_cutoff and len(is_records) < is_target:
             record = _with_label(partial, 1)
             is_records.append(record)
             if url:
@@ -611,7 +622,8 @@ def _ingest_page(
                 seen_urls.add(url)
             seen_title_hashes.add(title_hash)
             added += 1
-        # Anything between earliest and latest cutoff (inclusive) is dropped.
+        # Anything from the earliest cutoff day through the latest cutoff
+        # (inclusive) is dropped.
     return added
 
 
@@ -729,10 +741,13 @@ def _try_make_oos_record(
     url = partial.url
     if url and url in existing_urls:
         return None
-    title_hash = _title_hash(_extract_title(article))
+    title_hash = _dedup_hash(article, partial)
     if title_hash in existing_title_hashes:
         return None
-    if partial.published_at <= since_date or partial.published_at > today:
+    # Same-day late arrivals (published_at == since_date) are still
+    # ingestible: rows already seen from that day are blocked by the
+    # URL/title dedup above, not by the date gate.
+    if partial.published_at < since_date or partial.published_at > today:
         return None
     if url:
         existing_urls.add(url)
@@ -751,9 +766,10 @@ def update_oos(
 
     Reads the existing ``out_dir/oos_control.jsonl``, derives the latest
     ``published_at`` (or uses ``since`` when supplied), fetches articles
-    after that date from each endpoint, dedups against the existing rows
-    (URL + title hash), and appends the new rows in place. Never modifies
-    ``is_memorized.jsonl``.
+    on or after that date from each endpoint (so late-arriving articles
+    dated on the already-seen max day are still ingestible), dedups
+    against the existing rows (URL + title hash), and appends the new
+    rows in place. Never modifies ``is_memorized.jsonl``.
 
     Raises ``FileNotFoundError`` if the OOS file does not exist.
     """
@@ -778,7 +794,10 @@ def update_oos(
     since_date = since if since is not None else max_published
     assert since_date is not None  # established by the empty-file guard above
 
-    from_date = since_date + timedelta(days=1)
+    # Fetch from the since-date itself, not the day after: an article that
+    # became visible late but is dated on the already-seen max day must
+    # still have a way in (dedup drops the rows we already hold).
+    from_date = since_date
     if from_date > today:
         return oos_path  # nothing to do
 

@@ -40,12 +40,31 @@ SEED = 0
 OUT_PATH = Path("data/eval/etf_direction_multiyear.jsonl")
 
 
-def fetch_eod(ticker: str, api_key: str) -> list[dict]:
+def fetch_eod(ticker: str, api_key: str, *, start: date, end: date) -> list[dict]:
+    """Fetch the EOD close series for ``[start, end]``.
+
+    The window is passed explicitly because FMP's stable endpoints cap
+    history at a recent default window when ``from``/``to`` are omitted —
+    which would silently truncate the intended multi-year span.
+    """
     url = "https://financialmodelingprep.com/stable/historical-price-eod/light"
-    r = requests.get(url, params={"symbol": ticker, "apikey": api_key}, timeout=30)
+    r = requests.get(
+        url,
+        params={
+            "symbol": ticker,
+            "from": start.isoformat(),
+            "to": end.isoformat(),
+            "apikey": api_key,
+        },
+        timeout=30,
+    )
     r.raise_for_status()
     payload = r.json()
-    return payload if isinstance(payload, list) else []
+    if not isinstance(payload, list):
+        raise RuntimeError(
+            f"FMP returned a non-list payload for {ticker!r}: {type(payload).__name__}"
+        )
+    return payload
 
 
 def sample_eval_rows(
@@ -110,7 +129,7 @@ def sample_eval_rows(
     return rows
 
 
-def main() -> int:
+def main(out_path: Path = OUT_PATH) -> int:
     load_dotenv()
     api_key = os.environ.get("FMP_API_KEY")
     if not api_key:
@@ -118,20 +137,31 @@ def main() -> int:
         return 2
 
     rng = random.Random(SEED)
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    end = date.today()
     all_rows: list[dict] = []
+    # Any failed or empty ticker aborts the build: a partially populated
+    # eval set written with exit code 0 would silently skew every
+    # downstream IS/OOS analysis.
     for ticker, name in ETFS.items():
         try:
-            eod = fetch_eod(ticker, api_key)
-        except requests.RequestException as exc:
-            print(f"  {ticker}: FMP fetch failed: {exc}", file=sys.stderr)
-            continue
+            eod = fetch_eod(ticker, api_key, start=START_DATE, end=end)
+        except (requests.RequestException, RuntimeError) as exc:
+            print(f"ERROR: {ticker}: FMP fetch failed: {exc}", file=sys.stderr)
+            return 1
         ticker_rows = sample_eval_rows(eod, ticker, name, rng, TARGET_PER_TICKER)
+        if not ticker_rows:
+            print(
+                f"ERROR: {ticker}: no usable trading days in "
+                f"{START_DATE.isoformat()}..{end.isoformat()}; aborting.",
+                file=sys.stderr,
+            )
+            return 1
         print(f"  {ticker}: {len(ticker_rows)} rows")
         all_rows.extend(ticker_rows)
 
     rng.shuffle(all_rows)
-    with OUT_PATH.open("w") as f:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w") as f:
         for row in all_rows:
             f.write(json.dumps(row) + "\n")
 
@@ -139,7 +169,7 @@ def main() -> int:
     from collections import Counter
     years = Counter(row["metadata"]["date"][:4] for row in all_rows)
     directions = Counter(row["target_direction"] for row in all_rows)
-    print(f"\nWrote {len(all_rows)} eval rows to {OUT_PATH}")
+    print(f"\nWrote {len(all_rows)} eval rows to {out_path}")
     print(f"Year distribution: {dict(sorted(years.items()))}")
     print(f"Direction distribution: {dict(sorted(directions.items()))}")
     return 0

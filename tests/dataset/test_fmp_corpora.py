@@ -303,6 +303,93 @@ def test_build_calibration_dedups_by_title_hash(tmp_path: Path, mocker) -> None:
     assert len(_read_jsonl(is_path)) == 1
 
 
+def test_build_calibration_accepts_iso8601_timestamp_variants(
+    tmp_path: Path, mocker
+) -> None:
+    """T/Z, offset, and fractional-second timestamps are valid publication
+    dates and must be ingested, not skipped as unparseable (Req 5.1)."""
+    cutoffs = {"a": date(2024, 1, 1), "b": date(2024, 12, 1)}
+    today = date(2026, 4, 1)
+    articles = [
+        _article(title="iso-z", published="2020-01-15T09:30:00Z"),
+        _article(title="iso-offset", published="2020-02-15T09:30:00+00:00"),
+        _article(title="iso-fractional", published="2020-03-15T09:30:00.123"),
+    ]
+    _mock_response(mocker, [articles])
+
+    is_path, _ = build_calibration(
+        out_dir=tmp_path,
+        cutoffs=cutoffs,
+        target_per_corpus=10,
+        api_key="key",
+        endpoints=("fmp-articles",),
+        today=today,
+    )
+
+    is_rows = _read_jsonl(is_path)
+    assert len(is_rows) == 3
+    assert {r["metadata"]["published_at"] for r in is_rows} == {
+        "2020-01-15", "2020-02-15", "2020-03-15",
+    }
+
+
+def test_build_calibration_cutoff_day_article_is_not_is(
+    tmp_path: Path, mocker
+) -> None:
+    """IS means strictly before the earliest cutoff: an article published
+    exactly ON the cutoff day lands in the dropped gap (Req 5.2)."""
+    cutoffs = {"a": date(2024, 1, 1), "b": date(2024, 12, 1)}
+    today = date(2026, 4, 1)
+    articles = [
+        _article(title="day-before", published="2023-12-31 09:00:00"),
+        _article(title="cutoff-day", published="2024-01-01 09:00:00"),
+    ]
+    _mock_response(mocker, [articles])
+
+    is_path, oos_path = build_calibration(
+        out_dir=tmp_path,
+        cutoffs=cutoffs,
+        target_per_corpus=10,
+        api_key="key",
+        endpoints=("fmp-articles",),
+        today=today,
+    )
+
+    is_rows = _read_jsonl(is_path)
+    assert [r["metadata"]["published_at"] for r in is_rows] == ["2023-12-31"]
+    assert _read_jsonl(oos_path) == []
+
+
+def test_build_calibration_untitled_articles_do_not_collapse(
+    tmp_path: Path, mocker
+) -> None:
+    """Distinct body-only articles must all survive dedup instead of
+    sharing the single empty-title hash bucket (Req 5.3)."""
+    cutoffs = {"a": date(2024, 1, 1), "b": date(2024, 12, 1)}
+    today = date(2026, 4, 1)
+    # Two articles keep the case inside one stratified sub-window's cap
+    # (target/k rows per bucket), so the only thing separating 1 from 2
+    # survivors is the dedup rule under test.
+    articles = [
+        _article(title="", body=f"Unique untitled body number {i} " * 5,
+                 published="2020-01-15 00:00:00",
+                 url=f"https://example.com/untitled-{i}")
+        for i in range(2)
+    ]
+    _mock_response(mocker, [articles])
+
+    is_path, _ = build_calibration(
+        out_dir=tmp_path,
+        cutoffs=cutoffs,
+        target_per_corpus=10,
+        api_key="key",
+        endpoints=("fmp-articles",),
+        today=today,
+    )
+
+    assert len(_read_jsonl(is_path)) == 2
+
+
 def test_build_calibration_skips_missing_body_with_warning(
     tmp_path: Path, mocker, caplog
 ) -> None:
@@ -488,6 +575,45 @@ def test_update_oos_appends_only_new_post_max_date(tmp_path: Path, mocker) -> No
     assert len(rows) == 4  # 2 existing + 2 new
     new_urls = {r["metadata"]["url"] for r in rows[2:]}
     assert new_urls == {"https://example.com/new1", "https://example.com/new2"}
+
+
+def test_update_oos_ingests_same_day_late_arrival(tmp_path: Path, mocker) -> None:
+    """A newly visible article dated ON the current max publication day is
+    still ingested; already-held same-day rows are blocked by dedup, not
+    by the date gate (Req 5.4)."""
+    existing = [
+        {
+            "prompt": "old prompt",
+            "label": 0,
+            "metadata": {
+                "published_at": "2026-02-15",
+                "source": "fmp-articles",
+                "url": "https://example.com/old",
+            },
+        },
+    ]
+    _seed_oos(tmp_path, existing)
+
+    articles = [
+        # Same-day duplicate of an already-held row -> dedup drops it.
+        _article(title="old prompt", published="2026-02-15 08:00:00",
+                 url="https://example.com/old"),
+        # Same-day LATE ARRIVAL with a new URL/title -> must be ingested.
+        _article(title="late-arrival-same-day", published="2026-02-15 18:00:00",
+                 url="https://example.com/late"),
+    ]
+    _mock_response(mocker, [articles])
+
+    out_path = update_oos(
+        out_dir=tmp_path,
+        api_key="key",
+        endpoints=("fmp-articles",),
+        today=date(2026, 4, 1),
+    )
+
+    rows = _read_jsonl(out_path)
+    urls = [r["metadata"]["url"] for r in rows]
+    assert urls == ["https://example.com/old", "https://example.com/late"]
 
 
 def test_update_oos_dedups_against_existing_rows(tmp_path: Path, mocker) -> None:
