@@ -50,4 +50,4 @@ Single-model run (`openai/gpt-oss-20b`). Sources: `summary.csv`, `is_oos_gap.csv
 | Pre/post-cutoff accuracy & gap | `is_oos_gap.csv` | Accuracy on rows dated before vs after the model's training cutoff, with bootstrap CIs. The gap is a descriptive split, not proof of memorization by itself. |
 | Cohen's d | `cohens_d.csv` | Per-MIA-feature effect size between the pre-cutoff and post-cutoff raw feature values, reported with the holdout MCS-AUC for context. |
 | Sharpe / bps / drawdown | `backtest_summary.csv` | Annualized Sharpe ratio, mean daily return in basis points, maximum drawdown, and total return for each backtest variant, with bootstrap CIs. |
-| `cmmd` threshold | `backtest_summary.csv` | The `p_memorized` quantile cutoff used by this backtest run; signals above it are excluded from the `cmmd` variant. |
+| `cmmd` threshold | `backtest_summary.csv` | The empirical `p_memorized` percentile recorded for this run's cut. The `cmmd` variant drops the top slice of rows by `p_memorized` rank (top 20% at the default quantile), so the slice is removed even when many rows tie at the cutoff value. |

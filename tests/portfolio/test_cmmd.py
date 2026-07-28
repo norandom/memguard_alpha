@@ -127,6 +127,51 @@ def test_p_memorized_none_rows_dropped_alongside_parse_failures() -> None:
     assert threshold == pytest.approx(expected, abs=1e-12)
 
 
+def test_tied_scores_at_cutoff_still_drop_the_top_slice() -> None:
+    """79 zeros + 21 ones: an inclusive-threshold rule would keep all 100;
+    the rank-based slice must still drop floor(0.2 * 100) = 20 rows."""
+    records = [_mk(0.0, tag=f"lo-{i}") for i in range(79)]
+    records += [_mk(1.0, tag=f"hi-{i}") for i in range(21)]
+
+    kept, threshold = apply_cmmd_filter(records, quantile=0.80)
+
+    assert len(kept) == 80
+    # All 79 low rows survive; exactly one tied high row survives, and the
+    # tiebreak is deterministic: the earliest tied row by input position.
+    kept_tags = {r.tag for r in kept}
+    assert {f"lo-{i}" for i in range(79)} <= kept_tags
+    assert kept_tags - {f"lo-{i}" for i in range(79)} == {"hi-0"}
+    assert threshold == pytest.approx(1.0)
+
+
+def test_all_equal_scores_still_drop_the_top_slice() -> None:
+    """100 identical scores must still shed the 20-row top slice."""
+    records = [_mk(0.5, tag=f"r-{i}") for i in range(100)]
+
+    kept, _ = apply_cmmd_filter(records, quantile=0.80)
+
+    assert len(kept) == 80
+    # Deterministic: the first 80 by input position survive.
+    assert [r.tag for r in kept] == [f"r-{i}" for i in range(80)]
+
+
+def test_non_finite_p_memorized_rows_dropped_not_poisoning() -> None:
+    """NaN/inf scores are dropped like None instead of turning the
+    quantile into NaN and silently filtering out every valid row."""
+    good = [_mk(p, tag=f"g-{i}") for i, p in enumerate(np.linspace(0.0, 1.0, 100))]
+    bad = [
+        _mk(float("nan"), tag="nan-0"),
+        _mk(float("inf"), tag="inf-0"),
+        _mk(float("-inf"), tag="ninf-0"),
+    ]
+
+    kept, threshold = apply_cmmd_filter(good + bad, quantile=0.80)
+
+    assert len(kept) == 80
+    assert all(r.tag.startswith("g-") for r in kept)
+    assert np.isfinite(threshold)
+
+
 def test_invalid_quantile_raises() -> None:
     """Quantiles outside the open interval (0, 1) are rejected."""
     records = [_mk(0.5)]

@@ -134,9 +134,17 @@ def test_total_return_and_metrics_on_full_swda_long() -> None:
         net_total_expected * 100.0, abs=0.05
     )
 
-    # Equity curve has the documented columns and starts at 1.0.
+    # Equity curve has the documented columns; the fee-bearing variants
+    # show the day-0 entry fee while the fee-free benchmark starts at 1.0.
     assert list(result.equity_curves.columns) == ["raw_alpha", "cmmd", "buy_and_hold_swda"]
-    assert result.equity_curves.iloc[0, :].to_list() == pytest.approx([1.0, 1.0, 1.0])
+    assert result.equity_curves["buy_and_hold_swda"].iloc[0] == pytest.approx(1.0)
+    assert result.equity_curves["raw_alpha"].iloc[0] == pytest.approx(
+        1.0 - 0.00075, abs=1e-6
+    )
+    # Terminal equity agrees with the summary's net total return.
+    assert result.equity_curves["raw_alpha"].iloc[-1] == pytest.approx(
+        1.0 + result.raw.total_return_pct / 100.0
+    )
 
     # Sharpe is finite and positive on a strictly-rising equity curve.
     point, lo, hi = result.raw.sharpe_annualised
@@ -325,8 +333,24 @@ def test_both_variants_populated_and_curves_start_at_one() -> None:
         "cmmd",
         "buy_and_hold_swda",
     ]
-    first_row = result.equity_curves.iloc[0, :].to_list()
-    assert first_row == pytest.approx([1.0, 1.0, 1.0])
+    # The fee-free benchmark starts at exactly 1.0; the fee-bearing
+    # variants start at 1 + day-0 return (entry fee visible, not divided
+    # away) so the three artifacts stay mutually consistent.
+    assert result.equity_curves["buy_and_hold_swda"].iloc[0] == pytest.approx(1.0)
+    for col in ("raw_alpha", "cmmd"):
+        equity = result.equity_curves[col]
+        returns = result.daily_returns_bps[col] / 1e4
+        assert equity.iloc[0] == pytest.approx(1.0 + returns.iloc[0])
+        # equity_curves must be exactly reconstructable from daily returns.
+        reconstructed = (1.0 + returns).cumprod()
+        assert equity.to_list() == pytest.approx(reconstructed.to_list())
+    # Terminal equity agrees with the summary's total return.
+    assert result.equity_curves["raw_alpha"].iloc[-1] == pytest.approx(
+        1.0 + result.raw.total_return_pct / 100.0
+    )
+    assert result.equity_curves["cmmd"].iloc[-1] == pytest.approx(
+        1.0 + result.cmmd.total_return_pct / 100.0
+    )
 
     assert list(result.daily_returns_bps.columns) == ["raw_alpha", "cmmd"]
 
@@ -354,6 +378,97 @@ def test_low_row_count_warning_when_fewer_than_30_signals() -> None:
     )
 
     assert "low-row-count" in result.warnings
+
+
+def test_untradeable_rows_excluded_from_counts_and_threshold() -> None:
+    """Unknown ticker / bad date / out-of-calendar rows must not inflate
+    n_signals_used, the low-row logic, or the CMMD threshold (Req 4.2)."""
+    prices = _toy_prices(5)
+    days = list(prices.index)
+
+    records = [
+        _mk_record(prompt_hash="ok-0", direction=1, confidence=0.5, p_memorized=0.1),
+        _mk_record(prompt_hash="bad-ticker", direction=1, confidence=0.5, p_memorized=0.99),
+        _mk_record(prompt_hash="bad-date", direction=1, confidence=0.5, p_memorized=0.99),
+        _mk_record(prompt_hash="off-calendar", direction=1, confidence=0.5, p_memorized=0.99),
+    ]
+    prompt_metadata = {
+        "ok-0": _meta("SWDA.L", days[0]),
+        "bad-ticker": {"ticker": "NOPE", "date": _meta("SWDA.L", days[0])["date"]},
+        "bad-date": {"ticker": "SWDA.L", "date": "not-a-date"},
+        "off-calendar": {"ticker": "SWDA.L", "date": "1999-01-01"},
+    }
+
+    result = run_backtest(
+        records,
+        prices,
+        prompt_metadata,
+        cmmd_quantile=0.80,
+        fees_one_way=0.00075,
+        init_cash=1.0,
+        seed=0,
+        bootstrap_n=64,
+    )
+
+    # Only the tradeable row counts.
+    assert result.raw.n_signals_used == 1
+    # The threshold reflects the tradeable distribution only — the 0.99
+    # scores of the untradeable rows must not leak into the quantile.
+    assert result.cmmd.cmmd_threshold == pytest.approx(0.1)
+
+
+def test_flat_return_series_does_not_crash_sharpe_bootstrap() -> None:
+    """A valid zero-fee flat-price backtest yields Sharpe (0, 0, 0)
+    instead of crashing on a zero-std bootstrap statistic."""
+    n_days = 5
+    dates = pd.date_range("2024-01-01", periods=n_days, freq="D")
+    flat = [100.0] * n_days
+    prices = pd.DataFrame(
+        {"SWDA.L": flat, "XLK": flat, "IAU": flat, "BIL": flat},
+        index=dates,
+    )
+    records = [
+        _mk_record(prompt_hash="swda-0", direction=1, confidence=0.5),
+    ]
+    prompt_metadata = {"swda-0": _meta("SWDA.L", dates[0])}
+
+    result = run_backtest(
+        records,
+        prices,
+        prompt_metadata,
+        cmmd_quantile=0.80,
+        fees_one_way=0.0,
+        init_cash=1.0,
+        seed=0,
+        bootstrap_n=64,
+    )
+
+    assert result.raw.sharpe_annualised == (0.0, 0.0, 0.0)
+
+
+def test_run_backtest_does_not_leak_vectorbt_global_freq() -> None:
+    """run_backtest must not mutate vectorbt's process-global frequency."""
+    import vectorbt as vbt
+
+    sentinel_before = vbt.settings.array_wrapper["freq"]
+
+    prices = _toy_prices(5)
+    days = list(prices.index)
+    records = [_mk_record(prompt_hash="swda-0", direction=1, confidence=0.5)]
+    prompt_metadata = {"swda-0": _meta("SWDA.L", days[0])}
+
+    run_backtest(
+        records,
+        prices,
+        prompt_metadata,
+        cmmd_quantile=0.80,
+        fees_one_way=0.00075,
+        init_cash=1.0,
+        seed=0,
+        bootstrap_n=64,
+    )
+
+    assert vbt.settings.array_wrapper["freq"] == sentinel_before
 
 
 def test_parse_failed_rows_dropped_from_both_streams() -> None:

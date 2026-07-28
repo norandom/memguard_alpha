@@ -161,7 +161,9 @@ def test_atomic_failure_leaves_no_partial_files(
     real_write_bytes = Path.write_bytes
 
     def _failing_write_bytes(self: Path, data: bytes) -> int:
-        if self.name == "equity_curves.png":
+        # The writer stages to "<name>.tmp-<pid>" siblings; fail the PNG's
+        # staging write.
+        if self.name.startswith("equity_curves.png"):
             raise PermissionError(f"simulated permission denied: {self}")
         return real_write_bytes(self, data)
 
@@ -173,16 +175,42 @@ def test_atomic_failure_leaves_no_partial_files(
     msg = str(exc_info.value)
     assert "equity_curves.png" in msg
 
-    # No artifact from this call survives. Iterate the dir and assert
-    # none of the documented filenames are present.
-    leftovers = {p.name for p in tmp_path.iterdir()}
-    documented = {
+    # No file from this call survives — neither published artifacts nor
+    # temp staging files.
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_failed_rerun_preserves_prior_artifacts(
+    tmp_path: Path, mocker: object
+) -> None:
+    """A rerun into a populated run dir that fails mid-write must leave
+    every pre-existing artifact byte-for-byte intact (Req 4.4)."""
+    documented = (
         "backtest_summary.csv",
         "backtest_summary.md",
         "equity_curves.csv",
         "equity_curves.png",
         "daily_returns.csv",
-    }
-    assert documented.isdisjoint(leftovers), (
-        f"partial artifacts left behind: {leftovers & documented}"
     )
+    prior = {name: f"prior contents of {name}".encode() for name in documented}
+    for name, blob in prior.items():
+        (tmp_path / name).write_bytes(blob)
+
+    result = _build_fixture_result()
+    real_write_bytes = Path.write_bytes
+
+    def _failing_write_bytes(self: Path, data: bytes) -> int:
+        if self.name.startswith("equity_curves.png"):
+            raise PermissionError(f"simulated permission denied: {self}")
+        return real_write_bytes(self, data)
+
+    mocker.patch.object(Path, "write_bytes", _failing_write_bytes)  # type: ignore[attr-defined]
+
+    with pytest.raises(BacktestArtifactError):
+        write_backtest_artifacts(result, tmp_path)
+
+    # Every prior artifact still present with its original bytes; no
+    # temp litter either.
+    assert {p.name for p in tmp_path.iterdir()} == set(documented)
+    for name, blob in prior.items():
+        assert (tmp_path / name).read_bytes() == blob

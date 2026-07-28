@@ -39,8 +39,10 @@ Key contracts
 -------------
 
 - `BacktestResult.equity_curves` has columns
-  `["raw_alpha", "cmmd", "buy_and_hold_swda"]` in that exact order, with the
-  first row equal to `[1.0, 1.0, 1.0]`.
+  `["raw_alpha", "cmmd", "buy_and_hold_swda"]` in that exact order. The
+  raw/cmmd curves are `cumprod(1 + daily_returns)`, so day 0 shows the entry
+  fee (slightly below 1.0) and the terminal value equals `1 + total_return`;
+  the fee-free buy-and-hold benchmark starts at exactly 1.0.
 - `BacktestResult.daily_returns_bps` has columns `["raw_alpha", "cmmd"]` and
   is denominated in basis points (x10^4).
 - `BacktestMetrics.max_drawdown_pct` is signed: a negative number reports a
@@ -63,6 +65,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -142,8 +145,9 @@ class BacktestMetrics:
 class BacktestResult:
     """Bundle of both variants and the curves needed for plotting.
 
-    ``equity_curves`` is normalised to start at ``1.0`` on the first
-    trading day; ``daily_returns_bps`` is in basis points (×10⁴).
+    ``equity_curves`` is ``cumprod(1 + daily_returns)`` per variant, so
+    it is exactly reconstructable from ``daily_returns_bps`` (basis
+    points, ×10⁴) and its terminal value matches ``total_return_pct``.
     """
 
     raw: BacktestMetrics
@@ -208,11 +212,6 @@ def run_backtest(
             f"cmmd_quantile must be in (0, 1), got {cmmd_quantile!r}"
         )
 
-    # vectorbt's annualised Sharpe relies on the global frequency
-    # setting. Pinning '1D' once per call keeps each invocation
-    # self-contained and avoids cross-test bleed.
-    vbt.settings.array_wrapper["freq"] = "1D"
-
     # -------- Stage 1: prepare records (drop parse failures) --------
     parse_ok_records = [
         r
@@ -223,19 +222,37 @@ def run_backtest(
         and getattr(r, "prompt_hash", None) in prompt_metadata
     ]
 
+    # -------- Stage 1b: drop rows that can never become a position --------
+    # Tradeability must be settled BEFORE the low-row warning, the CMMD
+    # threshold, and n_signals_used are computed, so the reported numbers
+    # describe only signals the engine can actually trade. Same definition
+    # the weight builder applies (unknown ticker / bad date / date not in
+    # the price calendar → drop).
+    index_dates = {ts.date() for ts in prices.index}
+    tradeable_records = []
+    for r in parse_ok_records:
+        meta = prompt_metadata.get(r.prompt_hash) or {}
+        d = parse_metadata_date(meta.get("date"))
+        if (
+            meta.get("ticker") in prices.columns
+            and d is not None
+            and d in index_dates
+        ):
+            tradeable_records.append(r)
+
     warnings: list[str] = []
     # Req 9.4: < 30 surviving rows → low-row-count warning.
-    if len(parse_ok_records) < 30:
+    if len(tradeable_records) < 30:
         warnings.append("low-row-count")
 
     # -------- Stage 2: cmmd-filtered stream + threshold --------
     cmmd_records, cmmd_threshold = apply_cmmd_filter(
-        parse_ok_records, quantile=cmmd_quantile
+        tradeable_records, quantile=cmmd_quantile
     )
 
     # -------- Stage 3: run both variants on the same price matrix --------
     raw_metrics, raw_returns, raw_equity = _run_one_variant(
-        records=parse_ok_records,
+        records=tradeable_records,
         prices=prices,
         prompt_metadata=prompt_metadata,
         label="raw_alpha",
@@ -325,13 +342,13 @@ def _run_one_variant(
     pf = _run_portfolio(weights, prices, fees_one_way, init_cash)
 
     daily_returns = pf.returns()
-    equity = pf.value() / init_cash  # normalise to start at ~1.0
-    # Force first-row equity to exactly 1.0 in case vectorbt deducts the
-    # entry fee on the first bar (returns are still recorded; equity
-    # curve readers expect index[0] == 1.0 by Req 7.2).
-    if not equity.empty:
-        equity = equity / equity.iloc[0] if equity.iloc[0] != 0 else equity
-        equity.iloc[0] = 1.0
+    # Equity is reconstructed from the fee-bearing daily returns so the
+    # three artifacts stay mutually consistent: the curve is exactly
+    # cumprod(1 + daily_returns), its terminal value equals
+    # 1 + total_return, and equity_curves.csv can be reproduced from
+    # daily_returns.csv. Day 0 therefore shows the entry fee (slightly
+    # below 1.0) instead of dividing it away.
+    equity = (1.0 + daily_returns.fillna(0.0)).cumprod()
 
     # ---- Point statistics --------------------------------------------------
     sharpe_point = float(pf.sharpe_ratio())
@@ -355,7 +372,12 @@ def _run_one_variant(
             raise ValueError("need >=2 samples for Sharpe")
         std = float(np.std(arr, ddof=1))
         if std == 0.0:
-            raise ValueError("zero std")
+            # A flat return series is a valid backtest outcome (all-cash
+            # window, zero-fee flat prices). Mirror the pf.sharpe_ratio()
+            # non-finite -> 0.0 normalisation instead of raising, so
+            # bootstrap_ci's point evaluation on the original sample
+            # cannot crash the run.
+            return 0.0
         return float(np.sqrt(252.0) * np.mean(arr) / std)
 
     def _mean_bps_stat(samples: list[float]) -> float:
@@ -714,12 +736,14 @@ def write_backtest_artifacts(
 ) -> dict[str, Path]:
     """Write the five backtest artifacts to ``run_dir`` atomically.
 
-    Builds every artifact in memory first; only after every artifact
-    has been successfully built does the writer touch disk. If any
-    write raises ``OSError`` (disk full, permission denied, etc.) the
-    function unlinks any files it has already written this call and
-    re-raises as :class:`BacktestArtifactError` so the run directory
-    is left in the state it was in before the call (Req 7.6).
+    Builds every artifact in memory first, stages each payload to a
+    temporary sibling file, and only after every temp file is safely on
+    disk renames them over their targets (``os.replace``). If anything
+    raises ``OSError`` (disk full, permission denied, etc.) before the
+    publish phase, the temp files are unlinked and the pre-existing
+    artifacts in ``run_dir`` — including those from an earlier run —
+    are left byte-for-byte untouched (Req 7.6). The function re-raises
+    as :class:`BacktestArtifactError`.
 
     Args:
         result: The :class:`BacktestResult` to serialise.
@@ -770,22 +794,33 @@ def write_backtest_artifacts(
     }
 
     # ----- atomic write phase -------------------------------------------------
-    written: list[Path] = []
+    # Stage every payload to a temp sibling first; only after ALL temps are
+    # on disk are they renamed over the real targets. A failure while
+    # staging therefore never destroys artifacts from an earlier run.
+    pending_tmp: list[Path] = []
+    current: Path | None = None
     try:
+        staged: list[tuple[Path, Path]] = []
         for _key, (path, blob, _is_text) in payloads.items():
-            path.write_bytes(blob)
-            written.append(path)
+            current = path
+            tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+            tmp.write_bytes(blob)
+            pending_tmp.append(tmp)
+            staged.append((tmp, path))
+        for tmp, path in staged:
+            current = path
+            os.replace(tmp, path)
+            pending_tmp.remove(tmp)
     except OSError as exc:
-        # Roll back everything this call has written so the directory
-        # is "untouched" relative to before the call.
-        for p in written:
+        # Roll back the temp files; pre-existing artifacts are untouched.
+        for p in pending_tmp:
             try:
                 p.unlink()
             except OSError:
                 # Best-effort rollback; the original error is still the
                 # one that matters.
                 logger.warning("rollback unlink failed for %s", p)
-        target = getattr(exc, "filename", None) or "unknown path"
+        target = getattr(exc, "filename", None) or current or "unknown path"
         raise BacktestArtifactError(
             f"failed to write backtest artifact {target}: {exc}"
         ) from exc

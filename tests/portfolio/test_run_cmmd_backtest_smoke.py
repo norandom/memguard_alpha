@@ -316,9 +316,177 @@ def test_orchestrator_smoke_writes_every_artifact(
     assert bt["fees_one_way"] == pytest.approx(0.00075)
     assert bt["init_cash"] == pytest.approx(1.0)
     assert bt["n_is_rows"] + bt["n_oos_rows"] == len(eval_rows)
+    # Per-row IS/OOS provenance (review-hardening Req 3.5).
+    labels = bt["is_oos_by_prompt_hash"]
+    assert len(labels) == len(eval_rows)
+    assert set(labels.values()) == {"IS", "OOS"}
+    assert sum(1 for v in labels.values() if v == "IS") == bt["n_is_rows"]
+    expected_hashes = {_compute_prompt_hash(r["prompt"]) for r in eval_rows}
+    assert set(labels.keys()) == expected_hashes
     arts = bt["artifacts"]
     for required in (
         "backtest_summary_csv", "equity_curves_csv", "equity_curves_png",
         "daily_returns_csv",
     ):
         assert required in arts, f"backtest.artifacts missing {required}"
+
+
+def test_orchestrator_accepts_iso_datetime_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ISO datetime metadata.date values ("...T00:00:00") must flow through
+    the precheck, gap analyzer, and backtest without crashing (Req 3.3)."""
+    orch = _load_orchestrator()
+
+    eval_path = tmp_path / "eval" / "etf_portfolio.jsonl"
+    eval_path.parent.mkdir(parents=True, exist_ok=True)
+    eval_rows = _build_eval_set(eval_path, date_suffix="T00:00:00")
+
+    is_path = tmp_path / "is.jsonl"
+    is_path.write_text(
+        json.dumps({"prompt": "p", "label": 1, "metadata": {}}) + "\n",
+        encoding="utf-8",
+    )
+    oos_path = tmp_path / "oos.jsonl"
+    oos_path.write_text(
+        json.dumps({"prompt": "p", "label": 0, "metadata": {}}) + "\n",
+        encoding="utf-8",
+    )
+    cutoffs_path = tmp_path / "cutoffs.yaml"
+    cutoffs_path.write_text(
+        "models:\n  openai/gpt-oss-20b: 2024-06-30\n",
+        encoding="utf-8",
+    )
+
+    run_dir = tmp_path / "run"
+    monkeypatch.setattr(orch, "harness_run", _make_fake_harness_run(eval_rows))
+    fmp_fetcher = MagicMock(return_value=_build_price_frame(eval_rows))
+
+    rc = orch.main(
+        eval_path=eval_path,
+        cutoffs_path=cutoffs_path,
+        is_memorized_path=is_path,
+        oos_control_path=oos_path,
+        run_dir=run_dir,
+        seed=0,
+        bootstrap_n=64,
+        fmp_fetcher=fmp_fetcher,
+        lm_factory=None,
+    )
+    assert rc == 0
+
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    bt = manifest["backtest"]
+    # The datetime forms classify identically to their plain-date twins.
+    assert bt["n_is_rows"] == 5
+    assert bt["n_oos_rows"] == 5
+    assert (run_dir / "is_oos_gap.csv").exists()
+    assert (run_dir / "backtest_summary.csv").exists()
+
+
+def test_orchestrator_warns_on_one_sided_eval_span(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture,
+) -> None:
+    """An OOS-only eval span must emit the 'nothing to remove' warning and
+    still complete the run (Req 4.6)."""
+    orch = _load_orchestrator()
+
+    eval_path = tmp_path / "eval" / "etf_portfolio.jsonl"
+    eval_path.parent.mkdir(parents=True, exist_ok=True)
+    eval_rows = _build_eval_set(eval_path)
+
+    is_path = tmp_path / "is.jsonl"
+    is_path.write_text(
+        json.dumps({"prompt": "p", "label": 1, "metadata": {}}) + "\n",
+        encoding="utf-8",
+    )
+    oos_path = tmp_path / "oos.jsonl"
+    oos_path.write_text(
+        json.dumps({"prompt": "p", "label": 0, "metadata": {}}) + "\n",
+        encoding="utf-8",
+    )
+    # A cutoff far in the past makes every eval row OOS.
+    cutoffs_path = tmp_path / "cutoffs.yaml"
+    cutoffs_path.write_text(
+        "models:\n  openai/gpt-oss-20b: 2020-01-01\n",
+        encoding="utf-8",
+    )
+
+    run_dir = tmp_path / "run"
+    monkeypatch.setattr(orch, "harness_run", _make_fake_harness_run(eval_rows))
+    fmp_fetcher = MagicMock(return_value=_build_price_frame(eval_rows))
+
+    rc = orch.main(
+        eval_path=eval_path,
+        cutoffs_path=cutoffs_path,
+        is_memorized_path=is_path,
+        oos_control_path=oos_path,
+        run_dir=run_dir,
+        seed=0,
+        bootstrap_n=64,
+        fmp_fetcher=fmp_fetcher,
+        lm_factory=None,
+    )
+    assert rc == 0
+
+    captured = capfd.readouterr()
+    assert "only OOS rows" in captured.err
+    assert "no cross-regime rows to remove" in captured.err
+
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["backtest"]["n_is_rows"] == 0
+    assert manifest["backtest"]["n_oos_rows"] == len(eval_rows)
+
+
+def test_orchestrator_aborts_on_weak_calibration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    orch = _load_orchestrator()
+
+    eval_path = tmp_path / "eval" / "etf_portfolio.jsonl"
+    eval_path.parent.mkdir(parents=True, exist_ok=True)
+    eval_rows = _build_eval_set(eval_path)
+
+    is_path = tmp_path / "is.jsonl"
+    is_path.write_text(
+        json.dumps({"prompt": "p", "label": 1, "metadata": {}}) + "\n",
+        encoding="utf-8",
+    )
+    oos_path = tmp_path / "oos.jsonl"
+    oos_path.write_text(
+        json.dumps({"prompt": "p", "label": 0, "metadata": {}}) + "\n",
+        encoding="utf-8",
+    )
+    cutoffs_path = tmp_path / "cutoffs.yaml"
+    cutoffs_path.write_text(
+        "models:\n  openai/gpt-oss-20b: 2024-06-30\n",
+        encoding="utf-8",
+    )
+
+    run_dir = tmp_path / "run"
+    fake_run = _make_fake_harness_run(
+        eval_rows,
+        mcs_auc_point=0.55,
+        survives_gates=False,
+        warnings="weak-calibration",
+    )
+    monkeypatch.setattr(orch, "harness_run", fake_run)
+
+    fmp_fetcher = MagicMock(return_value=_build_price_frame(eval_rows))
+    rc = orch.main(
+        eval_path=eval_path,
+        cutoffs_path=cutoffs_path,
+        is_memorized_path=is_path,
+        oos_control_path=oos_path,
+        run_dir=run_dir,
+        seed=0,
+        bootstrap_n=64,
+        fmp_fetcher=fmp_fetcher,
+        lm_factory=None,
+    )
+
+    assert rc == orch.EXIT_MCS_UNCALIBRATED
+    assert fmp_fetcher.call_count == 0
+    assert not (run_dir / "backtest_summary.csv").exists()

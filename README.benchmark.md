@@ -72,7 +72,7 @@ Additional run-level facts for `runs/cmmd_20260429T070616Z`:
 | **Max drawdown** | Largest peak-to-trough loss over the backtest. |
 | **Total return** | End-to-end portfolio return over the backtest period. |
 | **Signals used** | Number of parse-OK rows that reached the backtest variant after any filtering. |
-| **`p_memorized` threshold** | Quantile cutoff used by the `cmmd` variant for that run. Rows above it are excluded. |
+| **`p_memorized` threshold** | Empirical percentile recorded for that run's cut. The `cmmd` variant drops the top slice of rows by `p_memorized` rank (top 20% at the default quantile), even when scores tie at the cutoff. |
 
 ## Source files
 

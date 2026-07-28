@@ -26,6 +26,7 @@ re-sorting.
 
 from __future__ import annotations
 
+import math
 from typing import Protocol, TypeVar, runtime_checkable
 
 import numpy as np
@@ -55,12 +56,18 @@ def apply_cmmd_filter(
 
     Two-stage filter:
 
-    1. Drop rows where ``parse_ok`` is False or ``p_memorized`` is None.
-       The percentile is computed over the surviving distribution
-       only, so failed rows cannot bias the cutoff.
-    2. Compute the empirical ``quantile``-th percentile of
-       ``p_memorized`` on the survivors and keep rows where
-       ``p_memorized <= threshold``.
+    1. Drop rows where ``parse_ok`` is False or ``p_memorized`` is None
+       or non-finite (NaN/inf cannot rank, and a single NaN would poison
+       the quantile into dropping everything). The percentile is computed
+       over the surviving distribution only, so failed rows cannot bias
+       the cutoff.
+    2. Drop the ``floor((1 - quantile) * n)`` highest-``p_memorized``
+       survivors **by rank**. Ties at the cut boundary are broken
+       deterministically: among equal scores, later input positions are
+       dropped first, so the earliest rows survive. Rank-based dropping
+       guarantees the intended slice is removed even when many rows tie
+       at the cutoff value (an inclusive ``<= threshold`` rule would keep
+       the entire tied block and filter nothing).
 
     The returned list preserves the input order of surviving rows
     (Req 6.4) and the function never mutates a row.
@@ -79,7 +86,10 @@ def apply_cmmd_filter(
     -------
     tuple[list[R], float]
         The surviving records (original order) and the empirical
-        ``p_memorized`` threshold value used.
+        ``quantile``-th percentile of the surviving ``p_memorized``
+        distribution. The percentile is provenance for the manifest;
+        the drop rule itself is rank-based, so with heavy ties a kept
+        row's score may equal (or exceed) this reported value.
 
     Raises
     ------
@@ -89,18 +99,31 @@ def apply_cmmd_filter(
     if not (0.0 < quantile < 1.0):
         raise ValueError(f"quantile must be in (0, 1), got {quantile!r}")
 
-    # Stage 1: drop parse failures and rows with no p_memorized.
-    surviving = [
-        r
-        for r in records
-        if getattr(r, "parse_ok", False) and getattr(r, "p_memorized", None) is not None
-    ]
+    # Stage 1: drop parse failures and rows with no usable p_memorized.
+    def _usable(r: R) -> bool:
+        if not getattr(r, "parse_ok", False):
+            return False
+        p = getattr(r, "p_memorized", None)
+        return p is not None and math.isfinite(float(p))
+
+    surviving = [r for r in records if _usable(r)]
     if not surviving:
         return [], 0.0
 
-    # Stage 2: empirical percentile on the surviving distribution only.
+    n = len(surviving)
     p_values = np.array([float(r.p_memorized) for r in surviving], dtype=np.float64)
     threshold = float(np.quantile(p_values, quantile))
 
-    kept = [r for r in surviving if float(r.p_memorized) <= threshold]
-    return kept, threshold
+    # Stage 2: rank-based top-slice. Round to 9 decimals before flooring so
+    # binary-float artifacts ((1 - 0.8) * 100 == 19.999...96) cannot shave a
+    # row off the intended slice.
+    n_drop = math.floor(round((1.0 - quantile) * n, 9))
+    if n_drop == 0:
+        return list(surviving), threshold
+
+    # Stable ascending sort by (score, input position): the last n_drop
+    # entries are the highest scores, and among ties the latest input
+    # positions — so the earliest tied rows survive, deterministically.
+    order = sorted(range(n), key=lambda i: (p_values[i], i))
+    kept_idx = sorted(order[: n - n_drop])
+    return [surviving[i] for i in kept_idx], threshold
