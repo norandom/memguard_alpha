@@ -1,9 +1,11 @@
 cff-version: 1.2.0
 message: "If you use Recall Guard, please cite it using the metadata below."
 title: "Recall Guard"
-version: 0.1.2
-doi: 10.5281/zenodo.21557233
-date-released: 2026-07-25
+version: 0.2.0
+# Concept DOI (resolves to the latest archived version). Replace with the
+# v0.2.0 version DOI once Zenodo archives the release.
+doi: 10.5281/zenodo.21557232
+date-released: 2026-07-28
 license: MIT
 authors:
   - family-names: Ciepluch

@@ -20,16 +20,16 @@ In this repository, `p_memorized` is a model-specific score produced by a logist
 Recall Guard ships from its Git repository and as a wheel on GitHub Releases (no PyPI). Python 3.12 or newer. In a uv-managed project, declare it as a dependency against a released tag:
 
 ```bash
-uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.1.2"
+uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.2.0"
 # with the plotting/backtest extras:
-uv add "recall-guard[backtest] @ git+https://github.com/norandom/memguard_alpha.git@v0.1.2"
+uv add "recall-guard[backtest] @ git+https://github.com/norandom/memguard_alpha.git@v0.2.0"
 ```
 
 Or install the release wheel into an environment of its own:
 
 ```bash
 uv venv
-uv pip install https://github.com/norandom/memguard_alpha/releases/download/v0.1.2/recall_guard-0.1.2-py3-none-any.whl
+uv pip install https://github.com/norandom/memguard_alpha/releases/download/v0.2.0/recall_guard-0.2.0-py3-none-any.whl
 ```
 
 Then `from recall_guard import MemoryGuardedScorer` and bring your own NVIDIA API key at calibration time. The runtime dependency set is lean (`numpy`, `scikit-learn`, `rich`, `pyyaml`, `requests`, `python-dotenv`); plotting and backtest extras are opt-in (`recall-guard[backtest]`).
@@ -46,7 +46,7 @@ cat > .env <<EOF
 NVIDIA_API_KEY=...
 FMP_API_KEY=...
 EOF
-uv run pytest -q   # 258 tests, offline
+uv run pytest -q   # 311 tests, offline
 ```
 
 You need Python 3.12 and [uv](https://github.com/astral-sh/uv). `uv sync` installs everything from `pyproject.toml` into `.venv/`, including the dev group.
@@ -99,7 +99,7 @@ This is the end-to-end pipeline:
 3. Compute per-(model, MIA-feature) Cohen's d.
 4. Run `scripts/analyze_is_oos_gap.py` for the pre-cutoff vs post-cutoff accuracy gap.
 5. Pull EOD prices for `{SWDA.L, XLK, IAU, BIL}` from FMP for the eval-set date span.
-6. Run two backtests on the same prices: `raw_alpha` (every parse-OK row) and `cmmd` (rows above the run's top-quintile `p_memorized` threshold dropped). Daily rebalance, 1× leverage cap, 15 bps round-trip cost.
+6. Run two backtests on the same prices: `raw_alpha` (every parse-OK row) and `cmmd` (the top-quintile `p_memorized` slice dropped by rank). Daily rebalance, 1× leverage cap, 15 bps round-trip cost.
 7. Write artifacts and extend `manifest.json` with the `backtest` block.
 
 You get this in the run dir (default `runs/cmmd_<UTC-timestamp>/`):
@@ -110,7 +110,7 @@ You get this in the run dir (default `runs/cmmd_<UTC-timestamp>/`):
 | `cohens_d.csv`, `cohens_d.md` | Per-feature Cohen's d on the raw MIA values, split by the cutoff-based date buckets. |
 | `is_oos_gap.csv`, `is_oos_gap.md` | Per-model pre-cutoff / post-cutoff accuracy with bootstrap CIs and the gap. |
 | `backtest_summary.csv`, `backtest_summary.md` | Sharpe, mean daily bps, max drawdown, total return for both variants, with bootstrap CIs and the relative Sharpe change. |
-| `equity_curves.csv`, `equity_curves.png` | Daily equity for `raw_alpha`, `cmmd`, and a passive `buy_and_hold_swda` benchmark, normalized to 1.0 at the first trading day. |
+| `equity_curves.csv`, `equity_curves.png` | Daily equity for `raw_alpha`, `cmmd`, and a passive `buy_and_hold_swda` benchmark. The curves are cumulative products of the daily returns, so the fee-bearing variants show the day-0 entry fee and the terminal value matches the summary's total return; the fee-free benchmark starts at exactly 1.0. |
 | `daily_returns.csv` | Daily returns in basis points for `raw_alpha` and `cmmd`. |
 
 If the run aborts before writing backtest artifacts:

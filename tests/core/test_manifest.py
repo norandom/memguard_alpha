@@ -28,7 +28,7 @@ from recall_guard.core.manifest import (
 def _sample_manifest() -> Manifest:
     """Construct a populated Manifest for round-trip and human-readable tests."""
     return Manifest(
-        harness_version="0.1.2",
+        harness_version="0.2.0",
         seed=42,
         eval_set_hash="a" * 64,
         control_corpus_hash="b" * 64,
@@ -267,7 +267,7 @@ def test_manifest_round_trip_with_backtest_block(tmp_path: Path) -> None:
     """
     backtest = _backtest_block()
     manifest = Manifest(
-        harness_version="0.1.2",
+        harness_version="0.2.0",
         seed=0,
         eval_set_hash="a" * 64,
         control_corpus_hash="b" * 64,
