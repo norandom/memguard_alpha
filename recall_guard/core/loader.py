@@ -125,6 +125,7 @@ def load_eval_set(path: Path | str) -> EvalSet:
     path = Path(path)
     cutoff: date | None = None
     rows: list[EvalRow] = []
+    first_content_line = True
 
     with path.open("r", encoding="utf-8") as fh:
         for idx, raw_line in enumerate(fh, start=1):
@@ -139,7 +140,9 @@ def load_eval_set(path: Path | str) -> EvalSet:
                 raise ValueError(f"Row {idx}: expected JSON object, got {type(obj).__name__}.")
 
             # Header: only accepted as the very first non-empty line.
-            if idx == 1 and "_cutoff_date" in obj and "prompt" not in obj:
+            is_header_slot = first_content_line
+            first_content_line = False
+            if is_header_slot and "_cutoff_date" in obj and "prompt" not in obj:
                 raw_cutoff = obj["_cutoff_date"]
                 if not isinstance(raw_cutoff, str):
                     raise ValueError(
@@ -188,6 +191,23 @@ def _emit_quality_warnings(path: Path, rows: list[EvalRow]) -> None:
             majority_share * 100.0,
             _MAX_MAJORITY_SHARE * 100.0,
         )
+
+
+def parse_metadata_date(raw: object) -> date | None:
+    """Normalise an eval-row ``metadata.date`` value to a ``date``.
+
+    The shared contract for every post-harness consumer (orchestrator,
+    gap analyzer, backtest): accept plain ``YYYY-MM-DD`` and any ISO-8601
+    datetime whose first ten characters are the date (``2024-06-30T00:00:00``).
+    Returns ``None`` for non-strings and unparseable values so callers can
+    skip the row instead of crashing.
+    """
+    if not isinstance(raw, str):
+        return None
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError:
+        return None
 
 
 def load_cutoffs(path: Path | str) -> dict[str, date]:

@@ -448,6 +448,38 @@ def test_run_with_no_reference_does_not_construct_ref_model(
 # --- Manifest contents -------------------------------------------------------
 
 
+def test_run_manifest_hashes_reflect_consumed_bytes_not_disk(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Mutating an input file mid-run must not change the manifest hash:
+    provenance binds to the bytes the run consumed at load time."""
+    out_dir = tmp_path / "mutated"
+    eval_copy = tmp_path / "eval_copy.jsonl"
+    eval_copy.write_bytes(TINY_EVAL.read_bytes())
+    original_hash = compute_file_hash(eval_copy)
+
+    args = _build_args(monkeypatch, out_dir, eval_set=eval_copy)
+    fakes = {"mockA": _FakeLM("mockA"), "mockB": _FakeLM("mockB")}
+
+    real_majority = runner_mod.compute_majority_baseline
+
+    def mutate_then_compute(*pargs, **kwargs):
+        # Fires after loading/evaluation, before artifact writing.
+        eval_copy.write_text(
+            eval_copy.read_text(encoding="utf-8") + "\n", encoding="utf-8"
+        )
+        return real_majority(*pargs, **kwargs)
+
+    monkeypatch.setattr(runner_mod, "compute_majority_baseline", mutate_then_compute)
+
+    rc = runner_mod.run(args, lm_factory=_make_factory(fakes))
+    assert rc == 0
+
+    manifest = read_manifest(out_dir / "manifest.json")
+    assert manifest.eval_set_hash == original_hash
+    assert manifest.eval_set_hash != compute_file_hash(eval_copy)
+
+
 def test_run_writes_manifest_with_correct_hashes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

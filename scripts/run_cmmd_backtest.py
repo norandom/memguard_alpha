@@ -48,6 +48,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from recall_guard.core.loader import parse_metadata_date  # noqa: E402
 from recall_guard.core.manifest import read_manifest, write_manifest  # noqa: E402
 from recall_guard.harness.report import print_artifact_paths  # noqa: E402
 from recall_guard.harness.runner import LMFactory, parse_argv  # noqa: E402
@@ -131,12 +132,12 @@ def _build_prompt_metadata(eval_rows: list[dict]) -> dict[str, dict[str, str]]:
             continue
         md = row.get("metadata") or {}
         ticker = md.get("ticker")
-        row_date = md.get("date")
-        if not isinstance(ticker, str) or not isinstance(row_date, str):
+        row_date = parse_metadata_date(md.get("date"))
+        if not isinstance(ticker, str) or row_date is None:
             continue
         metadata[_compute_prompt_hash(prompt)] = {
             "ticker": ticker,
-            "date": row_date[:10],
+            "date": row_date.isoformat(),
         }
     return metadata
 
@@ -146,13 +147,9 @@ def _eval_date_span(eval_rows: list[dict]) -> tuple[date, date]:
     dates: list[date] = []
     for row in eval_rows:
         md = row.get("metadata") or {}
-        d = md.get("date")
-        if not isinstance(d, str):
-            continue
-        try:
-            dates.append(date.fromisoformat(d[:10]))
-        except ValueError:
-            continue
+        d = parse_metadata_date(md.get("date"))
+        if d is not None:
+            dates.append(d)
     if not dates:
         raise ValueError("eval set has no parseable metadata.date entries.")
     return min(dates), max(dates)
@@ -225,18 +222,10 @@ def _gap_preconditions_met(
         return False, f"missing records file: {records_path}"
     if not cutoffs_path.exists():
         return False, f"missing cutoffs registry: {cutoffs_path}"
-    has_iso_date = False
-    for row in eval_rows:
-        md = row.get("metadata") or {}
-        raw = md.get("date")
-        if not isinstance(raw, str):
-            continue
-        try:
-            date.fromisoformat(raw[:10])
-        except ValueError:
-            continue
-        has_iso_date = True
-        break
+    has_iso_date = any(
+        parse_metadata_date((row.get("metadata") or {}).get("date")) is not None
+        for row in eval_rows
+    )
     if not has_iso_date:
         return False, (
             "no eval row has a metadata.date parseable as ISO-8601; "
@@ -245,22 +234,21 @@ def _gap_preconditions_met(
     return True, ""
 
 
-def _count_is_oos(
+def _classify_is_oos(
     eval_rows: list[dict],
     cutoffs_path: Path,
     *,
     model: str,
     records_path: Path | None = None,
-) -> tuple[int, int]:
-    """Count parse-OK records that fall IS / OOS for ``model``.
+) -> dict[str, str]:
+    """Label each parse-OK record ``"IS"`` or ``"OOS"`` for ``model``.
 
-    Joins ``records.jsonl`` to the eval set on ``prompt_hash``,
-    filters to ``parse_ok=True``, and labels each surviving record
-    IS if its eval-set date is on/before ``cutoffs.yaml[model]``.
-
-    Req 4.1's validation rule wants ``n_is + n_oos`` to equal the
-    parse-OK count; that is achieved by filtering on parse_ok=True
-    here. Rows whose eval metadata lacks an ISO date are skipped.
+    Joins ``records.jsonl`` to the eval set on ``prompt_hash``, filters to
+    ``parse_ok=True``, and labels each surviving record IS if its eval-set
+    date is on/before ``cutoffs.yaml[model]``. Returns a
+    ``prompt_hash -> "IS"|"OOS"`` map that the manifest persists verbatim
+    (Req 3.5: per-row provenance, auditable after the fact). Rows whose
+    eval metadata lacks a parseable date are skipped.
     """
     import yaml
 
@@ -268,7 +256,7 @@ def _count_is_oos(
     models_block = (raw or {}).get("models") or {}
     cutoff_raw = models_block.get(model)
     if cutoff_raw is None:
-        return 0, 0
+        return {}
     cutoff = cutoff_raw if isinstance(cutoff_raw, date) else date.fromisoformat(
         str(cutoff_raw)
     )
@@ -282,10 +270,9 @@ def _count_is_oos(
         metadata_by_hash[ph] = row.get("metadata") or {}
 
     if records_path is None or not records_path.exists():
-        return 0, 0
+        return {}
 
-    n_is = 0
-    n_oos = 0
+    labels: dict[str, str] = {}
     with records_path.open(encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -294,21 +281,15 @@ def _count_is_oos(
             rec = json.loads(line)
             if rec.get("model") != model or not rec.get("parse_ok"):
                 continue
-            md = metadata_by_hash.get(rec.get("prompt_hash") or "")
+            prompt_hash = rec.get("prompt_hash") or ""
+            md = metadata_by_hash.get(prompt_hash)
             if not md:
                 continue
-            raw_date = md.get("date")
-            if not isinstance(raw_date, str):
+            d = parse_metadata_date(md.get("date"))
+            if d is None:
                 continue
-            try:
-                d = date.fromisoformat(raw_date[:10])
-            except ValueError:
-                continue
-            if d <= cutoff:
-                n_is += 1
-            else:
-                n_oos += 1
-    return n_is, n_oos
+            labels[prompt_hash] = "IS" if d <= cutoff else "OOS"
+    return labels
 
 
 def _run_is_oos_gap_subprocess(
@@ -394,8 +375,7 @@ def _build_backtest_block(
     cmmd_threshold: float | None,
     seed: int,
     bootstrap_n: int,
-    n_is: int,
-    n_oos: int,
+    is_oos_labels: dict[str, str],
     artifact_paths: dict[str, Path],
     cohens_d_paths: dict[str, Path] | None,
     is_oos_gap_path: Path,
@@ -429,8 +409,12 @@ def _build_backtest_block(
         "init_cash": 1.0,
         "seed": int(seed),
         "bootstrap_n": int(bootstrap_n),
-        "n_is_rows": int(n_is),
-        "n_oos_rows": int(n_oos),
+        "n_is_rows": sum(1 for v in is_oos_labels.values() if v == "IS"),
+        "n_oos_rows": sum(1 for v in is_oos_labels.values() if v == "OOS"),
+        # Per-row provenance (Req 3.5): lets an auditor reconstruct exactly
+        # which records this run treated as IS vs OOS, even after the eval
+        # metadata or cutoff registry changes.
+        "is_oos_by_prompt_hash": dict(sorted(is_oos_labels.items())),
         "artifacts": artifacts,
     }
 
@@ -575,6 +559,22 @@ def _run_post_harness_stages(
         return gap_rc
     is_oos_gap_path = target_dir / "is_oos_gap.csv"
 
+    # Classify rows IS/OOS up front (Req 4.6 / cmmd Req 8.4): when the eval
+    # span is one-sided, CMMD has no cross-regime rows to remove — warn the
+    # operator before presenting the run as a normal CMMD comparison, then
+    # continue (the supported path).
+    is_oos_labels = _classify_is_oos(
+        eval_rows, cutoffs_path, model=SIGNAL_MODEL, records_path=records_path,
+    )
+    n_is = sum(1 for v in is_oos_labels.values() if v == "IS")
+    n_oos = sum(1 for v in is_oos_labels.values() if v == "OOS")
+    if is_oos_labels and (n_is == 0 or n_oos == 0):
+        only = "IS" if n_oos == 0 else "OOS"
+        sys.stderr.write(
+            f"WARNING: eval span contains only {only} rows for {SIGNAL_MODEL}; "
+            "CMMD has no cross-regime rows to remove — continuing.\n"
+        )
+
     start, end = _eval_date_span(eval_rows)
     logger.info("fetch_universe_prices start (%s..%s)", start, end)
     try:
@@ -603,16 +603,11 @@ def _run_post_harness_stages(
         sys.stderr.write(f"ERROR: backtest artifact write failed: {exc}\n")
         return EXIT_BACKTEST_ARTIFACT
 
-    n_is, n_oos = _count_is_oos(
-        eval_rows, cutoffs_path, model=SIGNAL_MODEL,
-        records_path=target_dir / "records.jsonl",
-    )
     backtest_block = _build_backtest_block(
         cmmd_threshold=result.cmmd.cmmd_threshold,
         seed=seed,
         bootstrap_n=bootstrap_n,
-        n_is=n_is,
-        n_oos=n_oos,
+        is_oos_labels=is_oos_labels,
         artifact_paths=artifact_paths,
         cohens_d_paths=cohens_d_paths,
         is_oos_gap_path=is_oos_gap_path,

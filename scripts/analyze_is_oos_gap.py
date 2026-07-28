@@ -41,6 +41,7 @@ if str(_ROOT) not in sys.path:
 import yaml
 
 from recall_guard.core.bootstrap import bootstrap_ci
+from recall_guard.core.loader import parse_metadata_date
 
 
 def compute_prompt_hash(prompt: str) -> str:
@@ -109,10 +110,10 @@ def analyze(run_dir: Path, eval_path: Path, cutoffs_path: Path) -> dict:
         unmatched = 0
         for r in recs:
             md = metadata.get(r.get("prompt_hash", ""))
-            if not md or "date" not in md:
+            row_date = parse_metadata_date(md.get("date")) if md else None
+            if row_date is None:
                 unmatched += 1
                 continue
-            row_date = date.fromisoformat(md["date"])
             (is_recs if row_date <= cutoff else oos_recs).append(r)
 
         unmatched_total += unmatched

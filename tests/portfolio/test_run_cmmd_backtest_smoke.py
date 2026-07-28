@@ -45,8 +45,12 @@ def _compute_prompt_hash(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
 
 
-def _build_eval_set(path: Path) -> list[dict]:
-    """Write a 10-row miniature eval set straddling 2024-07-01."""
+def _build_eval_set(path: Path, *, date_suffix: str = "") -> list[dict]:
+    """Write a 10-row miniature eval set straddling 2024-07-01.
+
+    ``date_suffix`` lets a test emit ISO datetimes ("T00:00:00") instead of
+    plain dates to prove the normalization contract holds end-to-end.
+    """
     rows: list[dict] = []
     # Five pre-cutoff days, five post-cutoff days; alternate tickers.
     pre_dates = ["2023-01-03", "2023-04-12", "2023-09-05", "2024-02-08", "2024-05-22"]
@@ -58,7 +62,7 @@ def _build_eval_set(path: Path) -> list[dict]:
         rows.append({
             "prompt": prompt,
             "target_direction": (1 if i % 2 == 0 else -1),
-            "metadata": {"ticker": ticker, "date": day},
+            "metadata": {"ticker": ticker, "date": day + date_suffix},
         })
     with path.open("w", encoding="utf-8") as fh:
         for row in rows:
@@ -196,7 +200,7 @@ def _build_price_frame(eval_rows: list[dict]) -> pd.DataFrame:
     Linear price paths (≠ flat) so vectorbt's Sharpe / drawdown stats are
     finite and the bootstrap CIs are non-degenerate.
     """
-    dates = sorted({date.fromisoformat(r["metadata"]["date"]) for r in eval_rows})
+    dates = sorted({date.fromisoformat(r["metadata"]["date"][:10]) for r in eval_rows})
     start, end = dates[0], dates[-1]
     idx = pd.date_range(start, end, freq="D")
     n = len(idx)

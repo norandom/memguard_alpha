@@ -19,6 +19,7 @@ from recall_guard.core.loader import (
     assert_cutoff_safe,
     load_cutoffs,
     load_eval_set,
+    parse_metadata_date,
 )
 
 
@@ -52,6 +53,27 @@ def test_load_eval_set_parses_rows_and_header(tmp_path: Path) -> None:
     # path_hash is a sha256 hex digest (64 chars)
     assert isinstance(result.path_hash, str)
     assert len(result.path_hash) == 64
+
+
+def test_load_eval_set_accepts_header_after_leading_blank_line(tmp_path: Path) -> None:
+    """The cutoff header is the first NON-EMPTY line, not physical line 1."""
+    eval_path = tmp_path / "blank_then_header.jsonl"
+    body = "\n" + json.dumps({"_cutoff_date": "2025-01-01"}) + "\n" + json.dumps(_row(1)) + "\n"
+    eval_path.write_text(body, encoding="utf-8")
+
+    result = load_eval_set(eval_path)
+
+    assert result.cutoff_date == date(2025, 1, 1)
+    assert len(result.rows) == 1
+
+
+def test_parse_metadata_date_normalises_common_forms() -> None:
+    assert parse_metadata_date("2024-06-30") == date(2024, 6, 30)
+    assert parse_metadata_date("2024-06-30T00:00:00") == date(2024, 6, 30)
+    assert parse_metadata_date("2024-06-30T09:30:00+00:00") == date(2024, 6, 30)
+    assert parse_metadata_date("not-a-date") is None
+    assert parse_metadata_date(20240630) is None
+    assert parse_metadata_date(None) is None
 
 
 def test_load_eval_set_rejects_invalid_target_direction(tmp_path: Path) -> None:

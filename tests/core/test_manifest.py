@@ -132,6 +132,41 @@ def test_read_manifest_rejects_extra_keys(tmp_path: Path) -> None:
     assert "unexpected_field" in str(excinfo.value)
 
 
+def test_read_manifest_rejects_string_shortlist(tmp_path: Path) -> None:
+    """A string shortlist must be rejected, not coerced into characters."""
+    path = write_manifest(tmp_path, _sample_manifest())
+    decoded = json.loads(path.read_text(encoding="utf-8"))
+    decoded["shortlist"] = "model-x"
+    path.write_text(json.dumps(decoded, indent=2, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError) as excinfo:
+        read_manifest(path)
+    assert "shortlist" in str(excinfo.value)
+
+
+def test_read_manifest_rejects_non_dict_backtest(tmp_path: Path) -> None:
+    """Non-object backtest values must be rejected, not silently dropped."""
+    path = write_manifest(tmp_path, _sample_manifest())
+    decoded = json.loads(path.read_text(encoding="utf-8"))
+
+    for bad in ([], 1, "bad"):
+        decoded["backtest"] = bad
+        path.write_text(json.dumps(decoded, indent=2, sort_keys=True), encoding="utf-8")
+        with pytest.raises(ValueError) as excinfo:
+            read_manifest(path)
+        assert "backtest" in str(excinfo.value)
+
+
+def test_read_manifest_accepts_null_backtest(tmp_path: Path) -> None:
+    """A literal null backtest reads as absent (equivalent to the omitted key)."""
+    path = write_manifest(tmp_path, _sample_manifest())
+    decoded = json.loads(path.read_text(encoding="utf-8"))
+    decoded["backtest"] = None
+    path.write_text(json.dumps(decoded, indent=2, sort_keys=True), encoding="utf-8")
+
+    assert read_manifest(path).backtest is None
+
+
 def test_compute_file_hash_is_sha256(tmp_path: Path) -> None:
     """compute_file_hash returns sha256 hex digest of file bytes (Req 10.1)."""
     payload = b"the quick brown fox jumps over the lazy dog"

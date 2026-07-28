@@ -154,11 +154,27 @@ def read_manifest(path: Path | str) -> Manifest:
             f"Manifest at {p} has unexpected key(s): {sorted(extra)}."
         )
 
-    # Pass through field-by-field; types come straight from the JSON decode and
-    # match the Manifest annotations (str/int for primitives, list/dict for
-    # the structured fields).
+    # Strict nested validation: reject malformed values instead of silently
+    # coercing them into different data (a string shortlist would otherwise
+    # become a list of characters; a non-dict backtest would vanish to None
+    # and be dropped on the next rewrite).
+    shortlist_raw = decoded["shortlist"]
+    if not isinstance(shortlist_raw, list) or not all(
+        isinstance(m, str) for m in shortlist_raw
+    ):
+        raise ValueError(
+            f"Manifest at {p}: 'shortlist' must be a list of model-ID strings, "
+            f"got {shortlist_raw!r}."
+        )
+
     backtest_raw = decoded.get("backtest")
+    if backtest_raw is not None and not isinstance(backtest_raw, dict):
+        raise ValueError(
+            f"Manifest at {p}: 'backtest' must be a JSON object when present, "
+            f"got {type(backtest_raw).__name__}."
+        )
     backtest = dict(backtest_raw) if isinstance(backtest_raw, dict) else None
+
     return Manifest(
         harness_version=decoded["harness_version"],
         seed=decoded["seed"],
@@ -166,7 +182,7 @@ def read_manifest(path: Path | str) -> Manifest:
         control_corpus_hash=decoded["control_corpus_hash"],
         is_memorized_hash=decoded["is_memorized_hash"],
         cutoffs_hash=decoded["cutoffs_hash"],
-        shortlist=list(decoded["shortlist"]),
+        shortlist=list(shortlist_raw),
         composite_score=dict(decoded["composite_score"]),
         mcs_hyperparams=dict(decoded["mcs_hyperparams"]),
         bootstrap_n=decoded["bootstrap_n"],

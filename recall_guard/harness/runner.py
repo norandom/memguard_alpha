@@ -623,6 +623,12 @@ class _LoadedInputs:
     is_memorized_rows: list[EvalRow]
     oos_path: Path
     oos_control_rows: list[EvalRow]
+    # Hashes captured at load time so the manifest describes the bytes the
+    # run actually consumed, even if the files change on disk mid-run.
+    eval_hash: str
+    cutoffs_hash: str
+    is_hash: str
+    oos_hash: str
 
 
 def _load_all_inputs(args: argparse.Namespace) -> _LoadedInputs | int:
@@ -659,6 +665,10 @@ def _load_all_inputs(args: argparse.Namespace) -> _LoadedInputs | int:
         cutoffs_path=cutoffs_path, cutoffs=cutoffs,
         is_path=is_path, is_memorized_rows=is_memorized_rows,
         oos_path=oos_path, oos_control_rows=oos_control_rows,
+        eval_hash=compute_file_hash(eval_path),
+        cutoffs_hash=compute_file_hash(cutoffs_path),
+        is_hash=compute_file_hash(is_path),
+        oos_hash=compute_file_hash(oos_path),
     )
 
 
@@ -725,15 +735,18 @@ def _write_run_artifacts(
     if shortlist_path is not None:
         artifacts["shortlist"] = shortlist_path
 
+    # Hashes come from _LoadedInputs (captured at load time), NOT from a
+    # fresh read of the files: the manifest must describe the bytes the run
+    # consumed even if the files changed on disk during evaluation.
     paths = _ResolvedPaths(
         eval_set=inputs.eval_path,
-        eval_set_hash=compute_file_hash(inputs.eval_path),
+        eval_set_hash=inputs.eval_hash,
         is_memorized=inputs.is_path,
-        is_memorized_hash=compute_file_hash(inputs.is_path),
+        is_memorized_hash=inputs.is_hash,
         oos_control=inputs.oos_path,
-        oos_control_hash=compute_file_hash(inputs.oos_path),
+        oos_control_hash=inputs.oos_hash,
         cutoffs=inputs.cutoffs_path,
-        cutoffs_hash=compute_file_hash(inputs.cutoffs_path),
+        cutoffs_hash=inputs.cutoffs_hash,
     )
     manifest = _build_manifest(
         seed=args.seed, bootstrap_n=args.bootstrap_n, paths=paths,

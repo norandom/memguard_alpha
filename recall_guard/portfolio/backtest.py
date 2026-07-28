@@ -64,7 +64,6 @@ from __future__ import annotations
 import io
 import logging
 from dataclasses import dataclass
-from datetime import date
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -80,6 +79,7 @@ import pandas as pd
 import vectorbt as vbt
 
 from recall_guard.core.bootstrap import bootstrap_ci
+from recall_guard.core.loader import parse_metadata_date
 from recall_guard.portfolio.cmmd import apply_cmmd_filter
 
 logger = logging.getLogger(__name__)
@@ -464,9 +464,8 @@ def _build_weight_matrix(
             continue
         if ticker not in weights.columns:
             continue
-        try:
-            d = date.fromisoformat(date_str[:10])
-        except ValueError:
+        d = parse_metadata_date(date_str)
+        if d is None:
             continue
         ts = index_dates.get(d)
         if ts is None:
