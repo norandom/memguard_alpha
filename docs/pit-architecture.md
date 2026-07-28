@@ -2,7 +2,7 @@
 
 Reference description for the thesis illustration. Each component maps to code or to a named external consumer component. The measurement layer and the `recall_guard` package live in this repository; the input discipline, task design, and portfolio layers referenced here live in the consumer pipeline at [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors).
 
-One applied evaluation of this stack is a multi-year walk-forward with a guarded macro overlay. There the strategy gives up absolute return against buy-and-hold in exchange for lower volatility, lower drawdown, and less market dependence. That design treats the two halves as equal pillars: this measurement stack governs experimental validity, and the portfolio construction governs exposure and loss scale. The limit: the controls reduce and measure recall risk. They do not prove lookahead has been removed.
+The design treats two halves as equal pillars: this measurement stack governs experimental validity, and the consumer's portfolio construction governs exposure and loss scale. The limit: the controls reduce and measure recall risk. They do not prove lookahead has been removed.
 
 ## The problem with just prompting
 

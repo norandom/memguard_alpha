@@ -21,9 +21,8 @@ AI-generated Black-Litterman view magnitude by ``(1 - p_memorized)`` before
 it can move money, which is the same discount ``memguard_confidence`` applies
 to ``raw_confidence``. A weak or missing score passes the raw exposure
 through, and parse failures fall back to the consumer's risk-parity core.
-The score is a discount, not a certificate; in that pipeline's model screen,
-every screenable model showed statistically significant recall, so no model
-is presumed clean.
+The score is a discount, not a certificate: no model is presumed clean, and
+the consumer owns the fallback policy.
 
 Layer note: this module lives in the ``harness`` layer (top of the stack), so it may
 depend on ``core``, ``mia``, and ``harness.evaluator``. It imports nothing from

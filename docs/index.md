@@ -12,7 +12,7 @@ It is not a forecaster. On the bundled raw price-direction task, near-coin-flip 
 
 `recall_guard` is the measurement layer of a point-in-time (PIT) inference process. Anonymization, de-dating, and as-of data discipline reduce what a model can recall; this package measures what still leaks through and turns it into a per-prompt score. The full stack is described in [How this system achieves PIT inference](pit-architecture.md).
 
-One example consumer is a macro overlay that multiplies each AI-generated Black-Litterman view by `(1 - p_memorized)` before it can move money, and falls back to its risk-parity core when a score or parse is missing. That setup also shows the honest boundary of this tool: in its model screen, every screenable model showed statistically significant recall, so the score works as a discount, never as proof that a model is recall-free.
+One example consumer is a macro overlay that multiplies each AI-generated Black-Litterman view by `(1 - p_memorized)` before it can move money, and falls back to its risk-parity core when a score or parse is missing. The boundary of this tool follows from that design: the score works as a discount, never as proof that a model is recall-free.
 
 ## Install
 
