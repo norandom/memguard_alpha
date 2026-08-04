@@ -158,50 +158,20 @@ class BacktestResult:
     warnings: list[str]
 
 
-def run_backtest(
+def _prepare_variants(
     records: list[Any],
     prices: pd.DataFrame,
     prompt_metadata: dict[str, dict[str, str]],
     *,
-    cmmd_quantile: float = 0.80,
-    fees_one_way: float = 0.00075,
-    init_cash: float = 1.0,
-    seed: int = 0,
-    bootstrap_n: int = 1000,
-) -> BacktestResult:
-    """Run the long-short backtest twice (raw + cmmd) on one price matrix.
+    cmmd_quantile: float,
+) -> tuple[list[Any], list[Any], float | None, list[str]]:
+    """Validate inputs and split the records into the two variant streams.
 
-    Args:
-        records: List of record-shaped objects (see :class:`_RecordLike`).
-            Records with ``parse_ok=False``, ``predicted_direction is
-            None``, ``raw_confidence is None``, or no entry in
-            ``prompt_metadata`` are dropped from BOTH variants
-            (Req 9.1).
-        prices: ``(date × ticker)`` close-price matrix. Must contain the
-            ``BIL`` column plus at least one risk asset. The DataFrame's
-            index is treated as the trading-day calendar; signals dated
-            outside the index are dropped (Req 9.2).
-        prompt_metadata: Maps each ``prompt_hash`` to a dict with
-            ``"ticker"`` and ``"date"`` (ISO-8601) keys. Required because
-            the harness ``Record`` schema does not carry date/ticker
-            inline; the orchestrator builds this dict from the eval-set
-            rows.
-        cmmd_quantile: Quantile cut for the cmmd filter (default 0.80,
-            i.e., drop top quintile by ``p_memorized``).
-        fees_one_way: One-way trading cost in fractional notional
-            (default 0.00075 = 7.5 bps; round-trip = 15 bps per the
-            paper).
-        init_cash: Initial portfolio value passed to vectorbt (default
-            1.0 so equity curves start at 1.0).
-        seed: Threaded through bootstrap CIs for determinism.
-        bootstrap_n: Resamples for ``bootstrap_ci`` (default 1000).
-
-    Returns:
-        A :class:`BacktestResult` with both variants populated.
+    Returns ``(tradeable_records, cmmd_records, cmmd_threshold, warnings)``.
 
     Raises:
-        ValueError: ``prices`` is empty or missing the BIL column.
-        ValueError: ``cmmd_quantile`` outside ``(0, 1)``.
+        ValueError: ``prices`` is empty or missing the BIL column, or
+            ``cmmd_quantile`` is outside ``(0, 1)``.
     """
     if prices.empty:
         raise ValueError("prices DataFrame must be non-empty.")
@@ -248,6 +218,57 @@ def run_backtest(
     # -------- Stage 2: cmmd-filtered stream + threshold --------
     cmmd_records, cmmd_threshold = apply_cmmd_filter(
         tradeable_records, quantile=cmmd_quantile
+    )
+    return tradeable_records, cmmd_records, cmmd_threshold, warnings
+
+
+def run_backtest(
+    records: list[Any],
+    prices: pd.DataFrame,
+    prompt_metadata: dict[str, dict[str, str]],
+    *,
+    cmmd_quantile: float = 0.80,
+    fees_one_way: float = 0.00075,
+    init_cash: float = 1.0,
+    seed: int = 0,
+    bootstrap_n: int = 1000,
+) -> BacktestResult:
+    """Run the long-short backtest twice (raw + cmmd) on one price matrix.
+
+    Args:
+        records: List of record-shaped objects (see :class:`_RecordLike`).
+            Records with ``parse_ok=False``, ``predicted_direction is
+            None``, ``raw_confidence is None``, or no entry in
+            ``prompt_metadata`` are dropped from BOTH variants
+            (Req 9.1).
+        prices: ``(date × ticker)`` close-price matrix. Must contain the
+            ``BIL`` column plus at least one risk asset. The DataFrame's
+            index is treated as the trading-day calendar; signals dated
+            outside the index are dropped (Req 9.2).
+        prompt_metadata: Maps each ``prompt_hash`` to a dict with
+            ``"ticker"`` and ``"date"`` (ISO-8601) keys. Required because
+            the harness ``Record`` schema does not carry date/ticker
+            inline; the orchestrator builds this dict from the eval-set
+            rows.
+        cmmd_quantile: Quantile cut for the cmmd filter (default 0.80,
+            i.e., drop top quintile by ``p_memorized``).
+        fees_one_way: One-way trading cost in fractional notional
+            (default 0.00075 = 7.5 bps; round-trip = 15 bps per the
+            paper).
+        init_cash: Initial portfolio value passed to vectorbt (default
+            1.0 so equity curves start at 1.0).
+        seed: Threaded through bootstrap CIs for determinism.
+        bootstrap_n: Resamples for ``bootstrap_ci`` (default 1000).
+
+    Returns:
+        A :class:`BacktestResult` with both variants populated.
+
+    Raises:
+        ValueError: ``prices`` is empty or missing the BIL column.
+        ValueError: ``cmmd_quantile`` outside ``(0, 1)``.
+    """
+    tradeable_records, cmmd_records, cmmd_threshold, warnings = _prepare_variants(
+        records, prices, prompt_metadata, cmmd_quantile=cmmd_quantile
     )
 
     # -------- Stage 3: run both variants on the same price matrix --------
@@ -321,6 +342,64 @@ def _assemble_result(
 # --------------------------------------------------------------- internals
 
 
+def _sharpe_stat(samples: list[float]) -> float:
+    """Annualised Sharpe on a resample, mirroring vectorbt's convention.
+
+    ``sqrt(252) * mean / std(ddof=1)``, so the bootstrap CI is consistent with
+    ``pf.sharpe_ratio()``. Re-derived per resample because vectorbt exposes no
+    cheap "given returns -> Sharpe" path without re-running a Portfolio.
+    """
+    arr = np.asarray(samples, dtype=float)
+    if arr.size < 2:
+        raise ValueError("need >=2 samples for Sharpe")
+    std = float(np.std(arr, ddof=1))
+    if std == 0.0:
+        # A flat return series is a valid backtest outcome (all-cash window,
+        # zero-fee flat prices). Mirror the pf.sharpe_ratio() non-finite -> 0.0
+        # normalisation instead of raising, so bootstrap_ci's point evaluation
+        # on the original sample cannot crash the run.
+        return 0.0
+    return float(np.sqrt(252.0) * np.mean(arr) / std)
+
+
+def _mean_bps_stat(samples: list[float]) -> float:
+    return float(np.mean(samples) * 1e4)
+
+
+def _bootstrap_bounds(
+    daily_returns_array: Any,
+    *,
+    sharpe_point: float,
+    mean_daily_bps_point: float,
+    seed: int,
+    bootstrap_n: int,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Bootstrap CI bounds for Sharpe and mean daily bps.
+
+    Returns ``((sharpe_lo, sharpe_hi), (mean_lo, mean_hi))``, each clamped so
+    the documented ``lo <= point <= hi`` postcondition survives the vectorbt
+    point overrides: the bootstrap recomputes its own point on the original
+    samples, but the reported Sharpe is vectorbt's, so the two can disagree.
+    """
+    if daily_returns_array.size >= 2:
+        samples = list(daily_returns_array.tolist())
+        _, sharpe_lo, sharpe_hi = bootstrap_ci(
+            samples, _sharpe_stat, n_resamples=bootstrap_n, confidence=0.95, seed=seed
+        )
+        _, mean_lo, mean_hi = bootstrap_ci(
+            samples, _mean_bps_stat, n_resamples=bootstrap_n, confidence=0.95, seed=seed
+        )
+    else:
+        # Degenerate single-day backtest: collapse CIs to the point.
+        sharpe_lo = sharpe_hi = sharpe_point
+        mean_lo = mean_hi = mean_daily_bps_point
+
+    return (
+        (min(sharpe_lo, sharpe_point), max(sharpe_hi, sharpe_point)),
+        (min(mean_lo, mean_daily_bps_point), max(mean_hi, mean_daily_bps_point)),
+    )
+
+
 def _run_one_variant(
     *,
     records: list[Any],
@@ -359,60 +438,13 @@ def _run_one_variant(
         mean_daily_bps_point = 0.0
 
     # ---- Bootstrap CIs -----------------------------------------------------
-    daily_returns_array = daily_returns.fillna(0.0).to_numpy()
-
-    # Sharpe statistic mirrors vectorbt's annualisation (sqrt(252) *
-    # mean / std with ddof=1) so the bootstrap CI is consistent with
-    # ``pf.sharpe_ratio()``. We re-derive on each resample because
-    # vectorbt does not expose a "given returns -> Sharpe" cheap path
-    # without re-running a Portfolio.
-    def _sharpe_stat(samples: list[float]) -> float:
-        arr = np.asarray(samples, dtype=float)
-        if arr.size < 2:
-            raise ValueError("need >=2 samples for Sharpe")
-        std = float(np.std(arr, ddof=1))
-        if std == 0.0:
-            # A flat return series is a valid backtest outcome (all-cash
-            # window, zero-fee flat prices). Mirror the pf.sharpe_ratio()
-            # non-finite -> 0.0 normalisation instead of raising, so
-            # bootstrap_ci's point evaluation on the original sample
-            # cannot crash the run.
-            return 0.0
-        return float(np.sqrt(252.0) * np.mean(arr) / std)
-
-    def _mean_bps_stat(samples: list[float]) -> float:
-        return float(np.mean(samples) * 1e4)
-
-    # The bootstrap point recomputes the statistic on the original
-    # samples; for Sharpe we want vectorbt's value, so we override
-    # point afterwards. The CI bounds are still drawn from the same
-    # stat on the resamples, which is the right thing.
-    if daily_returns_array.size >= 2:
-        _, sharpe_lo, sharpe_hi = bootstrap_ci(
-            list(daily_returns_array.tolist()),
-            _sharpe_stat,
-            n_resamples=bootstrap_n,
-            confidence=0.95,
-            seed=seed,
-        )
-        _, mean_lo, mean_hi = bootstrap_ci(
-            list(daily_returns_array.tolist()),
-            _mean_bps_stat,
-            n_resamples=bootstrap_n,
-            confidence=0.95,
-            seed=seed,
-        )
-    else:
-        # Degenerate single-day backtest: collapse CIs to the point.
-        sharpe_lo = sharpe_hi = sharpe_point
-        mean_lo = mean_hi = mean_daily_bps_point
-
-    # Clamp documented postcondition lo <= point <= hi after the
-    # vectorbt point overrides.
-    sharpe_lo = min(sharpe_lo, sharpe_point)
-    sharpe_hi = max(sharpe_hi, sharpe_point)
-    mean_lo = min(mean_lo, mean_daily_bps_point)
-    mean_hi = max(mean_hi, mean_daily_bps_point)
+    (sharpe_lo, sharpe_hi), (mean_lo, mean_hi) = _bootstrap_bounds(
+        daily_returns.fillna(0.0).to_numpy(),
+        sharpe_point=sharpe_point,
+        mean_daily_bps_point=mean_daily_bps_point,
+        seed=seed,
+        bootstrap_n=bootstrap_n,
+    )
 
     # ---- Drawdown + total return -------------------------------------------
     max_dd = float(pf.max_drawdown())
