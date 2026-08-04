@@ -32,9 +32,13 @@ depend on ``core``, ``mia``, and ``harness.evaluator``. It imports nothing from
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
+from recall_guard.core.consensus import lag_dependence, wilson_interval
+from recall_guard.core.ensemble import EnsembleSpec, canonical_draw_hash
 from recall_guard.core.loader import EvalRow
 from recall_guard.core.nvidia_lm import NvidiaLM, generate_many
 from recall_guard.harness.evaluator import (
@@ -142,6 +146,36 @@ def _default_factory(min_call_interval_s: float) -> LMFactory:
 def _rows(prompts: Sequence[str]) -> list[EvalRow]:
     """Adapt calibration prompt strings to ``EvalRow`` (label routing is by corpus)."""
     return [EvalRow(prompt=p, target_direction=0, metadata={}) for p in prompts]
+
+
+@dataclass(frozen=True)
+class EnsembledScore:
+    """One prompt scored over many draws.
+
+    **`p_memorized_point` is the exposure multiplier.** ``consensus.p_memorized``
+    is the score of one actually-observed draw and is evidence only -- the two
+    can differ, because the representative draw is selected by rank while the
+    point estimate is a reduction over all draws. Using the consensus draw's
+    score to scale exposure would silently substitute a single draw for the
+    ensemble, which is the thing this feature exists to stop.
+
+    ``p_memorized_point is None`` exactly when the ensemble failed, and it is
+    never ``0.0`` in that case: zero would mean "pass 100% of exposure through",
+    the opposite of what an unusable measurement should imply.
+    """
+
+    consensus: GuardedScore
+    p_memorized_point: float | None
+    p_memorized_ci: tuple[float, float] | None
+    p_memorized_conservative: float | None
+    agreement: float | None
+    agreement_ci: tuple[float, float] | None
+    draw_dependence: float | None
+    n_requested: int
+    n_parsed: int
+    fail_counts: tuple[tuple[str, int], ...]
+    draws_sha256: str
+    draws: tuple[GuardedScore, ...] = ()
 
 
 class MemoryGuardedScorer:
@@ -276,6 +310,151 @@ class MemoryGuardedScorer:
             for p, primary, ref_res in zip(prompts, primaries, refs, strict=True)
         ]
 
+    def score_ensemble(
+        self,
+        prompt: str,
+        *,
+        spec: EnsembleSpec,
+        conservative_quantile: float | None = None,
+    ) -> EnsembledScore:
+        """Score one prompt over ``spec.draws`` draws and reduce the results.
+
+        A single scoring is close to uninformative as an exposure multiplier:
+        measured on one identical prompt, its 95% band spans two thirds of the
+        unit interval. Ensembling narrows that, and reports what is left.
+
+        Each draw is scored through the *unchanged* single-draw path and the
+        resulting scores are then reduced. Averaging the intermediate features
+        and scoring once would be a different quantity -- the calibrator is a
+        sigmoid, so the score of the mean is not the mean of the scores.
+
+        The point estimate is the **mean**, because attenuation is linear in the
+        score and the mean is therefore unbiased for expected attenuation. No
+        symmetric trimming is applied: the upper tail of this distribution is
+        the contamination evidence the score exists to report, so trimming it
+        away would discard the signal and shift the estimate toward the
+        risk-increasing side.
+
+        Parameters
+        ----------
+        spec:
+            Explicit configuration. There is no default instance.
+        conservative_quantile:
+            Optional upper quantile of the score, for a caller who would rather
+            withhold more exposure than risk withholding too little.
+
+        Raises
+        ------
+        ConfigurationError
+            If the endpoint rejects the credential while drawing.
+        """
+        if conservative_quantile is not None and not 0.0 <= conservative_quantile <= 1.0:
+            raise ValueError(
+                f"conservative_quantile must be in [0, 1]; got {conservative_quantile!r}"
+            )
+
+        prompt_hash = _hash_prompt(prompt)
+        # The reference draw is held fixed across the ensemble: varying it would
+        # double the request count for one of four features. The cost is that
+        # every draw's score is then correlated through that shared reference,
+        # so the reported spread understates the true spread.
+        ref_res = self._safe_generate(self._ref_lm, prompt) if self._ref_lm else None
+
+        scored: list[GuardedScore] = []
+        failures: dict[str, int] = {}
+        contents: list[str] = []
+        waves: list[int] = []
+
+        for wave, batch in enumerate(_wave_sizes(spec)):
+            with ThreadPoolExecutor(max_workers=batch) as pool:
+                draws = list(pool.map(lambda _: self._safe_generate(self._lm, prompt), range(batch)))
+            for draw in draws:
+                if isinstance(draw, RuntimeError) and _is_auth_error(draw):
+                    raise ConfigurationError(
+                        f"NIM rejected the credential while scoring model {self.model!r}: {draw}"
+                    )
+                if isinstance(draw, BaseException) or draw is None:
+                    reason = "timeout" if isinstance(draw, TimeoutError) else "transport"
+                    failures[reason] = failures.get(reason, 0) + 1
+                    continue
+                guarded = self._build_guarded_score(prompt, draw, ref_res)
+                if not guarded.parse_ok:
+                    failures[guarded.fail_reason or FAIL_ERROR] = (
+                        failures.get(guarded.fail_reason or FAIL_ERROR, 0) + 1
+                    )
+                    continue
+                scored.append(guarded)
+                contents.append(draw.content)
+                waves.append(wave)
+
+        return self._reduce_scores(
+            prompt_hash, scored, contents, waves, failures, spec, conservative_quantile
+        )
+
+    def _reduce_scores(
+        self,
+        prompt_hash: str,
+        scored: list[GuardedScore],
+        contents: list[str],
+        waves: list[int],
+        failures: dict[str, int],
+        spec: EnsembleSpec,
+        conservative_quantile: float | None,
+    ) -> EnsembledScore:
+        fail_counts = tuple(sorted(failures.items()))
+        if len(scored) < spec.min_parsed or not scored:
+            # Report the failure rather than a consensus over the survivors. A
+            # confident-looking answer computed from a handful of draws is the
+            # false-success artifact this package refuses to mint.
+            return EnsembledScore(
+                consensus=_fail(prompt_hash, _modal_reason(failures)),
+                p_memorized_point=None,
+                p_memorized_ci=None,
+                p_memorized_conservative=None,
+                agreement=None,
+                agreement_ci=None,
+                draw_dependence=None,
+                n_requested=spec.draws,
+                n_parsed=len(scored),
+                fail_counts=fail_counts,
+                draws_sha256=canonical_draw_hash(contents),
+                draws=(),
+            )
+
+        order = sorted(range(len(scored)), key=lambda i: (scored[i].p_memorized, contents[i]))
+        ordered = [scored[i] for i in order]
+        values = [g.p_memorized for g in ordered]
+
+        signals = [g.signal for g in ordered]
+        tally: dict[int | None, int] = {}
+        for signal in signals:
+            tally[signal] = tally.get(signal, 0) + 1
+        modal = min(tally, key=lambda s: (-tally[s], repr(s)))
+
+        return EnsembledScore(
+            # The representative draw is ranked by the score itself, so it sits
+            # at the middle of the very distribution being reduced. It is still
+            # evidence, not the multiplier -- see the class docstring.
+            consensus=ordered[(len(ordered) - 1) // 2],
+            p_memorized_point=math.fsum(values) / len(values),
+            p_memorized_ci=_empirical_interval(values, spec.confidence),
+            p_memorized_conservative=(
+                _quantile(values, conservative_quantile)
+                if conservative_quantile is not None
+                else None
+            ),
+            agreement=tally[modal] / len(ordered),
+            agreement_ci=wilson_interval(
+                tally[modal], len(ordered), confidence=spec.confidence, tail=spec.tail
+            ),
+            draw_dependence=lag_dependence(signals, [waves[i] for i in order]),
+            n_requested=spec.draws,
+            n_parsed=len(ordered),
+            fail_counts=fail_counts,
+            draws_sha256=canonical_draw_hash(contents),
+            draws=tuple(ordered) if spec.retain_draws else (),
+        )
+
     # -- internals -------------------------------------------------------------
 
     @staticmethod
@@ -333,6 +512,44 @@ class MemoryGuardedScorer:
         )
 
 
+def _wave_sizes(spec: EnsembleSpec) -> list[int]:
+    """Draw counts per wave, so a budget can be enforced between them."""
+    full, remainder = divmod(spec.draws, spec.max_workers)
+    sizes = [spec.max_workers] * full
+    if remainder:
+        sizes.append(remainder)
+    return sizes
+
+
+def _modal_reason(failures: dict[str, int]) -> str:
+    """The most common failure, ties broken by name so replay is stable."""
+    if not failures:
+        return FAIL_ERROR
+    return min(failures, key=lambda reason: (-failures[reason], reason))
+
+
+def _empirical_interval(values: Sequence[float], confidence: float) -> tuple[float, float]:
+    """Descriptive spread of the observed scores, by order statistic.
+
+    Deterministic on purpose: a bootstrap band would need a stored seed, and the
+    reduction is specified to contain no randomness so a persisted draw set
+    replays exactly. This describes the draws actually taken -- it is not an
+    inferential interval for the underlying quantity, and widening it would not
+    make it one.
+    """
+    ordered = sorted(values)
+    tail = (1.0 - confidence) / 2.0
+    last = len(ordered) - 1
+    lo = ordered[min(last, math.floor(tail * last))]
+    hi = ordered[max(0, math.ceil((1.0 - tail) * last))]
+    return (lo, hi)
+
+
+def _quantile(values: Sequence[float], q: float) -> float:
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, math.ceil(q * (len(ordered) - 1)))]
+
+
 def _fail(prompt_hash: str, fail_reason: str) -> GuardedScore:
     return GuardedScore(
         prompt_hash=prompt_hash,
@@ -346,4 +563,10 @@ def _fail(prompt_hash: str, fail_reason: str) -> GuardedScore:
     )
 
 
-__all__ = ["ConfigurationError", "GuardedScore", "MemoryGuardedScorer", "LMFactory"]
+__all__ = [
+    "ConfigurationError",
+    "EnsembledScore",
+    "GuardedScore",
+    "LMFactory",
+    "MemoryGuardedScorer",
+]

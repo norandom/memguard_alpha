@@ -343,3 +343,41 @@ def test_numpy_scalars_and_arrays_are_accepted() -> None:
     assert scale_floor(np.asarray([0.8, 0.8, 0.8]), grid=0.1) > 0.0
     verdict = detect_multimodal(np.asarray([0.1, 0.2, 0.9, 1.0]), grid=0.1, mass_min=0.4)
     assert verdict is not None
+
+
+def test_estimators_reject_non_finite_rather_than_reordering() -> None:
+    """NaN makes `sorted` order-dependent, which would break the replay contract.
+
+    Estimators reject; reporting functions like grid_adherence drop. The rule is
+    consistent within the module, which it briefly was not.
+    """
+    for bad in (float("nan"), float("inf"), -float("inf")):
+        for mode in ("mean", "median", "trimmed"):
+            with pytest.raises(ValueError, match="finite"):
+                robust_location([0.1, bad, 0.3], mode=mode)
+        with pytest.raises(ValueError, match="finite"):
+            scale_floor([0.1, bad, 0.3])
+
+
+def test_signed_zero_does_not_leak_into_the_result() -> None:
+    """-0.0 and 0.0 compare equal but serialise differently.
+
+    A stable sort would emit whichever arrived first, and that last-bit
+    difference changes a persisted artifact hash -- the exact failure the module
+    exists to prevent. The measured policy axis contains six exact zeros.
+    """
+    import struct
+
+    a = robust_location([-0.1, -0.0, 0.0, 0.1], mode="median")
+    b = robust_location([-0.1, 0.0, -0.0, 0.1], mode="median")
+    assert struct.pack("<d", a) == struct.pack("<d", b)
+    assert math.copysign(1.0, robust_location([-0.0, -0.0], mode="mean")) == 1.0
+
+
+def test_scale_floor_binds_below_a_fifth_of_the_lattice_step() -> None:
+    """Not only at exactly zero -- the docstring used to claim otherwise."""
+    concentrated = [0.80, 0.80, 0.80, 0.81, 0.81, 0.79, 0.79]
+    unfloored = scale_floor(concentrated, grid=None)
+    floored = scale_floor(concentrated, grid=0.1)
+    assert unfloored > 0.0, "MAD is well defined here, not zero"
+    assert floored > unfloored

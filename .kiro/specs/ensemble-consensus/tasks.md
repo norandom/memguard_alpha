@@ -119,8 +119,8 @@ replay, boundary, and documentation validation.
   - _Requirements: 5.7, 5.8_
   - _Boundary: core.consensus, core.ensemble_
 
-- [ ] 4. Integrate the ensembled contamination score
-- [ ] 4.1 Ensembled score type and entry point
+- [x] 4. Integrate the ensembled contamination score
+- [x] 4.1 Ensembled score type and entry point
   - Add a result type that contains an unmodified single-draw guarded score as its representative draw alongside the reduced score, its interval, agreement, flagged components and counters, using only hashable collection types.
   - Add a scoring entry point that takes an explicitly supplied ensemble configuration and leaves the existing scoring signatures and return types untouched.
   - Derive each draw's contamination score through the existing single-draw scoring behaviour and reduce the resulting scores, rather than combining intermediate quantities and scoring once.
@@ -130,14 +130,14 @@ replay, boundary, and documentation validation.
   - Designate exactly one reported value as the exposure multiplier, rank the representative draw so the two agree where possible, and document that the representative draw's own score is evidence rather than the multiplier.
   - _Requirements: 2.1, 2.2, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9_
   - _Boundary: harness.scorer_
-- [ ] 4.2 Failure semantics for the ensembled score
+- [x] 4.2 Failure semantics for the ensembled score
   - Report no contamination score when the ensemble fails, and never substitute zero, which would mean passing full exposure through.
   - Carry the failure category breakdown and the requested-versus-usable counts onto the returned score.
   - Cover the cases where all draws fail, where most draws fail, and where one draw returns a rejected credential.
   - Done looks like a failed ensemble returning an absent contamination score with its failure counts intact, matching how the single-draw path already signals failure.
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
   - _Boundary: harness.scorer_
-- [ ] 4.3 Expose the new surface on the public API
+- [x] 4.3 Expose the new surface on the public API
   - Re-export the new public names from the package root and the core layer, keeping the name lists that act as typo guards in step with the imports.
   - Use absolute, module-direct imports in the new modules, avoiding relative imports and root-level re-imports that the architecture check does not inspect and that would introduce a cycle.
   - Done looks like the new names importable from the package root with the existing public types still importable and constructible exactly as before.

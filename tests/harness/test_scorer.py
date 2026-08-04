@@ -271,3 +271,132 @@ def test_import_recall_guard_stays_lean() -> None:
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert "lean-ok" in r.stdout
+
+
+# --- ensembled contamination score (tasks 4.1-4.2) ---------------------------
+
+
+class _VaryingLM:
+    """One prompt, differing replies -- the serving-stack nondeterminism."""
+
+    def __init__(self, bases, model: str = "fake-model") -> None:
+        self.model = model
+        self._bases = list(bases)
+        self.calls = 0
+
+    def generate(self, prompt: str, temperature: float = 0.0) -> CompletionResult:
+        base = self._bases[self.calls % len(self._bases)]
+        self.calls += 1
+        if isinstance(base, BaseException):
+            raise base
+        return _completion(base)
+
+
+def _ens_spec(**kw):
+    from recall_guard.core.ensemble import EnsembleSpec
+
+    return EnsembleSpec(**{"draws": 8, "max_workers": 2, "min_parsed": 1, **kw})
+
+
+def test_single_draw_ensemble_matches_the_single_draw_path() -> None:
+    """The ensemble must be a strict superset, not a second scoring path."""
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([-1.0])  # noqa: SLF001
+    plain = scorer.score("prompt")
+    ensembled = scorer.score_ensemble(
+        "prompt", spec=_ens_spec(draws=1, min_parsed=1)
+    )
+    assert ensembled.consensus.p_memorized == plain.p_memorized
+    assert ensembled.p_memorized_point == pytest.approx(plain.p_memorized)
+
+
+def test_reports_a_point_estimate_with_an_interval() -> None:
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([-1.0, -2.0, -0.5, -3.0])  # noqa: SLF001
+    result = scorer.score_ensemble("prompt", spec=_ens_spec())
+    lo, hi = result.p_memorized_ci
+    assert 0.0 <= lo <= result.p_memorized_point <= hi <= 1.0
+    assert result.n_requested == 8
+    assert result.n_parsed == 8
+
+
+def test_point_estimate_defaults_to_the_mean_not_the_median() -> None:
+    """Attenuation is linear in the score, so the mean is unbiased for it.
+
+    The median of a right-skewed score sits lower and withholds materially less
+    exposure -- the risk-increasing direction.
+    """
+    import statistics
+
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([-1.0, -1.0, -1.0, -6.0])  # noqa: SLF001
+    result = scorer.score_ensemble("prompt", spec=_ens_spec(retain_draws=True))
+    per_draw = [d.p_memorized for d in result.draws]
+    assert result.p_memorized_point == pytest.approx(statistics.fmean(per_draw))
+
+
+def test_conservative_quantile_is_available_and_not_below_the_point() -> None:
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([-1.0, -2.0, -0.5, -6.0])  # noqa: SLF001
+    result = scorer.score_ensemble(
+        "prompt", spec=_ens_spec(), conservative_quantile=0.9
+    )
+    assert result.p_memorized_conservative >= result.p_memorized_point
+
+
+def test_consensus_score_is_evidence_not_the_multiplier() -> None:
+    """Exactly one reported value multiplies exposure; the docstring says which."""
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([-1.0, -2.0, -0.5, -6.0])  # noqa: SLF001
+    result = scorer.score_ensemble("prompt", spec=_ens_spec())
+    assert result.consensus.parse_ok
+    assert result.p_memorized_point is not None
+    assert "multiplier" in type(result).__doc__
+
+
+def test_failed_ensemble_reports_no_score_rather_than_zero() -> None:
+    """Zero would mean 'pass 100% of exposure through'."""
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([RuntimeError("boom")])  # noqa: SLF001
+    result = scorer.score_ensemble(
+        "prompt", spec=_ens_spec(draws=4, min_parsed=1, max_transport_failure_ratio=1.0)
+    )
+    assert result.consensus.parse_ok is False
+    assert result.p_memorized_point is None
+    assert result.p_memorized_ci is None
+    assert result.n_parsed == 0
+    assert dict(result.fail_counts)
+
+
+def test_partial_failure_still_scores_and_records_counts() -> None:
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([-1.0, -2.0, RuntimeError("boom"), -0.5])  # noqa: SLF001
+    result = scorer.score_ensemble(
+        "prompt", spec=_ens_spec(draws=8, min_parsed=1, max_transport_failure_ratio=0.5)
+    )
+    assert result.p_memorized_point is not None
+    assert result.n_parsed == 6
+    assert result.n_requested == 8
+    assert dict(result.fail_counts)["transport"] == 2
+
+
+def test_ensembled_score_is_hashable_and_exported() -> None:
+    import recall_guard
+    from recall_guard import EnsembledScore
+
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([-1.0, -2.0])  # noqa: SLF001
+    result = scorer.score_ensemble("prompt", spec=_ens_spec())
+    assert isinstance(result, EnsembledScore)
+    assert hash(result) is not None
+    assert "EnsembledScore" in recall_guard.__all__
+    assert "EnsembleSpec" in recall_guard.__all__
+
+
+def test_score_and_score_many_signatures_are_untouched() -> None:
+    import inspect
+
+    sig = inspect.signature(MemoryGuardedScorer.score)
+    assert list(sig.parameters) == ["self", "prompt"]
+    many = inspect.signature(MemoryGuardedScorer.score_many)
+    assert list(many.parameters) == ["self", "prompts", "max_workers"]

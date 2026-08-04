@@ -19,6 +19,30 @@ time rather than at the first downstream lookup.
 """
 
 from recall_guard.core.bootstrap import bootstrap_ci
+from recall_guard.core.consensus import (
+    MultimodalVerdict,
+    Tail,
+    detect_multimodal,
+    grid_adherence,
+    lag_dependence,
+    robust_location,
+    scale_floor,
+    smallest_certifiable_n,
+    snap_to_grid,
+    wilson_interval,
+)
+from recall_guard.core.ensemble import (
+    CostEstimate,
+    EnsembleResult,
+    EnsembleSpec,
+    LocationMode,
+    MultimodalAction,
+    ReferenceMode,
+    canonical_draw_hash,
+    estimate_cost,
+    generate_ensemble,
+    reduce_draws,
+)
 from recall_guard.core.loader import (
     CutoffViolation,
     EvalRow,
@@ -36,6 +60,26 @@ from recall_guard.core.manifest import (
 from recall_guard.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
 
 __all__ = [
+    "Tail",
+    "MultimodalVerdict",
+    "detect_multimodal",
+    "grid_adherence",
+    "lag_dependence",
+    "robust_location",
+    "scale_floor",
+    "smallest_certifiable_n",
+    "snap_to_grid",
+    "wilson_interval",
+    "CostEstimate",
+    "EnsembleResult",
+    "EnsembleSpec",
+    "LocationMode",
+    "MultimodalAction",
+    "ReferenceMode",
+    "canonical_draw_hash",
+    "estimate_cost",
+    "generate_ensemble",
+    "reduce_draws",
     "NvidiaLM",
     "CompletionResult",
     "TokenLogprob",

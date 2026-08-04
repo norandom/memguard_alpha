@@ -219,6 +219,28 @@ def grid_adherence(values: Sequence[float], grid: float, *, tolerance: float = 1
     return on / len(values)
 
 
+def _finite_floats(values: Sequence[float], *, what: str) -> list[float]:
+    """Coerce to plain finite floats, normalising signed zero.
+
+    Estimators **reject** non-finite input rather than dropping it: a NaN makes
+    ``sorted`` order-dependent, which would silently break the order-independence
+    the replay contract rests on. (Reporting functions such as
+    :func:`grid_adherence` drop instead, because their job is to survive the bad
+    data they describe. Estimators have no such excuse.)
+
+    ``+ 0.0`` maps ``-0.0`` to ``0.0``. The two compare equal, so a stable sort
+    emits whichever arrived first -- and they serialise differently, which is
+    exactly the last-bit difference that changes a persisted artifact hash.
+    """
+    out: list[float] = []
+    for raw in values:
+        v = float(raw)
+        if not math.isfinite(v):
+            raise ValueError(f"{what} must contain only finite values; got {v!r}")
+        out.append(v + 0.0)
+    return out
+
+
 def _median(sorted_values: Sequence[float]) -> float:
     """Lower-order-statistic median: always an emitted value."""
     return sorted_values[(len(sorted_values) - 1) // 2]
@@ -234,14 +256,17 @@ def scale_floor(values: Sequence[float], *, grid: float | None = None) -> float:
     observations on one or two lattice points and is indistinguishable from
     zero, so an estimate below that level carries no information.
 
-    Two caveats worth knowing before relying on it. It is inert wherever the
-    estimate was already well-defined -- it binds only when the deviation is
-    zero. And it only helps because the declared lattice is coarser than the
-    emitted one; declare the true lattice and the undefined case returns.
+    Two caveats worth knowing before relying on it. It binds whenever
+    ``1.4826 * MAD < grid / sqrt(12)`` -- that is, for every ``MAD`` below
+    roughly ``0.195 * grid``, not only when the deviation is exactly zero. So on
+    a sharply concentrated component it can inflate a small but perfectly
+    well-defined estimate. And it only helps at all because the declared lattice
+    is coarser than the emitted one; declare the true lattice and the undefined
+    case returns.
     """
     if len(values) == 0:
         raise ValueError("values must be non-empty")
-    values = [float(v) for v in values]
+    values = _finite_floats(values, what="values")
     ordered = sorted(values)
     centre = _median(ordered)
     mad = _median(sorted(abs(v - centre) for v in values))
@@ -438,7 +463,7 @@ def robust_location(
     """
     if len(values) == 0:
         raise ValueError("values must be non-empty")
-    values = [float(v) for v in values]
+    values = _finite_floats(values, what="values")
 
     if mode == "mean":
         return _exact_mean(sorted(values))
