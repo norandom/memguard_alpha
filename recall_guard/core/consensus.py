@@ -292,15 +292,24 @@ class MultimodalVerdict:
     gap: tuple[float, float] | None
 
 
-def _occupancy(values: Sequence[float], grid: float) -> tuple[list[float], list[float]]:
-    """Lattice positions present in ``values`` and their mass fractions."""
+def _occupancy(values: Sequence[float], grid: float) -> tuple[list[float], list[int]]:
+    """Lattice positions present in ``values`` and their integer counts.
+
+    Counts rather than mass fractions: integer sums are exact, so the search
+    below makes identical decisions regardless of accumulation order. Fractions
+    are formed once, at the end, for reporting only.
+
+    ``+ 0.0`` normalises ``-0.0`` to ``0.0``. The two are ``==`` and hash-equal
+    so they already collapse into one bin, but a dict keeps whichever key
+    arrived first -- and the two serialise differently, which would make the
+    reported gap order-dependent in its persisted form.
+    """
     counts: dict[float, int] = {}
     for value in values:
-        snapped = snap_to_grid(value, grid)
+        snapped = snap_to_grid(value, grid) + 0.0
         counts[snapped] = counts.get(snapped, 0) + 1
     positions = sorted(counts)
-    total = len(values)
-    return positions, [counts[p] / total for p in positions]
+    return positions, [counts[p] for p in positions]
 
 
 def detect_multimodal(
@@ -310,22 +319,41 @@ def detect_multimodal(
     mass_min: float = 0.25,
     trough_steps: int = 3,
     density_ratio: float = 10.0,
+    min_draws: int = 8,
+    min_cluster_density: float = 1.5,
 ) -> MultimodalVerdict | None:
     """Detect two clusters separated by a sparse gap.
 
-    Returns ``None`` when no lattice is declared -- an explicit "did not run",
-    never a silent "found nothing". A continuous quantity has no lattice, so a
-    caller must be able to tell the two apart.
+    Returns ``None`` when the check **could not run** -- never a silent "found
+    nothing". There are three such cases, and a caller who needs to tell them
+    apart should read the lattice adherence alongside this:
+
+    * no lattice was declared (a continuous quantity has none);
+    * fewer than ``min_draws`` draws, which cannot evidence two clusters;
+    * the clusters are too thinly populated for a gap between them to mean
+      anything (see below).
 
     The rule is defined directly on the lattice rather than by a classical
-    unimodality test. Those tests assume a continuous distribution, and on
-    heavily-tied lattice data they measure tie mass instead of modality -- badly
-    enough that on the measured corpus the most sharply converged component
-    scores as *more* multimodal than the genuinely split one.
+    unimodality test. Those assume a continuous distribution, and on heavily
+    tied lattice data they measure tie mass instead of modality -- badly enough
+    that on the measured corpus the most sharply converged component scores as
+    *more* multimodal than the genuinely split one.
 
-    Every threshold is a parameter because all three were tuned against a single
-    measurement date. Detects separated clusters only: two overlapping modes
-    with no gap between them are invisible to it, which is a known and accepted
+    **The sparsity guard matters.** ``trough_steps`` counts lattice steps, not
+    draws, so on a lattice much finer than the sampling, empty runs occur
+    everywhere by chance; the density test is vacuous there because an empty gap
+    has no peak to compare against. Measured, a unimodal normal at a 0.001
+    lattice flagged on every single subsample.
+
+    What separates the two regimes is not how wide the gap is but how *dense the
+    clusters are*: a real cluster stacks many draws onto few lattice positions,
+    while a spurious one is a scatter of singletons whose gaps are ordinary
+    spacing. So each side of the split must average at least
+    ``min_cluster_density`` draws per occupied position.
+
+    Every threshold is a parameter because all of them were tuned against a
+    single measurement date. Detects separated clusters only: two overlapping
+    modes with no gap between them are invisible to it, a known and accepted
     false-negative class.
 
     Parameters
@@ -336,7 +364,12 @@ def detect_multimodal(
         Minimum width of the gap, in lattice steps.
     density_ratio:
         How much denser the taller cluster peak must be than the busiest bin
-        inside the gap.
+        inside the gap. Note this binds only when the gap is non-empty; at
+        realistic draw counts most detections win on a completely empty gap.
+    min_draws:
+        Below this many draws the check does not run.
+    min_cluster_density:
+        Minimum draws per occupied lattice position within each cluster.
     """
     if len(values) == 0:
         raise ValueError("values must be non-empty")
@@ -347,52 +380,117 @@ def detect_multimodal(
         raise ValueError(f"mass_min must be in (0, 0.5]; got {mass_min!r}")
     if trough_steps < 1:
         raise ValueError(f"trough_steps must be >= 1; got {trough_steps!r}")
+    if density_ratio < 0:
+        raise ValueError(f"density_ratio must be >= 0; got {density_ratio!r}")
+    if min_draws < 2:
+        raise ValueError(f"min_draws must be >= 2; got {min_draws!r}")
+    if min_cluster_density < 1.0:
+        raise ValueError(
+            f"min_cluster_density must be >= 1; got {min_cluster_density!r}"
+        )
 
-    positions, masses = _occupancy(values, grid)
-    best: tuple[float, float, int, int] | None = None
+    total = len(values)
+    if total < min_draws:
+        return None
+
+    positions, counts = _occupancy(_finite_floats(values, what="values"), grid)
+    if len(positions) < 2:
+        return _unseparated()
+    span_steps = round((positions[-1] - positions[0]) / grid)
+    if span_steps < 1:
+        return _unseparated()
+
+    return _search_split(
+        positions,
+        counts,
+        grid=grid,
+        need=mass_min * total,
+        trough_steps=trough_steps,
+        density_ratio=density_ratio,
+        min_cluster_density=min_cluster_density,
+    )
+
+
+def _prefix_tables(counts: Sequence[int]) -> tuple[list[int], list[int], list[int]]:
+    """Exact integer prefix sums plus prefix/suffix maxima.
+
+    Integers because the search must make identical decisions regardless of
+    accumulation order; prefix tables because the obvious slice-per-pair
+    spelling is cubic, which on a fine lattice over a bounded score runs to
+    seconds per component.
+    """
+    prefix = [0] * (len(counts) + 1)
+    for idx, count in enumerate(counts):
+        prefix[idx + 1] = prefix[idx] + count
+    prefix_max, running = [0] * len(counts), 0
+    for idx, count in enumerate(counts):
+        running = max(running, count)
+        prefix_max[idx] = running
+    suffix_max = [0] * (len(counts) + 1)
+    for idx in range(len(counts) - 1, -1, -1):
+        suffix_max[idx] = max(suffix_max[idx + 1], counts[idx])
+    return prefix, prefix_max, suffix_max
+
+
+def _search_split(
+    positions: Sequence[float],
+    counts: Sequence[int],
+    *,
+    grid: float,
+    need: float,
+    trough_steps: int,
+    density_ratio: float,
+    min_cluster_density: float,
+) -> MultimodalVerdict:
+    """Sparsest qualifying gap, or an unseparated verdict."""
+    total = sum(counts)
+    prefix, prefix_max, suffix_max = _prefix_tables(counts)
+    best: tuple[int, float, int, int] | None = None
     best_verdict: MultimodalVerdict | None = None
 
     for i in range(len(positions) - 1):
-        lower_mass = math.fsum(masses[: i + 1])
-        if lower_mass < mass_min:
+        lower = prefix[i + 1]
+        if lower < need:
             continue
+        trough_peak = 0
         for j in range(i + 1, len(positions)):
-            # Gap width is measured in lattice steps, not in occupied bins, so a
-            # sparsely-sampled gap still counts as wide.
+            if j > i + 1:
+                trough_peak = max(trough_peak, counts[j - 1])
             steps = round((positions[j] - positions[i]) / grid) - 1
             if steps < trough_steps:
                 continue
-            upper_mass = math.fsum(masses[j:])
-            if upper_mass < mass_min:
+            upper = total - prefix[j]
+            if upper < need:
                 continue
-            inner = masses[i + 1 : j]
-            trough_peak = max(inner) if inner else 0.0
-            peak = max(max(masses[: i + 1]), max(masses[j:]))
+            # Emptiness is evidence only between dense clusters. A scatter of
+            # singletons on a too-fine lattice has wide empty runs everywhere.
+            cluster_positions = (i + 1) + (len(positions) - j)
+            if (lower + upper) / cluster_positions < min_cluster_density:
+                continue
+            peak = max(prefix_max[i], suffix_max[j])
             if peak < density_ratio * trough_peak:
                 continue
-            trough_mass = math.fsum(inner)
-            # Deterministic selection: sparsest gap, then the sharpest density
-            # contrast, then the lowest indices. Every key is a function of the
+            inner = prefix[j] - prefix[i + 1]
+            # Deterministic selection: sparsest gap, then sharpest density
+            # contrast, then lowest indices. Every key is a function of the
             # values alone, so a reordered input selects the same split.
-            key = (trough_mass, -(peak - density_ratio * trough_peak), i, j)
+            key = (inner, -(peak - density_ratio * trough_peak), i, j)
             if best is None or key < best:
                 best = key
                 best_verdict = MultimodalVerdict(
                     separated=True,
-                    lower_mass=lower_mass,
-                    upper_mass=upper_mass,
-                    trough_mass=trough_mass,
+                    lower_mass=lower / total,
+                    upper_mass=upper / total,
+                    trough_mass=inner / total,
                     gap=(positions[i], positions[j]),
                 )
 
-    if best_verdict is not None:
-        return best_verdict
+    return best_verdict if best_verdict is not None else _unseparated()
+
+
+def _unseparated() -> MultimodalVerdict:
     return MultimodalVerdict(
-        separated=False,
-        lower_mass=0.0,
-        upper_mass=0.0,
-        trough_mass=0.0,
-        gap=None,
+        separated=False, lower_mass=0.0, upper_mass=0.0, trough_mass=0.0, gap=None
     )
 
 

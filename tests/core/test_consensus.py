@@ -54,6 +54,18 @@ def test_wilson_matches_published_values() -> None:
     assert wilson_interval(128, 128)[0] == pytest.approx(0.9709, abs=5e-4)
 
 
+def test_wilson_pins_an_interior_bound() -> None:
+    """Both published pins are at k == n, where the variance term vanishes.
+
+    With only those, a mutant using p(1-p)/(n-1) instead of p(1-p)/n passes the
+    entire suite while being wrong by up to 0.064. An interior cell is the only
+    thing that exercises that term at all.
+    """
+    lo, hi = wilson_interval(13, 17)
+    assert lo == pytest.approx(0.5273820188043501, abs=1e-12)
+    assert hi == pytest.approx(0.9044495567791988, abs=1e-12)
+
+
 def test_continuity_correction_is_wider_than_the_plain_interval() -> None:
     lo, hi = wilson_interval(126, 128)
     lo_cc, hi_cc = wilson_interval(126, 128, continuity=True)
@@ -341,8 +353,10 @@ def test_numpy_scalars_and_arrays_are_accepted() -> None:
     assert grid_adherence(np.asarray([0.1, 0.2, 0.25]), 0.1) == pytest.approx(2 / 3)
     assert robust_location(np.asarray([0.1, 0.3, 0.2]), mode="median") == pytest.approx(0.2)
     assert scale_floor(np.asarray([0.8, 0.8, 0.8]), grid=0.1) > 0.0
-    verdict = detect_multimodal(np.asarray([0.1, 0.2, 0.9, 1.0]), grid=0.1, mass_min=0.4)
-    assert verdict is not None
+    verdict = detect_multimodal(
+        np.asarray([0.1, 0.2] * 5 + [0.9, 1.0] * 5), grid=0.1, mass_min=0.4
+    )
+    assert verdict is not None and verdict.separated
 
 
 def test_estimators_reject_non_finite_rather_than_reordering() -> None:
@@ -381,3 +395,64 @@ def test_scale_floor_binds_below_a_fifth_of_the_lattice_step() -> None:
     floored = scale_floor(concentrated, grid=0.1)
     assert unfloored > 0.0, "MAD is well defined here, not zero"
     assert floored > unfloored
+
+
+def test_too_few_draws_cannot_certify_two_clusters() -> None:
+    """Two draws once "certified" a separated split, which under RAISE threw."""
+    assert detect_multimodal([0.0, 0.5], grid=0.1) is None
+    assert detect_multimodal([0.0] * 3 + [0.9] * 3, grid=0.1) is None
+    assert detect_multimodal([0.0] * 4 + [0.9] * 4, grid=0.1).separated is True
+
+
+def test_a_lattice_too_fine_for_the_sample_does_not_flag() -> None:
+    """Empty runs occur everywhere by chance when the lattice outruns sampling.
+
+    The density test cannot save it: an empty gap has no peak to compare
+    against, so it passes vacuously. Measured before the guard, a unimodal
+    normal at a 0.001 lattice flagged on every single subsample.
+    """
+    rng = random.Random(11)
+    unimodal = [min(1.0, max(0.0, rng.gauss(0.5, 0.1))) for _ in range(24)]
+    assert detect_multimodal(unimodal, grid=0.1) is not None
+    for fine in (0.001, 0.0005):
+        verdict = detect_multimodal(unimodal, grid=fine)
+        assert verdict is None or not verdict.separated, fine
+
+    # The project's own continuous scores are exactly this case.
+    guard = load_guard_scores()
+    fine_verdict = detect_multimodal(guard, grid=0.001)
+    assert fine_verdict is None or not fine_verdict.separated
+
+
+def test_real_split_still_flags_after_the_sparsity_guard() -> None:
+    """The guard must not cost the detection it exists alongside."""
+    verdict = detect_multimodal(load_axis("policy"), grid=0.1)
+    assert verdict is not None and verdict.separated
+    assert verdict.gap == (-0.2, 0.2)
+
+
+def test_selected_split_is_the_sparsest_gap() -> None:
+    """Pins the selection rule, not merely that some split was admissible."""
+    verdict = detect_multimodal(load_axis("policy"), grid=0.1)
+    assert verdict.trough_mass == pytest.approx(12 / 977)
+    assert verdict.lower_mass == pytest.approx(352 / 977)
+    assert verdict.upper_mass == pytest.approx(613 / 977)
+
+
+def test_signed_zero_does_not_move_the_reported_gap() -> None:
+    """`-0.0` and `0.0` bin together, but a dict keeps the first key seen."""
+    a = [-0.04, 0.04] + [-1.0] * 5 + [1.0] * 7
+    b = [0.04, -0.04] + [-1.0] * 5 + [1.0] * 7
+    va, vb = detect_multimodal(a, grid=0.1), detect_multimodal(b, grid=0.1)
+    assert repr(va) == repr(vb)
+
+
+def test_detection_stays_quadratic_on_a_fine_lattice() -> None:
+    """A cubic search runs to seconds per component on a bounded score."""
+    import time
+
+    rng = random.Random(5)
+    values = [rng.random() for _ in range(1000)]
+    started = time.monotonic()
+    detect_multimodal(values, grid=0.001)
+    assert time.monotonic() - started < 1.0
