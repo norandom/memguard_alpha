@@ -33,35 +33,36 @@ replay, boundary, and documentation validation.
   - _Requirements: 1.6, 1.7_
   - _Boundary: core.nvidia_lm_
 
-- [ ] 2. Build the pure consensus statistics
-- [ ] 2.1 Vendor the measured pathologies as a test fixture
+- [x] 2. Build the pure consensus statistics
+- [x] 2.1 Vendor the measured pathologies as a test fixture
   - Copy the measured draw set and contamination scores into the test fixtures directory, carrying only the numeric columns — the draw index, the parse flag, the component values, and the scores — so no prompt or reply text is duplicated.
   - Record the provenance of the data in the fixture directory, including that it comes from a single rebalance date.
   - Add a loader helper the statistics tests can share.
   - Done looks like the pathology corpus loadable from within this repository with no dependency on any sibling project, at a size in line with the existing fixtures.
   - _Requirements: 3.1, 4.1_
-- [ ] 2.2 (P) Agreement measurement and intervals
+  - Note: 2.2-2.5 lost their `(P)` markers during implementation. All four share the single `core.consensus` module, so they contend on one file and are not parallel-safe; the annotation was wrong when written.
+- [x] 2.2 Agreement measurement and intervals
   - Implement a score-based proportion interval that stays within the zero-to-one range and never collapses to zero width at unanimous agreement, plus its continuity-corrected variant.
   - Obtain the normal quantile from the standard library rather than adding a numerical dependency.
   - Cover the unanimous case at several sample sizes, and record why an interval built on the naive normal approximation is rejected.
   - Done looks like a unanimous sample of any size producing a non-degenerate interval bounded inside zero and one.
   - _Requirements: 5.2, 5.3_
   - _Boundary: core.consensus_
-- [ ] 2.3 (P) Lattice handling and adherence reporting
+- [x] 2.3 Lattice handling and adherence reporting
   - Implement optional lattice snapping with a single pinned rounding direction that does not depend on floating-point division by the lattice step.
   - Implement a diagnostic reporting the fraction of observed values that actually lie on a declared lattice.
   - Cover every half-step tie value across the unit range, asserting one consistent rounding direction.
   - Done looks like a caller who declares a lattice the data does not follow seeing a low adherence figure rather than silently mis-snapped values.
   - _Requirements: 3.3, 3.5_
   - _Boundary: core.consensus_
-- [ ] 2.4 (P) Robust location estimation
+- [x] 2.4 Robust location estimation
   - Implement the location estimators the design permits, with order-independent summation so a reordered input cannot change the last bit of the result.
   - Pin the index rule for any trimming so the retained core is reproducible.
   - Use the measured pathologies as the test corpus: a component whose median absolute deviation is exactly zero, and a component where every symmetric trim fraction lands inside the observed gap.
   - Done looks like the same values in any order producing a bit-identical location estimate.
   - _Requirements: 3.1, 9.1, 9.2, 9.3_
   - _Boundary: core.consensus_
-- [ ] 2.5 (P) Separated-cluster detection
+- [x] 2.5 Separated-cluster detection
   - Implement detection of two clusters separated by a gap, parameterized by minimum cluster mass, minimum gap width, and the density ratio between cluster peaks and the gap.
   - Return a defined outcome indicating the check did not run when no lattice is declared, rather than silently reporting no clusters.
   - Pin the selection rule when several candidate splits qualify, using only the values themselves.
