@@ -305,3 +305,41 @@ def test_ensemble_reports_dependence_when_there_are_enough_waves() -> None:
     lm = _ScriptedLM(["up", "down"])
     result = generate_ensemble(lm, "p", _spec(draws=8, max_workers=2), decide=lambda c: c.content)
     assert result.draw_dependence is not None
+
+
+def test_every_cluster_detection_threshold_is_configurable() -> None:
+    """No detector constant may be reachable only by editing the source.
+
+    All of them were tuned against a single measurement date, which is exactly
+    why none may be frozen into the implementation.
+    """
+    import inspect
+
+    from recall_guard.core.consensus import detect_multimodal
+
+    knobs = {
+        name
+        for name in inspect.signature(detect_multimodal).parameters
+        if name not in {"values", "grid"}
+    }
+    exposed = set(EnsembleSpec.__dataclass_fields__) | {"min_draws"}
+    # min_draws is surfaced under a clearer name on the spec.
+    assert knobs - exposed - {"min_draws"} == set()
+    assert "min_cluster_density" in EnsembleSpec.__dataclass_fields__
+    assert "min_cluster_draws" in EnsembleSpec.__dataclass_fields__
+
+    for bad in ({"min_cluster_draws": 1}, {"min_cluster_density": 0.5}):
+        with pytest.raises(ValueError):
+            EnsembleSpec(**bad)
+
+
+def test_cluster_thresholds_reach_the_detector() -> None:
+    """A configured threshold must actually change the verdict."""
+    lm = _ScriptedLM(["-0.9"] * 4 + ["0.9"] * 4)
+    strict = _spec(draws=8, grid=0.1, mass_min=0.4, min_cluster_draws=32)
+    result = generate_ensemble(
+        lm, "p", strict,
+        decide=lambda c: c.content,
+        components=lambda c: {"axis": float(c.content)},
+    )
+    assert result.multimodal == (), "min_cluster_draws did not reach the detector"

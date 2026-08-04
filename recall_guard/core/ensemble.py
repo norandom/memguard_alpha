@@ -135,6 +135,8 @@ class EnsembleSpec:
     mass_min: float = 0.25
     trough_steps: int = 3
     density_ratio: float = 10.0
+    min_cluster_draws: int = 8
+    min_cluster_density: float = 1.5
     max_total_requests: int | None = None
     max_transport_failure_ratio: float = 0.25
     retain_draws: bool = False
@@ -160,6 +162,14 @@ class EnsembleSpec:
             raise ValueError(f"trough_steps must be >= 1; got {self.trough_steps}")
         if self.density_ratio < 1.0:
             raise ValueError(f"density_ratio must be >= 1; got {self.density_ratio}")
+        if self.min_cluster_draws < 2:
+            raise ValueError(
+                f"min_cluster_draws must be >= 2; got {self.min_cluster_draws}"
+            )
+        if self.min_cluster_density < 1.0:
+            raise ValueError(
+                f"min_cluster_density must be >= 1; got {self.min_cluster_density}"
+            )
         if not 0.0 <= self.trim < 0.5:
             raise ValueError(f"trim must be in [0, 0.5); got {self.trim}")
         if not 0.0 <= self.max_transport_failure_ratio <= 1.0:
@@ -309,6 +319,8 @@ def _reduce_components(
             mass_min=spec.mass_min,
             trough_steps=spec.trough_steps,
             density_ratio=spec.density_ratio,
+            min_draws=spec.min_cluster_draws,
+            min_cluster_density=spec.min_cluster_density,
         )
         if verdict is not None and verdict.separated:
             # No location is reported for a flagged component. There is no single
