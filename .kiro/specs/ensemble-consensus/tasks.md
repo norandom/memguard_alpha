@@ -145,22 +145,22 @@ replay, boundary, and documentation validation.
   - _Depends: 3.4, 4.1_
   - _Boundary: core.ensemble, harness.scorer_
 
-- [ ] 5. Validate the feature end to end
-- [ ] 5.1 Replay determinism verification
+- [x] 5. Validate the feature end to end
+- [x] 5.1 Replay determinism verification
   - Add a test that reduces a fixed stored draw set to an identical result without contacting any model, including the representative draw and the content hash.
   - Confirm the reduction contains no random resampling and therefore requires no seed.
   - Done looks like a stored draw set replaying to a bit-identical result across repeated runs and across input reorderings, with no model call.
   - _Requirements: 9.1, 9.2, 9.3, 9.6_
   - _Depends: 3.4_
   - _Boundary: core.ensemble, core.consensus_
-- [ ] 5.2 Package boundary verification
+- [x] 5.2 Package boundary verification
   - Confirm the runtime dependency set is unchanged and that importing the package still avoids the plotting and backtest stacks.
   - Confirm the architectural layering check passes with the new modules in a registered location rather than one the check skips.
   - Confirm no new violation of the configured complexity and function-length ceilings, measured against the existing baseline rather than against a clean tree.
   - Done looks like the dependency and layering checks passing unchanged and the complexity report showing no new violations beyond those already present.
   - _Requirements: 10.1, 10.2, 10.3, 10.4_
   - _Depends: 4.3_
-- [ ] 5.3 Document the ensemble surface and its operational cost
+- [x] 5.3 Document the ensemble surface and its operational cost
   - Describe the ensemble surface, the pacing contract change, and the meaning of each reported diagnostic.
   - State that the reported interval assumes independent draws and is narrower than its label when draws are correlated, that agreement is conditional on the draws that parsed, and that draw failures are not independent of the answer. Explain what the dependence diagnostic measures and how to read it.
   - Present the choice between contamination estimators as a difference in withheld exposure rather than a difference in score, with a worked example on the measured data.

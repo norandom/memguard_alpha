@@ -53,6 +53,7 @@ plugins:
 nav:
   - Home: index.md
   - PIT architecture: pit-architecture.md
+  - Ensemble consensus: ensemble.md
   - Twin-strategy contrast: twin-strategy-contrast.md
   - Benchmark: benchmark.md
   - Latest run results: latest-run.md
