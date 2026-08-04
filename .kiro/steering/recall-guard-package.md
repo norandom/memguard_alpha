@@ -68,7 +68,7 @@ scorer.holdout_auc, scorer.is_weak    # calibrator quality
   ephemeral `GITHUB_TOKEN`.
 - **Distribution: GitHub Release only — no PyPI.** Consumers (e.g. Global_Macro_AI_Factors /
   `macro_framework`) install via:
-  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.2.0"`
+  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.3.0"`
   (latest released tag).
 
 ## Purpose framing — carry forward
@@ -77,6 +77,26 @@ recall_guard is **not a forecaster**. Near-coin-flip directional accuracy is the
 correct result; the product is the measured `p_memorized` honesty/contamination signal for
 AI macro/risk factor analysis, not predictive alpha. Do not "fix" the eval prompts to chase
 accuracy.
+
+## Ensemble surface (v0.3.0)
+
+- `ensemble-consensus` shipped: an **opt-in, per-call** N-draw path. No implicit default
+  config, no env var, no process-wide toggle. Without an `EnsembleSpec` every existing
+  surface is byte-for-byte unchanged.
+- New `core` modules: `consensus.py` (pure statistics, stdlib only -- no numpy, no scipy)
+  and `ensemble.py` (spec, wave executor, reduction, hashing). `MemoryGuardedScorer.score_ensemble`
+  returns `EnsembledScore`.
+- **`p_memorized_point` is the exposure multiplier**; `consensus.p_memorized` is evidence
+  only. They differ by construction and the type documents which is which.
+- The reduction is pure and order-free, so a stored draw set replays bit-identically. Every
+  tie breaks on content alone. No RNG, so no seed is persisted.
+- **Pacing contract changed**: `min_call_interval_s` now spaces request *starts* and is
+  latency-independent. The lock no longer wraps the POST -- previously every concurrent call
+  through one client serialised, even with pacing disabled, so `max_workers` was inert
+  package-wide. CLI `--max-workers` default dropped 8 -> 1 so upgrading is not an 8x traffic
+  event; **library defaults remain 8 and are now real**.
+- Detector thresholds are all provisional, tuned on one crisis-onset date, and all exposed on
+  `EnsembleSpec` rather than frozen in source.
 
 ## Status
 
