@@ -6,8 +6,8 @@ pure statistics, which have no I/O and can be built and tested independently; th
 configuration, execution and reduction; then the contamination-score integration; and finally
 replay, boundary, and documentation validation.
 
-- [ ] 1. Repair concurrency in the model client
-- [ ] 1.1 Replace mutual-exclusion pacing with slot reservation
+- [x] 1. Repair concurrency in the model client
+- [x] 1.1 Replace mutual-exclusion pacing with slot reservation
   - Change the pacing mechanism so the shared lock covers only the reservation bookkeeping and is released before the client waits or issues the request.
   - Define the pacing interval as the spacing between the starts of successive requests, and record the reserved send time rather than the observed completion time.
   - Ensure an idle client cannot accumulate credit and then issue a burst.
@@ -16,15 +16,15 @@ replay, boundary, and documentation validation.
   - Done looks like concurrent requests through one client overlapping in flight, with the configured minimum spacing still observed between request starts and no longer inflated by request latency.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.8_
   - _Boundary: core.nvidia_lm, harness.runner_
-- [ ] 1.2 Harden retry behaviour under rate limiting
+- [x] 1.2 Harden retry behaviour under rate limiting
   - Add randomized variation to retry delays so concurrently rate-limited requests do not all retry at the same instant.
   - Honour a retry delay supplied by the endpoint when one is present.
-  - Classify a rejected credential from the response status rather than by matching text in the error message.
+  - Surface the response status on the raised failure so a rejected credential can be classified from it rather than by matching text in the error message, and consume that status at the classification site.
   - Release this together with the pacing repair; shipping real concurrency before jitter would put synchronized retry storms in front of operators in the interval between the two.
   - Done looks like concurrently rate-limited requests retrying at dispersed times, and an error message containing digits that resemble an authorization status no longer being treated as a credential rejection.
   - _Requirements: 1.9, 7.6, 8.5, 8.6_
-  - _Boundary: core.nvidia_lm_
-- [ ] 1.3 Add concurrency regression coverage
+  - _Boundary: core.nvidia_lm, harness.scorer_
+- [x] 1.3 Add concurrency regression coverage
   - Add a test that counts how many requests are simultaneously in flight when several workers share one client with pacing disabled, and requires genuine overlap.
   - Add a test that request starts remain spaced by the configured interval and are not stretched by request latency.
   - Add a test that a failed attempt still consumes a pacing slot before its retry, injecting a connection-level failure rather than a rate-limited response.
@@ -169,3 +169,36 @@ replay, boundary, and documentation validation.
   - Done looks like the strict documentation build passing with the ensemble surface described and each of these caveats present.
   - _Requirements: 4.7, 5.4, 6.10, 6.11, 7.8, 8.7, 8.8, 10.6_
   - _Depends: 4.3_
+
+## Implementation Notes
+
+Carried forward from completed tasks. Read these before starting a task whose boundary
+overlaps.
+
+**From 1.1–1.3 (concurrency repair):**
+
+- The client now raises `LMHTTPError`, a `RuntimeError` subclass carrying `status_code`
+  (`None` for transport-level failures). Later tasks that triage draws should read that
+  attribute rather than matching text; `except RuntimeError` handlers are unaffected.
+- Retry backoff is now fully jittered, so retry timing is nondeterministic by design. Any
+  test asserting on backoff must patch `time.sleep` or set `retry_backoff_s=0.0`.
+- `tests/core/test_nvidia_lm.py::test_concurrent_pacing_enforces_min_interval` must stay. It
+  is the only assertion that rejects a reservation scheme stamping the current clock instead
+  of the reserved slot, and it passes both before and after the repair.
+- `generate_many` calls `lm.generate(prompt)` with no arguments and drives its executor with
+  `ex.map`, which blocks until every future resolves. The ensemble executor in task 3.3 must
+  be a new primitive — waves, budget enforcement, and credential abort are all inexpressible
+  over a call that returns everything at once.
+- The LM test doubles across the suite (`_FakeLM.generate(self, prompt, temperature=0.0)`)
+  accept no token-budget parameter. Changing the executor's call shape breaks them; the
+  measured dispersion occurs at the shipped defaults, so there is no reason to.
+- Task 1.2's `_Boundary:` was corrected during review: status-based credential classification
+  cannot be done inside `core.nvidia_lm` alone, because the classifier lives in
+  `harness.scorer`. Check boundary annotations against where the behaviour actually lives.
+- **Open decision, deliberately not taken here.** The library fan-out defaults
+  (`generate_many`, `score_many`, `calibrate`) remain `max_workers=8`. Only the CLI default
+  was lowered, per Req 1.8. A library consumer therefore goes from one effective request at a
+  time to eight on upgrade. Left alone because the downstream consumer built a thread-local
+  workaround specifically to obtain this concurrency — and that workaround is now unnecessary
+  and unsafe, since independent pacers multiply the provider rate limit by the worker count.
+  Worth notifying that project when this ships.

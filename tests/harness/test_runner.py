@@ -123,6 +123,19 @@ def _make_factory(
 # --- argparse parser test ----------------------------------------------------
 
 
+def test_max_workers_defaults_to_one() -> None:
+    """Concurrency is opt-in.
+
+    Before the pacing repair this flag defaulted to 8 and did nothing, because
+    the client serialised every concurrent call. Repairing the client without
+    lowering the default would have silently multiplied an existing operator's
+    request rate eightfold on upgrade, against a rate-limited endpoint.
+    """
+    parser = runner_mod.build_parser()
+    action = next(a for a in parser._actions if a.dest == "max_workers")  # noqa: SLF001
+    assert action.default == 1
+
+
 def test_build_parser_has_required_flags() -> None:
     args = runner_mod.parse_argv(
         [

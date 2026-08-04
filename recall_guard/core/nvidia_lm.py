@@ -8,6 +8,7 @@ retryable HTTP failures; the default per-attempt timeout is 15 seconds.
 from __future__ import annotations
 
 import logging
+import random
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -25,6 +26,38 @@ DEFAULT_RETRY_BACKOFF_S = 2.0
 RETRYABLE_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 
 _log = logging.getLogger(__name__)
+
+
+class LMHTTPError(RuntimeError):
+    """A provider HTTP failure that carries its response status code.
+
+    Callers classifying a rejected credential should read :attr:`status_code`
+    rather than matching text in the message: a substring search for ``"401"``
+    also fires on a trace id, a port, or a byte count, and under an ensemble
+    that false-positive discards every draw already paid for.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _retry_after_seconds(response: Any) -> float | None:
+    """Parse a ``Retry-After`` header (delta-seconds form) into seconds."""
+    headers = getattr(response, "headers", None) or {}
+    try:
+        raw = headers.get("Retry-After")
+    except AttributeError:
+        return None
+    if raw is None:
+        return None
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        # HTTP-date form is permitted by the RFC but not emitted by this
+        # endpoint; fall back to the configured backoff rather than guessing.
+        return None
+    return seconds if seconds >= 0 else None
 
 
 @dataclass(frozen=True)
@@ -93,6 +126,31 @@ class NvidiaLM:
         self._pace_lock = Lock()
         self.api_base = NVIDIA_CHAT_COMPLETIONS_URL
 
+    def _reserve_call_slot(self) -> float:
+        """Reserve the next paced send slot; return seconds to wait before POST.
+
+        The lock covers only this bookkeeping -- never the network round trip.
+        Holding it across the request serialises every concurrent call through
+        one client, which is what ``max_workers`` used to run into.
+
+        ``min_call_interval_s`` is defined as the spacing between the *starts*
+        of successive requests. Recording the reserved send time (rather than
+        the observed completion time) makes that spacing independent of
+        endpoint latency; stamping the current clock instead would let a
+        still-sleeping thread's slot be handed out twice.
+
+        ``max(now, ...)`` stops an idle client from banking credit and then
+        issuing a burst.
+        """
+        with self._pace_lock:
+            now = time.monotonic()
+            if self.min_call_interval_s <= 0 or self._last_call_t is None:
+                slot = now
+            else:
+                slot = max(now, self._last_call_t + self.min_call_interval_s)
+            self._last_call_t = slot
+        return slot - now
+
     def generate(
         self,
         prompt: str,
@@ -128,24 +186,21 @@ class NvidiaLM:
             "top_logprobs": TOP_LOGPROBS,
         }
         def _paced_post() -> requests.Response:
-            with self._pace_lock:
-                if self.min_call_interval_s > 0 and self._last_call_t is not None:
-                    elapsed = time.monotonic() - self._last_call_t
-                    wait = self.min_call_interval_s - elapsed
-                    if wait > 0:
-                        time.sleep(wait)
-                response = requests.post(
-                    self.api_base,
-                    headers=headers,
-                    json=payload,
-                    timeout=self.timeout_s,
-                )
-                self._last_call_t = time.monotonic()
-                return response
+            wait = self._reserve_call_slot()
+            if wait > 0:
+                time.sleep(wait)
+            return requests.post(
+                self.api_base,
+                headers=headers,
+                json=payload,
+                timeout=self.timeout_s,
+            )
 
         last_timeout_exc: Exception | None = None
         last_runtime_exc: Exception | None = None
+        last_status: int | None = None
         for attempt in range(self.max_retries + 1):
+            retry_after: float | None = None
             try:
                 response = _paced_post()
                 response.raise_for_status()
@@ -158,18 +213,21 @@ class NvidiaLM:
                 status = exc.response.status_code if exc.response is not None else None
                 last_runtime_exc = exc
                 last_timeout_exc = None
+                last_status = status
                 retryable = status in RETRYABLE_HTTP_STATUS
                 if not retryable:
-                    raise RuntimeError(
-                        f"Model {self.model} request failed: {exc}"
+                    raise LMHTTPError(
+                        f"Model {self.model} request failed: {exc}",
+                        status_code=status,
                     ) from exc
+                retry_after = _retry_after_seconds(exc.response)
             except requests.exceptions.RequestException as exc:
                 last_runtime_exc = exc
                 last_timeout_exc = None
                 retryable = True
 
             if attempt < self.max_retries and retryable:
-                backoff = self.retry_backoff_s * (2 ** attempt)
+                backoff = self._retry_delay(attempt, retry_after)
                 # Logged at DEBUG so a parallel run (8 workers * 50 prompts) does
                 # not spam stderr. Final failures still surface via the
                 # TimeoutError/RuntimeError raised below, which the evaluator
@@ -187,10 +245,25 @@ class NvidiaLM:
                 f"Model {self.model} timed out after {self.timeout_s} seconds "
                 f"(after {self.max_retries + 1} attempt(s))."
             ) from last_timeout_exc
-        raise RuntimeError(
+        raise LMHTTPError(
             f"Model {self.model} request failed after {self.max_retries + 1} attempt(s): "
-            f"{last_runtime_exc}"
+            f"{last_runtime_exc}",
+            status_code=last_status,
         ) from last_runtime_exc
+
+    def _retry_delay(self, attempt: int, retry_after: float | None) -> float:
+        """Seconds to wait before the next attempt.
+
+        An endpoint-supplied ``Retry-After`` wins outright. Otherwise the
+        exponential backoff is fully jittered: rate-limited responses come back
+        fast, so without jitter every concurrent draw would sleep for exactly
+        the same interval and retry in unison, reproducing the burst that
+        triggered the limit.
+        """
+        if retry_after is not None:
+            return retry_after
+        ceiling = self.retry_backoff_s * (2 ** attempt)
+        return random.uniform(0.0, ceiling) if ceiling > 0 else 0.0
 
     def _parse_response(self, data: dict[str, Any]) -> CompletionResult:
         try:

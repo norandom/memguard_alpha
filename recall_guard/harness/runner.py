@@ -253,10 +253,11 @@ def _add_build_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--max-workers",
         type=int,
-        default=8,
+        default=1,
         help=(
-            "How many NVIDIA API calls to run in parallel per model. Default 8. "
-            "Set to 1 for fully sequential calls (matches the original behaviour). "
+            "How many NVIDIA API calls to run in parallel per model. Default 1 "
+            "(sequential). Raise it to genuinely parallelise; combine with "
+            "--min-call-interval to stay inside a provider rate limit. "
             "Higher = faster but may trigger rate limits."
         ),
     )

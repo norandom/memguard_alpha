@@ -198,6 +198,31 @@ def test_score_auth_failure_raises_configuration_error() -> None:
         scorer.score("prompt")
 
 
+def test_status_code_classifies_auth_failure_over_message_text() -> None:
+    """A carried status decides, in both directions.
+
+    A 500 whose body happens to contain ``401`` -- a trace id, a port, a byte
+    count -- must not be read as a rejected credential. Under an ensemble that
+    false positive would discard every draw already paid for.
+    """
+    from recall_guard.core.nvidia_lm import LMHTTPError
+
+    scorer = _calibrate()
+    server_error = LMHTTPError(
+        "Model fake-model request failed: 500 Server Error (trace 401f2c)",
+        status_code=500,
+    )
+    scorer._lm = _RaisingLM(server_error)  # noqa: SLF001
+    result = scorer.score("prompt")
+    assert result.parse_ok is False
+    assert result.p_memorized is None
+
+    rejected = LMHTTPError("Model fake-model request failed: denied", status_code=401)
+    scorer._lm = _RaisingLM(rejected)  # noqa: SLF001
+    with pytest.raises(ConfigurationError):
+        scorer.score("prompt")
+
+
 def test_score_timeout_returns_failure_record_not_raise() -> None:
     scorer = _calibrate()
     scorer._lm = _RaisingLM(TimeoutError("slow"))  # noqa: SLF001

@@ -253,6 +253,232 @@ def test_concurrent_pacing_enforces_min_interval(mocker):
     assert all(gap >= interval * 0.8 for gap in gaps), gaps
 
 
+def test_concurrent_calls_actually_overlap(mocker):
+    """Requests through one client must be in flight simultaneously.
+
+    The pacing lock previously wrapped the blocking POST, so every concurrent
+    call serialised -- and because the lock was taken unconditionally, this
+    happened even here, with pacing disabled. Counting peak in-flight requests
+    detects that directly, without depending on machine speed.
+
+    Deliberately not a ``threading.Barrier``: under the serialised client a
+    barrier deadlocks (hangs) rather than failing.
+    """
+    import threading
+    import time
+
+    from recall_guard.core.nvidia_lm import generate_many
+
+    lock = threading.Lock()
+    in_flight = 0
+    peak = 0
+
+    def _tracking_post(*args, **kwargs):
+        nonlocal in_flight, peak
+        with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        try:
+            time.sleep(0.2)
+            return _build_mock_response(mocker)
+        finally:
+            with lock:
+                in_flight -= 1
+
+    mocker.patch("requests.post", side_effect=_tracking_post)
+
+    # Default min_call_interval_s=0.0 -- pacing disabled is the point.
+    lm = NvidiaLM(api_key="test_key", model="nvidia/nemotron-3-super-120b-a12b")
+    results = generate_many(lm, ["p"] * 8, max_workers=8)
+
+    assert all(isinstance(r, CompletionResult) for r in results)
+    assert peak >= 4, f"only {peak} concurrent POST(s); calls are serialised"
+
+
+def test_concurrent_wall_clock_scales_with_workers(mocker):
+    """Duration must track the worker count, not the request count.
+
+    Serialised, 8 requests at 0.2s each take ~1.6s; genuinely concurrent they
+    take ~0.2s. The 0.8s threshold sits a comfortable factor of two from both,
+    so the assertion is not a machine-speed measurement.
+    """
+    import time
+
+    from recall_guard.core.nvidia_lm import generate_many
+
+    def _slow_post(*args, **kwargs):
+        time.sleep(0.2)
+        return _build_mock_response(mocker)
+
+    mocker.patch("requests.post", side_effect=_slow_post)
+
+    lm = NvidiaLM(api_key="test_key", model="nvidia/nemotron-3-super-120b-a12b")
+    started = time.monotonic()
+    generate_many(lm, ["p"] * 8, max_workers=8)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.8, f"8 requests over 8 workers took {elapsed:.2f}s; serialised"
+
+
+def test_pacing_spaces_starts_independent_of_latency(mocker):
+    """Pacing must space request *starts*, not completion-to-start.
+
+    With the lock held across the POST the effective spacing was
+    ``interval + round_trip_time``. Reserving the slot makes it exactly
+    ``interval``, independent of how slow the endpoint is.
+    """
+    import time
+
+    from recall_guard.core.nvidia_lm import generate_many
+
+    starts: list[float] = []
+    lock = __import__("threading").Lock()
+
+    def _slow_recording_post(*args, **kwargs):
+        with lock:
+            starts.append(time.monotonic())
+        time.sleep(0.2)
+        return _build_mock_response(mocker)
+
+    mocker.patch("requests.post", side_effect=_slow_recording_post)
+
+    interval = 0.05
+    lm = NvidiaLM(
+        api_key="test_key",
+        model="nvidia/nemotron-3-super-120b-a12b",
+        min_call_interval_s=interval,
+    )
+    generate_many(lm, ["p"] * 6, max_workers=6)
+
+    ordered = sorted(starts)
+    gaps = [b - a for a, b in zip(ordered, ordered[1:], strict=False)]
+    # Pacing preserved (lower bound) and not latency-inflated (upper bound).
+    assert all(gap >= interval * 0.8 for gap in gaps), gaps
+    assert all(gap <= interval + 0.07 for gap in gaps), gaps
+
+
+def test_failed_attempt_still_consumes_a_pacing_slot(mocker):
+    """A transport failure must not let its retry fire unpaced.
+
+    Only exceptions raised by ``requests.post`` itself skip the pacing stamp;
+    an HTTP 429 is a *successful* POST and was already paced. A fast-failing
+    connection error is the genuinely exposed case -- a real timeout costs
+    ``timeout_s`` of wall clock and so self-paces.
+    """
+    import time
+
+    starts: list[float] = []
+    calls = {"n": 0}
+
+    def _failing_then_ok(*args, **kwargs):
+        starts.append(time.monotonic())
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise requests.exceptions.ConnectionError("connection reset")
+        return _build_mock_response(mocker)
+
+    mocker.patch("requests.post", side_effect=_failing_then_ok)
+
+    interval = 0.05
+    lm = NvidiaLM(
+        api_key="test_key",
+        model="nvidia/nemotron-3-super-120b-a12b",
+        min_call_interval_s=interval,
+        retry_backoff_s=0.0,
+    )
+    lm.generate("Predict.")
+
+    assert len(starts) == 3
+    gaps = [b - a for a, b in zip(starts, starts[1:], strict=False)]
+    assert all(gap >= interval * 0.8 for gap in gaps), gaps
+
+
+def test_retry_after_header_is_honoured(mocker):
+    """A rate-limited response carrying Retry-After must wait that long."""
+    slept: list[float] = []
+    calls = {"n": 0}
+
+    def _rate_limited_then_ok(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            response = mocker.Mock()
+            response.status_code = 429
+            response.headers = {"Retry-After": "0.3"}
+            response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+                "429 Too Many Requests", response=response
+            )
+            return response
+        return _build_mock_response(mocker)
+
+    mocker.patch("requests.post", side_effect=_rate_limited_then_ok)
+    mocker.patch("time.sleep", side_effect=slept.append)
+
+    lm = NvidiaLM(
+        api_key="test_key",
+        model="nvidia/nemotron-3-super-120b-a12b",
+        retry_backoff_s=2.0,
+    )
+    lm.generate("Predict.")
+
+    assert any(abs(s - 0.3) < 1e-9 for s in slept), slept
+
+
+def test_retry_backoff_is_jittered(mocker):
+    """Concurrent rate-limited draws must not retry in unison."""
+    slept: list[float] = []
+
+    def _always_rate_limited(*args, **kwargs):
+        response = mocker.Mock()
+        response.status_code = 503
+        response.headers = {}
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "503 Service Unavailable", response=response
+        )
+        return response
+
+    mocker.patch("requests.post", side_effect=_always_rate_limited)
+    mocker.patch("time.sleep", side_effect=slept.append)
+
+    lm = NvidiaLM(
+        api_key="test_key",
+        model="nvidia/nemotron-3-super-120b-a12b",
+        retry_backoff_s=2.0,
+    )
+    for _ in range(12):
+        slept.clear()
+        with pytest.raises(RuntimeError):
+            lm.generate("Predict.")
+        if len({round(s, 6) for s in slept}) == len(slept) and slept[0] != 2.0:
+            break
+    else:  # pragma: no cover - only on a degenerate RNG
+        pytest.fail(f"backoff never varied across 12 runs: {slept}")
+
+    assert all(0.0 <= s <= 4.0 for s in slept), slept
+
+
+def test_http_error_carries_status_code(mocker):
+    """Credential rejection must be classifiable from the status, not the text."""
+    from recall_guard.core.nvidia_lm import LMHTTPError
+
+    def _unauthorized(*args, **kwargs):
+        response = mocker.Mock()
+        response.status_code = 401
+        response.headers = {}
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "Client Error", response=response
+        )
+        return response
+
+    mocker.patch("requests.post", side_effect=_unauthorized)
+
+    lm = NvidiaLM(api_key="test_key", model="nvidia/nemotron-3-super-120b-a12b")
+    with pytest.raises(LMHTTPError) as excinfo:
+        lm.generate("Predict.")
+
+    assert excinfo.value.status_code == 401
+    assert isinstance(excinfo.value, RuntimeError)
+
+
 def test_empty_top_logprobs_raises_runtime_error(mocker):
     mock_post = mocker.patch("requests.post")
     mock_response = mocker.Mock()

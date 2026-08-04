@@ -54,9 +54,15 @@ from recall_guard.mia.mcs import train as _mcs_train
 #: Factory contract for constructing an LM, matching ``harness.runner.LMFactory``.
 LMFactory = Callable[[str, str, float], NvidiaLM]
 
-#: Substrings that mark an authentication/authorisation failure in an NvidiaLM
-#: ``RuntimeError`` message. Used to surface a clear :class:`ConfigurationError`
-#: rather than a silent failure record (Req 3.7).
+#: Response statuses that mean the credential was rejected. Preferred over text
+#: matching whenever the failure carries a status code (ensemble-consensus 7.6).
+_AUTH_STATUS: frozenset[int] = frozenset({401, 403})
+
+#: Fallback substrings for failures that carry no status code -- an offline
+#: double, a transport-layer error, or a caller-constructed ``RuntimeError``.
+#: Only consulted when :attr:`LMHTTPError.status_code` is unavailable, because a
+#: bare substring search for ``"401"`` also matches a trace id, a port, or a
+#: byte count (Req 3.7).
 _AUTH_MARKERS: tuple[str, ...] = (
     "401",
     "403",
@@ -108,7 +114,15 @@ class GuardedScore:
 
 
 def _is_auth_error(exc: BaseException) -> bool:
-    """Return True if ``exc`` looks like a NIM auth/authorisation failure."""
+    """Return True if ``exc`` is a NIM auth/authorisation failure.
+
+    A status code, when the failure carries one, is authoritative in both
+    directions: a 500 whose body happens to contain ``401`` is not an auth
+    failure. Text matching remains the fallback for failures with no status.
+    """
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        return status in _AUTH_STATUS
     message = str(exc).lower()
     return any(marker in message for marker in _AUTH_MARKERS)
 
