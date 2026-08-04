@@ -100,9 +100,11 @@ logger = logging.getLogger(__name__)
 
 # --- Constants ----------------------------------------------------------------
 
-#: Harness version recorded in the manifest. Bumped when on-disk artifact
-#: schemas change in a backwards-incompatible way.
-HARNESS_VERSION: str = "0.3.0"
+#: Harness version recorded in the manifest. Kept in lockstep with the
+#: package version at every release, so a manifest identifies the exact
+#: distribution that produced it -- not only releases that changed the
+#: on-disk artifact schema.
+HARNESS_VERSION: str = "0.3.1"
 
 #: Default reference model documented in the Open Defaults table: small,
 #: NVIDIA-hosted, with well-known training data.
