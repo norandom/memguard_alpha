@@ -71,8 +71,8 @@ replay, boundary, and documentation validation.
   - _Requirements: 3.4, 4.1, 4.6, 9.4_
   - _Boundary: core.consensus_
 
-- [ ] 3. Build ensemble configuration, execution and reduction
-- [ ] 3.1 Ensemble configuration with validation and feasibility checking
+- [x] 3. Build ensemble configuration, execution and reduction
+- [x] 3.1 Ensemble configuration with validation and feasibility checking
   - Define the ensemble configuration as an explicitly constructed value with no package-supplied default instance.
   - Reject inconsistent settings at construction time with an error naming the offending setting, following the client's validate-on-construct convention rather than silently clamping.
   - Reject an agreement target that could never be reached within the requested maximum draw count even under unanimous agreement, and expose the earliest draw count at which the target could be reached.
@@ -81,7 +81,7 @@ replay, boundary, and documentation validation.
   - Require the interval's tail convention to be declared, and evaluate the feasibility check against that convention rather than an implied one.
   - _Requirements: 2.3, 2.4, 2.5, 2.6, 2.7, 3.5, 4.6, 5.6_
   - _Boundary: core.ensemble_
-- [ ] 3.2 Cost estimation and request budgeting
+- [x] 3.2 Cost estimation and request budgeting
   - Provide a way to obtain the worst-case request count and an estimated duration for a configuration without issuing any request.
   - Include retry attempts and a configured reference model in the worst-case count, not only the nominal draw count.
   - Enforce a total request budget with a counter that stops the ensemble with an error when exhausted.
@@ -89,7 +89,7 @@ replay, boundary, and documentation validation.
   - Done looks like a caller obtaining a worst-case request count and duration before any network activity, and an ensemble that exceeds its budget stopping with an error rather than continuing.
   - _Requirements: 8.1, 8.2, 8.3, 8.4_
   - _Boundary: core.ensemble_
-- [ ] 3.3 Wave-based draw execution and failure triage
+- [x] 3.3 Wave-based draw execution and failure triage
   - Execute draws in waves sized to the configured concurrency, preserving submission order within each wave.
   - Label each draw with the wave it was collected in, and carry that label alongside the draw so a later dependence measure can be recomputed from stored data alone.
   - Triage each result into a usable draw, a transport failure, a parse failure, or a caller-projection failure, keeping the projection failure distinct from the other two.
@@ -100,7 +100,7 @@ replay, boundary, and documentation validation.
   - Done looks like an ensemble in which most draws failed reporting a failure with no contamination score, rather than a confident consensus computed from the survivors.
   - _Requirements: 5.5, 5.8, 7.1, 7.2, 7.3, 7.4, 7.5, 7.7, 8.8_
   - _Boundary: core.ensemble_
-- [ ] 3.4 Deterministic reduction, tie-breaking and draw-set hashing
+- [x] 3.4 Deterministic reduction, tie-breaking and draw-set hashing
   - Sort the collected draws into a canonical order derived from their contents before any reduction step, so arrival order cannot influence any result.
   - Run the separated-cluster check before computing any location estimate, and omit the location for any component the check flags, so no reported location falls inside a detected gap.
   - Report the location unsnapped, and report any lattice-snapped value as a separately named quantity.
@@ -110,7 +110,7 @@ replay, boundary, and documentation validation.
   - _Requirements: 3.2, 3.6, 3.7, 4.2, 4.3, 4.4, 4.5, 5.1, 9.4, 9.5_
   - _Boundary: core.ensemble_
 
-- [ ] 3.5 Draw-dependence diagnostic
+- [x] 3.5 Draw-dependence diagnostic
   - Measure the association between decision labels across collection-group boundaries, and report it alongside the agreement interval.
   - Compute it from the stored group labels rather than from arrival order, so it replays identically from a persisted draw set; keep the labels out of the content hash, which continues to cover reply text only.
   - Report an undefined result rather than a misleading zero when there are too few groups to measure.

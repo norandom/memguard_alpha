@@ -5,8 +5,11 @@ randomness, no global state, and no domain knowledge about what a draw means.
 That is what lets a stored draw set be replayed into a bit-identical result
 without re-querying the model.
 
-The implementation is hand-rolled with the standard library and ``numpy``;
-``scipy`` is intentionally avoided, matching :mod:`recall_guard.core.bootstrap`.
+The implementation is hand-rolled with the standard library alone; ``scipy`` is
+intentionally avoided, matching :mod:`recall_guard.core.bootstrap`. Numpy
+scalars and arrays are accepted -- every numeric argument is coerced with
+``float()`` before use, because ``repr(np.float64(0.15))`` is
+``'np.float64(0.15)'`` under numpy 2 and would otherwise reach ``Decimal``.
 The normal quantile the Wilson interval needs comes from
 :class:`statistics.NormalDist`, which agrees with the usual reference to within
 5e-16 -- far inside anything that matters here.
@@ -112,8 +115,23 @@ def wilson_interval(
     lo, hi = centre - spread, centre + spread
 
     if continuity:
-        correction = 1.0 / (2 * n) / denominator
-        lo, hi = lo - correction, hi + correction
+        # Newcombe's correction adjusts the pivot *before* inversion, which
+        # changes the radicand. Applying it as a constant shift of the already
+        # inverted bound is a different, anti-conservative interval: it sits
+        # inside the exact one across most of the parameter space, and its true
+        # coverage dips below nominal -- failing the one job a continuity
+        # correction exists to do.
+        span = 2.0 * (n + z2)
+        if k == 0:
+            lo = 0.0
+        else:
+            radicand = z2 - 2 - 1.0 / n + 4 * p * (n * (1 - p) + 1)
+            lo = (2 * n * p + z2 - 1 - z * math.sqrt(max(radicand, 0.0))) / span
+        if k == n:
+            hi = 1.0
+        else:
+            radicand = z2 + 2 - 1.0 / n + 4 * p * (n * (1 - p) - 1)
+            hi = (2 * n * p + z2 + 1 + z * math.sqrt(max(radicand, 0.0))) / span
 
     return (max(0.0, lo), min(1.0, hi))
 
@@ -144,6 +162,19 @@ def smallest_certifiable_n(
     )
 
 
+def _checked_grid(grid: float) -> float:
+    """Coerce and validate a lattice step.
+
+    ``not (grid > 0)`` rather than ``grid <= 0`` because every comparison
+    against NaN is false, so the naive guard lets NaN through and silently
+    poisons every downstream result.
+    """
+    grid = float(grid)
+    if not (grid > 0) or not math.isfinite(grid):
+        raise ValueError(f"grid must be a positive finite number; got {grid!r}")
+    return grid
+
+
 def snap_to_grid(value: float, grid: float) -> float:
     """Round ``value`` onto a lattice of step ``grid``, half away from zero.
 
@@ -153,8 +184,10 @@ def snap_to_grid(value: float, grid: float) -> float:
     depending on the value rather than on the rule, and the obvious spellings
     disagree with one another. Working in integer lattice units avoids it.
     """
-    if grid <= 0:
-        raise ValueError(f"grid must be positive; got {grid!r}")
+    grid = _checked_grid(grid)
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError(f"value must be finite; got {value!r}")
     units = (Decimal(repr(abs(value))) / Decimal(repr(grid))).quantize(
         Decimal(1), rounding=ROUND_HALF_UP
     )
@@ -167,12 +200,22 @@ def grid_adherence(values: Sequence[float], grid: float, *, tolerance: float = 1
     Reported so a caller who declares a lattice the data does not follow finds
     out, instead of silently receiving mis-snapped results. A continuous
     quantity scores near zero here at any lattice.
+
+    A non-finite draw counts as off-lattice rather than raising: this reports on
+    data quality, so it has to survive the bad data it exists to describe.
     """
-    if grid <= 0:
-        raise ValueError(f"grid must be positive; got {grid!r}")
-    if not values:
+    grid = _checked_grid(grid)
+    if not (tolerance >= 0) or not math.isfinite(tolerance):
+        raise ValueError(f"tolerance must be non-negative and finite; got {tolerance!r}")
+    if len(values) == 0:
         raise ValueError("values must be non-empty")
-    on = sum(1 for v in values if abs(v - snap_to_grid(v, grid)) <= tolerance)
+    on = 0
+    for raw in values:
+        v = float(raw)
+        if not math.isfinite(v):
+            continue
+        if abs(v - snap_to_grid(v, grid)) <= tolerance:
+            on += 1
     return on / len(values)
 
 
@@ -196,17 +239,16 @@ def scale_floor(values: Sequence[float], *, grid: float | None = None) -> float:
     zero. And it only helps because the declared lattice is coarser than the
     emitted one; declare the true lattice and the undefined case returns.
     """
-    if not values:
+    if len(values) == 0:
         raise ValueError("values must be non-empty")
+    values = [float(v) for v in values]
     ordered = sorted(values)
     centre = _median(ordered)
     mad = _median(sorted(abs(v - centre) for v in values))
     sigma = MAD_TO_SIGMA * mad
     if grid is None:
         return sigma
-    if grid <= 0:
-        raise ValueError(f"grid must be positive; got {grid!r}")
-    return max(sigma, grid / _QUANTIZATION_DIVISOR)
+    return max(sigma, _checked_grid(grid) / _QUANTIZATION_DIVISOR)
 
 
 @dataclass(frozen=True)
@@ -271,12 +313,11 @@ def detect_multimodal(
         How much denser the taller cluster peak must be than the busiest bin
         inside the gap.
     """
-    if not values:
+    if len(values) == 0:
         raise ValueError("values must be non-empty")
     if grid is None:
         return None
-    if grid <= 0:
-        raise ValueError(f"grid must be positive; got {grid!r}")
+    grid = _checked_grid(grid)
     if not 0.0 < mass_min <= 0.5:
         raise ValueError(f"mass_min must be in (0, 0.5]; got {mass_min!r}")
     if trough_steps < 1:
@@ -330,6 +371,55 @@ def detect_multimodal(
     )
 
 
+def lag_dependence(
+    labels: Sequence[object],
+    groups: Sequence[int],
+) -> float | None:
+    """How much more alike draws are within a collection group than across them.
+
+    Returns ``None`` when there are fewer than two groups, or too few pairs to
+    compare -- never a misleading zero.
+
+    The statistic is the probability that two draws from the *same* group carry
+    the same label, minus the probability for two draws from *different*
+    groups. Zero means the grouping carries no information, which is what
+    independence looks like; positive means draws collected together agree more
+    than draws collected apart.
+
+    This exists because the reported agreement interval assumes independent
+    draws, and that is precisely the assumption a serving stack violates --
+    batching, cache reuse, and node affinity all couple requests issued
+    together. Positive dependence makes every interval narrower than its label,
+    in the one direction that matters. Measuring it does not correct the
+    interval; it makes the assumption falsifiable instead of merely disclaimed.
+
+    Depends only on the stored labels and group tags, never on arrival order, so
+    it replays identically from a persisted draw set.
+    """
+    if len(labels) != len(groups):
+        raise ValueError(
+            f"labels and groups must be the same length; got {len(labels)} and {len(groups)}"
+        )
+    if len(set(groups)) < 2:
+        return None
+
+    same_group_pairs = same_group_matches = 0
+    diff_group_pairs = diff_group_matches = 0
+    for i in range(len(labels)):
+        for j in range(i + 1, len(labels)):
+            match = labels[i] == labels[j]
+            if groups[i] == groups[j]:
+                same_group_pairs += 1
+                same_group_matches += match
+            else:
+                diff_group_pairs += 1
+                diff_group_matches += match
+
+    if same_group_pairs == 0 or diff_group_pairs == 0:
+        return None
+    return same_group_matches / same_group_pairs - diff_group_matches / diff_group_pairs
+
+
 def robust_location(
     values: Sequence[float],
     *,
@@ -346,8 +436,9 @@ def robust_location(
     median, not toward a mode. Callers must run the multimodality check first
     and skip this entirely for a flagged component.
     """
-    if not values:
+    if len(values) == 0:
         raise ValueError("values must be non-empty")
+    values = [float(v) for v in values]
 
     if mode == "mean":
         return _exact_mean(sorted(values))
@@ -370,6 +461,7 @@ __all__ = [
     "detect_multimodal",
     "Tail",
     "grid_adherence",
+    "lag_dependence",
     "robust_location",
     "scale_floor",
     "smallest_certifiable_n",

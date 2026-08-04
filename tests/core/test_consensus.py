@@ -60,6 +60,38 @@ def test_continuity_correction_is_wider_than_the_plain_interval() -> None:
     assert lo_cc < lo and hi_cc > hi
 
 
+def test_continuity_correction_matches_newcombe() -> None:
+    """Pinned against the published closed form.
+
+    "Wider than plain" is too weak an assertion to catch this: applying the
+    correction as a constant shift of the already-inverted bound is also wider,
+    but is anti-conservative against the exact interval over most of the
+    parameter space -- which is the direction that matters for a gate.
+    """
+    assert wilson_interval(24, 24, continuity=True)[0] == pytest.approx(
+        0.8282849931831465, abs=1e-12
+    )
+    assert wilson_interval(128, 128, continuity=True)[0] == pytest.approx(
+        0.963686124793, abs=1e-9
+    )
+    assert wilson_interval(2, 2, continuity=True)[0] == pytest.approx(
+        0.197867455762, abs=1e-9
+    )
+    assert wilson_interval(1, 24, continuity=True)[0] == pytest.approx(
+        0.002178855996, abs=1e-9
+    )
+    assert wilson_interval(0, 30, continuity=True)[0] == 0.0
+    assert wilson_interval(30, 30, continuity=True)[1] == 1.0
+
+
+def test_continuity_correction_is_never_narrower_than_plain() -> None:
+    for n in (2, 5, 10, 24, 64, 128):
+        for k in range(n + 1):
+            lo, hi = wilson_interval(k, n)
+            lo_cc, hi_cc = wilson_interval(k, n, continuity=True)
+            assert lo_cc <= lo + 1e-12 and hi_cc >= hi - 1e-12, (k, n)
+
+
 def test_wilson_rejects_impossible_counts() -> None:
     with pytest.raises(ValueError):
         wilson_interval(5, 4)
@@ -268,3 +300,46 @@ def test_detection_validates_its_inputs() -> None:
         detect_multimodal([], grid=0.1)
     with pytest.raises(ValueError):
         detect_multimodal([0.1, 0.2], grid=0.0)
+
+
+# --- input hardening (from adversarial verification) -------------------------
+
+
+def test_nan_grid_is_rejected_rather_than_silently_poisoning() -> None:
+    """`grid <= 0` lets NaN through, because every NaN comparison is false."""
+    for bad in (float("nan"), float("inf"), 0.0, -0.1):
+        with pytest.raises(ValueError):
+            snap_to_grid(0.5, bad)
+        with pytest.raises(ValueError):
+            grid_adherence([0.1, 0.2], bad)
+
+
+def test_non_finite_value_raises_rather_than_leaking_a_decimal_error() -> None:
+    """A documented ValueError contract must not surface decimal.InvalidOperation."""
+    for bad in (float("nan"), float("inf"), -float("inf")):
+        with pytest.raises(ValueError):
+            snap_to_grid(bad, 0.1)
+
+
+def test_adherence_survives_the_bad_data_it_exists_to_describe() -> None:
+    """A reporting function must not crash on a non-finite draw."""
+    assert grid_adherence([0.1, 0.2, float("nan")], 0.1) == pytest.approx(2 / 3)
+    assert grid_adherence([0.15, float("inf")], 0.1) == 0.0
+
+
+def test_adherence_validates_its_tolerance() -> None:
+    for bad in (-1.0, float("nan")):
+        with pytest.raises(ValueError):
+            grid_adherence([0.1], 0.1, tolerance=bad)
+
+
+def test_numpy_scalars_and_arrays_are_accepted() -> None:
+    """repr(np.float64(0.15)) is 'np.float64(0.15)' under numpy 2."""
+    np = pytest.importorskip("numpy")
+    assert snap_to_grid(np.float64(0.15), 0.1) == pytest.approx(0.2)
+    assert snap_to_grid(0.15, np.float64(0.1)) == pytest.approx(0.2)
+    assert grid_adherence(np.asarray([0.1, 0.2, 0.25]), 0.1) == pytest.approx(2 / 3)
+    assert robust_location(np.asarray([0.1, 0.3, 0.2]), mode="median") == pytest.approx(0.2)
+    assert scale_floor(np.asarray([0.8, 0.8, 0.8]), grid=0.1) > 0.0
+    verdict = detect_multimodal(np.asarray([0.1, 0.2, 0.9, 1.0]), grid=0.1, mass_min=0.4)
+    assert verdict is not None
