@@ -104,7 +104,7 @@ logger = logging.getLogger(__name__)
 #: package version at every release, so a manifest identifies the exact
 #: distribution that produced it -- not only releases that changed the
 #: on-disk artifact schema.
-HARNESS_VERSION: str = "0.3.1"
+HARNESS_VERSION: str = "0.4.0"
 
 #: Default reference model documented in the Open Defaults table: small,
 #: NVIDIA-hosted, with well-known training data.

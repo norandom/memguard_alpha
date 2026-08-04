@@ -145,3 +145,16 @@ def test_existing_public_types_are_still_constructible() -> None:
     score = GuardedScore("h", False, None, None, None, None, None, "error")
     assert hash(score) is not None
     assert list(inspect.signature(MemoryGuardedScorer.score).parameters) == ["self", "prompt"]
+
+
+def test_sizing_helpers_are_both_exported() -> None:
+    """Both sizing questions must be reachable from the package root.
+
+    The split-detection helper existed for one release without being exported,
+    which made the very asymmetry it documents invisible to a caller.
+    """
+    import recall_guard
+
+    for name in ("smallest_certifiable_n", "smallest_detectable_split_n"):
+        assert name in recall_guard.__all__
+        assert hasattr(recall_guard, name)

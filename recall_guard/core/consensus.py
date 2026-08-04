@@ -162,6 +162,48 @@ def smallest_certifiable_n(
     )
 
 
+def smallest_detectable_split_n(
+    *,
+    cluster_positions: int,
+    min_cluster_draws: int = 8,
+    min_cluster_density: float = 1.5,
+) -> int:
+    """Fewest draws at which :func:`detect_multimodal` *can* flag a split.
+
+    The companion to :func:`smallest_certifiable_n`, and the reason both exist:
+    **agreement precision and split detection need different sample sizes**, and
+    sizing for the first silently under-sizes for the second. Agreement is where
+    the reported confidence lives; component splits are where a silently wrong
+    answer lives.
+
+    This is a **necessary condition, not a sufficient one** -- exactly as its
+    companion is a floor under unanimity rather than a promise. Below the value
+    returned here the density guard cannot be satisfied at all, so a split of
+    that shape is undetectable no matter how clean the data. Above it, detection
+    becomes *possible*; whether it fires still depends on sampling noise in the
+    trough and in the cluster masses. Measured on a corpus whose split is
+    unambiguous at full size, detection still missed roughly 3% of 64-draw
+    subsamples.
+
+    Parameters
+    ----------
+    cluster_positions:
+        How many lattice positions the two clusters together occupy. Wider
+        clusters need more draws to reach the same density.
+    """
+    if cluster_positions < 2:
+        raise ValueError(
+            f"cluster_positions must be >= 2 for a split; got {cluster_positions}"
+        )
+    if min_cluster_draws < 2:
+        raise ValueError(f"min_cluster_draws must be >= 2; got {min_cluster_draws}")
+    if min_cluster_density < 1.0:
+        raise ValueError(
+            f"min_cluster_density must be >= 1; got {min_cluster_density}"
+        )
+    return max(min_cluster_draws, math.ceil(min_cluster_density * cluster_positions))
+
+
 def _checked_grid(grid: float) -> float:
     """Coerce and validate a lattice step.
 
@@ -588,6 +630,7 @@ __all__ = [
     "robust_location",
     "scale_floor",
     "smallest_certifiable_n",
+    "smallest_detectable_split_n",
     "snap_to_grid",
     "wilson_interval",
 ]

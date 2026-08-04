@@ -35,7 +35,9 @@ class _ScriptedLM:
         self._replies = list(replies)
         self.calls = 0
 
-    def generate(self, prompt: str, temperature: float = 0.0) -> CompletionResult:
+    def generate(
+        self, prompt: str, temperature: float = 0.0, max_tokens: int = 512
+    ) -> CompletionResult:
         reply = self._replies[self.calls % len(self._replies)]
         self.calls += 1
         if isinstance(reply, BaseException):
@@ -343,3 +345,105 @@ def test_cluster_thresholds_reach_the_detector() -> None:
         components=lambda c: {"axis": float(c.content)},
     )
     assert result.multimodal == (), "min_cluster_draws did not reach the detector"
+
+
+# --- generation settings and detection reporting (issue #1, #2) --------------
+
+
+class _RecordingLM(_ScriptedLM):
+    """Records the kwargs each draw was issued with."""
+
+    def __init__(self, replies, model: str = "fake-model") -> None:
+        super().__init__(replies, model)
+        self.kwargs: list[dict] = []
+
+    def generate(self, prompt, temperature=0.0, max_tokens=512):
+        self.kwargs.append({"temperature": temperature, "max_tokens": max_tokens})
+        return super().generate(prompt)
+
+
+def test_generation_settings_reach_every_draw() -> None:
+    """An ensemble drawn at a different budget is not measuring production.
+
+    On a reasoning model the chain of thought consumes the token budget and
+    truncates the reply before the payload a caller parses, so the ensemble
+    silently answers a different question than the production path.
+    """
+    lm = _RecordingLM(["up"])
+    generate_ensemble(
+        lm, "p", _spec(max_tokens=2048, temperature=0.3), decide=lambda c: c.content
+    )
+    assert all(k["max_tokens"] == 2048 for k in lm.kwargs)
+    assert all(k["temperature"] == 0.3 for k in lm.kwargs)
+
+
+def test_unset_generation_settings_preserve_client_defaults() -> None:
+    """Backwards compatible: an unset spec issues exactly what it always did."""
+    lm = _RecordingLM(["up"])
+    generate_ensemble(lm, "p", _spec(), decide=lambda c: c.content)
+    assert all(k == {"temperature": 0.0, "max_tokens": 512} for k in lm.kwargs)
+
+
+def test_generation_settings_are_recorded_on_the_result() -> None:
+    """An ensemble is an audit artifact; the settings belong with the digest."""
+    lm = _ScriptedLM(["up"])
+    result = generate_ensemble(
+        lm, "p", _spec(max_tokens=2048, temperature=0.2), decide=lambda c: c.content
+    )
+    assert result.max_tokens == 2048
+    assert result.temperature == 0.2
+
+
+def test_generation_settings_are_validated() -> None:
+    for bad in ({"max_tokens": 0}, {"temperature": -0.1}, {"temperature": 2.5}):
+        with pytest.raises(ValueError):
+            EnsembleSpec(**bad)
+
+
+def test_every_component_reports_its_verdict_not_only_flagged_ones() -> None:
+    """A near-miss split and a clear unimodal are different situations.
+
+    Reporting only the boolean leaves a caller unable to tell a confident answer
+    from a lucky one -- which is the failure mode where a fabricated centre gets
+    presented as resolved.
+    """
+    lm = _ScriptedLM(["0.8"] * 5 + ["0.9"] * 5)
+    result = generate_ensemble(
+        lm, "p", _spec(draws=10, grid=0.1),
+        decide=lambda c: c.content,
+        components=lambda c: {"tight": float(c.content)},
+    )
+    verdicts = dict(result.component_verdicts)
+    assert "tight" in verdicts, "an unflagged component still reports its verdict"
+    assert verdicts["tight"] is not None
+    assert verdicts["tight"].separated is False
+    assert result.multimodal == ()
+
+
+def test_verdict_is_none_when_the_check_could_not_run() -> None:
+    """Distinct from 'ran and found nothing' -- the caller must tell them apart."""
+    lm = _ScriptedLM(["0.8", "0.9"])
+    result = generate_ensemble(
+        lm, "p", _spec(draws=8), decide=lambda c: c.content,
+        components=lambda c: {"axis": float(c.content)},
+    )
+    assert dict(result.component_verdicts)["axis"] is None
+
+
+def test_split_detection_sizing_helper() -> None:
+    """Sizing for agreement silently under-sizes for split detection."""
+    from recall_guard.core.consensus import (
+        smallest_certifiable_n,
+        smallest_detectable_split_n,
+    )
+
+    assert smallest_detectable_split_n(cluster_positions=4) == 8
+    assert smallest_detectable_split_n(cluster_positions=20) == 30
+    assert smallest_detectable_split_n(
+        cluster_positions=20, min_cluster_density=3.0
+    ) == 60
+    # The two sizing questions genuinely disagree -- that is the point.
+    assert smallest_detectable_split_n(cluster_positions=40) != smallest_certifiable_n(0.95)
+    for bad in ({"cluster_positions": 1}, {"cluster_positions": 4, "min_cluster_draws": 1}):
+        with pytest.raises(ValueError):
+            smallest_detectable_split_n(**bad)

@@ -22,16 +22,16 @@ In this repository, `p_memorized` is a model-specific score produced by a logist
 Recall Guard ships from its Git repository and as a wheel on GitHub Releases (no PyPI). Python 3.12 or newer. In a uv-managed project, declare it as a dependency against a released tag:
 
 ```bash
-uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.3.1"
+uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.4.0"
 # with the plotting/backtest extras:
-uv add "recall-guard[backtest] @ git+https://github.com/norandom/memguard_alpha.git@v0.3.1"
+uv add "recall-guard[backtest] @ git+https://github.com/norandom/memguard_alpha.git@v0.4.0"
 ```
 
 Or install the release wheel into an environment of its own:
 
 ```bash
 uv venv
-uv pip install https://github.com/norandom/memguard_alpha/releases/download/v0.3.1/recall_guard-0.3.1-py3-none-any.whl
+uv pip install https://github.com/norandom/memguard_alpha/releases/download/v0.4.0/recall_guard-0.4.0-py3-none-any.whl
 ```
 
 Then `from recall_guard import MemoryGuardedScorer` and bring your own NVIDIA API key at calibration time. The runtime dependency set is lean (`numpy`, `scikit-learn`, `rich`, `pyyaml`, `requests`, `python-dotenv`); plotting and backtest extras are opt-in (`recall-guard[backtest]`).

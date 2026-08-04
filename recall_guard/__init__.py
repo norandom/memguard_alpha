@@ -55,6 +55,7 @@ from recall_guard.core import (
     robust_location,
     scale_floor,
     smallest_certifiable_n,
+    smallest_detectable_split_n,
     snap_to_grid,
     wilson_interval,
     write_manifest,
@@ -101,6 +102,7 @@ __all__ = [
     "robust_location",
     "scale_floor",
     "smallest_certifiable_n",
+    "smallest_detectable_split_n",
     "snap_to_grid",
     "wilson_interval",
     # core primitives

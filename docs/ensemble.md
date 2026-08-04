@@ -22,6 +22,50 @@ spans two thirds of the unit interval — while multiplying deployed exposure di
 `memguard_confidence = raw_confidence · (1 − p_memorized)`. As a multiplier, one draw is
 close to uninformative.
 
+## What it actually does
+
+Concretely, one call does this:
+
+1. **Draws** `spec.draws` replies to the same prompt, in waves of `max_workers`, under the
+   generation settings you declare.
+2. **Triages** each reply into usable, transport failure, parse failure, or
+   projection failure — four categories, kept separate because they mean different things.
+3. **Refuses** rather than returning, if the request budget is exhausted, too few draws are
+   usable, transport failures exceed your threshold, or the credential is rejected.
+4. **Canonically orders** the surviving draws by content, so nothing downstream depends on
+   the order replies happened to arrive in.
+5. **Measures agreement** on the decision your `decide` callback returns, with an interval.
+6. **Tests each component** for two separated clusters — *before* estimating anything.
+7. **Estimates a location** only for components that pass that test. A flagged component is
+   named and left without a location, on purpose.
+8. **Selects a representative draw** that is always one you actually received, never a
+   synthesised combination.
+9. **Hashes** the draw set so the whole reduction can be replayed and checked later.
+
+Steps 6 and 7 are the ordering that carries the design. Estimating first and checking after
+would produce a number for a component that has no single answer.
+
+## Sizing: two different questions
+
+`draws` controls two things that need **different** sample sizes, and sizing for one
+silently under-sizes for the other:
+
+| question | helper | at 95% |
+|---|---|---|
+| how precisely do I know the *agreement*? | `smallest_certifiable_n(0.95)` | 52 draws one-sided, 73 two-sided |
+| can a *component split* even be detected? | `smallest_detectable_split_n(cluster_positions=...)` | grows with cluster width |
+
+The default `draws=64` is sized for agreement precision. **Split detection needs more.**
+Both helpers report a floor, not a promise: below the value, the outcome is impossible;
+above it, it is possible but still subject to sampling noise. Measured on the shipped
+corpus, whose split is unambiguous at full size, detection still missed **~3% of 64-draw
+subsamples** — and in a small fraction of those the reported location landed on the wrong
+side of zero, with nothing flagged.
+
+That is the failure mode worth sizing against: not a wrong interval, but a confident
+single value for a component that has no single answer. Read `component_verdicts` (below)
+rather than trusting an empty `multimodal`.
+
 ## Scoring a prompt over many draws
 
 ```python
@@ -31,7 +75,10 @@ scorer = MemoryGuardedScorer.calibrate(...)
 
 result = scorer.score_ensemble(
     "your prompt",
-    spec=EnsembleSpec(draws=64, max_workers=8, min_parsed=24),
+    spec=EnsembleSpec(
+        draws=64, max_workers=8, min_parsed=24,
+        max_tokens=2048,              # match production -- see below
+    ),
     conservative_quantile=0.9,        # optional
 )
 
@@ -63,6 +110,30 @@ tail *is* the contamination evidence; trimming it discards the signal.
 
 If you would rather withhold too much than too little, pass `conservative_quantile`.
 
+## Match your production generation settings
+
+`max_tokens` and `temperature` default to `None`, meaning the client's own defaults.
+**Set them to whatever your production path uses.**
+
+An ensemble drawn at a different token budget is not measuring the production decision,
+which is the entire point of the feature. On a reasoning model the budget is not a detail:
+the chain of thought consumes it, and the reply is truncated before the payload you parse.
+Those truncated replies surface as `projection` failures, which reads like "the model gave
+bad answers" when the real cause is "the ensemble asked a different question".
+
+Measured on one reasoning model, the same prompt, 64 draws each:
+
+| draw budget | parsed |
+|---|---|
+| 512 (client default) | 31/64 — 48% |
+| 2048 (that caller's production setting) | 61/64 — 95% |
+
+A parse rate that low is at least visible. The quieter hazard is a production budget near
+the default: a mild dip, and no signal that the ensemble is sampling a different regime.
+
+Both settings are recorded on the result, next to `draws_sha256`, because "under what
+settings" is part of what an audit artifact has to carry.
+
 ## Reducing a caller-supplied decision
 
 For anything other than the contamination score, supply two callbacks:
@@ -84,6 +155,13 @@ location. A single callback cannot serve both, and conflating them is how a repo
 consensus ends up naming a different reading than the reported location.
 
 ## What it refuses to do
+
+**It reports what the split test saw, for every component.** `result.component_verdicts`
+carries a verdict per component, flagged or not — a `separated=False` with masses at
+31%/58% is a very different situation from one with no mass either side, and only you can
+judge which matters. A `None` verdict means the check did not run at all: no lattice
+declared, too few draws, or clusters too thin for a gap to mean anything. Do not read an
+empty `multimodal` as "checked and fine".
 
 **It will not report a location inside a gap.** Each component is checked for two separated
 clusters *before* any location estimate is computed, and a flagged component is named in

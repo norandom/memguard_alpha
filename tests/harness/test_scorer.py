@@ -284,7 +284,9 @@ class _VaryingLM:
         self._bases = list(bases)
         self.calls = 0
 
-    def generate(self, prompt: str, temperature: float = 0.0) -> CompletionResult:
+    def generate(
+        self, prompt: str, temperature: float = 0.0, max_tokens: int = 512
+    ) -> CompletionResult:
         base = self._bases[self.calls % len(self._bases)]
         self.calls += 1
         if isinstance(base, BaseException):
@@ -400,3 +402,12 @@ def test_score_and_score_many_signatures_are_untouched() -> None:
     assert list(sig.parameters) == ["self", "prompt"]
     many = inspect.signature(MemoryGuardedScorer.score_many)
     assert list(many.parameters) == ["self", "prompts", "max_workers"]
+
+
+def test_ensembled_score_records_its_generation_settings() -> None:
+    """Which settings produced this score belongs with the score."""
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([-1.0, -2.0])  # noqa: SLF001
+    result = scorer.score_ensemble("prompt", spec=_ens_spec(max_tokens=2048))
+    assert result.max_tokens == 2048
+    assert result.temperature is None

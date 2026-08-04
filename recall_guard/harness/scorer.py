@@ -171,6 +171,8 @@ class EnsembledScore:
     agreement: float | None
     agreement_ci: tuple[float, float] | None
     draw_dependence: float | None
+    max_tokens: int | None
+    temperature: float | None
     n_requested: int
     n_parsed: int
     fail_counts: tuple[tuple[str, int], ...]
@@ -358,7 +360,9 @@ class MemoryGuardedScorer:
         # double the request count for one of four features. The cost is that
         # every draw's score is then correlated through that shared reference,
         # so the reported spread understates the true spread.
-        ref_res = self._safe_generate(self._ref_lm, prompt) if self._ref_lm else None
+        ref_res = (
+            self._safe_generate(self._ref_lm, prompt, spec=spec) if self._ref_lm else None
+        )
 
         scored: list[GuardedScore] = []
         failures: dict[str, int] = {}
@@ -367,7 +371,12 @@ class MemoryGuardedScorer:
 
         for wave, batch in enumerate(_wave_sizes(spec)):
             with ThreadPoolExecutor(max_workers=batch) as pool:
-                draws = list(pool.map(lambda _: self._safe_generate(self._lm, prompt), range(batch)))
+                draws = list(
+                    pool.map(
+                        lambda _: self._safe_generate(self._lm, prompt, spec=spec),
+                        range(batch),
+                    )
+                )
             for draw in draws:
                 if isinstance(draw, RuntimeError) and _is_auth_error(draw):
                     raise ConfigurationError(
@@ -414,6 +423,8 @@ class MemoryGuardedScorer:
                 agreement=None,
                 agreement_ci=None,
                 draw_dependence=None,
+                max_tokens=spec.max_tokens,
+                temperature=spec.temperature,
                 n_requested=spec.draws,
                 n_parsed=len(scored),
                 fail_counts=fail_counts,
@@ -448,6 +459,8 @@ class MemoryGuardedScorer:
                 tally[modal], len(ordered), confidence=spec.confidence, tail=spec.tail
             ),
             draw_dependence=lag_dependence(signals, [waves[i] for i in order]),
+            max_tokens=spec.max_tokens,
+            temperature=spec.temperature,
             n_requested=spec.draws,
             n_parsed=len(ordered),
             fail_counts=fail_counts,
@@ -458,11 +471,22 @@ class MemoryGuardedScorer:
     # -- internals -------------------------------------------------------------
 
     @staticmethod
-    def _safe_generate(lm: NvidiaLM | None, prompt: str):
+    def _safe_generate(lm: NvidiaLM | None, prompt: str, *, spec: EnsembleSpec | None = None):
+        """One draw, optionally under an ensemble spec's generation settings.
+
+        With no spec the client's own defaults apply, which is what keeps the
+        single-draw path -- and a one-draw ensemble that overrides nothing --
+        byte-identical to what it always was.
+        """
         if lm is None:
             return None
+        kwargs: dict[str, object] = {}
+        if spec is not None and spec.max_tokens is not None:
+            kwargs["max_tokens"] = spec.max_tokens
+        if spec is not None and spec.temperature is not None:
+            kwargs["temperature"] = spec.temperature
         try:
-            return lm.generate(prompt)
+            return lm.generate(prompt, **kwargs)
         except (TimeoutError, RuntimeError) as exc:
             return exc
 

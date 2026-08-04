@@ -110,3 +110,27 @@ def test_ensemble_page_states_the_opt_in_contract() -> None:
     lowered = _ensemble().lower()
     assert "opt-in" in lowered
     assert "ensemblespec" in lowered
+
+
+def test_ensemble_page_explains_what_the_feature_does() -> None:
+    """A caller should not have to read the source to learn the pipeline."""
+    lowered = _ensemble().lower()
+    assert "what it actually does" in lowered
+    assert "estimating anything" in lowered
+    assert "canonically orders" in lowered
+    assert "refuses" in lowered
+
+
+def test_ensemble_page_tells_callers_to_match_production_settings() -> None:
+    lowered = _ensemble().lower()
+    assert "max_tokens" in lowered
+    assert "production" in lowered
+    assert "48%" in lowered and "95%" in lowered
+
+
+def test_ensemble_page_separates_the_two_sizing_questions() -> None:
+    """Sizing for agreement silently under-sizes for split detection."""
+    lowered = _ensemble().lower()
+    assert "smallest_certifiable_n" in lowered
+    assert "smallest_detectable_split_n" in lowered
+    assert "component_verdicts" in lowered

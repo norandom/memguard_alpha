@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from recall_guard.core.consensus import (
+    MultimodalVerdict,
     Tail,
     detect_multimodal,
     grid_adherence,
@@ -95,16 +96,32 @@ class CostEstimate:
 
 @dataclass(frozen=True)
 class EnsembleResult:
-    """One ensemble's reduced answer plus the evidence behind it."""
+    """One ensemble's reduced answer plus the evidence behind it.
+
+    ``component_verdicts`` carries the separated-cluster check for **every**
+    component, not only the flagged ones. A verdict of ``separated=False`` with
+    masses near the threshold is a very different situation from one with no
+    mass on either side, and only the caller can judge which matters -- so the
+    result reports what the test saw rather than only its boolean conclusion. A
+    ``None`` verdict means the check did not run at all.
+
+    ``max_tokens`` and ``temperature`` record the settings the draws were taken
+    under. An ensemble is an audit artifact, and "under what generation settings"
+    belongs next to the draw-set digest: a consensus sampled at a different token
+    budget than production is not measuring the production decision.
+    """
 
     consensus: CompletionResult
     location: Mapping[str, float]
     location_snapped: Mapping[str, float] | None
     grid_adherence: Mapping[str, float] | None
     multimodal: tuple[str, ...]
+    component_verdicts: tuple[tuple[str, MultimodalVerdict | None], ...]
     agreement: float
     agreement_ci: tuple[float, float] | None
     draw_dependence: float | None
+    max_tokens: int | None
+    temperature: float | None
     n_requested: int
     n_parsed: int
     fail_counts: tuple[tuple[str, int], ...]
@@ -120,6 +137,18 @@ class EnsembleSpec:
     single measurement date at a crisis onset, chosen because it was the hard
     case. Whether they generalise to calmer regimes is unmeasured, which is why
     each threshold is a field rather than a literal.
+
+    ``max_tokens`` and ``temperature`` default to ``None``, meaning the client's
+    own defaults. **Set them to whatever production uses.** An ensemble drawn at
+    a different token budget is not measuring the production decision -- and on a
+    reasoning model the budget is not a detail, because the chain of thought
+    consumes it and truncates the reply before the payload a caller parses.
+    Measured on one such model, dropping from a 2048-token production budget to
+    the 512-token client default took the parse rate from 95% to 48%.
+
+    ``draws`` is sized for **agreement precision**, not for component-split
+    detection; those are different numbers and the second is larger. See
+    :func:`~recall_guard.core.consensus.smallest_detectable_split_n`.
     """
 
     draws: int = 64
@@ -141,6 +170,8 @@ class EnsembleSpec:
     max_transport_failure_ratio: float = 0.25
     retain_draws: bool = False
     reference_mode: ReferenceMode = ReferenceMode.FIXED
+    max_tokens: int | None = None
+    temperature: float | None = None
 
     def __post_init__(self) -> None:
         if self.draws < 1:
@@ -176,6 +207,12 @@ class EnsembleSpec:
             raise ValueError(
                 f"max_transport_failure_ratio must be in [0, 1]; "
                 f"got {self.max_transport_failure_ratio}"
+            )
+        if self.max_tokens is not None and self.max_tokens < 1:
+            raise ValueError(f"max_tokens must be >= 1 when set; got {self.max_tokens}")
+        if self.temperature is not None and not 0.0 <= self.temperature <= 2.0:
+            raise ValueError(
+                f"temperature must be in [0, 2] when set; got {self.temperature}"
             )
         if self.max_total_requests is not None and self.max_total_requests < 1:
             raise ValueError(
@@ -297,8 +334,20 @@ def _reduce_components(
     parsed: Sequence[CompletionResult],
     components: Callable[[CompletionResult], Mapping[str, float]],
     spec: EnsembleSpec,
-) -> tuple[dict[str, float], dict[str, float] | None, dict[str, float] | None, tuple[str, ...]]:
-    """Per-component location, with the multimodality gate applied first."""
+) -> tuple[
+    dict[str, float],
+    dict[str, float] | None,
+    dict[str, float] | None,
+    tuple[str, ...],
+    tuple[tuple[str, MultimodalVerdict | None], ...],
+]:
+    """Per-component location, with the multimodality gate applied first.
+
+    Returns the verdict for every component, flagged or not: a near-miss split
+    and a clearly unimodal component are different situations, and discarding
+    the distinction leaves a caller unable to tell a confident answer from a
+    lucky one.
+    """
     per_axis: dict[str, list[float]] = {}
     for draw in parsed:
         for axis, value in components(draw).items():
@@ -308,6 +357,7 @@ def _reduce_components(
     snapped: dict[str, float] | None = {} if spec.grid is not None else None
     adherence: dict[str, float] | None = {} if spec.grid is not None else None
     flagged: list[str] = []
+    verdicts: list[tuple[str, MultimodalVerdict | None]] = []
 
     for axis in sorted(per_axis):
         values = per_axis[axis]
@@ -322,6 +372,7 @@ def _reduce_components(
             min_draws=spec.min_cluster_draws,
             min_cluster_density=spec.min_cluster_density,
         )
+        verdicts.append((axis, verdict))
         if verdict is not None and verdict.separated:
             # No location is reported for a flagged component. There is no single
             # value to estimate across a genuine split, and no trim fraction
@@ -340,7 +391,7 @@ def _reduce_components(
         if snapped is not None and spec.grid is not None:
             snapped[axis] = snap_to_grid(located, spec.grid)
 
-    return location, snapped, adherence, tuple(flagged)
+    return location, snapped, adherence, tuple(flagged), tuple(verdicts)
 
 
 def reduce_draws(
@@ -377,8 +428,11 @@ def reduce_draws(
     location: dict[str, float] = {}
     snapped = adherence = None
     flagged: tuple[str, ...] = ()
+    verdicts: tuple[tuple[str, MultimodalVerdict | None], ...] = ()
     if components is not None:
-        location, snapped, adherence, flagged = _reduce_components(ordered, components, spec)
+        location, snapped, adherence, flagged, verdicts = _reduce_components(
+            ordered, components, spec
+        )
 
     dependence = None
     if waves is not None:
@@ -391,11 +445,14 @@ def reduce_draws(
         location_snapped=snapped,
         grid_adherence=adherence,
         multimodal=flagged,
+        component_verdicts=verdicts,
         agreement=agreement,
         agreement_ci=wilson_interval(
             agreeing, len(ordered), confidence=spec.confidence, tail=spec.tail
         ),
         draw_dependence=dependence,
+        max_tokens=spec.max_tokens,
+        temperature=spec.temperature,
         n_requested=n_requested if n_requested is not None else len(draws),
         n_parsed=len(ordered),
         fail_counts=tuple(sorted((fail_counts or {}).items())),
@@ -439,7 +496,9 @@ def generate_ensemble(
             )
 
         with ThreadPoolExecutor(max_workers=size) as pool:
-            outcomes = list(pool.map(lambda _: _safe_draw(lm, prompt), range(size)))
+            outcomes = list(
+                pool.map(lambda _: _safe_draw(lm, prompt, spec), range(size))
+            )
         issued += size
 
         for outcome in outcomes:
@@ -485,9 +544,22 @@ def generate_ensemble(
     )
 
 
-def _safe_draw(lm: NvidiaLM, prompt: str) -> CompletionResult | BaseException:
+def _safe_draw(
+    lm: NvidiaLM, prompt: str, spec: EnsembleSpec
+) -> CompletionResult | BaseException:
+    """One draw under the spec's generation settings.
+
+    Only overrides that the caller actually set are forwarded, so an unset spec
+    reproduces the client's own defaults exactly -- which keeps a one-draw
+    ensemble byte-identical to the single-draw path.
+    """
+    kwargs: dict[str, object] = {}
+    if spec.max_tokens is not None:
+        kwargs["max_tokens"] = spec.max_tokens
+    if spec.temperature is not None:
+        kwargs["temperature"] = spec.temperature
     try:
-        return lm.generate(prompt)
+        return lm.generate(prompt, **kwargs)
     except Exception as exc:  # noqa: BLE001 - triaged by the caller
         return exc
 

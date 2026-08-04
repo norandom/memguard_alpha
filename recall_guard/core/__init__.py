@@ -28,6 +28,7 @@ from recall_guard.core.consensus import (
     robust_location,
     scale_floor,
     smallest_certifiable_n,
+    smallest_detectable_split_n,
     snap_to_grid,
     wilson_interval,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "robust_location",
     "scale_floor",
     "smallest_certifiable_n",
+    "smallest_detectable_split_n",
     "snap_to_grid",
     "wilson_interval",
     "CostEstimate",

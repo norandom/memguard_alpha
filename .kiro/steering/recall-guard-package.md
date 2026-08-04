@@ -68,7 +68,7 @@ scorer.holdout_auc, scorer.is_weak    # calibrator quality
   ephemeral `GITHUB_TOKEN`.
 - **Distribution: GitHub Release only — no PyPI.** Consumers (e.g. Global_Macro_AI_Factors /
   `macro_framework`) install via:
-  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.3.1"`
+  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.4.0"`
   (latest released tag).
 
 ## Purpose framing — carry forward
@@ -95,6 +95,14 @@ accuracy.
   through one client serialised, even with pacing disabled, so `max_workers` was inert
   package-wide. CLI `--max-workers` default dropped 8 -> 1 so upgrading is not an 8x traffic
   event; **library defaults remain 8 and are now real**.
+- **Generation settings belong on the spec** (`max_tokens`, `temperature`, default `None`).
+  An ensemble drawn at a different token budget is not measuring the production decision --
+  on a reasoning model the chain of thought eats the budget and truncates the payload.
+  Downstream measured 48% vs 95% parse rate at 512 vs 2048. Both are recorded on the result.
+- **`draws` sizes agreement precision, not split detection** -- two different numbers.
+  `smallest_certifiable_n` covers the first, `smallest_detectable_split_n` the second.
+  At the default 64, split detection misses ~3% of subsamples on the shipped corpus.
+- `component_verdicts` reports the split test for **every** component, not only flagged ones.
 - Detector thresholds are all provisional, tuned on one crisis-onset date, and all exposed on
   `EnsembleSpec` rather than frozen in source.
 

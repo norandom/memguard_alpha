@@ -1,6 +1,6 @@
 [project]
 name = "recall-guard"
-version = "0.3.1"
+version = "0.4.0"
 description = "Per-prompt contamination scoring for LLM outputs"
 readme = "README.md"
 requires-python = ">=3.12"
