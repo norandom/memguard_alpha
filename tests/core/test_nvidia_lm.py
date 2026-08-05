@@ -352,9 +352,19 @@ def test_pacing_spaces_starts_independent_of_latency(mocker):
 
     ordered = sorted(starts)
     gaps = [b - a for a, b in zip(ordered, ordered[1:], strict=False)]
-    # Pacing preserved (lower bound) and not latency-inflated (upper bound).
+
+    # Pacing preserved: every gap clears the configured interval. This is the
+    # half that rejects a reservation scheme handing the same slot out twice.
     assert all(gap >= interval * 0.8 for gap in gaps), gaps
-    assert all(gap <= interval + 0.07 for gap in gaps), gaps
+
+    # Not latency-inflated: before the repair every gap was interval + latency
+    # (0.25s here), so the median sits an order of magnitude away from either
+    # answer. Asserted on the median rather than on every gap because a single
+    # thread waking late under load stretches one gap without saying anything
+    # about the pacing contract -- and this test previously flaked exactly that
+    # way under suite load while passing in isolation.
+    median_gap = sorted(gaps)[len(gaps) // 2]
+    assert median_gap <= interval + 0.07, gaps
 
 
 def test_failed_attempt_still_consumes_a_pacing_slot(mocker):

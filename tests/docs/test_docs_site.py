@@ -134,3 +134,17 @@ def test_ensemble_page_separates_the_two_sizing_questions() -> None:
     assert "smallest_certifiable_n" in lowered
     assert "smallest_detectable_split_n" in lowered
     assert "component_verdicts" in lowered
+
+
+def test_ensemble_page_documents_shelf_life() -> None:
+    """A stale corpus reads as a detector bug unless the docs say otherwise."""
+    lowered = _ensemble().lower()
+    assert "shelf life" in lowered
+    assert "sampled_at" in lowered
+    assert "not ground truth" in lowered
+
+
+def test_ensemble_page_sizes_against_parsed_draws() -> None:
+    lowered = _ensemble().lower()
+    assert "n_parsed" in lowered
+    assert "5%" in lowered

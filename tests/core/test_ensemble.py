@@ -447,3 +447,35 @@ def test_split_detection_sizing_helper() -> None:
     for bad in ({"cluster_positions": 1}, {"cluster_positions": 4, "min_cluster_draws": 1}):
         with pytest.raises(ValueError):
             smallest_detectable_split_n(**bad)
+
+
+def test_execution_stamps_when_the_draws_were_taken() -> None:
+    """A consensus has a shelf life; nothing else on the result records when."""
+    lm = _ScriptedLM(["up"])
+    result = generate_ensemble(lm, "p", _spec(), decide=lambda c: c.content)
+    assert result.sampled_at is not None
+    assert result.sampled_at.startswith("20")
+
+
+def test_replay_records_no_sample_time() -> None:
+    """A replayed result was not sampled, and says so rather than inventing one.
+
+    This is also what keeps reduce_draws clock-free: reading a clock there would
+    make the reduction depend on something no stored draw set records.
+    """
+    replayed = reduce_draws(
+        [_completion("up"), _completion("down")],
+        _spec(draws=2, min_parsed=1),
+        decide=lambda c: c.content,
+    )
+    assert replayed.sampled_at is None
+
+
+def test_sample_time_does_not_disturb_replay_determinism() -> None:
+    contents = ["a", "b", "a", "c"]
+    spec = _spec(draws=4, min_parsed=1)
+    first = reduce_draws([_completion(x) for x in contents], spec, decide=lambda c: c.content)
+    second = reduce_draws(
+        [_completion(x) for x in reversed(contents)], spec, decide=lambda c: c.content
+    )
+    assert first == second

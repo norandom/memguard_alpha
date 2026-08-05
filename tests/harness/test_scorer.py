@@ -411,3 +411,10 @@ def test_ensembled_score_records_its_generation_settings() -> None:
     result = scorer.score_ensemble("prompt", spec=_ens_spec(max_tokens=2048))
     assert result.max_tokens == 2048
     assert result.temperature is None
+
+
+def test_ensembled_score_stamps_its_sample_time() -> None:
+    scorer = _calibrate()
+    scorer._lm = _VaryingLM([-1.0, -2.0])  # noqa: SLF001
+    result = scorer.score_ensemble("prompt", spec=_ens_spec())
+    assert result.sampled_at is not None and result.sampled_at.startswith("20")

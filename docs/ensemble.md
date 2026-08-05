@@ -57,14 +57,29 @@ silently under-sizes for the other:
 
 The default `draws=64` is sized for agreement precision. **Split detection needs more.**
 Both helpers report a floor, not a promise: below the value, the outcome is impossible;
-above it, it is possible but still subject to sampling noise. Measured on the shipped
-corpus, whose split is unambiguous at full size, detection still missed **~3% of 64-draw
-subsamples** — and in a small fraction of those the reported location landed on the wrong
-side of zero, with nothing flagged.
+above it, it is possible but still subject to sampling noise.
 
-That is the failure mode worth sizing against: not a wrong interval, but a confident
-single value for a component that has no single answer. Read `component_verdicts` (below)
-rather than trusting an empty `multimodal`.
+Measured on the shipped corpus, whose split is unambiguous at full size:
+
+| parsed draws | split undetected |
+|---|---|
+| 32 | 12.0% |
+| 48 | 9.5% |
+| **61** | **5.5%** |
+| **64** | **3.6%** |
+| 96 | 2.9% |
+| 128 | 0.8% |
+| 256 | 0.1% |
+
+**Size against `n_parsed`, not against `draws`.** The test only sees replies that survived
+transport, parsing, and your projection — so a prompt with a 5% failure rate configured at
+`draws=64` is really operating at 61, where the miss rate is half again as high. That row
+is in the table for a reason.
+
+In a small fraction of the misses the reported location lands on the wrong side of zero
+with nothing flagged. That is the failure mode worth sizing against: not a wrong interval,
+but a confident single value for a component that has no single answer. Read
+`component_verdicts` (below) rather than trusting an empty `multimodal`.
 
 ## Scoring a prompt over many draws
 
@@ -221,6 +236,30 @@ endpoint is rate-limited and 429-prone; retries are jittered and honour `Retry-A
 Raw per-draw replies are **not** retained by default. Turning `retain_draws` on holds every
 response in memory, which at 20 top-logprobs per token runs to roughly 12 MB per draw —
 about 1.5 GB for a 128-draw ensemble.
+
+## Shelf life
+
+The feature exists because the serving stack is nondeterministic *within* a session. The
+distribution being sampled also moves *between* sessions.
+
+Observed on one model: the same prompt against the same model id, two days apart, shifted
+one component's median from −0.60 to −0.20 (KS p ≈ 4e-12) while three other components were
+statistically unchanged. The mass above the split point went from 12% to 48% — enough that
+a fresh ensemble correctly flagged a separated component that a stored corpus said was
+unimodal.
+
+Three consequences:
+
+- **A cached consensus is not a fresh one.** `draws_sha256` pins *which* draws produced a
+  result; `sampled_at` pins *when*. A result replayed from a stored draw set has
+  `sampled_at = None`, because a replay was not sampled.
+- **Threshold tuning ages.** Any `mass_min`, `density_ratio`, or `agreement_target` tuned
+  against one corpus is tuned against one window of that model's behaviour. This is the
+  concrete reason the defaults are documented as provisional.
+- **A stored corpus is not ground truth for a fresh run.** A detection that disagrees with
+  your archive may be the archive being stale rather than the detector being wrong. Check
+  the fresh distribution before assuming a false positive — that mistake has already cost
+  someone a debugging cycle.
 
 ## Replay
 

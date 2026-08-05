@@ -68,7 +68,7 @@ scorer.holdout_auc, scorer.is_weak    # calibrator quality
   ephemeral `GITHUB_TOKEN`.
 - **Distribution: GitHub Release only — no PyPI.** Consumers (e.g. Global_Macro_AI_Factors /
   `macro_framework`) install via:
-  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.4.0"`
+  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.4.1"`
   (latest released tag).
 
 ## Purpose framing — carry forward
@@ -102,6 +102,12 @@ accuracy.
 - **`draws` sizes agreement precision, not split detection** -- two different numbers.
   `smallest_certifiable_n` covers the first, `smallest_detectable_split_n` the second.
   At the default 64, split detection misses ~3% of subsamples on the shipped corpus.
+- **The sampled distribution drifts between sessions**, not only within one. Same prompt,
+  same model id, two days apart moved one component's median materially while others held.
+  So a consensus has a shelf life: `sampled_at` stamps execution (`None` on replay), stored
+  corpora are not ground truth for a fresh run, and threshold tuning ages.
+- Size split detection against `n_parsed`, not `draws` -- the test only sees replies that
+  survived transport, parsing, and the caller's projection.
 - `component_verdicts` reports the split test for **every** component, not only flagged ones.
 - Detector thresholds are all provisional, tuned on one crisis-onset date, and all exposed on
   `EnsembleSpec` rather than frozen in source.

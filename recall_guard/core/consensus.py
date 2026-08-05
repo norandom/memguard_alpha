@@ -181,9 +181,18 @@ def smallest_detectable_split_n(
     returned here the density guard cannot be satisfied at all, so a split of
     that shape is undetectable no matter how clean the data. Above it, detection
     becomes *possible*; whether it fires still depends on sampling noise in the
-    trough and in the cluster masses. Measured on a corpus whose split is
-    unambiguous at full size, detection still missed roughly 3% of 64-draw
-    subsamples.
+    trough and in the cluster masses.
+
+    Measured on a corpus whose split is unambiguous at full size, detection
+    still missed **~3.6% of 64-draw bootstrap resamples** -- the closer analogue
+    to a fresh ensemble, which draws independently rather than from a fixed
+    pool. Reaching 99% detection on that corpus took ~128 draws.
+
+    **The figure tracks *parsed* draws, not the configured count.** The test
+    only ever sees replies that survived transport, parsing, and the caller's
+    projection. A prompt with a 5% failure rate configured at ``draws=64`` is
+    really operating at n=61, where the same measurement gives 5.5% rather than
+    3.6% -- so size against ``n_parsed``, not against ``draws``.
 
     Parameters
     ----------

@@ -140,7 +140,7 @@ def _write_summary_csv(
 def _write_base_manifest(run_dir: Path) -> None:
     """Write a minimal pre-existing manifest the orchestrator will extend."""
     payload = {
-        "harness_version": "0.4.0",
+        "harness_version": "0.4.1",
         "seed": 0,
         "eval_set_hash": "fakehash" * 8,
         "control_corpus_hash": "fakehash" * 8,

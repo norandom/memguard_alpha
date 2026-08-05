@@ -32,6 +32,7 @@ import math
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from recall_guard.core.consensus import (
@@ -109,6 +110,15 @@ class EnsembleResult:
     under. An ensemble is an audit artifact, and "under what generation settings"
     belongs next to the draw-set digest: a consensus sampled at a different token
     budget than production is not measuring the production decision.
+
+    ``sampled_at`` records when the draws were taken, and is ``None`` for a
+    result produced by replaying a stored draw set -- which is the honest
+    answer, because a replay was not sampled. It exists because the sampled
+    distribution moves *between* sessions as well as within one: the same prompt
+    against the same model id has been observed to shift a component's median
+    materially over two days. So a consensus has a shelf life, ``draws_sha256``
+    pins *which* draws produced it but nothing else pins *when*, and a stored
+    corpus is not ground truth against which to judge a fresh ensemble.
     """
 
     consensus: CompletionResult
@@ -122,6 +132,7 @@ class EnsembleResult:
     draw_dependence: float | None
     max_tokens: int | None
     temperature: float | None
+    sampled_at: str | None
     n_requested: int
     n_parsed: int
     fail_counts: tuple[tuple[str, int], ...]
@@ -403,12 +414,14 @@ def reduce_draws(
     waves: Sequence[int] | None = None,
     n_requested: int | None = None,
     fail_counts: Mapping[str, int] | None = None,
+    sampled_at: str | None = None,
 ) -> EnsembleResult:
     """Reduce a draw set to one answer. Pure: no I/O, no randomness, no clock.
 
     Separated from execution so a stored draw set can be replayed into a
     bit-identical result without contacting a model, which is what makes an
-    ensemble auditable after the fact.
+    ensemble auditable after the fact. No clock is read here: ``sampled_at``
+    stays ``None`` unless the caller passes through what execution recorded.
     """
     if not draws:
         raise ValueError("cannot reduce an empty draw set")
@@ -453,6 +466,7 @@ def reduce_draws(
         draw_dependence=dependence,
         max_tokens=spec.max_tokens,
         temperature=spec.temperature,
+        sampled_at=sampled_at,
         n_requested=n_requested if n_requested is not None else len(draws),
         n_parsed=len(ordered),
         fail_counts=tuple(sorted((fail_counts or {}).items())),
@@ -480,6 +494,7 @@ def generate_ensemble(
         transport failures exceed the configured share. Each of these is a
         refusal to report a confident answer computed from survivors.
     """
+    started_at = datetime.now(UTC).isoformat()
     parsed: list[CompletionResult] = []
     wave_tags: list[int] = []
     failures: dict[str, int] = {}
@@ -541,6 +556,7 @@ def generate_ensemble(
         waves=wave_tags,
         n_requested=spec.draws,
         fail_counts=failures,
+        sampled_at=started_at,
     )
 
 

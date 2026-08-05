@@ -36,6 +36,7 @@ import math
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from recall_guard.core.consensus import lag_dependence, wilson_interval
 from recall_guard.core.ensemble import EnsembleSpec, canonical_draw_hash
@@ -159,6 +160,10 @@ class EnsembledScore:
     score to scale exposure would silently substitute a single draw for the
     ensemble, which is the thing this feature exists to stop.
 
+    ``sampled_at`` records when the draws were taken. The sampled distribution
+    moves between sessions as well as within one, so a consensus has a shelf
+    life and a cached one is not the same as a fresh one.
+
     ``p_memorized_point is None`` exactly when the ensemble failed, and it is
     never ``0.0`` in that case: zero would mean "pass 100% of exposure through",
     the opposite of what an unusable measurement should imply.
@@ -173,6 +178,7 @@ class EnsembledScore:
     draw_dependence: float | None
     max_tokens: int | None
     temperature: float | None
+    sampled_at: str | None
     n_requested: int
     n_parsed: int
     fail_counts: tuple[tuple[str, int], ...]
@@ -356,6 +362,7 @@ class MemoryGuardedScorer:
             )
 
         prompt_hash = _hash_prompt(prompt)
+        started_at = datetime.now(UTC).isoformat()
         # The reference draw is held fixed across the ensemble: varying it would
         # double the request count for one of four features. The cost is that
         # every draw's score is then correlated through that shared reference,
@@ -397,7 +404,8 @@ class MemoryGuardedScorer:
                 waves.append(wave)
 
         return self._reduce_scores(
-            prompt_hash, scored, contents, waves, failures, spec, conservative_quantile
+            prompt_hash, scored, contents, waves, failures, spec,
+            conservative_quantile, started_at,
         )
 
     def _reduce_scores(
@@ -409,6 +417,7 @@ class MemoryGuardedScorer:
         failures: dict[str, int],
         spec: EnsembleSpec,
         conservative_quantile: float | None,
+        sampled_at: str,
     ) -> EnsembledScore:
         fail_counts = tuple(sorted(failures.items()))
         if len(scored) < spec.min_parsed or not scored:
@@ -425,6 +434,7 @@ class MemoryGuardedScorer:
                 draw_dependence=None,
                 max_tokens=spec.max_tokens,
                 temperature=spec.temperature,
+                sampled_at=sampled_at,
                 n_requested=spec.draws,
                 n_parsed=len(scored),
                 fail_counts=fail_counts,
@@ -461,6 +471,7 @@ class MemoryGuardedScorer:
             draw_dependence=lag_dependence(signals, [waves[i] for i in order]),
             max_tokens=spec.max_tokens,
             temperature=spec.temperature,
+            sampled_at=sampled_at,
             n_requested=spec.draws,
             n_parsed=len(ordered),
             fail_counts=fail_counts,
