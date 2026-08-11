@@ -143,6 +143,8 @@ Since v0.1.2 this is packaged: `recall_guard` installs from the GitHub Release (
 
 One example of library use: a macro overlay multiplies each AI-generated Black-Litterman view by `(1 - p_memorized)` before it can move money, and falls back to its risk-parity core when a score or parse is missing. The score discounts exposure; it does not certify a model as recall-free.
 
+That overlay is written up in [Computational Global Macro with AI for Risk and Portfolio Management](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358) (SSRN, 2026), which uses the MCS discount from this repository as one of its point-in-time controls: inputs are anonymized, timestamp-free, dated strictly before each rebalance, and then discounted by the Memorization Confidence Score. On a 2016–2026 walk-forward, the paper's de-risked line gives up CAGR (15.4% to 9.4%) in exchange for lower annualized volatility (12.9% to 7.2%) and a shallower maximum drawdown (−19.6% to −8.2%); Sharpe is unchanged and the appraisal ratio rises from 0.81 to 1.06. Citation details are under [Citation](#citation).
+
 ## Caveats
 
 The MCS classifier is only as good as the calibration corpora. The shipped IS corpus is small, and the shipped IS/OOS split is also confounded by source, formatting, and publication period. Treat `p_memorized` as an implementation-specific score, not ground truth.
@@ -159,11 +161,32 @@ The `cmmd` backtest uses `gpt-oss-20b` only. Other models are evaluated by the r
 
 If you want to cite the software itself, use the Zenodo DOI. Cite the version you actually ran; the all-versions DOI always resolves to the latest release.
 
+- v0.4.1: <https://doi.org/10.5281/zenodo.21806959>
+- v0.4.0: <https://doi.org/10.5281/zenodo.21795891>
+- v0.3.1: <https://doi.org/10.5281/zenodo.21795665>
+- v0.3.0: <https://doi.org/10.5281/zenodo.21795407>
 - v0.2.0: <https://doi.org/10.5281/zenodo.21637978>
 - v0.1.2: <https://doi.org/10.5281/zenodo.21557233>
 - all versions: <https://doi.org/10.5281/zenodo.21557232>
 
+Releases before v0.1.2 predate the Zenodo archive and have no DOI.
+
 `CITATION.cff` carries the same metadata for GitHub's "Cite this repository" widget.
+
+### Applied results
+
+Recall Guard supplies the memorization discount used by the point-in-time architecture in this working paper. It is the applied write-up of the [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors) consumer described under [Use as a package](#use-as-a-package).
+
+```bibtex
+@misc{ciepluch2026computationalglobalmacro,
+  title        = {Computational Global Macro with AI for Risk and Portfolio Management},
+  author       = {Ciepluch, Marius},
+  year         = {2026},
+  howpublished = {SSRN working paper},
+  note         = {Abstract 7231358. Written 31 July 2026, posted 10 August 2026},
+  url          = {https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358}
+}
+```
 
 ### Underlying papers
 
@@ -201,6 +224,7 @@ Recall Guard is based on and evaluates ideas from MemGuard-Alpha and addresses t
 
 - [`Qualified_Models.md`](./Qualified_Models.md): per-model training-cutoff registry with sources.
 - [`papers/2603.26797v1.md`](./papers/2603.26797v1.md): the MemGuard-Alpha paper.
+- [Computational Global Macro with AI for Risk and Portfolio Management](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358): SSRN working paper applying this package's MCS discount inside a PiT macro overlay.
 - [`.kiro/specs/honest-model-ranking/`](./.kiro/specs/honest-model-ranking/): recall-guard spec.
 - [`.kiro/specs/cmmd-backtest/`](./.kiro/specs/cmmd-backtest/): backtest spec.
 - [`.kiro/specs/recall-guard-package/`](./.kiro/specs/recall-guard-package/): packaging spec.

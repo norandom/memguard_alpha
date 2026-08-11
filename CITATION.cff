@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use Recall Guard, please cite it using the metadata below."
 title: "Recall Guard"
 version: 0.4.1
-doi: 10.5281/zenodo.21637978
+doi: 10.5281/zenodo.21806959
 date-released: 2026-08-05
 license: MIT
 authors:
@@ -14,3 +14,16 @@ abstract: >-
   Recall Guard is a Python package for per-prompt contamination scoring of LLM
   outputs, with harness workflows for model comparison and a single-model
   thresholded cmmd backtest.
+references:
+  - type: article
+    title: "Computational Global Macro with AI for Risk and Portfolio Management"
+    authors:
+      - family-names: Ciepluch
+        given-names: Marius
+    year: 2026
+    month: 7
+    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358"
+    notes: >-
+      SSRN working paper, abstract 7231358. Applies the Recall Guard
+      Memorization Confidence Score as the point-in-time discount in an
+      AI-inferred macro-factor overlay.

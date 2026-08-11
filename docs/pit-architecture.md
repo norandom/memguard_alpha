@@ -2,6 +2,8 @@
 
 Reference description for the thesis illustration. Each component maps to code or to a named external consumer component. The measurement layer and the `recall_guard` package live in this repository; the input discipline, task design, and portfolio layers referenced here live in the consumer pipeline at [Global_Macro_AI_Factors](https://github.com/norandom/Global_Macro_AI_Factors).
 
+The architecture described here, and the portfolio results it produces, are published as **Computational Global Macro with AI for Risk and Portfolio Management** (Marius Ciepluch, SSRN working paper 7231358, 2026): <https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358>. Read that for the walk-forward evidence; read this page for how the layers map to code.
+
 The design treats two halves as equal pillars: this measurement stack governs experimental validity, and the consumer's portfolio construction governs exposure and loss scale. The limit: the controls reduce and measure recall risk. They do not prove lookahead has been removed.
 
 ## The problem with just prompting
@@ -74,7 +76,7 @@ The control layer shown here mostly belongs to the external consumer pipeline, n
 - **Certification screen** checks candidate models on a controlled recall boundary before deployment.
 - **Post-cutoff experiments and return diagnostics** test whether any measured premium persists when the prompt dates move beyond the model's published training cutoff.
 
-Those controls are useful context for the thesis diagram, but the numerical results for them are not generated inside this repository.
+Those controls are useful context for the thesis diagram, but the numerical results for them are not generated inside this repository. The published run of that stack reports a 2016–2026 walk-forward in which the de-risked line trades CAGR (15.4% to 9.4%) for lower annualized volatility (12.9% to 7.2%) and a shallower maximum drawdown (−19.6% to −8.2%), at an unchanged Sharpe and an appraisal ratio moving from 0.81 to 1.06 (SSRN 7231358).
 
 ## What "just prompting" lacks, in one table
 

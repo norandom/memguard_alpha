@@ -51,6 +51,25 @@ def test_index_documents_input_responsibility_split() -> None:
     assert "not** own" in lowered or "not own" in lowered
 
 
+def test_index_cites_the_applied_ssrn_paper() -> None:
+    """The published consumer result must be reachable from the landing page."""
+    text = _index()
+    assert "abstract_id=7231358" in text
+    assert "Computational Global Macro with AI for Risk and Portfolio Management" in text
+
+
+def test_pit_architecture_cites_the_applied_ssrn_paper() -> None:
+    """The architecture page describes the stack the paper reports on; link them."""
+    text = (_ROOT / "docs" / "pit-architecture.md").read_text(encoding="utf-8")
+    assert "abstract_id=7231358" in text
+
+
+def test_readme_carries_the_applied_paper_citation() -> None:
+    text = (_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "abstract_id=7231358" in text
+    assert "ciepluch2026computationalglobalmacro" in text
+
+
 # --- ensemble surface (task 5.3) ---------------------------------------------
 
 
