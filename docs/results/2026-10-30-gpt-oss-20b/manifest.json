@@ -1,0 +1,38 @@
+{
+  "artifacts": {
+    "manifest": "manifest.json",
+    "records": "records.jsonl",
+    "summary": "summary.csv",
+    "report": "../2026-10-30-nim-measurement.md"
+  },
+  "bootstrap_n": 1000,
+  "composite_score": {
+    "formula": "memguard_acc_lo * mcs_auc_point * parse_success_rate",
+    "gates": {
+      "mcs_auc_min": 0.6,
+      "parse_min": 0.8
+    }
+  },
+  "control_corpus_hash": "6331a3c604f067440ef59262bd713b91493b09a5b8292d8ac71221cf57fde8c7",
+  "cutoffs_hash": "ace60d6ac64a30cd5b5f8a9f2fe59fff97d8a06b3e75121e0007acd745aee885",
+  "eval_set_hash": "5413cb0527ef8fc12d5eed96af3e73bb2d2c85d19368169d10c8a46e4a8ccfbc",
+  "harness_version": "0.5.0",
+  "is_memorized_hash": "df7a05c4ff7f339fa8d37ffb44ccd0b477d8cfaa16ba7b267d93f76a9e029aed",
+  "mcs_hyperparams": {
+    "class_weight": "balanced",
+    "min_auc": 0.6,
+    "min_valid": 50,
+    "reference_model": null,
+    "solver": "liblinear"
+  },
+  "seed": 0,
+  "shortlist": [
+    "openai/gpt-oss-20b"
+  ],
+  "documentation_export": {
+    "source_manifest_sha256": "87396f6f8989981d0b99e121b0de1dde740194a720b65d5ed722f46403c2d08a",
+    "changes": "Artifact paths made relative; report replaces local top3.md link. Metrics and input hashes unchanged.",
+    "source_commit": "36b3b1914ba5bca4dad41a2a5366edb2990fb6b3",
+    "measurement_date": "2026-10-30"
+  }
+}

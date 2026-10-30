@@ -162,6 +162,11 @@ are the project gates; Sentrux is not required.
 
 ## Evidence and published results
 
+The [2026-10-30 NIM measurement](results/2026-10-30-nim-measurement.md)
+reports fresh MCS calibration and all 330 evaluation records for
+`openai/gpt-oss-20b`. It also distinguishes the scorer's confidence discount
+from the unmeasured mitigation effect of divergence decoding.
+
 [Computational Global Macro with AI for Risk and Portfolio Management](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358)
 describes an example consumer of this package's confidence discount. Its
 portfolio performance is not an acceptance test for Recall Guard.

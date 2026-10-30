@@ -64,6 +64,11 @@ To use divergence decoding with real models, you supply compatible logits
 callbacks. This utility returns token IDs; it does not produce a calibrated
 contamination score.
 
+The equation needs next-token logits inside the generation loop. An endpoint
+can apply it internally and return text without logprobs, but ordinary
+completion text from OpenAI, Anthropic or another provider is insufficient for
+this client-side decoder. Completion-only mitigation remains an open extension.
+
 ## Windows
 
 The Python library, mathematical utility and greedy decoder run natively on
@@ -98,6 +103,25 @@ missing scores. A small score does not certify a model as recall-free.
 is an example consumer. The applied workflow is described in
 [Computational Global Macro with AI for Risk and Portfolio Management](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358).
 Its portfolio results belong to that consumer pipeline.
+
+## Local measurement: 2026-10-30
+
+A full NVIDIA NIM run with `openai/gpt-oss-20b` fitted a fresh contamination
+classifier and evaluated 330 ETF prompts. Held-out calibration ROC-AUC was
+0.876. The model returned 312 parseable responses (94.55%), with 170 correct
+directions: 54.49% accuracy, with a 95% bootstrap interval of 48.72% to 60.26%.
+It did not pass the harness's accuracy gate against the majority baseline.
+
+The confidence discount reduced mean confidence from 0.5992 to 0.2219 on parsed
+responses. That is the scorer's arithmetic effect; it does not establish that
+confidence became more accurate. Corpus differences can confound the AUC, and
+the fitted calibrator is used per run rather than exported for reuse.
+
+Divergence decoding was inactive in this run. Its effect on memorization in
+Recall Guard remains unmeasured. Read the
+[dated technical report and downloadable results](docs/results/2026-10-30-nim-measurement.md)
+for denominators, settings, limitations and the experiment needed to measure
+the Jane Street feature.
 
 ## Further reading
 

@@ -1,0 +1,50 @@
+{
+  "status": "completed",
+  "model": "openai/gpt-oss-20b",
+  "reference_model": null,
+  "eval_prompts": 330,
+  "is_prompts": 40,
+  "oos_prompts": 100,
+  "baseline_valid": 99,
+  "max_workers": 4,
+  "min_call_interval_seconds": 1.5,
+  "temperature": 0.0,
+  "max_tokens": 512,
+  "seed": 0,
+  "bootstrap_resamples": 1000,
+  "input_sha256": {
+    "data/eval/etf_portfolio.jsonl": "5413cb0527ef8fc12d5eed96af3e73bb2d2c85d19368169d10c8a46e4a8ccfbc",
+    "data/calibration/is_memorized.jsonl": "df7a05c4ff7f339fa8d37ffb44ccd0b477d8cfaa16ba7b267d93f76a9e029aed",
+    "data/calibration/oos_control.jsonl": "6331a3c604f067440ef59262bd713b91493b09a5b8292d8ac71221cf57fde8c7",
+    "data/cutoffs.yaml": "ace60d6ac64a30cd5b5f8a9f2fe59fff97d8a06b3e75121e0007acd745aee885"
+  },
+  "calibrator_persistence": "Existing harness fits per run; fitted weights are not exported.",
+  "calibration_valid_is": 40,
+  "calibration_valid_oos": 100,
+  "holdout_auc": 0.876,
+  "is_weak": false,
+  "exit_code": 0,
+  "finished_at_local": "2026-10-30T18:38:12+01:00",
+  "elapsed_seconds": 2272.6,
+  "evaluation_parsed": 312,
+  "evaluation_correct": 170,
+  "evaluation_failure_counts": {
+    "parse_failure": 18
+  },
+  "parse_success_rate": 0.9454545454545454,
+  "accuracy_on_parsed_rows": 0.544872,
+  "accuracy_ci_95": [
+    0.487179,
+    0.602644
+  ],
+  "mean_raw_confidence": 0.5991987179487179,
+  "mean_penalized_confidence": 0.22191977101393387,
+  "survives_gates": false,
+  "warnings": [
+    "not-better-than-baseline"
+  ],
+  "auc_uncertainty": "Point estimate only; repeated summary CI endpoints are fallback values.",
+  "report": "../2026-10-30-nim-measurement.md",
+  "source_commit": "36b3b1914ba5bca4dad41a2a5366edb2990fb6b3",
+  "divergence_decoding_active": false
+}

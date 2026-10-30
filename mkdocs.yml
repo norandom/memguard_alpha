@@ -55,6 +55,7 @@ nav:
   - PIT architecture: pit-architecture.md
   - Ensemble consensus: ensemble.md
   - Divergence decoding: divergence-decoding.md
+  - NIM measurement (2026-10-30): results/2026-10-30-nim-measurement.md
   - Twin-strategy contrast: twin-strategy-contrast.md
   - Benchmark: benchmark.md
   - Latest run results: latest-run.md

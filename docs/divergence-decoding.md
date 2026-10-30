@@ -106,6 +106,25 @@ The current NVIDIA client receives completed responses and cannot insert this
 operation into the provider's generation loop. You need caller-controlled
 logits access to use the utility with actual models.
 
+### APIs that return text without logprobs
+
+Response logprobs are not required if a server applies divergence decoding
+internally. That server still needs the three compatible next-token logit
+vectors and control over token selection. Recall Guard currently supplies the
+callback decoder, not that serving integration.
+
+An ordinary completion endpoint that only returns text cannot provide the
+vectors needed by this equation. This applies equally to OpenAI, Anthropic and
+other completion providers. Combining three completed answers does not
+reconstruct their next-token distributions. Returned logprobs for a generated
+answer, when available, also do not by themselves provide control over the
+provider's token-selection loop.
+
+Completion-only mitigation is an unmet requirement. Jane Street's blog also
+discusses prompt rewriting, which is a candidate for a separate API-compatible
+experiment. It is not implemented here and would need its own factual-fidelity,
+recall and useful-performance evaluation.
+
 This utility is experimental. It returns token IDs rather than a calibrated
 contamination score. Existing MIA/MCS calibration must not be reused unchanged
 for adjusted generation. Mathematical correctness alone does not establish
@@ -118,3 +137,7 @@ in Jane Street's [Mitigating memorization in LLMs](https://blog.janestreet.com/m
 (September 30, 2026). This implementation supplies the mathematical operation and
 a greedy integration helper. Its synthetic tests do not establish the research
 result for a different model or task.
+
+The [2026-10-30 NIM measurement](results/2026-10-30-nim-measurement.md)
+exercised the hosted scorer with divergence decoding inactive. It provides
+calibration evidence, not an estimate of this decoder's mitigation effect.
