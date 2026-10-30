@@ -49,5 +49,14 @@
       "recall_guard/core/providers.py",
       "tests/core/test_providers.py"
     ]
+  },
+  "2.2": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED;59 focused tests and Ruff pass. Parent actual AnthropicClient probe claude-opus-5-5 readyTrue in1physicalcall; not genericallmodelvalidation.",
+    "timestamp": "2026-10-30T19:42:29.116447+00:00",
+    "files": [
+      "recall_guard/core/provider_anthropic.py",
+      "tests/core/test_provider_anthropic.py"
+    ]
   }
 }

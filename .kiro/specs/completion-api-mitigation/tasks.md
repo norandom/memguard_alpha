@@ -46,7 +46,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 1.1, 1.2, 1.3_
   - _Requirements: 1.4, 1.5, 3.1, 7.2, 7.4, 7.5_
 
-- [ ] 2.2 Implement native Anthropic completion support
+- [x] 2.2 Implement native Anthropic completion support
   - Normalize native Anthropic messages using the audited protocol contract. Preserve usage/finish metadata and distinguish runtime, transport and capability errors.
   - Done when the native Anthropic path satisfies the common contract using offline fixtures, including truncated output and no-logprobs responses.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
