@@ -10,8 +10,8 @@ Durable project memory for the packaging work landed on `main`
   package** — never reintroduce one. Internal imports are `from recall_guard.<layer> import …`.
 - It is an installable distribution: hatchling build-system, `uv build` → wheel + sdist.
   `import recall_guard` works from an installed wheel with no source tree on `sys.path`.
-- Python floor `>=3.12` (`.python-version` = 3.12). The suite (258 tests) passes on 3.12
-  **and** 3.14.
+- Python floor `>=3.12` (`.python-version` = 3.12). CI targets Python 3.12 and 3.14. Native Windows validation on 2026-10-30
+  passed all 600 tests on Python 3.12; new Windows CI jobs cover both versions.
 - Dependencies: lean runtime (`numpy`, `scikit-learn`, `rich`, `pyyaml`, `requests`,
   `python-dotenv`) + extras `backtest` (matplotlib, vectorbt) and `docs` (mkdocs stack) +
   `[dependency-groups] dev` (test/lint/notebook/docs tooling). uv installs `dev` by default,
@@ -48,9 +48,16 @@ scorer.holdout_auc, scorer.is_weak    # calibrator quality
   pattern as `recall_guard/dataset/__init__.py`). The package root `__all__` re-exports **no
   `plot_*` symbol and nothing from `portfolio`**. A `sys.modules` subprocess test guards this
   — never add an eager `from …plots import` to harness `__init__` or the root.
-- **Architecture gate.** Preserve the sentrux layering (`core ← {mia, dataset, portfolio} ←
-  harness`; 0 cycles; CC ≤ 25; ≤ 120 lines/fn) and the `dspy` ban. Run the sentrux `scan` +
-  `check_rules` after any structural change.
+- **Architecture and readability.** Preserve layering (`core` below
+  `mia`, `dataset`, `portfolio`, below `harness`), no cycles and the `dspy` ban.
+  Use `uv run python scripts/check_architecture.py`, Ruff and tests as gates.
+  Sentrux is not required, per the user's instruction on 2026-10-30. Treat the
+  existing complexity/length limits as review guidelines, not a tool dependency.
+  Prefer focused idiomatic Python/NumPy and names that match domain meaning,
+  representation and units. Document array axes and DataFrame row grain,
+  column/index meanings and alignment. Windows is a first-class development
+  platform: use explicit UTF-8 for text artifacts, portable diagnostic paths and
+  shell-neutral Python entry points.
 - **Renames touch strings too.** When moving modules, rewrite `recall_guard.<layer>`
   references inside string literals — `mocker.patch(...)` targets, `logger="…"` names, the
   `python -m …` CLI `prog`, error messages — not just `from … import` lines. A plain import
@@ -126,3 +133,10 @@ integration"). **Release verified:** `release.yml` ran on tag `v0.1.0` — Dagge
 attaches only `dist/*.whl` + `dist/*.tar.gz` (a bare `dist/*` also catches the `.gitignore`
 that `uv build` writes, uploaded as `default.gitignore`). **All three workflows — CI, Docs,
 Release — are green.**
+
+## Windows and pacing maintenance
+
+Request admission waits under the pacing lock and records the actual wakeup time.
+Network POSTs remain outside the lock so calls can overlap. This supersedes the
+older reservation-based implementation described in the release history above.
+Delayed wakeups must not compress subsequent starts.

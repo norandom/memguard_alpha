@@ -1,3 +1,5 @@
+> Historical result. Superseded by [Windows and adoption validation](windows-adoption-validation.md): Windows fixes verified, Sentrux waived by the user, final acceptance GO.
+
 # Implementation Validation — Divergence Decoding MVP
 
 Date: 2026-10-30  

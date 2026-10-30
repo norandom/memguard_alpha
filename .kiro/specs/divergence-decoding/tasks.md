@@ -8,7 +8,7 @@ Use the current requirements.md and design.md; archive/full-scope/ is historical
 
 Every executable task includes review for idiomatic Python/NumPy, explicit types, focused functions, and names matching meaning and representation. Distinguish model sources from vocabulary-indexed logits, token IDs from counts, and indices from values. Document array shapes/axes at boundaries. If DataFrames are encountered, check domain-specific frame/column/index names, row grain, units and label alignment; this milestone introduces none. Review naming in code/examples rather than testing variable spelling.
 
-Existing environment and pytest/ruff/MkDocs tooling suffice; use the repository's uv workflow. No setup package or new complexity checker is needed. Before production edits, confirm the required sentrux scan/rule tooling or documented sentrux check CLI is available. If unavailable, report the unverified gate explicitly; the existing scripts/check_architecture.py checks import boundaries but does not prove complexity/cycle compliance. Apply this project's steering limits (CC <=25, <=120 lines/function, no cycles and downward imports); the fallback template's other-project complexity inventory/caps do not apply.
+Existing environment and pytest/ruff/MkDocs tooling suffice; use the repository's uv workflow. No setup package or new complexity checker is needed. Per the user instruction on 2026-10-30, Sentrux is not required. Use tests, Ruff and scripts/check_architecture.py; review simplicity and cycles in code review. Apply this project's steering limits (CC <=25, <=120 lines/function, no cycles and downward imports); the fallback template's other-project complexity inventory/caps do not apply.
 
 Tasks are sequential: the decoder depends on the mathematical contract, and example/integration checks depend on both. No (P) markers or optional tests.
 
@@ -58,12 +58,11 @@ Tasks are sequential: the decoder depends on the mathematical contract, and exam
   - _Depends: 2.2_
   - _Requirements: 3.3, 3.4, 3.5, 4.3, 5.1, 5.2, 5.3_
 
-- [ ] 4. Verify package integration and implementation quality
-  - _Blocked: Upstream review-hardening Windows diagnostic path assertion; mandatory Sentrux tooling unavailable. Debug NEXT_ACTION: STOP_FOR_HUMAN._
-  - Run focused mathematical/decoder tests and the existing packaging/import, architecture, NVIDIA-client, scorer and ensemble compatibility checks with uv; run lint and the repository-required architecture/complexity scan and rule checks for the two new modules.
+- [x] 4. Verify package integration and implementation quality
+  - Run focused mathematical/decoder tests and the existing packaging/import, architecture, NVIDIA-client, scorer and ensemble compatibility checks with uv; run lint and the repository architecture checker for the two new modules, with code review for simplicity and dependency cycles.
   - Confirm default imports remain lean, the dependency metadata is unchanged, and existing scorer/client/ensemble behavior passes its established tests. Add a focused import regression assertion only if existing coverage does not exercise the new direct-import path.
   - Independently review the implementation and executable example against every acceptance criterion, with idiomatic code and semantic names an explicit completion condition. Inspect array shapes/axes and any frame/column/index meanings, rather than asserting names in tests.
-  - Record actual commands/results and resolve blocking findings; completion requires the targeted checks, documented example, strict docs build and required architecture/complexity gates to pass.
+  - Record actual commands/results and resolve blocking findings; completion requires the targeted checks, documented example, strict docs build and current repository checks to pass.
   - Verify project complexity limits on maintained production code; tests and docs receive focused quality review without inventing production caps for them.
   - _Boundary: Explicit integration validation — new core modules, their tests, documentation; existing compatibility checks_
   - _Depends: 1, 2.2, 3_
@@ -71,7 +70,7 @@ Tasks are sequential: the decoder depends on the mathematical contract, and exam
 
 ## Task Plan Review
 
-Five executable work units across four major tasks, each intended as approximately 1–3 hours of focused work. All 21 criteria are mapped. Tests accompany their implementations; final integration verifies existing contracts. No environment/runtime prerequisite beyond the existing repository toolchain is introduced. Task-plan review passed; independent task-graph sanity review: PASS. The review confirmed sequential dependencies, bounded deliverables and no additional model-runtime prerequisites. Executable documentation is an explicit integration deliverable required by the approved specification. Required sentrux tooling availability must be checked before production edits; missing tools must be reported rather than replaced with invented verification.
+Five executable work units across four major tasks, each intended as approximately 1–3 hours of focused work. All 21 criteria are mapped. Tests accompany their implementations; final integration verifies existing contracts. No environment/runtime prerequisite beyond the existing repository toolchain is introduced. Task-plan review passed; independent task-graph sanity review: PASS. The review confirmed sequential dependencies, bounded deliverables and no additional model-runtime prerequisites. Executable documentation is an explicit integration deliverable required by the approved specification. Sentrux is no longer an acceptance gate, per the subsequent user instruction.
 
 
 
@@ -91,3 +90,5 @@ Task 3: Exact example produces (1, 2) eos; strict MkDocs and 20 documentation te
 
 
 Task 4: Independent validation found no feature-local defects; 245 targeted tests pass. Final UTF-8 full suite: 597 passed, one unchanged architecture path-separator failure. Lint, import-boundary script, build, wheel smoke and docs pass. Sentrux absent. Root-cause triage independently reproduced the upstream test and returned STOP_FOR_HUMAN. See implementation-validation.md.
+
+Task 4 resolved: user waived Sentrux and authorized Windows repairs. Default Windows cp1252 / Python 3.12.10 full suite: 600 passed. Lint, architecture, strict docs, build, CLI and wheel smoke pass. Independent reviewer APPROVED. See windows-adoption-validation.md; prior blocked notes are historical.

@@ -182,3 +182,5 @@ No new dependency or hosted/local model runtime is selected. Caller callbacks ow
 Approval update: The user explicitly approved the revised requirements and design on 2026-10-30. Tasks remain ungenerated and implementation is not yet authorized through the task approval gate.
 
 Implementation evidence (2026-10-30): narrowed MVP code/example implemented and independently reviewed in commits 9b44ce4, a4b2121, 68040c7, 7653491. Final acceptance remains pending upstream Windows test portability and Sentrux availability. Details: implementation-validation.md.
+
+Windows/adoption update (2026-10-30): user removed Sentrux as a gate and authorized portability fixes. Native default Windows full suite now passes all 600 tests. Independent review approved. README and MkDocs use COBESY audience-specific structure and cite Jane Street. Current result: windows-adoption-validation.md.

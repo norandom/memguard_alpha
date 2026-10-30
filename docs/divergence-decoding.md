@@ -110,3 +110,11 @@ This utility is experimental. It returns token IDs rather than a calibrated
 contamination score. Existing MIA/MCS calibration must not be reused unchanged
 for adjusted generation. Mathematical correctness alone does not establish
 that divergence decoding reduces memorization for any model or dataset.
+
+## Source and interpretation
+
+This utility follows the divergence-decoding equation described by James Somers
+in Jane Street's [Mitigating memorization in LLMs](https://blog.janestreet.com/mitigating-memorization-in-llms/)
+(September 30, 2026). This implementation supplies the mathematical operation and
+a greedy integration helper. Its synthetic tests do not establish the research
+result for a different model or task.
