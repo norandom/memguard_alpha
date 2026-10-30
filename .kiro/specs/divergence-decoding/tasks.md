@@ -25,7 +25,7 @@ Tasks are sequential: the decoder depends on the mathematical contract, and exam
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 5.1, 5.2, 5.3_
 
 - [ ] 2. Provide minimal greedy decoding over compatible callbacks
-- [ ] 2.1 Establish callback metadata and preflight validation
+- [x] 2.1 Establish callback metadata and preflight validation
   - Define the frozen callback-source and token-result values plus role/step-bearing decoder error in accordance with the approved contract.
   - Require matching declared vocabulary identities/sizes and EOS sets; validate callables, positive integer context limits/budget, nonempty prompt and in-range non-boolean integer token IDs.
   - Reject an insufficient minimum context window and invalid alpha before any model callback executes; allow an empty EOS set for budget-only termination.
@@ -78,3 +78,6 @@ Five executable work units across four major tasks, each intended as approximate
 ## Implementation Notes
 
 Task 1: 46 focused tests and scoped Ruff pass; independent reviewer APPROVED. Sentrux unavailable; final gate remains open. Baseline Windows architecture test has slash/backslash assertion mismatch; actual architecture checker passes.
+
+
+Task 2.1: 74 tests and scoped Ruff pass; independent review approved after fixing NumPy integer overflow in budget arithmetic. Preflight normalizes prompt IDs and uses Python ints for context arithmetic.
