@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "provider": "anthropic",
+  "protocol": "anthropic_messages",
+  "provenance": "synthetic_from_official_documentation",
+  "reviewed_at": "2026-10-30",
+  "sources": [
+    "https://platform.claude.com/docs/en/api/messages/create",
+    "https://platform.claude.com/docs/en/api/errors",
+    "https://platform.claude.com/docs/en/manage-claude/authentication"
+  ],
+  "request": {
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "body": {
+      "model": "fixture-anthropic-model",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Return Bullish."
+        }
+      ],
+      "max_tokens": 16
+    },
+    "headers": {
+      "anthropic-version": "2026-10-21"
+    }
+  },
+  "responses": {
+    "text_only": {
+      "status_code": 200,
+      "body": {
+        "id": "fixture-message",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Bullish"
+          }
+        ],
+        "model": "fixture-anthropic-model",
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 8,
+          "output_tokens": 1
+        }
+      }
+    },
+    "unauthorized": {
+      "status_code": 401,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "authentication_error",
+          "message": "Invalid credentials."
+        },
+        "request_id": "fixture-request"
+      }
+    },
+    "forbidden": {
+      "status_code": 403,
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "permission_error",
+          "message": "Access is forbidden."
+        },
+        "request_id": "fixture-request"
+      }
+    },
+    "unsupported_parameter": {
+      "status_code": 400,
+      "request_parameters": {
+        "unsupported_fixture_parameter": true
+      },
+      "rejected_parameter": "unsupported_fixture_parameter",
+      "body": {
+        "type": "error",
+        "error": {
+          "type": "invalid_request_error",
+          "message": "Unsupported parameter: unsupported_fixture_parameter"
+        },
+        "request_id": "fixture-request"
+      }
+    },
+    "truncated": {
+      "status_code": 200,
+      "body": {
+        "id": "fixture-message",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Bullish"
+          }
+        ],
+        "model": "fixture-anthropic-model",
+        "stop_reason": "max_tokens",
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 8,
+          "output_tokens": 1
+        }
+      }
+    }
+  }
+}

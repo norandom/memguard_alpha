@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "provider": "mistral",
+  "protocol": "openai_chat",
+  "provenance": "synthetic_from_official_documentation",
+  "reviewed_at": "2026-10-30",
+  "sources": [
+    "https://docs.mistral.ai/api",
+    "https://docs.mistral.ai/resources/cookbooks/mistral-connectors-05-connectors-in-completions"
+  ],
+  "request": {
+    "endpoint": "https://api.mistral.ai/v1/chat/completions",
+    "body": {
+      "model": "fixture-mistral-model",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Return Bullish."
+        }
+      ],
+      "max_tokens": 16
+    }
+  },
+  "responses": {
+    "text_only": {
+      "status_code": 200,
+      "body": {
+        "id": "fixture-response",
+        "object": "chat.completion",
+        "created": 1793383200,
+        "model": "fixture-mistral-model",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Bullish"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 8,
+          "completion_tokens": 1,
+          "total_tokens": 9
+        }
+      }
+    },
+    "unauthorized": {
+      "status_code": 401,
+      "body": {
+        "object": "error",
+        "message": "Invalid credentials.",
+        "type": "authentication_error",
+        "param": null,
+        "code": null
+      }
+    },
+    "forbidden": {
+      "status_code": 403,
+      "body": {
+        "object": "error",
+        "message": "Access is forbidden.",
+        "type": "permission_error",
+        "param": null,
+        "code": null
+      }
+    },
+    "unsupported_parameter": {
+      "status_code": 400,
+      "request_parameters": {
+        "unsupported_fixture_parameter": true
+      },
+      "rejected_parameter": "unsupported_fixture_parameter",
+      "body": {
+        "object": "error",
+        "message": "Unsupported parameter: unsupported_fixture_parameter",
+        "type": "invalid_request_error",
+        "param": "unsupported_fixture_parameter",
+        "code": null
+      }
+    }
+  }
+}

@@ -1,7 +1,7 @@
-# Proposed design: configurable completion mitigation
+# Design: configurable completion mitigation
 
-Status: proposed for review alongside the requested task plan. Requirements
-are approved; design and tasks are not yet approved for implementation.
+Status: requirements, design and tasks approved by the user on 2026-10-30.
+Implementation is in progress.
 
 ## Boundaries and integration
 
@@ -166,6 +166,6 @@ but does not demonstrate a second provider's support.
 
 ## Review status
 
-This design is a concrete proposal for the requested task plan. Provider wire
+This design is approved for the requested task plan. Provider wire
 contracts and exact experiment inventory are explicit foundation deliverables,
-not claimed verified facts. Human review of this design and tasks is pending.
+not claimed verified facts. The user approved this design and its task plan on 2026-10-30.

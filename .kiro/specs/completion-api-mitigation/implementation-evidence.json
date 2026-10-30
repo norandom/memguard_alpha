@@ -1,0 +1,16 @@
+{
+  "1.1": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED;24 fixture tests and Ruff pass; full baseline602; focused baseline73.",
+    "timestamp": "2026-10-30T18:31:09.801234+00:00",
+    "files": [
+      ".kiro/specs/completion-api-mitigation/provider-contracts.md",
+      ".kiro/specs/completion-api-mitigation/design.md",
+      "tests/core/test_provider_fixtures.py",
+      "tests/fixtures/providers/openai.json",
+      "tests/fixtures/providers/anthropic.json",
+      "tests/fixtures/providers/mistral.json",
+      "tests/fixtures/providers/nim.json"
+    ]
+  }
+}

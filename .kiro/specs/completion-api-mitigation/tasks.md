@@ -9,7 +9,7 @@ Each executable task is scoped to roughly 1-3 hours of engineering effort; provi
 Use idiomatic Python and names matching domain meaning and representation. Document array axes and DataFrame row grain, columns, units and alignment. Preserve lightweight imports and project layering. Use Ruff, tests and `scripts/check_architecture.py`; Sentrux is not a gate. Keep each code unit focused; split responsibilities instead of adding speculative abstractions. For data/report-only tasks, review schema and provenance; production-code size guidelines do not apply. Existing requirement-mandated documentation and live measurement are included despite the generic task template's code-only default.
 
 - [ ] 1. Foundation and compatibility
-- [ ] 1.1 Verify provider contracts and freeze compatibility fixtures
+- [x] 1.1 Verify provider contracts and freeze compatibility fixtures
   - Check current official OpenAI, Anthropic, Mistral and NIM protocol/model documentation; record supported parameter mappings, capability evidence, unknowns and endpoint variants. Create sanitized success/error fixtures and pin any genuinely required dependencies.
   - Done when fixture tests distinguish absent logprobs, rejected parameters and authentication failures, and existing scorer/ensemble baselines are recorded.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

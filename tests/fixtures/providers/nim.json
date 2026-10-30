@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "provider": "nim",
+  "protocol": "openai_chat",
+  "provenance": "synthetic_from_official_documentation",
+  "reviewed_at": "2026-10-30",
+  "sources": [
+    "https://docs.api.nvidia.com/nim/reference/openai-gpt-oss-20b",
+    "https://docs.nvidia.com/nim/large-language-models/2.0.0/get-started/quickstart.html",
+    "https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html"
+  ],
+  "request": {
+    "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "body": {
+      "model": "fixture-nim-model",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Return Bullish."
+        }
+      ],
+      "max_tokens": 16
+    }
+  },
+  "responses": {
+    "text_only": {
+      "status_code": 200,
+      "body": {
+        "id": "fixture-response",
+        "object": "chat.completion",
+        "created": 1793383200,
+        "model": "fixture-nim-model",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Bullish"
+            },
+            "finish_reason": "stop",
+            "logprobs": null
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 8,
+          "completion_tokens": 1,
+          "total_tokens": 9
+        }
+      }
+    },
+    "unauthorized": {
+      "status_code": 401,
+      "body": {
+        "status": 401,
+        "title": "Unauthorized",
+        "detail": "Invalid credentials."
+      }
+    },
+    "forbidden": {
+      "status_code": 403,
+      "body": {
+        "status": 403,
+        "title": "Forbidden",
+        "detail": "Access is forbidden."
+      }
+    },
+    "unsupported_parameter": {
+      "status_code": 422,
+      "request_parameters": {
+        "unsupported_fixture_parameter": true
+      },
+      "rejected_parameter": "unsupported_fixture_parameter",
+      "body": {
+        "detail": [
+          {
+            "loc": [
+              "body",
+              "unsupported_fixture_parameter"
+            ],
+            "msg": "Unsupported parameter: unsupported_fixture_parameter",
+            "type": "extra_forbidden"
+          }
+        ]
+      }
+    },
+    "token_evidence": {
+      "status_code": 200,
+      "request_parameters": {
+        "logprobs": true,
+        "top_logprobs": 2
+      },
+      "body": {
+        "id": "fixture-response",
+        "object": "chat.completion",
+        "created": 1793383200,
+        "model": "fixture-nim-model",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Bullish"
+            },
+            "finish_reason": "stop",
+            "logprobs": {
+              "content": [
+                {
+                  "token": "Bullish",
+                  "logprob": -0.25,
+                  "bytes": [
+                    66,
+                    117,
+                    108,
+                    108,
+                    105,
+                    115,
+                    104
+                  ],
+                  "top_logprobs": [
+                    {
+                      "token": "Bullish",
+                      "logprob": -0.25,
+                      "bytes": [
+                        66,
+                        117,
+                        108,
+                        108,
+                        105,
+                        115,
+                        104
+                      ]
+                    },
+                    {
+                      "token": "Bearish",
+                      "logprob": -1.75,
+                      "bytes": [
+                        66,
+                        101,
+                        97,
+                        114,
+                        105,
+                        115,
+                        104
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 8,
+          "completion_tokens": 1,
+          "total_tokens": 9
+        }
+      }
+    }
+  }
+}
