@@ -58,5 +58,14 @@
       "recall_guard/core/provider_anthropic.py",
       "tests/core/test_provider_anthropic.py"
     ]
+  },
+  "2.3": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED;47callback/159relatedtests and Ruff pass; truthful opaque vs cooperative hook accounting, no fabricated events, sanitized runtime errors.",
+    "timestamp": "2026-10-30T19:54:41.440082+00:00",
+    "files": [
+      "recall_guard/core/provider_callback.py",
+      "tests/core/test_provider_callback.py"
+    ]
   }
 }

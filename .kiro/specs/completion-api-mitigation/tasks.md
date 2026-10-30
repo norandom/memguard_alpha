@@ -37,7 +37,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Experiment contracts_
   - _Requirements: 3.1, 3.3, 5.1, 5.5_
 
-- [ ] 2. Provider integration
+- [x] 2. Provider integration
 - [x] 2.1 Implement OpenAI-compatible and NVIDIA completion support
   - Use audited mappings for OpenAI-compatible, Mistral and NIM configurations; permit absent logprobs only on explicitly selected text paths. Integrate shared request admission and actual access probes.
   - Done when fixtures exercise text and token-evidence modes, unsupported explicit parameters remain visible and legacy NVIDIA calls preserve behavior.
@@ -54,7 +54,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 1.1, 1.2, 1.3_
   - _Requirements: 1.4, 1.5, 3.1, 3.4, 7.1, 7.4, 7.7, 7.9_
 
-- [ ] 2.3 Adapt caller-supplied completion functions
+- [x] 2.3 Adapt caller-supplied completion functions
   - Validate caller text results, optional usage and exception translation. Expose an explicit request-admission hook; report internal retry counts as unverified when the callback cannot disclose them and disallow strict-budget live runs through such callbacks.
   - Done when callback fixtures support text-only responses and distinguish callback runtime failures from model capability errors.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
