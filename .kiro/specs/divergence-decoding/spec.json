@@ -1,0 +1,50 @@
+{
+  "feature_name": "divergence-decoding",
+  "created_at": "2026-10-30T14:09:31Z",
+  "updated_at": "2026-10-30T16:01:13Z",
+  "language": "en",
+  "phase": "implementation-validation-pending",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "design_validation": {
+    "decision": "PENDING",
+    "report": "design-validation.md",
+    "scope": "Narrowed mathematical layer and callback decoder; prior NO-GO archived"
+  },
+  "scope_revision": 2,
+  "scope_change_authorization": "User approved narrowed requirements and design on 2026-10-30",
+  "task_plan_review": {
+    "decision": "PASS",
+    "mode": "independent",
+    "executable_tasks": 5,
+    "requirement_criteria": 21,
+    "reviewed_at": "2026-10-30T15:22:04Z"
+  },
+  "implementation_validation": {
+    "decision": "NO-GO",
+    "report": "implementation-validation.md",
+    "tests_passed": 597,
+    "tests_failed": 1,
+    "feature_tests_passed": 147,
+    "targeted_tests_passed": 245,
+    "blocked_task": "4",
+    "blockers": [
+      "Pre-existing Windows architecture diagnostic-path assertion",
+      "Sentrux verification unavailable"
+    ],
+    "debug_next_action": "STOP_FOR_HUMAN"
+  }
+}

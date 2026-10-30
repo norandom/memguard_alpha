@@ -59,6 +59,7 @@ Tasks are sequential: the decoder depends on the mathematical contract, and exam
   - _Requirements: 3.3, 3.4, 3.5, 4.3, 5.1, 5.2, 5.3_
 
 - [ ] 4. Verify package integration and implementation quality
+  - _Blocked: Upstream review-hardening Windows diagnostic path assertion; mandatory Sentrux tooling unavailable. Debug NEXT_ACTION: STOP_FOR_HUMAN._
   - Run focused mathematical/decoder tests and the existing packaging/import, architecture, NVIDIA-client, scorer and ensemble compatibility checks with uv; run lint and the repository-required architecture/complexity scan and rule checks for the two new modules.
   - Confirm default imports remain lean, the dependency metadata is unchanged, and existing scorer/client/ensemble behavior passes its established tests. Add a focused import regression assertion only if existing coverage does not exercise the new direct-import path.
   - Independently review the implementation and executable example against every acceptance criterion, with idiomatic code and semantic names an explicit completion condition. Inspect array shapes/axes and any frame/column/index meanings, rather than asserting names in tests.
@@ -87,3 +88,6 @@ Task 2.2: 147 combined tests, scoped Ruff and architecture checker pass. Indepen
 
 
 Task 3: Exact example produces (1, 2) eos; strict MkDocs and 20 documentation tests pass. Independent reviewer APPROVED.
+
+
+Task 4: Independent validation found no feature-local defects; 245 targeted tests pass. Final UTF-8 full suite: 597 passed, one unchanged architecture path-separator failure. Lint, import-boundary script, build, wheel smoke and docs pass. Sentrux absent. Root-cause triage independently reproduced the upstream test and returned STOP_FOR_HUMAN. See implementation-validation.md.
