@@ -298,6 +298,25 @@ def test_run_returns_nonzero_on_unexpected_model_error(
     assert not (out_dir / "summary.csv").exists()
 
 
+def test_rejected_credentials_abort_before_calibration(monkeypatch, tmp_path, capsys):
+    from recall_guard.core.nvidia_lm import LMHTTPError
+
+    calls = []
+
+    class RejectedLM(_FakeLM):
+        def generate(self, prompt, temperature=0.0):
+            calls.append(prompt)
+            raise LMHTTPError("Authorization failed", status_code=403)
+
+    output_dir = tmp_path / "rejected"
+    args = _build_args(monkeypatch, output_dir, shortlist="mockA")
+    monkeypatch.setattr(runner_mod, "_evaluate_all_models", lambda **kwargs: pytest.fail("calibration started"))
+    assert runner_mod.run(args, lm_factory=_make_factory({"mockA": RejectedLM("mockA")})) == 2
+    assert len(calls) == 1
+    assert "access check failed (HTTP 403)" in capsys.readouterr().err
+    assert not (output_dir / "summary.csv").exists()
+
+
 def test_run_returns_nonzero_on_missing_api_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

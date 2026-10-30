@@ -1,0 +1,29 @@
+{
+  "feature_name": "divergence-decoding",
+  "created_at": "2026-10-30T14:09:31Z",
+  "updated_at": "2026-10-30T14:47:21Z",
+  "language": "en",
+  "phase": "design-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": false
+    },
+    "tasks": {
+      "generated": false,
+      "approved": false
+    }
+  },
+  "ready_for_implementation": false,
+  "design_validation": {
+    "decision": "NO-GO",
+    "reviewed_at": "2026-10-30T14:47:21Z",
+    "report": "design-validation.md",
+    "critical_issues": 3,
+    "scope": "Static design validation; implementation not validated"
+  }
+}

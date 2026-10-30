@@ -122,34 +122,24 @@ class NvidiaLM:
         self.max_retries = max_retries
         self.retry_backoff_s = retry_backoff_s
         self.min_call_interval_s = min_call_interval_s
-        self._last_call_t: float | None = None
+        self._last_request_start: float | None = None
         self._pace_lock = Lock()
         self.api_base = NVIDIA_CHAT_COMPLETIONS_URL
 
-    def _reserve_call_slot(self) -> float:
-        """Reserve the next paced send slot; return seconds to wait before POST.
+    def _wait_for_call_slot(self) -> None:
+        """Space request admission using actual wakeup times, not reserved slots.
 
-        The lock covers only this bookkeeping -- never the network round trip.
-        Holding it across the request serialises every concurrent call through
-        one client, which is what ``max_workers`` used to run into.
-
-        ``min_call_interval_s`` is defined as the spacing between the *starts*
-        of successive requests. Recording the reserved send time (rather than
-        the observed completion time) makes that spacing independent of
-        endpoint latency; stamping the current clock instead would let a
-        still-sleeping thread's slot be handed out twice.
-
-        ``max(now, ...)`` stops an idle client from banking credit and then
-        issuing a burst.
+        Hold the lock while waiting so a late wakeup cannot compress subsequent
+        starts. Release it before the POST so network requests can overlap.
         """
         with self._pace_lock:
-            now = time.monotonic()
-            if self.min_call_interval_s <= 0 or self._last_call_t is None:
-                slot = now
-            else:
-                slot = max(now, self._last_call_t + self.min_call_interval_s)
-            self._last_call_t = slot
-        return slot - now
+            if self._last_request_start is not None and self.min_call_interval_s > 0:
+                next_request_at = self._last_request_start + self.min_call_interval_s
+                remaining_seconds = next_request_at - time.monotonic()
+                while remaining_seconds > 0:
+                    time.sleep(remaining_seconds)
+                    remaining_seconds = next_request_at - time.monotonic()
+            self._last_request_start = time.monotonic()
 
     def generate(
         self,
@@ -186,9 +176,7 @@ class NvidiaLM:
             "top_logprobs": TOP_LOGPROBS,
         }
         def _paced_post() -> requests.Response:
-            wait = self._reserve_call_slot()
-            if wait > 0:
-                time.sleep(wait)
+            self._wait_for_call_slot()
             return requests.post(
                 self.api_base,
                 headers=headers,
@@ -349,6 +337,15 @@ class NvidiaLM:
             logprobs=parsed,
             raw_temperature_observed=observed,
         )
+
+
+def check_model_access(lm: NvidiaLM) -> None:
+    """Probe authenticated generation before scheduling calibration batches.
+
+    The public model catalog alone does not establish inference authorization.
+    Use the normal generation contract so response/logprob support is checked too.
+    """
+    lm.generate("Reply with Direction: 0 and Confidence: 0.5 on separate lines.")
 
 
 def generate_many(

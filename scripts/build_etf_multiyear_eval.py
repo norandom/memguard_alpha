@@ -161,7 +161,7 @@ def main(out_path: Path = OUT_PATH) -> int:
 
     rng.shuffle(all_rows)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w") as f:
+    with out_path.open("w", encoding="utf-8") as f:
         for row in all_rows:
             f.write(json.dumps(row) + "\n")
 

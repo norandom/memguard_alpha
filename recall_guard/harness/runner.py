@@ -71,7 +71,7 @@ from recall_guard.core.manifest import (
     compute_file_hash,
     write_manifest,
 )
-from recall_guard.core.nvidia_lm import NvidiaLM
+from recall_guard.core.nvidia_lm import NvidiaLM, check_model_access
 from recall_guard.harness.evaluator import (
     CIBound,
     ModelEvalResult,
@@ -104,11 +104,11 @@ logger = logging.getLogger(__name__)
 #: package version at every release, so a manifest identifies the exact
 #: distribution that produced it -- not only releases that changed the
 #: on-disk artifact schema.
-HARNESS_VERSION: str = "0.4.1"
+HARNESS_VERSION: str = "0.5.0"
 
 #: Default reference model documented in the Open Defaults table: small,
 #: NVIDIA-hosted, with well-known training data.
-DEFAULT_REFERENCE_MODEL: str = "meta/llama-3.2-1b-instruct"
+DEFAULT_REFERENCE_MODEL: str | None = None
 
 #: Default per-call timeout (seconds). 45s accommodates reasoning models
 #: (gpt-oss-*, nemotron-nano-*) that emit ~200-token reasoning chains
@@ -817,8 +817,20 @@ def run(
         return 3
 
     ref_lm: NvidiaLM | None = None
-    if not args.no_reference:
+    if not args.no_reference and args.reference_model:
         ref_lm = factory(api_key, args.reference_model, DEFAULT_TIMEOUT_S)
+
+    for model_id in dict.fromkeys(shortlist_models + ([args.reference_model] if ref_lm else [])):
+        try:
+            check_model_access(factory(api_key, model_id, DEFAULT_TIMEOUT_S))
+        except (TimeoutError, RuntimeError, ValueError) as error:
+            status = getattr(error, "status_code", None)
+            status_detail = f" (HTTP {status})" if status else ""
+            sys.stderr.write(
+                f"ERROR: model {model_id!r} access check failed{status_detail}; "
+                "verify inference authorization and the current model ID.\n"
+            )
+            return 2
 
     try:
         results = _evaluate_all_models(

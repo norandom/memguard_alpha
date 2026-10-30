@@ -52,16 +52,16 @@ def compute_prompt_hash(prompt: str) -> str:
 def load_eval_metadata(eval_path: Path) -> dict[str, dict]:
     """Map prompt_hash -> row metadata for date lookup."""
     metadata: dict[str, dict] = {}
-    with eval_path.open() as f:
-        for line in f:
+    with eval_path.open(encoding="utf-8") as eval_file:
+        for line in eval_file:
             line = line.strip()
             if not line:
                 continue
             row = json.loads(line)
             if "_cutoff_date" in row and "prompt" not in row:
                 continue
-            ph = compute_prompt_hash(row["prompt"])
-            metadata[ph] = row.get("metadata") or {}
+            prompt_hash = compute_prompt_hash(row["prompt"])
+            metadata[prompt_hash] = row.get("metadata") or {}
     return metadata
 
 
@@ -79,23 +79,23 @@ def _accuracy_ci(records: list[dict], seed: int = 0) -> tuple[float, float, floa
 def analyze(run_dir: Path, eval_path: Path, cutoffs_path: Path) -> dict:
     metadata = load_eval_metadata(eval_path)
 
-    with cutoffs_path.open() as f:
-        cutoffs_raw = yaml.safe_load(f)["models"]
+    with cutoffs_path.open(encoding="utf-8") as cutoff_file:
+        cutoffs_raw = yaml.safe_load(cutoff_file)["models"]
     cutoffs: dict[str, date] = {}
-    for k, v in cutoffs_raw.items():
-        if isinstance(v, date):
-            cutoffs[k] = v
+    for model_id, cutoff_value in cutoffs_raw.items():
+        if isinstance(cutoff_value, date):
+            cutoffs[model_id] = cutoff_value
         else:
-            cutoffs[k] = date.fromisoformat(str(v))
+            cutoffs[model_id] = date.fromisoformat(str(cutoff_value))
 
     records_by_model: dict[str, list[dict]] = {}
-    with (run_dir / "records.jsonl").open() as f:
-        for line in f:
+    with (run_dir / "records.jsonl").open(encoding="utf-8") as records_file:
+        for line in records_file:
             line = line.strip()
             if not line:
                 continue
-            r = json.loads(line)
-            records_by_model.setdefault(r["model"], []).append(r)
+            record = json.loads(line)
+            records_by_model.setdefault(record["model"], []).append(record)
 
     rows: list[dict] = []
     unmatched_total = 0
@@ -148,16 +148,15 @@ def write_csv(out_path: Path, rows: list[dict]) -> None:
     if not rows:
         return
     fieldnames = list(rows[0].keys())
-    with out_path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
+    with out_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
-        for r in rows:
-            writer.writerow(r)
+        writer.writerows(rows)
 
 
 def write_md(out_path: Path, rows: list[dict], run_dir: Path) -> None:
-    def fmt(v: float | None, places: int = 3) -> str:
-        return "—" if v is None else f"{v:.{places}f}"
+    def format_metric(value: float | None, places: int = 3) -> str:
+        return "—" if value is None else f"{value:.{places}f}"
 
     lines = [
         f"# IS/OOS Memorization Gap — {run_dir.name}",
@@ -171,18 +170,18 @@ def write_md(out_path: Path, rows: list[dict], run_dir: Path) -> None:
         "| Model | Cutoff | n_IS | n_OOS | IS Acc (95% CI) | OOS Acc (95% CI) | Gap |",
         "| --- | --- | ---: | ---: | --- | --- | ---: |",
     ]
-    for r in sorted(rows, key=lambda x: x.get("gap_point") or 0, reverse=True):
+    for result_row in sorted(rows, key=lambda row: row.get("gap_point") or 0, reverse=True):
         is_ci = (
-            f"{fmt(r['is_acc_point'])} [{fmt(r['is_acc_lo'])}–{fmt(r['is_acc_hi'])}]"
-            if r["is_acc_point"] is not None else "—"
+            f"{format_metric(result_row['is_acc_point'])} [{format_metric(result_row['is_acc_lo'])}–{format_metric(result_row['is_acc_hi'])}]"
+            if result_row["is_acc_point"] is not None else "—"
         )
         oos_ci = (
-            f"{fmt(r['oos_acc_point'])} [{fmt(r['oos_acc_lo'])}–{fmt(r['oos_acc_hi'])}]"
-            if r["oos_acc_point"] is not None else "—"
+            f"{format_metric(result_row['oos_acc_point'])} [{format_metric(result_row['oos_acc_lo'])}–{format_metric(result_row['oos_acc_hi'])}]"
+            if result_row["oos_acc_point"] is not None else "—"
         )
         lines.append(
-            f"| `{r['model']}` | {r['cutoff']} | {r['n_is']} | {r['n_oos']} | "
-            f"{is_ci} | {oos_ci} | {fmt(r['gap_point'])} |"
+            f"| `{result_row['model']}` | {result_row['cutoff']} | {result_row['n_is']} | {result_row['n_oos']} | "
+            f"{is_ci} | {oos_ci} | {format_metric(result_row['gap_point'])} |"
         )
     lines.append("")
     lines.append(
@@ -190,7 +189,7 @@ def write_md(out_path: Path, rows: list[dict], run_dir: Path) -> None:
         "date is on or before the model's training cutoff, OOS otherwise. "
         "Accuracy uses parse-OK rows only. Bootstrap 95% CIs use 1000 resamples._"
     )
-    out_path.write_text("\n".join(lines) + "\n")
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str]) -> int:

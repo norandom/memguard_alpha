@@ -10,9 +10,8 @@ Functions:
 - ``test_matrix`` — run the suite across the supported Python matrix (Req 6.2).
 - ``lint``        — run ruff plus the structural-architecture gate (Req 6.3). The gate
                     (``scripts/check_architecture.py``, stdlib-only) enforces the
-                    import-direction rules from ``.sentrux/rules.toml`` in-container;
-                    sentrux's own plugin tooling additionally covers complexity/cycle
-                    ceilings locally.
+                    project import-direction rules in-container;
+                    complexity and cycles are reviewed locally without a Sentrux requirement.
 - ``build``       — build the wheel + sdist; returns ``dist/`` (Req 6.1, 6.5).
 - ``docs``        — strict-build the documentation site; returns ``site/``.
 
