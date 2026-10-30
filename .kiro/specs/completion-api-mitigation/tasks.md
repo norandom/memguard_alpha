@@ -16,7 +16,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Provider adapters_
   - _Requirements: 1.4, 1.5, 7.1, 7.2, 7.4, 7.5_
 
-- [ ] 1.2 Implement explicit model and response contracts
+- [x] 1.2 Implement explicit model and response contracts
   - Add typed configuration, capability states, optional token evidence and legacy response adaptation. Validate feature combinations without silently changing them; expose a configuration inspection result.
   - Done when old response construction still works and incompatible requests fail before batch calls with specific reasons.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

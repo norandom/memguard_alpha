@@ -12,5 +12,14 @@
       "tests/fixtures/providers/mistral.json",
       "tests/fixtures/providers/nim.json"
     ]
+  },
+  "1.2": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED after explicit-null remediation;75 focused tests and Ruff pass; RED68 original and2 null regressions.",
+    "timestamp": "2026-10-30T18:45:59.742553+00:00",
+    "files": [
+      "recall_guard/core/completion.py",
+      "tests/core/test_completion.py"
+    ]
   }
 }
