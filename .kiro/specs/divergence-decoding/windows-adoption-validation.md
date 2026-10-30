@@ -1,3 +1,5 @@
+> Updated matrix evidence: [Local CI matrix](local-ci-matrix.md) verifies both Python 3.12 and 3.14 on native Windows and Linux through Dagger. Earlier pending-version notes below describe the initial validation.
+
 # Windows and Adoption Validation
 
 Date: 2026-10-30  

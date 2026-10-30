@@ -10,8 +10,9 @@ Durable project memory for the packaging work landed on `main`
   package** — never reintroduce one. Internal imports are `from recall_guard.<layer> import …`.
 - It is an installable distribution: hatchling build-system, `uv build` → wheel + sdist.
   `import recall_guard` works from an installed wheel with no source tree on `sys.path`.
-- Python floor `>=3.12` (`.python-version` = 3.12). CI targets Python 3.12 and 3.14. Native Windows validation on 2026-10-30
-  passed all 600 tests on Python 3.12; new Windows CI jobs cover both versions.
+- Python floor `>=3.12` (`.python-version` = 3.12). CI targets Python 3.12 and 3.14. Local validation on 2026-10-30 passed all 600 tests on native Windows
+  Python 3.12.10 and 3.14.9, and through Dagger in Debian WSL on Linux Python
+  3.12.12 and 3.14.2. GitHub-hosted jobs have not yet been run for these commits.
 - Dependencies: lean runtime (`numpy`, `scikit-learn`, `rich`, `pyyaml`, `requests`,
   `python-dotenv`) + extras `backtest` (matplotlib, vectorbt) and `docs` (mkdocs stack) +
   `[dependency-groups] dev` (test/lint/notebook/docs tooling). uv installs `dev` by default,

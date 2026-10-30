@@ -1,7 +1,7 @@
 {
   "feature_name": "divergence-decoding",
   "created_at": "2026-10-30T14:09:31Z",
-  "updated_at": "2026-10-30T16:19:56Z",
+  "updated_at": "2026-10-30T16:37:20Z",
   "language": "en",
   "phase": "implemented",
   "approvals": {
@@ -41,7 +41,19 @@
     "feature_tests_passed": 147,
     "blockers": [],
     "environment": "Windows / Python 3.12.10 / cp1252 / UTF-8 mode 0",
-    "windows_3_14": "CI configured, not locally verified",
+    "windows_3_14": "Locally verified: Python 3.14.9, 600 passed; GitHub-hosted jobs not run",
     "sentrux": "User removed requirement on 2026-10-30"
+  },
+  "local_ci_matrix": {
+    "decision": "PASS",
+    "report": "local-ci-matrix.md",
+    "source_commit": "a6a55e5",
+    "linux_python_3_12": 600,
+    "linux_python_3_14": 600,
+    "windows_python_3_12": 600,
+    "windows_python_3_14": 600,
+    "dagger_lint": "PASS",
+    "dagger_docs": "PASS",
+    "dagger_build": "PASS"
   }
 }
