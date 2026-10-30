@@ -24,7 +24,7 @@ Tasks are sequential: the decoder depends on the mathematical contract, and exam
   - _Boundary: Mathematical function — recall_guard/core/divergence.py; tests/core/test_divergence.py_
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 5.1, 5.2, 5.3_
 
-- [ ] 2. Provide minimal greedy decoding over compatible callbacks
+- [x] 2. Provide minimal greedy decoding over compatible callbacks
 - [x] 2.1 Establish callback metadata and preflight validation
   - Define the frozen callback-source and token-result values plus role/step-bearing decoder error in accordance with the approved contract.
   - Require matching declared vocabulary identities/sizes and EOS sets; validate callables, positive integer context limits/budget, nonempty prompt and in-range non-boolean integer token IDs.
@@ -36,7 +36,7 @@ Tasks are sequential: the decoder depends on the mathematical contract, and exam
   - _Depends: 1_
   - _Requirements: 2.1, 2.3, 5.1, 5.2, 5.3_
 
-- [ ] 2.2 Execute the shared-prefix greedy loop and expose failures
+- [x] 2.2 Execute the shared-prefix greedy loop and expose failures
   - Call the three sources sequentially with the same immutable full prefix for each generation step, including at alpha=0; validate each returned vector against its declared vocabulary size.
   - Apply the completed mathematical layer and choose the lowest token ID among tied maximum adjusted logits.
   - Return generated IDs excluding the prompt and including a selected terminal EOS, with eos or length finish reason.
@@ -81,3 +81,6 @@ Task 1: 46 focused tests and scoped Ruff pass; independent reviewer APPROVED. Se
 
 
 Task 2.1: 74 tests and scoped Ruff pass; independent review approved after fixing NumPy integer overflow in budget arithmetic. Preflight normalizes prompt IDs and uses Python ints for context arithmetic.
+
+
+Task 2.2: 147 combined tests, scoped Ruff and architecture checker pass. Independent reviewer APPROVED; loop has explicit per-source role/step errors and shared-prefix tests.

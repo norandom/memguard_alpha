@@ -10,6 +10,7 @@ from recall_guard.core.divergence_decode import (
     DecodeResult,
     ModelSource,
     _validate_decode_request,
+    decode_greedy,
 )
 
 
@@ -151,3 +152,134 @@ def test_decoder_error_carries_role_and_zero_based_step():
     assert error.role == "older"
     assert error.step == 0
     assert "callback failed" in str(error)
+
+
+def decode_with_sources(main_callback, older_callback=None, newer_callback=None, **overrides):
+    sources = {
+        "main_source": replace(make_source(main_callback), context_limit=20),
+        "older_source": replace(make_source(older_callback or main_callback), context_limit=20),
+        "newer_source": replace(make_source(newer_callback or main_callback), context_limit=20),
+    }
+    options = {**sources, "alpha": 0.5, "max_new_tokens": 3, **overrides}
+    return decode_greedy((0,), **options)
+
+
+def test_greedy_uses_adjustment_and_shares_every_immutable_prefix():
+    calls = []
+
+    def callback_for(role, first_logits):
+        def next_logits(prefix_token_ids):
+            assert isinstance(prefix_token_ids, tuple)
+            calls.append((role, prefix_token_ids))
+            return first_logits if len(prefix_token_ids) == 1 else [0.0, 0.0, 10.0]
+        return next_logits
+
+    result = decode_with_sources(
+        callback_for("main", [2.0, 1.0, 0.0]),
+        callback_for("older", [0.0, 4.0, 0.0]),
+        callback_for("newer", [0.0, 0.0, 0.0]),
+    )
+    assert result == DecodeResult(token_ids=(1, 2), finish_reason="eos")
+    assert calls == [(role, prefix) for prefix in ((0,), (0, 1)) for role in ("main", "older", "newer")]
+
+
+def test_greedy_breaks_ties_by_lowest_token_id_and_stops_at_numpy_budget():
+    result = decode_with_sources(lambda prefix_token_ids: [4.0, 4.0, 0.0], max_new_tokens=np.int64(2))
+    assert result == DecodeResult(token_ids=(0, 0), finish_reason="length")
+
+
+def test_greedy_includes_first_terminal_eos():
+    result = decode_with_sources(lambda prefix_token_ids: [0.0, 0.0, 9.0])
+    assert result == DecodeResult(token_ids=(2,), finish_reason="eos")
+
+
+def test_greedy_runs_all_callbacks_at_zero_alpha():
+    calls = []
+
+    def callback_for(role):
+        def next_logits(prefix_token_ids):
+            calls.append(role)
+            return [0.0, 2.0, 0.0]
+        return next_logits
+
+    result = decode_with_sources(*(callback_for(role) for role in ("main", "older", "newer")), alpha=0.0,
+                                 max_new_tokens=1)
+    assert result.token_ids == (1,)
+    assert calls == ["main", "older", "newer"]
+
+
+@pytest.mark.parametrize("failing_role", ["main", "older", "newer"])
+def test_greedy_reports_callback_failure_and_calls_no_later_source(failing_role):
+    calls = []
+    original_error = RuntimeError("source unavailable")
+
+    def callback_for(role):
+        def next_logits(prefix_token_ids):
+            calls.append(role)
+            if role == failing_role:
+                raise original_error
+            return [0.0, 1.0, 0.0]
+        return next_logits
+
+    with pytest.raises(DecodeError) as caught:
+        decode_with_sources(*(callback_for(role) for role in ("main", "older", "newer")))
+    assert caught.value.role == failing_role
+    assert caught.value.step == 0
+    assert caught.value.__cause__ is original_error
+    assert calls == ["main", "older", "newer"][:["main", "older", "newer"].index(failing_role) + 1]
+
+
+@pytest.mark.parametrize("invalid_logits", [[1.0, 2.0], [[1.0, 2.0, 3.0]], [1.0, np.nan, 3.0],
+                                           [True, False, True], [1j, 2j, 3j]])
+@pytest.mark.parametrize("failing_role", ["main", "older", "newer"])
+def test_greedy_reports_invalid_returned_logits_with_model_role(failing_role, invalid_logits):
+    callbacks = {
+        role: (lambda prefix_token_ids: [0.0, 1.0, 0.0])
+        for role in ("main", "older", "newer")
+    }
+    callbacks[failing_role] = lambda prefix_token_ids: invalid_logits
+    with pytest.raises(DecodeError) as caught:
+        decode_with_sources(*(callbacks[role] for role in ("main", "older", "newer")))
+    assert caught.value.role == failing_role
+    assert caught.value.step == 0
+    assert isinstance(caught.value.__cause__, (ValueError, TypeError))
+
+
+def test_greedy_failure_after_one_token_has_zero_based_step():
+    def next_logits(prefix_token_ids):
+        if len(prefix_token_ids) > 1:
+            raise OSError("second step failed")
+        return [0.0, 1.0, 0.0]
+
+    with pytest.raises(DecodeError) as caught:
+        decode_with_sources(next_logits)
+    assert caught.value.role == "main"
+    assert caught.value.step == 1
+
+
+def test_greedy_reports_combination_overflow():
+    with pytest.raises(DecodeError) as caught:
+        decode_with_sources(
+            lambda prefix_token_ids: [0.0, 0.0, 0.0],
+            lambda prefix_token_ids: [1e308, 0.0, 0.0],
+            lambda prefix_token_ids: [-1e308, 0.0, 0.0],
+        )
+    assert caught.value.role == "combination"
+    assert caught.value.step == 0
+    assert isinstance(caught.value.__cause__, ValueError)
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])
+def test_greedy_propagates_process_interrupts(interrupt):
+    def next_logits(prefix_token_ids):
+        raise interrupt()
+
+    with pytest.raises(interrupt):
+        decode_with_sources(next_logits)
+
+
+def test_greedy_preflights_before_any_callback():
+    calls = []
+    with pytest.raises(ValueError, match="context_limit"):
+        decode_with_sources(lambda prefix_token_ids: calls.append(prefix_token_ids), max_new_tokens=20)
+    assert calls == []

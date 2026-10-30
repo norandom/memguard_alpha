@@ -7,7 +7,9 @@ from numbers import Integral, Real
 from typing import Literal
 
 import numpy as np
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
+
+from recall_guard.core.divergence import _validate_logits, combine_logits
 
 NextLogits = Callable[[tuple[int, ...]], ArrayLike]
 
@@ -107,3 +109,58 @@ def _validate_decode_request(
     if len(validated_prompt_token_ids) + int(max_new_tokens) > minimum_context_limit:
         raise ValueError("prompt_token_ids and max_new_tokens exceed the minimum context_limit")
     return validated_prompt_token_ids
+
+
+def _source_logits(
+    source: ModelSource, prefix_token_ids: tuple[int, ...], *,
+    role: Literal["main", "older", "newer"], generation_step: int,
+) -> NDArray[np.float64]:
+    """Read and validate one vocabulary-indexed logit vector for this step."""
+    try:
+        logits = _validate_logits(source.next_logits(prefix_token_ids), name=f"{role}_logits")
+        if logits.size != source.vocabulary_size:
+            raise ValueError(f"{role}_logits length must match vocabulary_size")
+    except Exception as error:
+        raise DecodeError(
+            f"{role} source failed at generation step {generation_step}",
+            role=role, step=generation_step,
+        ) from error
+    return logits
+
+
+def decode_greedy(
+    prompt_token_ids: Sequence[int], *,
+    main_source: ModelSource, older_source: ModelSource, newer_source: ModelSource,
+    alpha: float, max_new_tokens: int,
+) -> DecodeResult:
+    """Greedily decode compatible sources using the same full token prefix.
+
+    Callbacks return logits with shape ``(vocabulary_size,)`` and identical
+    token-ID meanings. Declarations are checked, but actual tokenizer and
+    training-cutoff compatibility remain the caller's responsibility.
+    Returned IDs exclude the prompt and include a selected terminal EOS.
+    Callback or combination failures raise :class:`DecodeError`, without a
+    partial successful result; preflight errors raise TypeError or ValueError.
+    """
+    validated_prompt_token_ids = _validate_decode_request(
+        prompt_token_ids, main_source=main_source, older_source=older_source,
+        newer_source=newer_source, alpha=alpha, max_new_tokens=max_new_tokens,
+    )
+    generated_token_ids: list[int] = []
+    for generation_step in range(int(max_new_tokens)):
+        prefix_token_ids = validated_prompt_token_ids + tuple(generated_token_ids)
+        main_logits = _source_logits(main_source, prefix_token_ids, role="main", generation_step=generation_step)
+        older_logits = _source_logits(older_source, prefix_token_ids, role="older", generation_step=generation_step)
+        newer_logits = _source_logits(newer_source, prefix_token_ids, role="newer", generation_step=generation_step)
+        try:
+            adjusted_logits = combine_logits(main_logits, older_logits, newer_logits, alpha=alpha)
+        except (TypeError, ValueError) as error:
+            raise DecodeError(
+                f"logit combination failed at generation step {generation_step}",
+                role="combination", step=generation_step,
+            ) from error
+        next_token_id = int(np.argmax(adjusted_logits))
+        generated_token_ids.append(next_token_id)
+        if next_token_id in main_source.eos_token_ids:
+            return DecodeResult(token_ids=tuple(generated_token_ids), finish_reason="eos")
+    return DecodeResult(token_ids=tuple(generated_token_ids), finish_reason="length")
