@@ -15,12 +15,11 @@ that matches your runtime.
 Use Python >=3.12. For a released scorer in a uv-managed project:
 
 ```text
-uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.4.1"
+uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.5.0"
 ```
 
-The divergence helper is in the current source tree and may postdate that tag.
-Pin the commit containing the interface you use when integrating unreleased
-code. The default runtime dependencies are NumPy, scikit-learn, Rich, PyYAML,
+The divergence helper is included in v0.5.0. Pin a release or commit to keep
+your integration reproducible. The default runtime dependencies are NumPy, scikit-learn, Rich, PyYAML,
 requests and python-dotenv. Extras: `backtest` and `docs`.
 
 Every release is archived on Zenodo. The [all-versions DOI](https://doi.org/10.5281/zenodo.21557232)
@@ -52,7 +51,7 @@ def load_prompts(corpus_path: Path) -> list[str]:
 
 scorer = MemoryGuardedScorer.calibrate(
     api_key=os.environ["NVIDIA_API_KEY"],
-    model="meta/llama-3.1-8b-instruct",
+    model="openai/gpt-oss-20b",
     is_memorized=load_prompts(Path("data/calibration/is_memorized.jsonl")),
     oos_control=load_prompts(Path("data/calibration/oos_control.jsonl")),
 )
@@ -115,7 +114,7 @@ For hosted runs, set `NVIDIA_API_KEY`; the portfolio workflow also needs
 
 ```text
 uv run python harness.py --help
-uv run python harness.py --eval-set data/eval/etf_portfolio.jsonl --is-memorized data/calibration/is_memorized.jsonl --oos-control data/calibration/oos_control.jsonl --cutoffs data/cutoffs.yaml --shortlist meta/llama-3.1-8b-instruct --min-call-interval 1.5
+uv run python harness.py --eval-set data/eval/etf_portfolio.jsonl --is-memorized data/calibration/is_memorized.jsonl --oos-control data/calibration/oos_control.jsonl --cutoffs data/cutoffs.yaml --shortlist openai/gpt-oss-20b --min-call-interval 1.5
 uv run python scripts/run_cmmd_backtest.py
 ```
 
@@ -127,7 +126,7 @@ dependencies, which the checkout's development group includes.
 
 Use [the benchmark page](benchmark.md) to interpret metric names and
 [latest run results](latest-run.md) for the published artifacts. The bash
-`start.sh` wrapper supplies a four-model shortlist and other defaults; the
+`start.sh` wrapper supplies a one-model default and other defaults; the
 Python command above is a smaller explicit run.
 
 ## Windows and development
@@ -172,3 +171,14 @@ format or period differences explain the classifier's separation, revise the
 calibration data. For divergence decoding, if the model's useful behavior
 deteriorates without independent evidence of reduced recall, the intervention
 has not demonstrated its intended benefit.
+
+## Hosted access preflight
+
+Calibration now makes one authenticated generation probe per requested model
+before scheduling corpus calls. A public model-catalog response does not prove
+inference authorization. An HTTP 401 or 403 stops setup with an access error;
+update the local key or its inference permissions before retrying. The current
+CLI default has no reference model; request one explicitly with
+`--reference-model` if it is available and suitable. On 2026-10-30,
+`openai/gpt-oss-20b` was the only catalog model already covered by this
+repository's cutoff registry. Historical IDs remain for interpreting older runs.

@@ -41,7 +41,7 @@ from datetime import UTC, datetime
 from recall_guard.core.consensus import lag_dependence, wilson_interval
 from recall_guard.core.ensemble import EnsembleSpec, canonical_draw_hash
 from recall_guard.core.loader import EvalRow
-from recall_guard.core.nvidia_lm import NvidiaLM, generate_many
+from recall_guard.core.nvidia_lm import NvidiaLM, check_model_access, generate_many
 from recall_guard.harness.evaluator import (
     FAIL_ERROR,
     FAIL_PARSE,
@@ -261,6 +261,16 @@ class MemoryGuardedScorer:
         factory = lm_factory or _default_factory(min_call_interval_s)
         lm = factory(api_key, model, timeout_s)
         ref_lm = factory(api_key, reference_model, timeout_s) if reference_model else None
+
+        for access_model in (lm, ref_lm):
+            if access_model is not None:
+                try:
+                    check_model_access(access_model)
+                except (TimeoutError, RuntimeError, ValueError) as error:
+                    raise ConfigurationError(
+                        f"model {access_model.model!r} access check failed; "
+                        "verify inference authorization, model ID and logprob support"
+                    ) from error
 
         oos_rows = _rows(oos_control)
         is_rows = _rows(is_memorized)

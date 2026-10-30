@@ -25,7 +25,7 @@ from recall_guard import MemoryGuardedScorer
 
 scorer = MemoryGuardedScorer.calibrate(
     api_key=...,                      # NVIDIA NIM key
-    model="meta/llama-3.1-8b-instruct",
+    model="openai/gpt-oss-20b",
     is_memorized=[...],               # prompts dated before the model's cutoff
     oos_control=[...],                # prompts dated after it
     reference_model=None,             # optional → adds the ref_delta feature
@@ -76,7 +76,7 @@ scorer.holdout_auc, scorer.is_weak    # calibrator quality
   ephemeral `GITHUB_TOKEN`.
 - **Distribution: GitHub Release only — no PyPI.** Consumers (e.g. Global_Macro_AI_Factors /
   `macro_framework`) install via:
-  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.4.1"`
+  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.5.0"`
   (latest released tag).
 
 ## Purpose framing — carry forward

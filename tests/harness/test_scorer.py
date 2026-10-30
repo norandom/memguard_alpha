@@ -137,6 +137,20 @@ def test_calibrate_no_usable_responses_raises_configuration_error() -> None:
         _calibrate(lm_factory=bad)
 
 
+def test_calibrate_rejected_credentials_stop_before_corpus_calls():
+    calls = []
+
+    class RejectedLM(_FakeLM):
+        def generate(self, prompt, temperature=0.0):
+            from recall_guard.core.nvidia_lm import LMHTTPError
+            calls.append(prompt)
+            raise LMHTTPError("Authorization failed", status_code=403)
+
+    with pytest.raises(ConfigurationError, match="access check"):
+        _calibrate(lm_factory=_factory(RejectedLM))
+    assert len(calls) == 1
+
+
 # --- score (Req 3.1, 3.6) -----------------------------------------------------
 
 

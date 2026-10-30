@@ -1,15 +1,14 @@
 cff-version: 1.2.0
 message: "If you use Recall Guard, please cite it using the metadata below."
 title: "Recall Guard"
-version: 0.4.1
-doi: 10.5281/zenodo.21806959
-date-released: 2026-08-05
+version: 0.5.0
+date-released: 2026-10-30
 license: MIT
 authors:
   - family-names: Ciepluch
     given-names: Marius
 repository-code: "https://github.com/norandom/memguard_alpha"
-url: "https://norandom.github.io/memguard_alpha/"
+url: "https://github.com/norandom/memguard_alpha/releases/tag/v0.5.0"
 abstract: >-
   Recall Guard is a Python package for per-prompt contamination scoring of LLM
   outputs, with harness workflows for model comparison and a single-model

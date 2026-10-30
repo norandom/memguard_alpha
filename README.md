@@ -25,7 +25,7 @@ Use Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
 The same command works in PowerShell, bash and zsh:
 
 ```text
-uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.4.1"
+uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.5.0"
 ```
 
 Releases provide wheels and source distributions on GitHub Releases; the package
@@ -38,8 +38,8 @@ shows the complete input path and failure handling.
 
 ## Try the experimental mathematical layer
 
-The divergence utility is available in the current checkout. It may postdate the
-released tag above. From a checkout, install only the core dependencies:
+The divergence utility is included in v0.5.0. From a checkout, install only the
+core dependencies:
 
 ```text
 git clone https://github.com/norandom/memguard_alpha.git
@@ -115,6 +115,7 @@ Its portfolio results belong to that consumer pipeline.
 
 If you want to cite the software itself, use the Zenodo DOI. Cite the version you actually ran; the all-versions DOI always resolves to the latest release.
 
+- v0.5.0: [GitHub Release](https://github.com/norandom/memguard_alpha/releases/tag/v0.5.0); version-specific DOI pending.
 - v0.4.1: <https://doi.org/10.5281/zenodo.21806959>
 - v0.4.0: <https://doi.org/10.5281/zenodo.21795891>
 - v0.3.1: <https://doi.org/10.5281/zenodo.21795665>

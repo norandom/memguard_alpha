@@ -339,6 +339,15 @@ class NvidiaLM:
         )
 
 
+def check_model_access(lm: NvidiaLM) -> None:
+    """Probe authenticated generation before scheduling calibration batches.
+
+    The public model catalog alone does not establish inference authorization.
+    Use the normal generation contract so response/logprob support is checked too.
+    """
+    lm.generate("Reply with Direction: 0 and Confidence: 0.5 on separate lines.")
+
+
 def generate_many(
     lm: NvidiaLM,
     prompts: Sequence[str],
