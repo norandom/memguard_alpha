@@ -47,7 +47,7 @@ Tasks are sequential: the decoder depends on the mathematical contract, and exam
   - _Boundary: Greedy decoder — recall_guard/core/divergence_decode.py; tests/core/test_divergence_decode.py_
   - _Requirements: 2.2, 2.4, 2.5, 4.2, 5.1, 5.2, 5.3_
 
-- [ ] 3. Integrate an executable usage example into the documentation site
+- [x] 3. Integrate an executable usage example into the documentation site
   - Add a runnable synthetic callback example using direct core imports, showing how callers provide compatible sources and interpret generated IDs/finish status.
   - Explain caller-controlled logits access, declared vocabulary compatibility, shared-prefix expectations, and why the existing NVIDIA completion client cannot supply this intervention.
   - Label the utility experimental; state that mathematical correctness establishes neither reduced memorization nor a calibrated contamination score. Do not imply existing calibration can score adjusted generation unchanged.
@@ -84,3 +84,6 @@ Task 2.1: 74 tests and scoped Ruff pass; independent review approved after fixin
 
 
 Task 2.2: 147 combined tests, scoped Ruff and architecture checker pass. Independent reviewer APPROVED; loop has explicit per-source role/step errors and shared-prefix tests.
+
+
+Task 3: Exact example produces (1, 2) eos; strict MkDocs and 20 documentation tests pass. Independent reviewer APPROVED.
