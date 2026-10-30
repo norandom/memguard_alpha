@@ -40,5 +40,14 @@
       "tests/harness/test_intervention_types.py",
       ".kiro/specs/completion-api-mitigation/task-plan-review.md"
     ]
+  },
+  "2.1": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED after empty-probe readiness fix;64 provider tests+Ruffpass;200 relatedtests GREEN. No legacyNvidia edits.",
+    "timestamp": "2026-10-30T19:31:26.273467+00:00",
+    "files": [
+      "recall_guard/core/providers.py",
+      "tests/core/test_providers.py"
+    ]
   }
 }

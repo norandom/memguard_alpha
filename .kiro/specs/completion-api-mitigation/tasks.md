@@ -38,7 +38,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Requirements: 3.1, 3.3, 5.1, 5.5_
 
 - [ ] 2. Provider integration
-- [ ] 2.1 Implement OpenAI-compatible and NVIDIA completion support
+- [x] 2.1 Implement OpenAI-compatible and NVIDIA completion support
   - Use audited mappings for OpenAI-compatible, Mistral and NIM configurations; permit absent logprobs only on explicitly selected text paths. Integrate shared request admission and actual access probes.
   - Done when fixtures exercise text and token-evidence modes, unsupported explicit parameters remain visible and legacy NVIDIA calls preserve behavior.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
@@ -210,3 +210,11 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 7.2_
   - _Requirements: 5.6, 6.1, 6.2, 6.5, 7.8, 7.9_
 
+
+## Implementation notes
+
+- Credentials resolve at configured-client construction; recreate clients after rotation.
+- CallBudget counts physical attempts; RequestControl operates outside pacing locks and returns sanitized failures.
+- Resume consumers use the saved remaining request budget and a fresh execution namespace; ambiguous in-flight work must not replay automatically.
+- A successful probe confirms access/acceptance, not unechoed effective settings. Empty probe text leaves text generation unverified; callers must inspect ready_for_batch before scheduling corpus work.
+- Explicit null logprob parameters are preserved for text-only use and rejected when MIA is selected.
