@@ -12,7 +12,7 @@ executable tasks in seven groups, each with a responsibility boundary and
 observable completion. All explicit dependencies point to preceding tasks.
 Execution is sequential because provider, ensemble and scorer edits overlap.
 
-The proposed design and task plan still require human approval. This review
+The user subsequently approved the design and task plan on 2026-10-30. This review
 establishes task-graph sanity, not provider compatibility, model access,
 implementation correctness or mitigation effectiveness. Live calibration,
 paired pilot execution and fidelity audit remain required work.

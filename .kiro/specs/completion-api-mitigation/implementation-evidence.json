@@ -30,5 +30,15 @@
       "recall_guard/core/request_control.py",
       "tests/core/test_request_control.py"
     ]
+  },
+  "1.4": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED;46 focused tests; full postfoundation784passed; Ruff and architecture pass; identity/restart ledger verified.",
+    "timestamp": "2026-10-30T19:13:10.554092+00:00",
+    "files": [
+      "recall_guard/harness/intervention_types.py",
+      "tests/harness/test_intervention_types.py",
+      ".kiro/specs/completion-api-mitigation/task-plan-review.md"
+    ]
   }
 }
