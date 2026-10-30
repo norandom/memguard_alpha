@@ -320,6 +320,31 @@ def test_concurrent_wall_clock_scales_with_workers(mocker):
     assert elapsed < 0.8, f"8 requests over 8 workers took {elapsed:.2f}s; serialised"
 
 
+def test_pacing_rechecks_actual_start_after_sleep_overshoots(mocker):
+    """A delayed wakeup must not let the next request reuse an old time slot."""
+    clock_seconds = 0.0
+    request_starts = []
+    sleep_calls = 0
+
+    def delayed_sleep(delay_seconds):
+        nonlocal clock_seconds, sleep_calls
+        clock_seconds += delay_seconds + (0.15 if sleep_calls == 0 else 0.0)
+        sleep_calls += 1
+
+    def recording_post(*args, **kwargs):
+        request_starts.append(clock_seconds)
+        return _build_mock_response(mocker)
+
+    mocker.patch("recall_guard.core.nvidia_lm.time.monotonic", side_effect=lambda: clock_seconds)
+    mocker.patch("recall_guard.core.nvidia_lm.time.sleep", side_effect=delayed_sleep)
+    mocker.patch("requests.post", side_effect=recording_post)
+    lm = NvidiaLM(api_key="test_key", model="model", min_call_interval_s=0.05)
+    for _ in range(3):
+        lm.generate("prompt")
+
+    assert request_starts == pytest.approx([0.0, 0.2, 0.25])
+
+
 def test_pacing_spaces_starts_independent_of_latency(mocker):
     """Pacing must space request *starts*, not completion-to-start.
 

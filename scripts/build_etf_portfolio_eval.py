@@ -245,7 +245,7 @@ def main(
         all_rows.extend(ticker_rows)
 
     rng.shuffle(all_rows)
-    with out_path.open("w") as f:
+    with out_path.open("w", encoding="utf-8") as f:
         for row in all_rows:
             f.write(json.dumps(row) + "\n")
 

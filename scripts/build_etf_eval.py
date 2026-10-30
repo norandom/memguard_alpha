@@ -102,7 +102,7 @@ def main() -> int:
         print(f"  {ticker}: {len(ticker_rows)} rows")
         all_rows.extend(ticker_rows)
 
-    with OUT_PATH.open("w") as f:
+    with OUT_PATH.open("w", encoding="utf-8") as f:
         f.write(json.dumps({"_cutoff_date": CUTOFF.isoformat()}) + "\n")
         for row in all_rows:
             f.write(json.dumps(row) + "\n")

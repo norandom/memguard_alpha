@@ -12,9 +12,8 @@ where the sentrux MCP plugin is unavailable:
 - Banned dependency: ``dspy`` must not be imported anywhere under
   ``recall_guard`` (legacy-pipeline guard).
 
-Complexity/length/cycle ceilings from the rules file remain sentrux's
-job; this gate covers the dependency-direction rules that CI must not
-let regress.
+Complexity, function length and cycles remain code-review concerns; this gate
+covers the dependency-direction rules that CI must not let regress.
 
 Exit status: 0 when clean, 1 with one violation per line on stderr.
 """
@@ -24,7 +23,7 @@ import ast
 import sys
 from pathlib import Path
 
-#: Mirror of .sentrux/rules.toml [[layers]] — name -> order.
+#: Project layer ordering, aligned with the package steering guidance.
 LAYERS: dict[str, int] = {
     "harness": 0,
     "dataset": 1,
@@ -51,15 +50,16 @@ def find_violations(package_root: Path) -> list[str]:
     """Scan every module under ``package_root`` and return violations."""
     violations: list[str] = []
     for py in sorted(package_root.rglob("*.py")):
-        rel = py.relative_to(package_root)
-        src_layer = rel.parts[0] if len(rel.parts) > 1 else None
+        relative_path = py.relative_to(package_root)
+        display_path = relative_path.as_posix()
+        src_layer = relative_path.parts[0] if len(relative_path.parts) > 1 else None
         src_order = LAYERS.get(src_layer) if src_layer else None
 
         tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         for name in _imported_names(tree):
             root = name.split(".")[0]
             if root in BANNED_ROOTS:
-                violations.append(f"{rel}: banned import {name!r}")
+                violations.append(f"{display_path}: banned import {name!r}")
                 continue
             if root != package_root.name or src_order is None:
                 # Third-party/stdlib imports and package-root modules
@@ -72,7 +72,7 @@ def find_violations(package_root: Path) -> list[str]:
                 continue
             if dst_order <= src_order:
                 violations.append(
-                    f"{rel}: layer {src_layer!r} (order {src_order}) must not "
+                    f"{display_path}: layer {src_layer!r} (order {src_order}) must not "
                     f"import {name!r} (layer {dst_layer!r}, order {dst_order})"
                 )
     return violations
