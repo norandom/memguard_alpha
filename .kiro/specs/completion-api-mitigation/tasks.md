@@ -23,7 +23,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Completion contracts_
   - _Requirements: 1.3, 3.5, 7.1, 7.2, 7.3, 7.5, 7.7_
 
-- [ ] 1.3 Implement physical-request budgets and admission
+- [x] 1.3 Implement physical-request budgets and admission
   - Count probes, retries, verification, rewriting and target calls under a shared thread-safe limit. Preserve current start-spacing semantics, bound retries and redact credentials from errors.
   - Done when concurrent/retry tests never exceed the budget or compress request starts, and partial stage usage remains inspectable.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

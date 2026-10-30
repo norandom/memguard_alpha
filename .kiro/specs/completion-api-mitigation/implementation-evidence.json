@@ -21,5 +21,14 @@
       "recall_guard/core/completion.py",
       "tests/core/test_completion.py"
     ]
+  },
+  "1.3": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED;37 focused tests and Ruff/architecture pass; concurrent caps, retry admission, actual pacing and redaction verified.",
+    "timestamp": "2026-10-30T18:57:51.408683+00:00",
+    "files": [
+      "recall_guard/core/request_control.py",
+      "tests/core/test_request_control.py"
+    ]
   }
 }
