@@ -120,7 +120,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 1.4, 4.3, 4.4_
   - _Requirements: 3.1, 3.3, 4.1, 4.2, 4.5, 8.5, 8.7, 9.1, 9.2_
 
-- [ ] 5.2 Implement paired statistics with explicit denominators
+- [x] 5.2 Implement paired statistics with explicit denominators
   - Compute all-attempted and valid-pair outcomes, item-cluster bootstrap intervals, agreement, fidelity/parse rates and usage. Preserve dependencies when single responses reuse ensemble draws.
   - Done when analytic fixtures reproduce paired effects and failure-heavy runs cannot improve reported mitigation by dropping bad rows.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

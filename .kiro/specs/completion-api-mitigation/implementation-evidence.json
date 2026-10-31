@@ -170,5 +170,15 @@
       "tests/core/test_providers.py",
       "tests/core/test_provider_anthropic.py"
     ]
+  },
+  "5.2": {
+    "review": "APPROVED",
+    "verification": "Independent re-review APPROVED after invalidated-MCS repair; parent fresh canonical 113 tests passed in 8.66s exit0; touched Ruff, architecture and git diff --check pass. Repair actual RED 3 failed/2 preservation controls; raw scores retained, invalidated published MCS unavailable.",
+    "timestamp": "2026-10-31T14:21:49.427822+00:00",
+    "files": [
+      "recall_guard/harness/intervention_metrics.py",
+      "recall_guard/harness/intervention_usage.py",
+      "tests/harness/test_intervention_metrics.py"
+    ]
   }
 }
