@@ -1,0 +1,65 @@
+{
+  "amendment_id": "nim-latency-01",
+  "attempt_directory": "eligibility/latency-01",
+  "budget": {
+    "eligibility_remaining": 1,
+    "eligibility_used": 3,
+    "new_call_limit": 1,
+    "phase_caps": {
+      "anthropic_evaluation": 144,
+      "calibration": 220,
+      "eligibility": 4,
+      "nim_evaluation": 144
+    },
+    "study_cap": 512
+  },
+  "change": {
+    "amended": 600,
+    "field": "timeout_s",
+    "previous": 90,
+    "provider": "nim"
+  },
+  "config": {
+    "capabilities": {},
+    "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "max_retries": 0,
+    "min_call_interval_s": 1.5,
+    "model": "openai/gpt-oss-20b",
+    "parameters": {
+      "logprobs": true,
+      "max_tokens": 2048,
+      "temperature": 0.0,
+      "top_logprobs": 20
+    },
+    "protocol": "openai_chat",
+    "provider": "nvidia_nim",
+    "retry_backoff_s": 2.0,
+    "timeout_s": 600
+  },
+  "limitations": [
+    "Probe success establishes current inference eligibility only; cost and balance remain unknown.",
+    "No automatic replay, second live action, phase-cap transfer, calibration or evaluation.",
+    "Later calibration and NIM evaluation must explicitly bind this transport amendment before execution.",
+    "Synthetic tests are not live coverage; MIA readiness requires observed genuine token evidence."
+  ],
+  "post_observation": true,
+  "preregistered": false,
+  "prompt": "Reply with the word OK.",
+  "prompt_sha256": "9a5315c468babbc3167b506c3b3193e63b67b26208d9babfccb55eb50e71b924",
+  "reason": "Operator latency clarification after two recorded 90-second NIM timeouts; latency as root cause remains unproven.",
+  "schema_version": 1,
+  "sources": {
+    "eligibility/00-initial.json": "f4632f4d30140ed8ed32da1513bae04e09c2a7d681c2f36918b1749df2fe3c60",
+    "eligibility/01-nim.json": "e01faf70e014a9df9c936fac126c9722feded46f4b7220fc59ae8bf86a8bbf0a",
+    "eligibility/intent.json": "3dbf411d263a5163f2422a22e947e4a25ce2af6fe2b5764b871bba6ae2ccc024",
+    "eligibility/receipt.json": "34553b73208375fd56c6014b14e0f3f39eca77fc366fc574ebca493cd3292fea",
+    "eligibility/recovery-01/00-initial.json": "8d5fa3a5787ee03fcccc66dda9c61e4bb4d1d8f579b47e5cd4965f63464daddf",
+    "eligibility/recovery-01/01-anthropic.json": "3026de874de0cfa3eeff7ad447e16aa6d739b2248b436254c8b2d2c31e6ac2ff",
+    "eligibility/recovery-01/02-nim.json": "c40c4d000b018aac082567a78c32023d8a95f0a57cd50cd8cde00aa495aa477e",
+    "eligibility/recovery-01/intent-02.json": "546e7ad546a4fbb4460485c91a7b8ee04ef9873b01c9cc4a818a88a1d829220a",
+    "eligibility/recovery-01/intent.json": "f52a5db57db81f9cf8353494e1c5f3244d23460b73f6350466b9d76a565fa150",
+    "eligibility/recovery-01/receipt.json": "0def829cc504baf4edb4f8cc77c116a617a3d1ceb11a13eedc84890cf6bfe13c",
+    "study-plan.json": "aeba7fb829d7df2d5e9874dd636de183207f405a53ceb01b01277b77d68d37a5"
+  },
+  "status": "frozen_transport_amendment_only"
+}

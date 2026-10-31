@@ -1,0 +1,25 @@
+{
+  "balance": null,
+  "budget": {
+    "limit": 4,
+    "remaining": 4,
+    "used": 0
+  },
+  "cost": null,
+  "events": [],
+  "evidence_kind": "actual_generation_probe",
+  "failure": null,
+  "finished_at": null,
+  "prompt": "Reply with the word OK.",
+  "prompt_sha256": "9a5315c468babbc3167b506c3b3193e63b67b26208d9babfccb55eb50e71b924",
+  "providers": {},
+  "remaining_phase_caps": {
+    "anthropic_evaluation": 144,
+    "calibration": 220,
+    "nim_evaluation": 144
+  },
+  "schema_version": 1,
+  "started_at": "2026-10-31T16:26:03.127472+00:00",
+  "status": "incomplete",
+  "study_plan_sha256": "aeba7fb829d7df2d5e9874dd636de183207f405a53ceb01b01277b77d68d37a5"
+}

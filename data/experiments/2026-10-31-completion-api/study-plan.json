@@ -1,0 +1,506 @@
+{
+  "anthropic_api_version": "2026-10-21",
+  "anthropic_thinking": "Adaptive thinking always on; no disabled thinking, temperature or seed sent.",
+  "auxiliary_roles": {
+    "rewrite_variability": "Separately sampled rewrites across provider runs; cross-provider differences also include rewrite variation.",
+    "rewriter": "anthropic",
+    "shared_across_target_experiments": true,
+    "verifier": "anthropic"
+  },
+  "budget": {
+    "accounting": "Every physical probe, target, rewrite, verification and retry counts in its phase; max_retries=0.",
+    "nominal_breakdown": {
+      "calibration": {
+        "auxiliary": 80,
+        "fit_generations": 120,
+        "workflow_and_fit_probes": 6
+      },
+      "per_evaluation": {
+        "auxiliary": 32,
+        "role_probes": 3,
+        "target_draws": 96
+      }
+    },
+    "nominal_requests": {
+      "anthropic_evaluation": 131,
+      "calibration": 206,
+      "eligibility": 2,
+      "nim_evaluation": 131
+    },
+    "nominal_total": 470,
+    "phase_caps": {
+      "anthropic_evaluation": 144,
+      "calibration": 220,
+      "eligibility": 4,
+      "nim_evaluation": 144
+    },
+    "phase_clients": "Fresh phase budget/clients; identical role configs may reuse one client/pacer within each phase. Retain per-phase ledgers.",
+    "study_cap": 512,
+    "transfers": "No automatic unused-cap transfers; calibration stays 220 after eligibility."
+  },
+  "calibration": {
+    "fingerprint_status": "Derived from actual task6.3 fitted states before scored evaluation; never placeholders.",
+    "fit_fingerprints": null,
+    "frontier_mcs": "unavailable; native Anthropic has no genuine logprobs",
+    "interventions": [
+      "original",
+      "rewritten"
+    ],
+    "is_items": 20,
+    "max_workers": 1,
+    "min_auc": 0.6,
+    "min_valid": 10,
+    "oos_items": 20,
+    "rewrite_policy": "Same method and Opus auxiliary configs as evaluation; retain accepted subset, rejection, weakness and failure without outcome tuning.",
+    "seed": 0,
+    "target": "nim"
+  },
+  "effective_settings": "Requested values are separate from confirmed effective values; omitted defaults remain unknown. Successful acceptance is not confirmation.",
+  "eligibility": {
+    "features": {
+      "anthropic": {
+        "mia_scoring": false
+      },
+      "nim": {
+        "mia_scoring": true
+      }
+    },
+    "order": [
+      "nim",
+      "anthropic"
+    ],
+    "prompt": "Reply with the word OK.",
+    "prompt_sha256": "9a5315c468babbc3167b506c3b3193e63b67b26208d9babfccb55eb50e71b924",
+    "rerun": "No automatic replay of an existing eligibility directory, including ambiguous intent."
+  },
+  "evaluation": {
+    "arm_order": "alternating by frozen evaluation item index",
+    "audit": {
+      "agent_inspection": "Root agent inspection is not independent human audit; efficacy remains unestablished without independent evidence.",
+      "include": [
+        "accepted",
+        "rejected",
+        "unperformed"
+      ],
+      "item_ids": [
+        "price-dac17f381fe174d6af05",
+        "price-f9a0273a435521825a03",
+        "price-bdd46e1c9aa08c29edf4",
+        "price-79c1b30b718a32fb9b0b",
+        "price-42c8b539ba7870571aa1",
+        "price-31499dabf289ada9b811",
+        "price-ba1ec952e0af415a4e6f",
+        "price-9232103d51f21bccfd90",
+        "price-5d76f434a11f5b5cdd2f",
+        "price-008daa490c5d23516a22",
+        "price-047ab668bf2a87c7cf27",
+        "price-3a2e9c7f70663d44c9d3",
+        "price-6eb9966c80283e7831c3",
+        "price-e61647df3c766eb4bd36",
+        "price-efd232530888d0db7c7a",
+        "price-b1001e5cf900b844ef28"
+      ],
+      "method": "census of every planned item for each provider, selected before generation",
+      "per_provider": 16,
+      "retain": [
+        "original",
+        "candidate",
+        "automated_checks",
+        "auditor_identity",
+        "judgment",
+        "disagreements"
+      ]
+    },
+    "bootstrap": {
+      "count": 2000,
+      "level": 0.95,
+      "seed": 0,
+      "unit": "paired item cluster, retaining all arms/draws"
+    },
+    "conditions": [
+      "original_single",
+      "original_ensemble",
+      "rewritten_single",
+      "rewritten_ensemble"
+    ],
+    "draws": 3,
+    "ensemble_settings": {
+      "agreement_target": null,
+      "confidence": 0.95,
+      "density_ratio": 10.0,
+      "grid": null,
+      "location_mode": "median",
+      "mass_min": 0.25,
+      "max_tokens": null,
+      "max_total_requests": null,
+      "max_transport_failure_ratio": 0.3333333333333333,
+      "max_workers": 1,
+      "min_cluster_density": 1.5,
+      "min_cluster_draws": 8,
+      "min_parsed": 2,
+      "multimodal_action": "flag",
+      "reference_mode": "fixed",
+      "retain_draws": true,
+      "tail": "two_sided",
+      "temperature": null,
+      "trim": 0.25,
+      "trough_steps": 3
+    },
+    "failures": "Retain all failures, rejected/unperformed rewrites and all-attempted denominators; no fallback or successful replacement selection.",
+    "rewrite_scope": "shared_per_item",
+    "single_draw_index": 0,
+    "single_source": "reuse draw 0; no additional model requests",
+    "task_metric": "accuracy",
+    "utility_tolerance": 0.05,
+    "utility_tolerance_units": "probability units (5 percentage points)"
+  },
+  "frozen_before_model_calls": true,
+  "inputs": {
+    "cohorts": {
+      "models": {
+        "claude-opus-5-5": {
+          "post": {
+            "description": "common post-cutoff timing proxy",
+            "historical": {
+              "cutoff": {
+                "alias_uncertainty": null,
+                "date": "2026-06-30",
+                "model": "claude-opus-5-5",
+                "retrieved_at": "2026-10-31",
+                "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+              },
+              "matching": {
+                "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+                "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+                "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+                "task": "next-session quoted-close direction from five trailing completed daily closes"
+              },
+              "matching_group": "common-price-evidence-v1",
+              "outcome_dates": {
+                "price-008daa490c5d23516a22": "2026-09-10",
+                "price-047ab668bf2a87c7cf27": "2026-08-18",
+                "price-31499dabf289ada9b811": "2026-08-27",
+                "price-ba1ec952e0af415a4e6f": "2026-09-11",
+                "price-bdd46e1c9aa08c29edf4": "2026-10-05",
+                "price-e61647df3c766eb4bd36": "2026-07-15",
+                "price-efd232530888d0db7c7a": "2026-10-26",
+                "price-f9a0273a435521825a03": "2026-10-19"
+              },
+              "period": "post"
+            }
+          },
+          "pre": {
+            "description": "common pre-cutoff timing proxy",
+            "historical": {
+              "cutoff": {
+                "alias_uncertainty": null,
+                "date": "2026-06-30",
+                "model": "claude-opus-5-5",
+                "retrieved_at": "2026-10-31",
+                "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+              },
+              "matching": {
+                "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+                "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+                "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+                "task": "next-session quoted-close direction from five trailing completed daily closes"
+              },
+              "matching_group": "common-price-evidence-v1",
+              "outcome_dates": {
+                "price-3a2e9c7f70663d44c9d3": "2023-08-16",
+                "price-42c8b539ba7870571aa1": "2023-09-18",
+                "price-5d76f434a11f5b5cdd2f": "2023-08-03",
+                "price-6eb9966c80283e7831c3": "2023-10-24",
+                "price-79c1b30b718a32fb9b0b": "2023-08-03",
+                "price-9232103d51f21bccfd90": "2023-10-27",
+                "price-b1001e5cf900b844ef28": "2023-07-11",
+                "price-dac17f381fe174d6af05": "2023-09-26"
+              },
+              "period": "pre"
+            }
+          }
+        },
+        "openai/gpt-oss-20b": {
+          "post": {
+            "description": "common post-cutoff timing proxy",
+            "historical": {
+              "cutoff": {
+                "alias_uncertainty": null,
+                "date": "2024-06-30",
+                "model": "openai/gpt-oss-20b",
+                "retrieved_at": "2026-10-31",
+                "source_url": "https://arxiv.org/html/2508.10925v1"
+              },
+              "matching": {
+                "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+                "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+                "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+                "task": "next-session quoted-close direction from five trailing completed daily closes"
+              },
+              "matching_group": "common-price-evidence-v1",
+              "outcome_dates": {
+                "price-008daa490c5d23516a22": "2026-09-10",
+                "price-047ab668bf2a87c7cf27": "2026-08-18",
+                "price-31499dabf289ada9b811": "2026-08-27",
+                "price-ba1ec952e0af415a4e6f": "2026-09-11",
+                "price-bdd46e1c9aa08c29edf4": "2026-10-05",
+                "price-e61647df3c766eb4bd36": "2026-07-15",
+                "price-efd232530888d0db7c7a": "2026-10-26",
+                "price-f9a0273a435521825a03": "2026-10-19"
+              },
+              "period": "post"
+            }
+          },
+          "pre": {
+            "description": "common pre-cutoff timing proxy",
+            "historical": {
+              "cutoff": {
+                "alias_uncertainty": null,
+                "date": "2024-06-30",
+                "model": "openai/gpt-oss-20b",
+                "retrieved_at": "2026-10-31",
+                "source_url": "https://arxiv.org/html/2508.10925v1"
+              },
+              "matching": {
+                "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+                "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+                "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+                "task": "next-session quoted-close direction from five trailing completed daily closes"
+              },
+              "matching_group": "common-price-evidence-v1",
+              "outcome_dates": {
+                "price-3a2e9c7f70663d44c9d3": "2023-08-16",
+                "price-42c8b539ba7870571aa1": "2023-09-18",
+                "price-5d76f434a11f5b5cdd2f": "2023-08-03",
+                "price-6eb9966c80283e7831c3": "2023-10-24",
+                "price-79c1b30b718a32fb9b0b": "2023-08-03",
+                "price-9232103d51f21bccfd90": "2023-10-27",
+                "price-b1001e5cf900b844ef28": "2023-07-11",
+                "price-dac17f381fe174d6af05": "2023-09-26"
+              },
+              "period": "pre"
+            }
+          }
+        }
+      },
+      "schema_version": 1
+    },
+    "counts": {
+      "calibration_is": 20,
+      "calibration_oos": 20,
+      "evaluation": 16
+    },
+    "evaluation_order": [
+      "price-dac17f381fe174d6af05",
+      "price-f9a0273a435521825a03",
+      "price-bdd46e1c9aa08c29edf4",
+      "price-79c1b30b718a32fb9b0b",
+      "price-42c8b539ba7870571aa1",
+      "price-31499dabf289ada9b811",
+      "price-ba1ec952e0af415a4e6f",
+      "price-9232103d51f21bccfd90",
+      "price-5d76f434a11f5b5cdd2f",
+      "price-008daa490c5d23516a22",
+      "price-047ab668bf2a87c7cf27",
+      "price-3a2e9c7f70663d44c9d3",
+      "price-6eb9966c80283e7831c3",
+      "price-e61647df3c766eb4bd36",
+      "price-efd232530888d0db7c7a",
+      "price-b1001e5cf900b844ef28"
+    ],
+    "model_provenance": {
+      "models": {
+        "claude-opus-5-5": {
+          "alias_uncertainty": null,
+          "corroborating_source_url": "https://support.claude.com/en/articles/8114494-how-up-to-date-is-claude-s-training-data",
+          "cutoff_registry": "cutoff-registry.json",
+          "cutoff_source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+          "documented_cutoff_kind": "training data cutoff and reliable knowledge cutoff",
+          "documented_month": "June 2026",
+          "hosted_serving_limitations": "Vendor pinning is a stated ID stability guarantee, not a cryptographic deployment attestation. Official docs note that serving infrastructure, safety classifiers and sampling logic can change even with fixed weights.",
+          "identity_basis": "Official versioning docs state that IDs from generation 4.6 onward are canonical pinned snapshots, including dateless IDs; they are distinct from earlier convenience aliases.",
+          "post_training_review": "The exact model overview reports June 2026 for both training data and reliable knowledge. No separate later post-training cutoff is documented on the checked sources.",
+          "selected_native_api_version": "2026-10-21",
+          "versioning_retrieved_at": "2026-10-31",
+          "versioning_source_url": "https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions"
+        },
+        "openai/gpt-oss-20b": {
+          "alias_uncertainty": null,
+          "catalog_source_url": "https://build.nvidia.com/openai/gpt-oss-20b/modelcard",
+          "catalog_version": "gpt-oss-20b v1.0, August 5, 2025",
+          "cutoff_registry": "cutoff-registry.json",
+          "cutoff_source_url": "https://arxiv.org/html/2508.10925v1",
+          "documented_cutoff_kind": "knowledge cutoff in section 2.4 Pretraining",
+          "documented_month": "June 2024",
+          "hosted_serving_limitations": "The NIM endpoint deployment revision and exact weights are not cryptographically pinned by this preparation. A future access probe must retain the returned model identity and any available revision metadata.",
+          "identity_basis": "Exact NVIDIA catalog identifier is openai/gpt-oss-20b and its card attributes the model to OpenAI. No other model family's cutoff is inherited.",
+          "post_training_review": "Section 2.5 describes post-training for reasoning and tool use, but supplies no separate later data cutoff. A knowledge cutoff is not a complete training-data inventory or proof of exclusion."
+        }
+      },
+      "month_only_policy": "Use the last calendar day of the documented month; preserve later documented post-training cutoffs if supplied. No existing cutoff guard is relaxed.",
+      "retrieved_at": "2026-10-31",
+      "schema_version": 1,
+      "unsupported_inference": [
+        "Pre-cutoff availability does not establish membership or memorization of these prices or prompts.",
+        "Post-cutoff timing does not prove exclusion from every later tuning, retrieval or serving system.",
+        "Matched historical gaps remain proxies and cannot alone demonstrate reduced recall or causal mitigation.",
+        "No live provider access, capability, fitted calibration or intervention effect is established by these input files."
+      ]
+    },
+    "sha256": {
+      "calibration-is.json": "e45d46a597ff6c42da2585f0e15c1a42574a212dca85c064774a1bf8ea3280eb",
+      "calibration-oos.json": "99ba951eda92d5ee88bb1fea0869e2b189aa06e13c2349198fca7a7b7d3ff6f0",
+      "cohort-definitions.json": "70027cddb6911bc1d3660e6e3f3240a49bbaae4d48c5158655304fd539de8786",
+      "cutoff-registry.json": "7f50ba000f1447ea767ca6a86dd1818e75ba3fa5dca1da245efcab3fb8892abb",
+      "evaluation.json": "cb7359e4a5625767d308d35f303778c30df2429c1f6420bf7781b2b3483e6f99",
+      "model-provenance.json": "9b6bdb499bee28c477682609989b32536ba428bfa7ab52b62f3ae4af00d2243c",
+      "preparation-plan.json": "46f9f87577d72cc88cea2d30792579769e466c3787d04118fcc195a84f7ef783",
+      "preparation-report.json": "97725953a251488df5854afe2d9624ab2c5f06d6ae75b02396dc335c96b204d8",
+      "raw/IAU.chart.json": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "raw/SPY.chart.json": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "selected-windows.json": "cca1909726447ff9322a5596a34f6dbfc40bd09583889d0009157bf499c168da",
+      "source-manifest.json": "e30f76dc3c69d8ecf732899337583913803744a8d9a07b6a50af5274480cacff"
+    }
+  },
+  "limitations": [
+    "Exploratory 16-item pilot, no power or equivalence claim.",
+    "Temporal cohorts and historical gaps are weak membership proxies, not proof of memorization or exclusion.",
+    "Independent human fidelity audit is not yet performed; automated acceptance is not semantic proof.",
+    "Calibration quality and valid paired outcomes are unknown before task6.3/task6.4.",
+    "Credits, sufficient future balance and monetary cost are unknown; probe success proves current eligibility only.",
+    "OpenAI and Mistral live coverage remains unmeasured; no general provider-family claim.",
+    "Hosted serving revision and unechoed effective settings remain unknown."
+  ],
+  "method": {
+    "checker": {
+      "deterministic_version": "factual-tokens-v1",
+      "options": {
+        "allow_extra_json_fields": false,
+        "entity_candidates": "capitalized_words_and_acronyms",
+        "patterns": {
+          "dates": "\\b\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}\\b|\\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2}(?:,?\\s+\\d{4})?\\b|\\b\\d{1,2}\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\\s+\\d{4})?\\b",
+          "instruction_markers": "\\b(?:ignore|disregard|override)\\b[^.!?\\n]{0,100}\\b(?:instructions|rules|prompt|system)\\b|\\b(?:return|output|respond with|answer with)\\s+(?:only|json|the answer)\\b|^\\s*(?:system|assistant|developer|user)\\s*:",
+          "quantities": "(?<!\\w)(?:[$€£]\\s*)?[+-]?(?:\\d+(?:,\\d{3})*(?:\\.\\d+)?|\\.\\d+)(?:\\s*(?:%|bps\\b|basis points\\b|USD\\b|EUR\\b|GBP\\b|million\\b|billion\\b|trillion\\b|kg\\b|km\\b|shares\\b|dollars\\b))?",
+          "quotations": "\"[^\"\\n]*\"|“[^”]*”|(?<!\\w)\\'[^\\'\\n]+\\'(?!\\w)|‘[^’]*’",
+          "words": "\\b[^\\W\\d_]\\w*(?:['’.-][^\\W\\d_]\\w*)*\\b"
+        },
+        "prose_openers": [
+          "a",
+          "according",
+          "an",
+          "and",
+          "as",
+          "at",
+          "but",
+          "by",
+          "for",
+          "from",
+          "he",
+          "here",
+          "i",
+          "if",
+          "in",
+          "it",
+          "let's",
+          "let’s",
+          "meanwhile",
+          "now",
+          "on",
+          "or",
+          "overall",
+          "she",
+          "so",
+          "that",
+          "the",
+          "there",
+          "these",
+          "they",
+          "this",
+          "those",
+          "to",
+          "we",
+          "well",
+          "you"
+        ],
+        "require_all_checks": true,
+        "semantic_categories": [
+          "claims",
+          "entities",
+          "dates",
+          "quantities",
+          "units",
+          "uncertainty",
+          "qualifications",
+          "attribution",
+          "instruction_injection"
+        ],
+        "token_comparison": "exact_multiset"
+      },
+      "semantic_version": "semantic-json-v1"
+    },
+    "intervention_id": "rewrite:c09aad5f6efb67afabe4b774668320603a59914b3ab32b0a5399040781265cc8",
+    "method_version": "neutral-conversation-v1",
+    "rewrite_template_hash": "897341549177da205ca661e98ee1792c3b3d4e00bd4c7045cbad24568b72f4c9",
+    "rewriter": {
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "model": "claude-opus-5-5",
+      "parameters": {
+        "max_tokens": 2048
+      },
+      "protocol": "anthropic_messages"
+    },
+    "verification_template_hash": "6efcabfa4cca27ed1a4545758b5c157fbc4b23db29b4c8a41b3dbaaf34089446",
+    "verifier": {
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "model": "claude-opus-5-5",
+      "parameters": {
+        "max_tokens": 2048
+      },
+      "protocol": "anthropic_messages"
+    }
+  },
+  "models": {
+    "anthropic": {
+      "capabilities": {},
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "max_retries": 0,
+      "min_call_interval_s": 1.5,
+      "model": "claude-opus-5-5",
+      "parameters": {
+        "max_tokens": 2048
+      },
+      "protocol": "anthropic_messages",
+      "provider": "anthropic",
+      "retry_backoff_s": 2.0,
+      "timeout_s": 90
+    },
+    "nim": {
+      "capabilities": {},
+      "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+      "max_retries": 0,
+      "min_call_interval_s": 1.5,
+      "model": "openai/gpt-oss-20b",
+      "parameters": {
+        "logprobs": true,
+        "max_tokens": 2048,
+        "temperature": 0.0,
+        "top_logprobs": 20
+      },
+      "protocol": "openai_chat",
+      "provider": "nvidia_nim",
+      "retry_backoff_s": 2.0,
+      "timeout_s": 90
+    }
+  },
+  "schema_version": 1,
+  "status": "frozen_plan_only",
+  "study_id": "completion-api-2026-10-31-exploratory-pilot-v1",
+  "validation_levels": {
+    "implemented": [
+      "nvidia_nim",
+      "anthropic"
+    ],
+    "live": "Only the separate actual eligibility receipt establishes current inference eligibility; no batch effects measured yet.",
+    "offline": "Synthetic fixtures only; not live access evidence."
+  }
+}

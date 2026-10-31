@@ -251,5 +251,30 @@
       "data/experiments/2026-10-31-completion-api/anthropic-fidelity-audit.json",
       "data/experiments/2026-10-31-completion-api/anthropic-reconciliation.json"
     ]
+  },
+  "6.2-setup-portion": {
+    "review": "APPROVED",
+    "task_complete": false,
+    "scope": "Setup helpers and source-bound transport amendment only; actual eligibility remains separately verified.",
+    "verification": "Independent review: 234 focused tests passed in 123.36s; Ruff, architecture and diff checks passed. Actual RED logs inspected. Parent fresh offline amendment validation and SHA/budget/absence checks passed. The root controller started the sole 600-second probe; no live result is claimed by this code review.",
+    "timestamp": "2026-10-31T17:36:45.761016+00:00",
+    "files": [
+      "data/experiments/2026-10-31-completion-api/eligibility/00-initial.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/01-nim.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/intent.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/receipt.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/recovery-01/00-initial.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/recovery-01/01-anthropic.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/recovery-01/02-nim.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/recovery-01/intent-02.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/recovery-01/intent.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/recovery-01/receipt.json",
+      "data/experiments/2026-10-31-completion-api/study-plan.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/latency-amendment.json",
+      "scripts/prepare_completion_pilot.py",
+      "scripts/prepare_completion_latency.py",
+      "tests/scripts/test_prepare_completion_pilot.py",
+      "tests/scripts/test_prepare_completion_latency.py"
+    ]
   }
 }

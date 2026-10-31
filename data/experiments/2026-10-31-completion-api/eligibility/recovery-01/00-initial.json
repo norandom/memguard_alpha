@@ -1,0 +1,53 @@
+{
+  "balance": null,
+  "budget": {
+    "limit": 4,
+    "remaining": 3,
+    "used": 1
+  },
+  "cost": null,
+  "events": [
+    {
+      "attempt": 1,
+      "call_id": 1,
+      "code": "timeout",
+      "cost": null,
+      "detail": null,
+      "error": "Physical request failed; inspect status/code/parameter.",
+      "latency_s": 90.45299999974668,
+      "model": "openai/gpt-oss-20b",
+      "parameter": null,
+      "stage": "eligibility/probe/nim",
+      "started_at": 2459186.359,
+      "status": "failed",
+      "status_code": null,
+      "timestamp": "2026-10-31T16:26:03.129099+00:00",
+      "usage": null
+    }
+  ],
+  "evidence_kind": "actual_generation_probe",
+  "failure": null,
+  "finished_at": null,
+  "prompt": "Reply with the word OK.",
+  "prompt_sha256": "9a5315c468babbc3167b506c3b3193e63b67b26208d9babfccb55eb50e71b924",
+  "providers": {},
+  "recovery_of": {
+    "failure": {
+      "category": "request_failure",
+      "phase": "eligibility",
+      "provider": "nim"
+    },
+    "path": "eligibility/receipt.json",
+    "sha256": "34553b73208375fd56c6014b14e0f3f39eca77fc366fc574ebca493cd3292fea",
+    "used": 1
+  },
+  "remaining_phase_caps": {
+    "anthropic_evaluation": 144,
+    "calibration": 220,
+    "nim_evaluation": 144
+  },
+  "schema_version": 1,
+  "started_at": "2026-10-31T16:35:03.392493+00:00",
+  "status": "incomplete",
+  "study_plan_sha256": "aeba7fb829d7df2d5e9874dd636de183207f405a53ceb01b01277b77d68d37a5"
+}
