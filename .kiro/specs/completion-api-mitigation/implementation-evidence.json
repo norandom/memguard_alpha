@@ -190,5 +190,18 @@
       "recall_guard/harness/intervention_report.py",
       "tests/harness/test_intervention_report.py"
     ]
+  },
+  "5.4": {
+    "review": "APPROVED",
+    "verification": "Independent remediation1 re-review APPROVED after acd77f9 shared-contract correction; parent fresh canonical394 passed1Windowslinkprivilege skip66.72s exit0;6fileRuff/architecture/diff/UVCLIhelp pass. ActualCP1252RED3fail plus originalRED24/sidecar6 verified. CLI JSON enum behavior, safe resume, offline replay and console encoding covered; live/platform gates remain6.x/7.x.",
+    "timestamp": "2026-10-31T15:52:54.802571+00:00",
+    "files": [
+      "scripts/run_intervention.py",
+      "recall_guard/harness/intervention_config.py",
+      "recall_guard/core/provider_anthropic.py",
+      "tests/scripts/test_run_intervention.py",
+      "tests/harness/test_intervention_config.py",
+      "tests/core/test_provider_anthropic.py"
+    ]
   }
 }

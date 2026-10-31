@@ -15,7 +15,7 @@ from recall_guard.core.completion import (
     FeatureChoices,
     ModelConfig,
 )
-from recall_guard.core.provider_anthropic import AnthropicClient
+from recall_guard.core.provider_anthropic import AnthropicClient, validate_anthropic_config
 from recall_guard.core.request_control import BudgetExhaustedError, CallBudget, RequestError
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "providers" / "anthropic.json"
@@ -50,6 +50,19 @@ def config(**overrides):
 def client(settings=None, budget=None, **options):
     return AnthropicClient(settings or config(), budget or CallBudget(10),
                            environment={"TEST_ANTHROPIC_KEY": FAKE_KEY}, **options)
+
+
+def test_public_configuration_validation_is_pure_and_shared_with_constructor(monkeypatch):
+    class NoEnvironment(dict):
+        def get(self, *args, **kwargs):
+            raise AssertionError("Configuration validation must not resolve credentials")
+
+    monkeypatch.setattr("recall_guard.core.provider_anthropic.os.environ", NoEnvironment())
+    assert validate_anthropic_config(config()) is None
+    invalid = config(parameters={"max_tokens": 16, "temperature": 0})
+    for operation in (lambda: validate_anthropic_config(invalid), lambda: AnthropicClient(invalid, CallBudget(0))):
+        with pytest.raises(ValueError, match="temperature"):
+            operation()
 
 
 @pytest.fixture

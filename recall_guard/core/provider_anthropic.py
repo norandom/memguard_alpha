@@ -30,7 +30,13 @@ _UNSUPPORTED_PARAMETERS = frozenset({
 })
 
 
-def _validate_settings(config: ModelConfig, features: FeatureChoices) -> None:
+def validate_anthropic_config(config: ModelConfig, features: FeatureChoices | None = None) -> None:
+    """Validate native settings without resolving credentials or issuing calls."""
+    if not isinstance(config, ModelConfig):
+        raise TypeError("config must be ModelConfig")
+    if config.protocol != CompletionProtocol.ANTHROPIC_MESSAGES:
+        raise ValueError("AnthropicClient requires the explicit anthropic_messages protocol")
+    features = FeatureChoices() if features is None else features
     validate_features(config, features)
     if features.mia_scoring:
         raise ValueError(
@@ -90,13 +96,9 @@ class AnthropicClient:
         self, config: ModelConfig, budget: CallBudget, *, features: FeatureChoices | None = None,
         environment: Mapping[str, str] | None = None,
     ) -> None:
-        if not isinstance(config, ModelConfig):
-            raise TypeError("config must be ModelConfig")
-        if config.protocol != CompletionProtocol.ANTHROPIC_MESSAGES:
-            raise ValueError("AnthropicClient requires the explicit anthropic_messages protocol")
         self.config = config
         self.features = FeatureChoices() if features is None else features
-        _validate_settings(config, self.features)
+        validate_anthropic_config(config, self.features)
         environment = os.environ if environment is None else environment
         if not isinstance(environment, Mapping):
             raise TypeError("environment must be a mapping")
@@ -125,7 +127,7 @@ class AnthropicClient:
         if not isinstance(prompt, str):
             raise TypeError("prompt must be a string")
         settings = replace(self.config, parameters=dict(self.config.parameters) | overrides)
-        _validate_settings(settings, self.features)
+        validate_anthropic_config(settings, self.features)
         parameters = settings.to_dict()["parameters"]
         payload = {"model": settings.model, "messages": [{"role": "user", "content": prompt}], **parameters}
 

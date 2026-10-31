@@ -111,7 +111,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 3.2, 4.3_
   - _Requirements: 7.6, 8.2, 8.3, 9.3_
 
-- [ ] 5. Experiment execution and statistics
+- [x] 5. Experiment execution and statistics
 - [x] 5.1 Implement four-condition execution and record identity
   - Generate paired original/rewrite target draws with balanced arm order; designate draw zero before outcomes as single response. Retain item/arm/draw identity, failure records and rewrite associations; prevent accidental duplicate calls on resume.
   - Done when saved fixtures contain all planned conditions and missing draws remain visible with unchanged target/reduction settings.
@@ -135,7 +135,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 1.4, 5.1, 5.2_
   - _Requirements: 3.1, 3.2, 3.4, 5.3, 5.4, 5.5, 5.6, 6.2, 9.3, 9.6_
 
-- [ ] 5.4 Add the explicit experiment command and protocol validation
+- [x] 5.4 Add the explicit experiment command and protocol validation
   - Wire the established versioned experiment configuration to the command with model settings, conditions, data hashes, draw count, utility tolerance, audit selection and hard call budget. Keep historical cohort logic separate from existing post-cutoff guard.
   - Done when CLI dry-run validates configuration and displays planned calls/capabilities without starting a batch; invalid protocols fail clearly.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
