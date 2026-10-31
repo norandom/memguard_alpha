@@ -1,0 +1,148 @@
+{
+  "amendment_sha256": "3f14beea52f305cf2c1514944d7329117fa713529bfe071e0aee9d983949a6f8",
+  "balance": null,
+  "base_receipt_sha256": "0def829cc504baf4edb4f8cc77c116a617a3d1ceb11a13eedc84890cf6bfe13c",
+  "budget": {
+    "limit": 4,
+    "remaining": 0,
+    "used": 4
+  },
+  "cost": null,
+  "events": [
+    {
+      "attempt": 1,
+      "call_id": 1,
+      "code": "timeout",
+      "cost": null,
+      "detail": null,
+      "error": "Physical request failed; inspect status/code/parameter.",
+      "latency_s": 90.45299999974668,
+      "model": "openai/gpt-oss-20b",
+      "parameter": null,
+      "stage": "eligibility/probe/nim",
+      "started_at": 2459186.359,
+      "status": "failed",
+      "status_code": null,
+      "timestamp": "2026-10-31T16:26:03.129099+00:00",
+      "usage": null
+    },
+    {
+      "attempt": 1,
+      "call_id": 2,
+      "code": null,
+      "cost": null,
+      "detail": null,
+      "error": null,
+      "latency_s": 1.6559999999590218,
+      "model": "claude-opus-5-5",
+      "parameter": null,
+      "source_attempt": "recovery-01",
+      "source_call_id": 1,
+      "stage": "eligibility/recovery-01/probe/anthropic",
+      "started_at": 2459726.625,
+      "status": "succeeded",
+      "status_code": null,
+      "timestamp": "2026-10-31T16:35:03.396023+00:00",
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 17,
+        "output_tokens": 4
+      }
+    },
+    {
+      "attempt": 1,
+      "call_id": 3,
+      "code": "timeout",
+      "cost": null,
+      "detail": null,
+      "error": "Physical request failed; inspect status/code/parameter.",
+      "latency_s": 90.29700000025332,
+      "model": "openai/gpt-oss-20b",
+      "parameter": null,
+      "source_attempt": "recovery-01",
+      "source_call_id": 2,
+      "stage": "eligibility/recovery-01/probe/nim",
+      "started_at": 2459728.281,
+      "status": "failed",
+      "status_code": null,
+      "timestamp": "2026-10-31T16:35:05.061760+00:00",
+      "usage": null
+    },
+    {
+      "attempt": 1,
+      "call_id": 4,
+      "code": null,
+      "cost": null,
+      "detail": null,
+      "error": "Physical request failed; inspect status/code/parameter.",
+      "latency_s": 302.4529999997467,
+      "model": "openai/gpt-oss-20b",
+      "parameter": null,
+      "source_attempt": "latency-01",
+      "source_call_id": 1,
+      "stage": "eligibility/latency-01/probe/nim",
+      "started_at": 2463324.484,
+      "status": "failed",
+      "status_code": 504,
+      "timestamp": "2026-10-31T17:35:01.266369+00:00",
+      "usage": null
+    }
+  ],
+  "evidence_kind": "actual_generation_probe",
+  "failure": {
+    "category": "request_failure",
+    "phase": "eligibility",
+    "provider": "nim"
+  },
+  "finished_at": null,
+  "prompt": "Reply with the word OK.",
+  "prompt_sha256": "9a5315c468babbc3167b506c3b3193e63b67b26208d9babfccb55eb50e71b924",
+  "providers": {
+    "anthropic": {
+      "anthropic_api_version": "2026-10-21",
+      "capabilities": {
+        "max_tokens": {
+          "detail": "Parameter accepted; effective value remains unconfirmed (not echoed).",
+          "observed": true,
+          "source": "Anthropic Messages API 2026-10-21 authenticated generation probe",
+          "status": "supported"
+        },
+        "text_generation": {
+          "detail": "Text response observed.",
+          "observed": true,
+          "source": "Anthropic Messages API 2026-10-21 authenticated generation probe",
+          "status": "supported"
+        }
+      },
+      "config": {
+        "capabilities": {},
+        "endpoint": "https://api.anthropic.com/v1/messages",
+        "max_retries": 0,
+        "min_call_interval_s": 1.5,
+        "model": "claude-opus-5-5",
+        "parameters": {
+          "max_tokens": 2048
+        },
+        "protocol": "anthropic_messages",
+        "provider": "anthropic",
+        "retry_backoff_s": 2.0,
+        "timeout_s": 90
+      },
+      "confirmed_effective_values": null,
+      "provider_returned_model": null,
+      "raw_response": null,
+      "ready_for_batch": true,
+      "unavailable_metadata_reason": "Public probe API returns capability report only; it does not expose raw response or serving revision."
+    }
+  },
+  "remaining_phase_caps": {
+    "anthropic_evaluation": 144,
+    "calibration": 220,
+    "nim_evaluation": 144
+  },
+  "schema_version": 1,
+  "started_at": "2026-10-31T17:35:01.263021+00:00",
+  "status": "incomplete",
+  "study_plan_sha256": "aeba7fb829d7df2d5e9874dd636de183207f405a53ceb01b01277b77d68d37a5"
+}

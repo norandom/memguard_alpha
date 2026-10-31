@@ -8,7 +8,7 @@ Each executable task is scoped to roughly 1-3 hours of engineering effort; provi
 
 Use idiomatic Python and names matching domain meaning and representation. Document array axes and DataFrame row grain, columns, units and alignment. Preserve lightweight imports and project layering. Use Ruff, tests and `scripts/check_architecture.py`; Sentrux is not a gate. Keep each code unit focused; split responsibilities instead of adding speculative abstractions. For data/report-only tasks, review schema and provenance; production-code size guidelines do not apply. Existing requirement-mandated documentation and live measurement are included despite the generic task template's code-only default.
 
-- [x] 1. Foundation and compatibility
+- [ ] 1. Foundation and compatibility
 - [x] 1.1 Verify provider contracts and freeze compatibility fixtures
   - Check current official OpenAI, Anthropic, Mistral and NIM protocol/model documentation; record supported parameter mappings, capability evidence, unknowns and endpoint variants. Create sanitized success/error fixtures and pin any genuinely required dependencies.
   - Done when fixture tests distinguish absent logprobs, rejected parameters and authentication failures, and existing scorer/ensemble baselines are recorded.
@@ -30,12 +30,12 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Request control_
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 8.6_
 
-- [x] 1.4 Define experiment protocol and persisted record schemas
+- [ ] 1.4 Define experiment protocol and persisted record schemas
   - Define versioned protocol, item/arm/draw identity, request events, rewrite records, completion markers and restart validation before orchestration consumes them.
-  - Done when round-trip fixtures preserve partial failures and reject incompatible resume inputs without issuing calls.
+  - Done when round-trip fixtures preserve partial failures and reject incompatible resume inputs without issuing calls. Reject credential/header fields in execution metadata before journal or CLI publication, preserving schema-defined task labels, answers and raw text.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
-  - _Boundary: Experiment contracts_
-  - _Requirements: 3.1, 3.3, 5.1, 5.5_
+  - _Boundary: Experiment contracts and their journal, report and CLI consumers_
+  - _Requirements: 3.1, 3.3, 3.4, 5.1, 5.5_
 
 - [x] 2. Provider integration
 - [x] 2.1 Implement OpenAI-compatible and NVIDIA completion support
@@ -159,7 +159,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Live experiment setup_
   - _Depends: 6.1_
   - _Requirements: 1.5, 3.3, 5.1, 5.3, 5.6, 9.7_
-  - _Blocked: On 2026-10-31 the NIM configuration timed out twice at 90 seconds; this does not establish invalid credentials. Opus inference passed. Three of four eligibility requests are used. The user's latency clarification authorizes reviewing an append-only 600-second transport amendment for the final attempt; preserve the frozen generation settings and all earlier evidence._
+  - _Blocked: The reviewed 600-second NIM transport amendment ended in HTTP 504 after 302.453 seconds. All four eligibility requests are used; this is not an authentication rejection or proof of invalid credentials. The second bounded debug found an external dependency failure with no established repository fix. Preserve all attempts; no automatic retry, model change or budget transfer._
 
 - [ ] 6.3 Fit matching calibration for scored pilot conditions
   - Validate calibration/evaluation item separation and fit original and rewritten calibration on the logprob-capable model with matching settings and rewrite method. Include calibration and fidelity verification calls in the predeclared total budget; text-only conditions keep MCS unavailable.
@@ -215,6 +215,8 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
 
 ## Implementation notes
 
+- Task 1.4 reopened on 2026-10-31: a synthetic authorization field in protocol audit metadata was persisted by the runtime journal and re-emitted by the CLI plan before the portable export guard ran. No actual credentials or provider calls were used in this reproduction. Repair the shared metadata contract and its consumers before dependent completion; preserve legitimate labels, answers and raw text.
+- Task 6.2 remains blocked after two bounded debug rounds: two 90-second client timeouts and one HTTP 504 at 302.453 seconds under a 600-second timeout. Anthropic inference passed; NIM eligibility is unproven and the four-request eligibility budget is exhausted. Independent reporting, examples and platform checks may proceed, with missing live coverage explicit.
 - The independently reviewed Opus portion completed 67 physical requests and all planned condition records. All 16 rewrites were rejected before semantic verification or target inference, leaving zero valid rewrite pairs. Original single/ensemble accuracy was 11/16 and 12/16. Saved bundles replay exactly; the AI audit is not independent human proof. Task 6.4 and requirement 9.7 remain incomplete without NIM coverage.
 - The independently eligible completion-only Opus portion of task 6.4 needs no NIM calibration. It may run under its frozen 144-request phase cap while the NIM branch is blocked; retain the matched inputs, all failures and the full task's incomplete status until both capability modes are measured.
 - Task 1.4 reopened on 2026-10-31: serialized ensemble enum settings need one shared typed construction boundary consumed by the runner and CLI. Raw strings currently change tail/multimodal semantics or fail location reduction after calls. Repair the contract before accepting task 5.4; preserve protocol identity and existing reducer mathematics.

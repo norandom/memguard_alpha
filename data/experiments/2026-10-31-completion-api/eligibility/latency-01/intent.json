@@ -1,0 +1,8 @@
+{
+  "amendment_sha256": "3f14beea52f305cf2c1514944d7329117fa713529bfe071e0aee9d983949a6f8",
+  "physical_calls_before": 3,
+  "prompt_sha256": "9a5315c468babbc3167b506c3b3193e63b67b26208d9babfccb55eb50e71b924",
+  "provider": "nim",
+  "status": "started",
+  "study_plan_sha256": "aeba7fb829d7df2d5e9874dd636de183207f405a53ceb01b01277b77d68d37a5"
+}

@@ -276,5 +276,18 @@
       "tests/scripts/test_prepare_completion_pilot.py",
       "tests/scripts/test_prepare_completion_latency.py"
     ]
+  },
+  "6.2-latency-result": {
+    "task_complete": false,
+    "source_review": "APPROVED",
+    "debug_next_action": "BLOCK_TASK",
+    "verification": "Root actual request returned HTTP 504 after 302.453s under timeout600, retries0. Fresh strict receipt verification confirmed valid failed state (expected exit1), prior events preserved and budget4/4. Independent bounded debug confirmed external dependency; no repository defect established. Original source hashes remain unchanged; four UTF-8/LF JSON artifacts have zero concrete secret-pattern matches.",
+    "timestamp": "2026-10-31T17:45:47.211620+00:00",
+    "files": [
+      "data/experiments/2026-10-31-completion-api/eligibility/latency-01/00-initial.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/latency-01/intent.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/latency-01/01-nim.json",
+      "data/experiments/2026-10-31-completion-api/eligibility/latency-01/receipt.json"
+    ]
   }
 }
