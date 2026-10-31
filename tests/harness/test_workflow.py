@@ -192,6 +192,7 @@ def test_fatal_answer_projection_failures_retain_draw_kind_raw_response_and_stop
     assert failed_draw.error == result.error
     expected_diagnostics = None if isinstance(failure, BudgetExhaustedError) else {
         "status_code": failure.status_code, "parameter": failure.parameter, "code": failure.code,
+        "detail": None, "retryable": False, "usage": None,
     }
     assert result.provenance["failure_diagnostics"] == expected_diagnostics
 
@@ -450,7 +451,9 @@ def test_changed_configuration_during_probe_is_not_cached_or_followed_by_inferen
 def test_fatal_parameter_diagnostics_are_retained_without_scheduling_later_attempts():
     workflow, target, _, _ = setup([ModelResponse("up"), RequestError("unsupported", parameter="seed", code="bad_seed")])
     result = workflow.run(item(), ensemble=spec(draws=8, max_transport_failure_ratio=1))
-    assert result.provenance["failure_diagnostics"] == {"status_code": None, "parameter": "seed", "code": "bad_seed"}
+    assert result.provenance["failure_diagnostics"] == {
+        "status_code": None, "parameter": "seed", "code": "bad_seed", "detail": None, "retryable": False, "usage": None,
+    }
     assert result.failure_kind == "configuration_error" and len(target.calls) == result.n_attempted == 2
 
 
@@ -634,7 +637,9 @@ def test_hard_eligibility_failure_after_valid_draw_stops_further_attempts(status
     assert result.status == RecordStatus.FAILED and result.failure_kind == "eligibility_error"
     assert result.n_attempted == len(target.calls) == 2 and result.n_usable == 1
     assert result.response is None and result.ensemble is None
-    assert result.provenance["failure_diagnostics"] == {"status_code": status, "code": code, "parameter": None}
+    assert result.provenance["failure_diagnostics"] == {
+        "status_code": status, "code": code, "parameter": None, "detail": None, "retryable": False, "usage": None,
+    }
 
 
 def test_transient_rate_limit_stays_an_ordinary_transport_draw_failure():

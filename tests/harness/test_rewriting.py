@@ -216,7 +216,7 @@ def test_request_error_preserves_parameter_diagnostics_and_reported_failure_usag
                            code="unsupported_parameter", detail="Omit temperature for this model", usage={"input_tokens": 4})
     record = EvidenceRewriter(RecordedClient(error=failure)).generate(application_input())
     assert record.status == RecordStatus.FAILED and "temperature is not supported" in record.error
-    assert generation(record)["failure_kind"] == "request_error"
+    assert generation(record)["failure_kind"] == "configuration_error"
     assert generation(record)["diagnostics"] == {
         "status_code": 400, "parameter": "temperature", "code": "unsupported_parameter",
         "detail": "Omit temperature for this model", "retryable": False, "usage": {"input_tokens": 4},

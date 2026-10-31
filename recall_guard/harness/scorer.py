@@ -33,7 +33,7 @@ depend on ``core``, ``mia``, and ``harness.evaluator``. It imports nothing from
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -189,6 +189,20 @@ class EnsembledScore:
     draws: tuple[GuardedScore, ...] = ()
 
 
+@dataclass(frozen=True)
+class ScoredDraw:
+    """Retained score, exact response content and original executor wave.
+
+    A score with ``parse_ok=False`` contributes its existing failure reason.
+    Transport failures without a score are supplied separately to the reducer.
+    Waves describe acquisition order, independently of canonical score order.
+    """
+
+    score: GuardedScore
+    content: str
+    wave: int
+
+
 class MemoryGuardedScorer:
     """Calibrated, per-model inference-without-recall scorer.
 
@@ -226,9 +240,25 @@ class MemoryGuardedScorer:
         return self._mcs.is_weak
 
     @property
+    def holdout_labels(self) -> tuple[int, ...] | None:
+        """Actual held-out class labels paired with ``holdout_probabilities``."""
+        return self._mcs.holdout_labels
+
+    @property
+    def holdout_probabilities(self) -> tuple[float, ...] | None:
+        """Actual predictions used for ``holdout_auc``; never fresh predictions."""
+        return self._mcs.holdout_probabilities
+
+    @property
     def calibration_identity(self) -> CalibrationIdentity | None:
         """Configured fit provenance; legacy calibrations retain their old contract."""
         return self._lm.identity if isinstance(self._lm, LegacyLogprobAdapter) else None
+
+    @property
+    def calibration_valid_counts(self) -> dict[str, int | None]:
+        """Actual valid rows, after MIA computation, before the train/holdout split."""
+        return {"baseline": self._baseline.n_valid, "is_memorized": self._mcs.n_valid_is,
+                "oos_control": self._mcs.n_valid_oos}
 
     # -- construction ----------------------------------------------------------
 
@@ -366,6 +396,7 @@ class MemoryGuardedScorer:
                 f"{baseline.n_valid} usable rows < min_valid={min_valid}."
             )
 
+        train_hooks = {"before_fit": lm.raise_if_fatal} if isinstance(lm, LegacyLogprobAdapter) else {}
         try:
             mcs = _mcs_train(
                 model_lm=lm,
@@ -376,6 +407,7 @@ class MemoryGuardedScorer:
                 min_auc=min_auc,
                 seed=seed,
                 max_workers=max_workers,
+                **train_hooks,
             )
         finally:
             if isinstance(lm, LegacyLogprobAdapter):
@@ -418,6 +450,48 @@ class MemoryGuardedScorer:
         primary = self._safe_generate(self._lm, prompt)
         ref_res = self._safe_generate(self._ref_lm, prompt) if self._ref_lm else None
         return self._build_guarded_score(prompt, primary, ref_res)
+
+    def reduce_scored_draws(
+        self, prompt: str, draws: Sequence[ScoredDraw], *, spec: EnsembleSpec,
+        failures: Mapping[str, int] | None = None, conservative_quantile: float | None = None,
+        sampled_at: str | None = None,
+    ) -> EnsembledScore:
+        """Replay independently scored draws through the existing scored reducer.
+
+        Makes no model or feature calls. ``sampled_at=None`` means replay; a
+        live caller supplies its original acquisition timestamp. A workflow
+        using the unchanged executor assigns wave ``draw_index // max_workers``.
+        This keeps wave membership attached to each score during canonical
+        sorting. Missing/unattempted draws are never invented as failures.
+        """
+        if not isinstance(spec, EnsembleSpec):
+            raise TypeError("spec must be EnsembleSpec")
+        if conservative_quantile is not None and not 0 <= conservative_quantile <= 1:
+            raise ValueError("conservative_quantile must be in [0, 1]")
+        counts = dict(failures or {})
+        if any(not isinstance(reason, str) or not reason or type(count) is not int or count < 0
+               for reason, count in counts.items()):
+            raise ValueError("Failure counts must have named, nonnegative integer counts")
+        prompt_hash = _hash_prompt(prompt)
+        scored, contents, waves = [], [], []
+        for draw in draws:
+            if not isinstance(draw, ScoredDraw) or not isinstance(draw.score, GuardedScore):
+                raise TypeError("draws must contain ScoredDraw values with GuardedScore evidence")
+            if not isinstance(draw.content, str) or type(draw.wave) is not int or draw.wave < 0:
+                raise ValueError("Each scored draw needs exact text and a nonnegative executor wave")
+            if draw.score.prompt_hash != prompt_hash:
+                raise ValueError("Scored draw belongs to a different prompt")
+            if not draw.score.parse_ok:
+                reason = draw.score.fail_reason or FAIL_ERROR
+                counts[reason] = counts.get(reason, 0) + 1
+            else:
+                scored.append(draw.score)
+                contents.append(draw.content)
+                waves.append(draw.wave)
+        if len(scored) + sum(counts.values()) > spec.draws:
+            raise ValueError("Retained scores and failures exceed the requested draws")
+        return self._reduce_scores(prompt_hash, scored, contents, waves, counts, spec,
+                                   conservative_quantile, sampled_at)
 
     def score_many(self, prompts: Sequence[str], *, max_workers: int = 8) -> list[GuardedScore]:
         """Score many prompts (parallel LM calls); preserves input order."""
@@ -550,7 +624,7 @@ class MemoryGuardedScorer:
         failures: dict[str, int],
         spec: EnsembleSpec,
         conservative_quantile: float | None,
-        sampled_at: str,
+        sampled_at: str | None,
     ) -> EnsembledScore:
         fail_counts = tuple(sorted(failures.items()))
         if len(scored) < spec.min_parsed or not scored:
@@ -739,4 +813,5 @@ __all__ = [
     "GuardedScore",
     "LMFactory",
     "MemoryGuardedScorer",
+    "ScoredDraw",
 ]

@@ -20,6 +20,7 @@ from recall_guard.core.completion import (
 )
 from recall_guard.core.nvidia_lm import CompletionResult
 from recall_guard.core.request_control import BudgetExhaustedError
+from recall_guard.harness.request_failures import FATAL_FAILURES, failure_kind
 
 
 @dataclass(frozen=True)
@@ -133,7 +134,8 @@ class LegacyLogprobAdapter:
         except Exception as error:
             if getattr(error, "code", None) == "missing_token_evidence":
                 error = ValueError("MIA/MCS genuine token evidence is unavailable or incomplete")
-            if isinstance(error, (BudgetExhaustedError, ValueError)) or self._is_auth_error(error):
+            if (isinstance(error, (BudgetExhaustedError, ValueError)) or self._is_auth_error(error)
+                    or failure_kind(error) in FATAL_FAILURES):
                 with self._lock:
                     if self._fatal is None:
                         self._fatal = error

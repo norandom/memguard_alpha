@@ -79,7 +79,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 1.2, 2.1_
   - _Requirements: 3.5, 7.6, 8.2, 9.3_
 
-- [ ] 4. Rewriting and workflow
+- [x] 4. Rewriting and workflow
 - [x] 4.1 Implement versioned evidence rewriting
   - Separate instructions, evidence and as-of data; generate neutral conversational evidence with preservation constraints and no added external facts. Keep original/rewrite hashes and stage provenance.
   - Done when deterministic fixtures verify task instructions are unchanged and all failures remain explicit.
@@ -103,7 +103,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 1.3, 2.1, 2.2, 2.3, 3.1, 4.2_
   - _Requirements: 1.1, 1.2, 7.3, 7.7, 8.1, 8.4, 8.5, 8.6_
 
-- [ ] 4.4 Integrate intervention-matched scoring
+- [x] 4.4 Integrate intervention-matched scoring
   - Apply the same rewrite pipeline to calibration data when scored mitigation is selected, score genuine evidence per draw and reuse existing scored reduction. Preserve ordinary scorer entry points.
   - Done when mismatched unsteered calibration cannot score rewritten generation and valid scored draws retain existing aggregation semantics.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
@@ -213,6 +213,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
 
 ## Implementation notes
 
+- Workflow calibration probes active roles before preparation and also performs the scorer's fit-specific probe; include both in request budgets. Quality metadata retains paired holdout observations. Configured fatal-state checks run before model fitting.
 - Task 1.2 reopened on 2026-10-31 for a foundation correction: OpenAI documents `-9999.0` as a censored token-logprob marker outside its reported top 20. Preserve raw response data, but make this evidence explicitly unavailable for MIA/MCS before task 4.4. Ordinary valid-response construction and serialization remain compatible. Source: https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create.
 - Credentials resolve at configured-client construction; recreate clients after rotation.
 - CallBudget counts physical attempts; RequestControl operates outside pacing locks and returns sanitized failures.

@@ -65,8 +65,10 @@ from recall_guard.harness.scorer import (
     EnsembledScore,
     GuardedScore,
     MemoryGuardedScorer,
+    ScoredDraw,
 )
 from recall_guard.harness.workflow import RecallWorkflow, WorkflowDraw, WorkflowPreflight, WorkflowResult
+from recall_guard.harness.workflow_calibration import CalibrationItem, WorkflowCalibration
 from recall_guard.mia import (
     LOGPROB_FLOOR,
     ControlBaseline,
@@ -87,6 +89,9 @@ __all__ = [
     "WorkflowResult",
     "WorkflowDraw",
     "WorkflowPreflight",
+    "WorkflowCalibration",
+    "CalibrationItem",
+    "ScoredDraw",
     # ensemble surface (opt-in; see EnsembleSpec)
     "EnsembledScore",
     "EnsembleSpec",

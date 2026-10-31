@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -89,6 +90,14 @@ class MCSCalibrator:
     feature_order: list[str]
     holdout_auc: float
     is_weak: bool
+    # Actual pre-split valid rows, after all feature/transport skips. Optional
+    # for callers constructing legacy calibrators; these do not alter fitting.
+    n_valid_is: int | None = None
+    n_valid_oos: int | None = None
+    # Paired observations used for the reported AUC, retained for offline
+    # audit. Older manually constructed calibrators need not provide these.
+    holdout_labels: tuple[int, ...] | None = None
+    holdout_probabilities: tuple[float, ...] | None = None
 
     def predict_proba(
         self, features: MiaFeatures, baseline: ControlBaseline
@@ -311,6 +320,8 @@ def train(
     min_auc: float = 0.6,
     seed: int = 0,
     max_workers: int = 1,
+    *,
+    before_fit: Callable[[], None] | None = None,
 ) -> MCSCalibrator:
     """Train the MCS classifier for one model.
 
@@ -318,7 +329,14 @@ def train(
     ``max_workers > 1``), fits a logistic regression on the standardised
     features, and reports a held-out AUC. Raises ``ValueError`` if either
     class ends up empty after per-row skips.
+
+    Optional ``before_fit`` runs once after feature collection and before
+    splitting or fitting. Its exceptions propagate so callers can reject
+    fitting on survivors after a fatal collection failure. A non-callable
+    hook raises ``TypeError`` before any model calls.
     """
+    if before_fit is not None and not callable(before_fit):
+        raise TypeError("before_fit must be callable or None")
     feature_order = _resolve_feature_order(baseline)
     x, y, n_valid_is, n_valid_oos = _gather_train_xy(
         model_lm=model_lm,
@@ -329,6 +347,8 @@ def train(
         feature_order=feature_order,
         max_workers=max_workers,
     )
+    if before_fit is not None:
+        before_fit()
 
     # The stratified holdout needs at least one row per class in BOTH the
     # train and holdout halves. Check up front so tiny corpora fail with a
@@ -374,6 +394,10 @@ def train(
         feature_order=feature_order,
         holdout_auc=holdout_auc,
         is_weak=is_weak,
+        n_valid_is=n_valid_is,
+        n_valid_oos=n_valid_oos,
+        holdout_labels=tuple(int(label) for label in y_holdout),
+        holdout_probabilities=tuple(float(value) for value in holdout_scores),
     )
 
 

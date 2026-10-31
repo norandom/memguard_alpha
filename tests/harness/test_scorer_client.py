@@ -5,6 +5,7 @@ import hashlib
 from types import SimpleNamespace
 
 import pytest
+from sklearn.linear_model import LogisticRegression
 
 from recall_guard.core.completion import (
     CapabilityEvidence,
@@ -81,9 +82,13 @@ def calibrate(client=None, **kwargs):
     )
 
 
-def test_configured_fit_reuses_baseline_and_mcs_and_supplied_response_math():
+def test_configured_fit_reuses_baseline_and_mcs_and_supplied_response_math(mocker):
     client = Client()
+    fit_spy = mocker.spy(LogisticRegression, "fit")
+    train_spy = mocker.patch("recall_guard.harness.scorer._mcs_train", wraps=train)
     scorer = calibrate(client)
+    assert fit_spy.call_count == 1
+    assert train_spy.call_args.kwargs["before_fit"] == scorer._lm.raise_if_fatal
     assert len(client.calls) == 25  # actual probe + control + labelled IS/OOS
     assert client.calls[0][0] == "probe"
     assert scorer.model == "m" and scorer.holdout_auc > 0.6 and not scorer.is_weak
@@ -99,6 +104,12 @@ def test_configured_fit_reuses_baseline_and_mcs_and_supplied_response_math():
         return [EvalRow(prompt, 0, {}) for prompt in prompts]
     baseline = build_baseline(lm, rows(OOS), None, min_valid=4)
     mcs = train(lm, rows(IS), rows(OOS), baseline, None)
+    legacy = MemoryGuardedScorer.calibrate(
+        api_key="fixture", model="m", is_memorized=IS, oos_control=OOS, min_valid=4, max_workers=1,
+        lm_factory=lambda *_args: LegacyLM(),
+    )
+    assert "before_fit" not in train_spy.call_args.kwargs
+    assert legacy.holdout_auc == scorer.holdout_auc
     response = client.generate("eval")
     calls_before = len(client.calls)
     score = scorer.score_response("eval", response, client=client)
@@ -243,13 +254,46 @@ def test_supplied_incomplete_evidence_is_explicitly_unavailable(missing):
 
 @pytest.mark.parametrize("fail_at", [1, 4, 12, 22])
 @pytest.mark.parametrize("failure", [BudgetExhaustedError("limit"), RequestError("denied", status_code=403)])
-def test_fatal_calibration_error_cannot_be_fitted_from_survivors(fail_at, failure):
+def test_fatal_calibration_error_cannot_be_fitted_from_survivors(fail_at, failure, mocker):
     client = Client()
+    fit_spy = mocker.spy(LogisticRegression, "fit")
     client.failure, client.fail_at = failure, fail_at
     expected = BudgetExhaustedError if isinstance(failure, BudgetExhaustedError) else ConfigurationError
     with pytest.raises(expected):
         calibrate(client)
     assert len(client.calls) == fail_at
+    fit_spy.assert_not_called()
+
+
+@pytest.mark.parametrize("fail_at", [4, 22])
+@pytest.mark.parametrize("status, code", [(402, None), (429, "insufficient_quota"),
+                                       (429, "billing_hard_limit_reached"), (429, "billing_not_active"),
+                                       (429, "credit_balance_exhausted"), (429, "insufficient_credits"),
+                                       (429, "usage_limit_reached"), (400, "invalid_parameter")])
+def test_hard_eligibility_or_configuration_during_fit_stops_queued_calls(fail_at, status, code, mocker):
+    client = Client()
+    fit_spy = mocker.spy(LogisticRegression, "fit")
+    client.failure, client.fail_at = RequestError("configured request rejected", status_code=status, code=code), fail_at
+    with pytest.raises(RequestError) as raised:
+        calibrate(client)
+    assert raised.value is client.failure
+    assert len(client.calls) == fail_at
+    fit_spy.assert_not_called()
+
+
+def test_transient_rate_limit_during_fit_remains_a_skippable_row(mocker):
+    client = Client()
+    generate = client.generate
+
+    def once(prompt, **parameters):
+        if len(client.calls) == 3:
+            client.calls.append((prompt, parameters))
+            raise RequestError("rate limit", status_code=429, retryable=True)
+        return generate(prompt, **parameters)
+
+    mocker.patch.object(client, "generate", side_effect=once)
+    scorer = calibrate(client)
+    assert scorer.calibration_valid_counts == {"baseline": 7, "is_memorized": 8, "oos_control": 8}
 
 
 @pytest.mark.parametrize("entry_point", ["score", "score_many", "score_ensemble"])

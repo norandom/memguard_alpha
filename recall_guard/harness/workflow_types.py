@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from recall_guard.core.completion import CapabilityReport, ModelResponse
 from recall_guard.core.ensemble import EnsembleResult
 from recall_guard.harness.intervention_types import EvidenceArm, RecordStatus, RewriteRecord
+from recall_guard.harness.scorer import EnsembledScore, GuardedScore
+from recall_guard.harness.scorer_client import CalibrationIdentity
+from recall_guard.mia.features import MiaFeatures
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,8 @@ class WorkflowDraw:
     answer: Hashable | None = None
     components: Mapping[str, float] | None = None
     failure_kind: str | None = None
+    guarded_score: GuardedScore | None = None
+    diagnostics: Mapping | None = None
 
     @property
     def identity(self) -> tuple[str, EvidenceArm, int]:
@@ -59,6 +64,13 @@ class WorkflowResult:
     ``ensemble.draws`` uses the existing reducer's canonical usable order.
     Physical calls include probes and retries and belong to the shared budget.
     Answer statistics do not estimate memorization; scoring is a separate path.
+
+    ``response`` is the core answer-consensus response. ``guarded_score`` and
+    ``mia_features`` describe only a single response; ensemble scores/features
+    live on each draw. ``scored_ensemble.consensus`` is the scored representative,
+    which may differ from the answer-consensus response. For an ensemble,
+    ``p_memorized`` is its mean ``p_memorized_point`` exposure multiplier, never
+    the representative draw's score or an average of its input features.
     """
 
     item_id: str
@@ -77,11 +89,14 @@ class WorkflowResult:
     preflight: WorkflowPreflight | None = None
     error: str | None = None
     failure_kind: str | None = None
-    guarded_score: None = None
-    mia_features: None = None
-    p_memorized: None = None
+    guarded_score: GuardedScore | None = None
+    mia_features: MiaFeatures | None = None
+    p_memorized: float | None = None
     unavailable_reasons: Mapping[str, str] = field(default_factory=dict)
     provenance: Mapping = field(default_factory=dict)
+    scored_ensemble: EnsembledScore | None = None
+    calibration_identity: CalibrationIdentity | None = None
+    sampled_at: str | None = None
 
     @property
     def n_attempted(self) -> int:

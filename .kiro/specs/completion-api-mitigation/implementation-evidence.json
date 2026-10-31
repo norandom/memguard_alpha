@@ -128,5 +128,26 @@
       "recall_guard/core/provider_anthropic.py",
       "recall_guard/core/provider_callback.py"
     ]
+  },
+  "4.4": {
+    "review": "APPROVED",
+    "verification": "Independent re-review APPROVED after pre-fit cancellation repair. Parent fresh454focusedtests17.11s and fullRuff/architecture pass. Pre-repair integration full1292passed1existingwarning107.56s. RED18 and repairRED13 logged; zero survivor fits after late fatal failures, legacy numerical parity, matched calibration, actual holdout AUC replay and per-draw scoring verified.",
+    "timestamp": "2026-10-31T13:07:20.879435+00:00",
+    "files": [
+      "recall_guard/__init__.py",
+      "recall_guard/harness/scorer.py",
+      "recall_guard/harness/scorer_client.py",
+      "recall_guard/harness/workflow.py",
+      "recall_guard/harness/workflow_types.py",
+      "recall_guard/harness/workflow_calibration.py",
+      "recall_guard/harness/request_failures.py",
+      "recall_guard/harness/rewriting.py",
+      "recall_guard/mia/mcs.py",
+      "tests/harness/test_workflow_scoring.py",
+      "tests/harness/test_scorer_client.py",
+      "tests/harness/test_workflow.py",
+      "tests/harness/test_rewriting.py",
+      "tests/mia/test_mcs.py"
+    ]
   }
 }

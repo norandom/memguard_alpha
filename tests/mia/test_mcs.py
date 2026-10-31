@@ -24,6 +24,7 @@ import logging
 import numpy as np
 import pytest
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
 
 from recall_guard.core.loader import EvalRow
 from recall_guard.core.nvidia_lm import CompletionResult, NvidiaLM, TokenLogprob
@@ -178,10 +179,64 @@ def test_train_synthetic_separable_features_yields_high_auc(mocker) -> None:
     )
 
     assert calib.holdout_auc > 0.95
+    assert roc_auc_score(calib.holdout_labels, calib.holdout_probabilities) == calib.holdout_auc
     assert calib.is_weak is False
     # ref_delta excluded since baseline disables it.
     assert "ref_delta" not in calib.feature_order
     assert calib.feature_order == ["loss", "min_k", "min_k_pp", "zlib_ratio"]
+
+
+@pytest.mark.parametrize("before_fit", [False, 0, "callback", object()])
+def test_train_rejects_noncallable_before_fit_before_generation(before_fit, mocker) -> None:
+    lm = _fake_lm(mocker, [])
+    with pytest.raises(TypeError, match="before_fit"):
+        train(lm, [_row()], [_row()], _baseline_no_ref(), None, before_fit=before_fit)
+    lm.generate.assert_not_called()
+
+
+def test_train_before_fit_runs_after_collection_and_can_abort_before_split(mocker) -> None:
+    n = 8
+    lm = _fake_lm(mocker, _separable_completions(n, -2) + _separable_completions(n, 2))
+    split_spy = mocker.patch("recall_guard.mia.mcs.train_test_split")
+    fit_spy = mocker.spy(LogisticRegression, "fit")
+    failure = RuntimeError("caller cancelled fitting")
+
+    def abort():
+        assert lm.generate.call_count == 2 * n
+        split_spy.assert_not_called()
+        fit_spy.assert_not_called()
+        raise failure
+
+    before_fit = mocker.Mock(side_effect=abort)
+    with pytest.raises(RuntimeError) as caught:
+        train(lm, [_row(f"is-{i}") for i in range(n)], [_row(f"oos-{i}") for i in range(n)],
+              _baseline_no_ref(), None, before_fit=before_fit)
+    assert caught.value is failure
+    before_fit.assert_called_once_with()
+    split_spy.assert_not_called()
+    fit_spy.assert_not_called()
+
+
+def test_train_noop_before_fit_preserves_legacy_positional_fit_exactly(mocker) -> None:
+    n = 8
+    completions = _separable_completions(n, -2) + _separable_completions(n, 2)
+    is_rows, oos_rows = [_row(f"is-{i}") for i in range(n)], [_row(f"oos-{i}") for i in range(n)]
+    baseline = _baseline_no_ref()
+    legacy = train(_fake_lm(mocker, completions), is_rows, oos_rows, baseline, None, 0.6, 42, 1)
+    lm = _fake_lm(mocker, completions)
+
+    def check_gathered():
+        assert lm.generate.call_count == 2 * n
+
+    before_fit = mocker.Mock(side_effect=check_gathered)
+    guarded = train(lm, is_rows, oos_rows, baseline, None, 0.6, 42, 1, before_fit=before_fit)
+    before_fit.assert_called_once_with()
+    np.testing.assert_array_equal(guarded.classifier.coef_, legacy.classifier.coef_)
+    np.testing.assert_array_equal(guarded.classifier.intercept_, legacy.classifier.intercept_)
+    assert guarded.feature_order == legacy.feature_order
+    assert guarded.holdout_auc == legacy.holdout_auc and guarded.is_weak == legacy.is_weak
+    assert guarded.holdout_labels == legacy.holdout_labels
+    assert guarded.holdout_probabilities == legacy.holdout_probabilities
 
 
 def test_train_label_shuffled_features_yields_low_auc_and_weak_flag(mocker) -> None:
@@ -290,6 +345,8 @@ def test_train_skips_rows_with_lm_failures_and_warns(mocker, caplog) -> None:
 
     # Calibrator still produced.
     assert isinstance(calib, MCSCalibrator)
+    assert calib.n_valid_is == n_is - 1
+    assert calib.n_valid_oos == n_oos
     # Exactly one WARN for the skipped IS row.
     warns = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warns) >= 1
