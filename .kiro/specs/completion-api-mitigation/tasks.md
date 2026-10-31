@@ -159,6 +159,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Live experiment setup_
   - _Depends: 6.1_
   - _Requirements: 1.5, 3.3, 5.1, 5.3, 5.6, 9.7_
+  - _Blocked: On 2026-10-31 the NIM configuration timed out twice at 90 seconds; this does not establish invalid credentials. Opus inference passed. Three of four eligibility requests are used. The user's latency clarification authorizes reviewing an append-only 600-second transport amendment for the final attempt; preserve the frozen generation settings and all earlier evidence._
 
 - [ ] 6.3 Fit matching calibration for scored pilot conditions
   - Validate calibration/evaluation item separation and fit original and rewritten calibration on the logprob-capable model with matching settings and rewrite method. Include calibration and fidelity verification calls in the predeclared total budget; text-only conditions keep MCS unavailable.
@@ -167,6 +168,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Live calibration_
   - _Depends: 4.4, 6.2_
   - _Requirements: 3.3, 5.1, 7.6, 9.3_
+  - _Blocked: Depends on verified NIM inference eligibility in task 6.2; do not fit or silently downgrade the selected scoring path._
 
 - [ ] 6.4 Run the bounded paired pilot and audit rewrites
   - Execute four conditions on shared items and retain all failures. Review the preselected stratified fidelity sample, record judgments and disagreements, and reject efficacy claims if fidelity coverage is insufficient.
@@ -213,6 +215,8 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
 
 ## Implementation notes
 
+- The independently reviewed Opus portion completed 67 physical requests and all planned condition records. All 16 rewrites were rejected before semantic verification or target inference, leaving zero valid rewrite pairs. Original single/ensemble accuracy was 11/16 and 12/16. Saved bundles replay exactly; the AI audit is not independent human proof. Task 6.4 and requirement 9.7 remain incomplete without NIM coverage.
+- The independently eligible completion-only Opus portion of task 6.4 needs no NIM calibration. It may run under its frozen 144-request phase cap while the NIM branch is blocked; retain the matched inputs, all failures and the full task's incomplete status until both capability modes are measured.
 - Task 1.4 reopened on 2026-10-31: serialized ensemble enum settings need one shared typed construction boundary consumed by the runner and CLI. Raw strings currently change tail/multimodal semantics or fail location reduction after calls. Repair the contract before accepting task 5.4; preserve protocol identity and existing reducer mathematics.
 - Experiment journals preserve write-ahead construction/probe/arm intent and refuse ambiguous restart. Safe resumes use the remaining budget and intentionally re-probe access. Calibration fingerprints include observed fit settings; strict callback provenance remains caller-cooperative, including use of the supplied logical prompt.
 - Workflow calibration probes active roles before preparation and also performs the scorer's fit-specific probe; include both in request budgets. Quality metadata retains paired holdout observations. Configured fatal-state checks run before model fitting.

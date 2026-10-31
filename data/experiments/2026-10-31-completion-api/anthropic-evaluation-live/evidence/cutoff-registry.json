@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "models": {
+    "openai/gpt-oss-20b": {
+      "date": "2024-06-30",
+      "source_url": "https://arxiv.org/html/2508.10925v1",
+      "retrieved_at": "2026-10-31",
+      "alias_uncertainty": null
+    },
+    "claude-opus-5-5": {
+      "date": "2026-06-30",
+      "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "retrieved_at": "2026-10-31",
+      "alias_uncertainty": null
+    }
+  }
+}

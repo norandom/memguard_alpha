@@ -1,0 +1,181 @@
+{
+  "audit_selection": {
+    "agent_inspection": "Root agent inspection is not independent human audit; efficacy remains unestablished without independent evidence.",
+    "include": [
+      "accepted",
+      "rejected",
+      "unperformed"
+    ],
+    "item_ids": [
+      "price-dac17f381fe174d6af05",
+      "price-f9a0273a435521825a03",
+      "price-bdd46e1c9aa08c29edf4",
+      "price-79c1b30b718a32fb9b0b",
+      "price-42c8b539ba7870571aa1",
+      "price-31499dabf289ada9b811",
+      "price-ba1ec952e0af415a4e6f",
+      "price-9232103d51f21bccfd90",
+      "price-5d76f434a11f5b5cdd2f",
+      "price-008daa490c5d23516a22",
+      "price-047ab668bf2a87c7cf27",
+      "price-3a2e9c7f70663d44c9d3",
+      "price-6eb9966c80283e7831c3",
+      "price-e61647df3c766eb4bd36",
+      "price-efd232530888d0db7c7a",
+      "price-b1001e5cf900b844ef28"
+    ],
+    "method": "census of every planned item for each provider, selected before generation",
+    "per_provider": 16,
+    "retain": [
+      "original",
+      "candidate",
+      "automated_checks",
+      "auditor_identity",
+      "judgment",
+      "disagreements"
+    ]
+  },
+  "bootstrap_count": 2000,
+  "bootstrap_seed": 0,
+  "cohort_definitions": {
+    "post": {
+      "description": "common post-cutoff timing proxy",
+      "historical": {
+        "cutoff": {
+          "alias_uncertainty": null,
+          "date": "2026-06-30",
+          "model": "claude-opus-5-5",
+          "retrieved_at": "2026-10-31",
+          "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+        },
+        "matching": {
+          "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+          "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+          "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+          "task": "next-session quoted-close direction from five trailing completed daily closes"
+        },
+        "matching_group": "common-price-evidence-v1",
+        "outcome_dates": {
+          "price-008daa490c5d23516a22": "2026-09-10",
+          "price-047ab668bf2a87c7cf27": "2026-08-18",
+          "price-31499dabf289ada9b811": "2026-08-27",
+          "price-ba1ec952e0af415a4e6f": "2026-09-11",
+          "price-bdd46e1c9aa08c29edf4": "2026-10-05",
+          "price-e61647df3c766eb4bd36": "2026-07-15",
+          "price-efd232530888d0db7c7a": "2026-10-26",
+          "price-f9a0273a435521825a03": "2026-10-19"
+        },
+        "period": "post"
+      }
+    },
+    "pre": {
+      "description": "common pre-cutoff timing proxy",
+      "historical": {
+        "cutoff": {
+          "alias_uncertainty": null,
+          "date": "2026-06-30",
+          "model": "claude-opus-5-5",
+          "retrieved_at": "2026-10-31",
+          "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+        },
+        "matching": {
+          "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+          "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+          "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+          "task": "next-session quoted-close direction from five trailing completed daily closes"
+        },
+        "matching_group": "common-price-evidence-v1",
+        "outcome_dates": {
+          "price-3a2e9c7f70663d44c9d3": "2023-08-16",
+          "price-42c8b539ba7870571aa1": "2023-09-18",
+          "price-5d76f434a11f5b5cdd2f": "2023-08-03",
+          "price-6eb9966c80283e7831c3": "2023-10-24",
+          "price-79c1b30b718a32fb9b0b": "2023-08-03",
+          "price-9232103d51f21bccfd90": "2023-10-27",
+          "price-b1001e5cf900b844ef28": "2023-07-11",
+          "price-dac17f381fe174d6af05": "2023-09-26"
+        },
+        "period": "pre"
+      }
+    }
+  },
+  "data_hashes": {
+    "cohort_definitions": "70027cddb6911bc1d3660e6e3f3240a49bbaae4d48c5158655304fd539de8786",
+    "cutoff_registry": "7f50ba000f1447ea767ca6a86dd1818e75ba3fa5dca1da245efcab3fb8892abb",
+    "eligibility_receipt": "0def829cc504baf4edb4f8cc77c116a617a3d1ceb11a13eedc84890cf6bfe13c",
+    "evaluation": "cb7359e4a5625767d308d35f303778c30df2429c1f6420bf7781b2b3483e6f99",
+    "model_provenance": "9b6bdb499bee28c477682609989b32536ba428bfa7ab52b62f3ae4af00d2243c",
+    "study_plan": "aeba7fb829d7df2d5e9874dd636de183207f405a53ceb01b01277b77d68d37a5"
+  },
+  "draws": 3,
+  "ensemble_settings": {
+    "agreement_target": null,
+    "confidence": 0.95,
+    "density_ratio": 10.0,
+    "grid": null,
+    "location_mode": "median",
+    "mass_min": 0.25,
+    "max_tokens": null,
+    "max_total_requests": null,
+    "max_transport_failure_ratio": 0.3333333333333333,
+    "max_workers": 1,
+    "min_cluster_density": 1.5,
+    "min_cluster_draws": 8,
+    "min_parsed": 2,
+    "multimodal_action": "flag",
+    "reference_mode": "fixed",
+    "retain_draws": true,
+    "tail": "two_sided",
+    "temperature": null,
+    "trim": 0.25,
+    "trough_steps": 3
+  },
+  "request_budget": 144,
+  "rewrite_method_version": "neutral-conversation-v1",
+  "rewrite_scope": "shared_per_item",
+  "rewriter_model": {
+    "capabilities": {},
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "max_retries": 0,
+    "min_call_interval_s": 1.5,
+    "model": "claude-opus-5-5",
+    "parameters": {
+      "max_tokens": 2048
+    },
+    "protocol": "anthropic_messages",
+    "provider": "anthropic",
+    "retry_backoff_s": 2.0,
+    "timeout_s": 90
+  },
+  "schema_version": 1,
+  "target_model": {
+    "capabilities": {},
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "max_retries": 0,
+    "min_call_interval_s": 1.5,
+    "model": "claude-opus-5-5",
+    "parameters": {
+      "max_tokens": 2048
+    },
+    "protocol": "anthropic_messages",
+    "provider": "anthropic",
+    "retry_backoff_s": 2.0,
+    "timeout_s": 90
+  },
+  "task_metric": "accuracy",
+  "utility_tolerance": 0.05,
+  "verifier_model": {
+    "capabilities": {},
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "max_retries": 0,
+    "min_call_interval_s": 1.5,
+    "model": "claude-opus-5-5",
+    "parameters": {
+      "max_tokens": 2048
+    },
+    "protocol": "anthropic_messages",
+    "provider": "anthropic",
+    "retry_backoff_s": 2.0,
+    "timeout_s": 90
+  }
+}

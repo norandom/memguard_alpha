@@ -226,5 +226,30 @@
       "data/experiments/2026-10-31-completion-api/raw/IAU.chart.json",
       "data/experiments/2026-10-31-completion-api/raw/SPY.chart.json"
     ]
+  },
+  "6.4-opus-portion": {
+    "review": "APPROVED",
+    "task_complete": false,
+    "scope": "Opus measurement artifacts only; full task requires NIM.",
+    "verification": "Independent review: 202 passed, 1 Windows symlink skip; fresh offline replay, complete audit and request reconciliation pass. Parent fresh replay after attestation readability edit passed. All 16 rewrites rejected, zero valid rewriting pairs; no MCS or mitigation claim.",
+    "timestamp": "2026-10-31T17:13:42.720041+00:00",
+    "files": [
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation/manifest.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation/metrics.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation/records.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/evidence/anthropic-protocol.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/evidence/cutoff-registry.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/evidence/eligibility-receipt.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/evidence/fidelity-audit.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/evidence/operator-run-attestation.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/evidence/reconciliation.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/evidence/study-plan.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/manifest.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/metrics.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-evaluation-live/records.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-protocol.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-fidelity-audit.json",
+      "data/experiments/2026-10-31-completion-api/anthropic-reconciliation.json"
+    ]
   }
 }

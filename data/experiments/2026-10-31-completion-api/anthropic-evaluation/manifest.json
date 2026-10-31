@@ -1,0 +1,750 @@
+{
+  "analysis": {
+    "confidence_component": "confidence",
+    "confidence_level": 0.95,
+    "version": 1
+  },
+  "artifacts": {
+    "metrics": {
+      "path": "metrics.json",
+      "sha256": "7418c845676f2aec725b241c716f13df14b64cb59c39ba9c267683f9edeba0a9"
+    },
+    "records": {
+      "path": "records.json",
+      "sha256": "959e95de4e032bf682e936c699b47b44f5acbbf88b713b5f708820cd9991f56d"
+    }
+  },
+  "cost": {
+    "currency": null,
+    "estimate": null,
+    "estimate_status": "not_estimated",
+    "recorded_cost": {
+      "known_subtotal": null,
+      "recorded_requests": 0,
+      "requests": 67,
+      "total": null
+    },
+    "recorded_unit": "recorded_units_currency_unspecified"
+  },
+  "exported_at": "2026-10-31T17:02:37.135694+00:00",
+  "integrity": "sha256_exact_utf8_file_bytes_including_lf; not_provider_origin_evidence",
+  "interpretation": {
+    "aggregation": "paired single versus ensemble outcomes; single reuses draw zero",
+    "historical": {
+      "available": false,
+      "interpretation": "Any later historical gap or difference-of-gaps is a recall-related proxy, not proof of memorization.",
+      "reason": "This analyzer does not validate historical pre/post cohort matching and sourced cutoffs; historical recall inference is unavailable."
+    },
+    "limits": [
+      "Lower task accuracy alone is not evidence of reduced recall.",
+      "Confidence changes and historical gaps are recall-related proxies only.",
+      "Failed/rejected interventions cannot establish mitigation success.",
+      "Intervals on tiny or degenerate samples are not equivalence or power evidence.",
+      "An exploratory pilot is not a powered mitigation-success result."
+    ],
+    "rewriting": "paired original versus rewritten outcomes; see metrics effects.rewriting_*",
+    "scoring": "existing per-draw confidence discounts and calibration quality are separate from rewriting"
+  },
+  "protocol_id": "cdddf5b0bc5cb73a325ffe0303193b204f5c04ef8940a535e562d4bd422bcd3f",
+  "schema_version": 1,
+  "settings": {
+    "rewriter": {
+      "omitted_defaults": "unknown; omitted parameter names and provider defaults are not inferred",
+      "requested": {
+        "max_tokens": 2048
+      },
+      "responses": [
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[0].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[1].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[2].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[3].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[4].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[5].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[6].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[7].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[8].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[9].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[10].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[11].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[12].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[13].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[14].rewrite_response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.rewrites[15].rewrite_response"
+        }
+      ]
+    },
+    "target": {
+      "omitted_defaults": "unknown; omitted parameter names and provider defaults are not inferred",
+      "requested": {
+        "max_tokens": 2048
+      },
+      "responses": [
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[0].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[1].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[2].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[6].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[7].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[8].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[12].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[13].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[14].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[18].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[19].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[20].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[24].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[25].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[26].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[30].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[31].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[32].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[36].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[37].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[38].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[42].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[43].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[44].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[48].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[49].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[50].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[54].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[55].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[56].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[60].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[61].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[62].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[66].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[67].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[68].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[72].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[73].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[74].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[78].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[79].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[80].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[84].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[85].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[86].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[90].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[91].response"
+        },
+        {
+          "confirmed": {},
+          "requested": {
+            "max_tokens": 2048
+          },
+          "requested_unconfirmed": [
+            "max_tokens"
+          ],
+          "source": "checkpoint.draws[92].response"
+        }
+      ]
+    },
+    "verifier": {
+      "omitted_defaults": "unknown; omitted parameter names and provider defaults are not inferred",
+      "requested": {
+        "max_tokens": 2048
+      },
+      "responses": []
+    }
+  },
+  "status": "completed",
+  "validation": {
+    "basis": "caller_asserted_evidence; hashes_do_not_verify_live_origin",
+    "evidence": [],
+    "execution": "unverified",
+    "providers": {
+      "rewriter": {
+        "evidence": [],
+        "implemented": null,
+        "live_measured": false,
+        "model": "claude-opus-5-5",
+        "offline_tested": null,
+        "protocol": "anthropic_messages",
+        "provider": "anthropic"
+      },
+      "target": {
+        "evidence": [],
+        "implemented": null,
+        "live_measured": false,
+        "model": "claude-opus-5-5",
+        "offline_tested": null,
+        "protocol": "anthropic_messages",
+        "provider": "anthropic"
+      },
+      "verifier": {
+        "evidence": [],
+        "implemented": null,
+        "live_measured": false,
+        "model": "claude-opus-5-5",
+        "offline_tested": null,
+        "protocol": "anthropic_messages",
+        "provider": "anthropic"
+      }
+    }
+  }
+}
