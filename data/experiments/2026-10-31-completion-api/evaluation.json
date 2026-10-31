@@ -1,0 +1,133 @@
+{
+  "items": [
+    {
+      "as_of": "2023-09-25",
+      "cohort": "pre",
+      "evidence": "ticker: IAU; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2023-09-19: 36.58\n2023-09-20: 36.61\n2023-09-21: 36.34\n2023-09-22: 36.46\n2023-09-25: 36.27",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-dac17f381fe174d6af05",
+      "label": -1
+    },
+    {
+      "as_of": "2026-10-16",
+      "cohort": "post",
+      "evidence": "ticker: IAU; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2026-10-12: 78.34\n2026-10-13: 78.25\n2026-10-14: 77.07\n2026-10-15: 78.47\n2026-10-16: 78.34",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-f9a0273a435521825a03",
+      "label": -1
+    },
+    {
+      "as_of": "2026-10-02",
+      "cohort": "post",
+      "evidence": "ticker: IAU; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2026-09-28: 77.50\n2026-09-29: 78.52\n2026-09-30: 78.10\n2026-10-01: 78.47\n2026-10-02: 77.95",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-bdd46e1c9aa08c29edf4",
+      "label": -1
+    },
+    {
+      "as_of": "2023-08-02",
+      "cohort": "pre",
+      "evidence": "ticker: IAU; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2023-07-27: 36.84\n2023-07-28: 37.12\n2023-07-31: 37.20\n2023-08-01: 36.84\n2023-08-02: 36.67",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-79c1b30b718a32fb9b0b",
+      "label": -1
+    },
+    {
+      "as_of": "2023-09-15",
+      "cohort": "pre",
+      "evidence": "ticker: IAU; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2023-09-11: 36.41\n2023-09-12: 36.23\n2023-09-13: 36.15\n2023-09-14: 36.17\n2023-09-15: 36.42",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-42c8b539ba7870571aa1",
+      "label": 1
+    },
+    {
+      "as_of": "2026-08-26",
+      "cohort": "post",
+      "evidence": "ticker: IAU; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2026-08-20: 85.13\n2026-08-21: 86.79\n2026-08-24: 87.47\n2026-08-25: 87.76\n2026-08-26: 86.37",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-31499dabf289ada9b811",
+      "label": 1
+    },
+    {
+      "as_of": "2026-09-10",
+      "cohort": "post",
+      "evidence": "ticker: IAU; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2026-09-03: 84.10\n2026-09-04: 83.39\n2026-09-08: 81.95\n2026-09-09: 82.69\n2026-09-10: 81.27",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-ba1ec952e0af415a4e6f",
+      "label": 1
+    },
+    {
+      "as_of": "2023-10-26",
+      "cohort": "pre",
+      "evidence": "ticker: IAU; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2023-10-20: 37.47\n2023-10-23: 37.35\n2023-10-24: 37.34\n2023-10-25: 37.51\n2023-10-26: 37.57",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-9232103d51f21bccfd90",
+      "label": 1
+    },
+    {
+      "as_of": "2023-08-02",
+      "cohort": "pre",
+      "evidence": "ticker: SPY; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2023-07-27: 452.49\n2023-07-28: 456.92\n2023-07-31: 457.79\n2023-08-01: 456.48\n2023-08-02: 450.13",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-5d76f434a11f5b5cdd2f",
+      "label": -1
+    },
+    {
+      "as_of": "2026-09-09",
+      "cohort": "post",
+      "evidence": "ticker: SPY; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2026-09-02: 765.16\n2026-09-03: 773.17\n2026-09-04: 770.19\n2026-09-08: 765.96\n2026-09-09: 762.40",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-008daa490c5d23516a22",
+      "label": -1
+    },
+    {
+      "as_of": "2026-08-17",
+      "cohort": "post",
+      "evidence": "ticker: SPY; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2026-08-11: 770.56\n2026-08-12: 772.49\n2026-08-13: 777.88\n2026-08-14: 776.34\n2026-08-17: 772.67",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-047ab668bf2a87c7cf27",
+      "label": -1
+    },
+    {
+      "as_of": "2023-08-15",
+      "cohort": "pre",
+      "evidence": "ticker: SPY; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2023-08-09: 445.75\n2023-08-10: 445.91\n2023-08-11: 445.65\n2023-08-14: 448.11\n2023-08-15: 442.89",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-3a2e9c7f70663d44c9d3",
+      "label": -1
+    },
+    {
+      "as_of": "2023-10-23",
+      "cohort": "pre",
+      "evidence": "ticker: SPY; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2023-10-17: 436.02\n2023-10-18: 430.21\n2023-10-19: 426.43\n2023-10-20: 421.19\n2023-10-23: 420.46",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-6eb9966c80283e7831c3",
+      "label": 1
+    },
+    {
+      "as_of": "2026-07-14",
+      "cohort": "post",
+      "evidence": "ticker: SPY; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2026-07-08: 745.40\n2026-07-09: 751.71\n2026-07-10: 754.95\n2026-07-13: 749.17\n2026-07-14: 751.83",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-e61647df3c766eb4bd36",
+      "label": 1
+    },
+    {
+      "as_of": "2026-10-23",
+      "cohort": "post",
+      "evidence": "ticker: SPY; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2026-10-19: 766.48\n2026-10-20: 769.05\n2026-10-21: 773.09\n2026-10-22: 763.96\n2026-10-23: 759.97",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-efd232530888d0db7c7a",
+      "label": 1
+    },
+    {
+      "as_of": "2023-07-10",
+      "cohort": "pre",
+      "evidence": "ticker: SPY; currency: USD; units: USD per share.\nsource: Yahoo Finance daily quoted closes, retrieved retrospectively; prices may be revised or split-adjusted by the source and are not total returns.\nfive trailing trading-session closes, rounded to USD 0.01:\n2023-07-03: 443.79\n2023-07-05: 443.13\n2023-07-06: 439.66\n2023-07-07: 438.55\n2023-07-10: 439.66",
+      "instructions": "Predict the direction of the next trading session's quoted close relative to the last quoted close in the evidence. Use 1 for higher, -1 for lower, and 0 for unchanged. Prices are rounded to the nearest USD 0.01, half up. Return only a JSON object in this format: {\"direction\": <-1|0|1>, \"confidence\": <0..1>}. Confidence is your probability that your chosen direction is correct.",
+      "item_id": "price-b1001e5cf900b844ef28",
+      "label": 1
+    }
+  ],
+  "schema_version": 1
+}

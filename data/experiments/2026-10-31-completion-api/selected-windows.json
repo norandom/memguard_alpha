@@ -1,0 +1,1574 @@
+{
+  "items": {
+    "price-008daa490c5d23516a22": {
+      "as_of": "2026-09-09",
+      "as_of_close": "762.40",
+      "cohort": "post",
+      "evidence_dates": [
+        "2026-09-02",
+        "2026-09-03",
+        "2026-09-04",
+        "2026-09-08",
+        "2026-09-09"
+      ],
+      "evidence_hash": "6ee37ccdb5f168104701a49d73582af90c1ec8e256d4376e49c7a021dcd48b31",
+      "input_hash": "176f294f7cc85863a6e6f5bb03c4e363bd0888b755aa78e75d299bbcd66c97a8",
+      "label": -1,
+      "outcome_close": "757.83",
+      "outcome_date": "2026-09-10",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "62d2b2866cdd2df4e521ea9ba91c134aec115b71adab40a2451e117182ec1e58",
+      "ticker": "SPY",
+      "window_dates": [
+        "2026-09-02",
+        "2026-09-03",
+        "2026-09-04",
+        "2026-09-08",
+        "2026-09-09",
+        "2026-09-10"
+      ]
+    },
+    "price-00c77de8f2309196166f": {
+      "as_of": "2022-05-27",
+      "as_of_close": "415.26",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-05-23",
+        "2022-05-24",
+        "2022-05-25",
+        "2022-05-26",
+        "2022-05-27"
+      ],
+      "evidence_hash": "9e640ae340b2b0f2987db45a5426192be3971109c6af335b889652d8833b9c4f",
+      "input_hash": "d66cc6c0fa6f68366d77dda8128fdb379da574f23029ee44b9eb19793a3dacd6",
+      "label": -1,
+      "outcome_close": "412.93",
+      "outcome_date": "2022-05-31",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "477aeb7adbd5eef5cefabb291111ea5c155901923e08ccd0856c925abeee67a7",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-05-23",
+        "2022-05-24",
+        "2022-05-25",
+        "2022-05-26",
+        "2022-05-27",
+        "2022-05-31"
+      ]
+    },
+    "price-019c34029a0efdc681fb": {
+      "as_of": "2022-02-04",
+      "as_of_close": "34.39",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-01-31",
+        "2022-02-01",
+        "2022-02-02",
+        "2022-02-03",
+        "2022-02-04"
+      ],
+      "evidence_hash": "5de0ca16034d30f730621595cb8ccb1f65a1664e440c917691aefee4d93efef5",
+      "input_hash": "d11e783c6ff0e0292b1291589f98e1f3031b93063873a3bcc6d8806034a4c042",
+      "label": 1,
+      "outcome_close": "34.66",
+      "outcome_date": "2022-02-07",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "9d4acce156677a7eaee827deaf1365a808997792f04a56e06de98099fd5b1e3e",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-01-31",
+        "2022-02-01",
+        "2022-02-02",
+        "2022-02-03",
+        "2022-02-04",
+        "2022-02-07"
+      ]
+    },
+    "price-047ab668bf2a87c7cf27": {
+      "as_of": "2026-08-17",
+      "as_of_close": "772.67",
+      "cohort": "post",
+      "evidence_dates": [
+        "2026-08-11",
+        "2026-08-12",
+        "2026-08-13",
+        "2026-08-14",
+        "2026-08-17"
+      ],
+      "evidence_hash": "611961504cd05c3a193c683d744f715f0ffa41f446b1ec878dfee3371504497d",
+      "input_hash": "ec3f19dad3b156ef2a96820e57b5e0e11e10c403a914a3b022c6bc036fad82e8",
+      "label": -1,
+      "outcome_close": "767.45",
+      "outcome_date": "2026-08-18",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "80a72dbdf7ccf2c64776fc4e32307b0d89205217846c18646e51d89439d9fc49",
+      "ticker": "SPY",
+      "window_dates": [
+        "2026-08-11",
+        "2026-08-12",
+        "2026-08-13",
+        "2026-08-14",
+        "2026-08-17",
+        "2026-08-18"
+      ]
+    },
+    "price-15da5f56dd4904eae205": {
+      "as_of": "2025-05-20",
+      "as_of_close": "592.85",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-05-14",
+        "2025-05-15",
+        "2025-05-16",
+        "2025-05-19",
+        "2025-05-20"
+      ],
+      "evidence_hash": "885c6042d60c718f1973f36c9830a305c542f7dc2bb7c48446cd6359522bc28a",
+      "input_hash": "eea7ab3f0f7e33193edd5330e2e644e1eacb41b70bc1306fb14bb4b716c33644",
+      "label": -1,
+      "outcome_close": "582.86",
+      "outcome_date": "2025-05-21",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "7a8bb2dd7ade8b5d218a3ac42a6078bc0f1ed8f7ff7b7aa1cb18f5ba6630a460",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-05-14",
+        "2025-05-15",
+        "2025-05-16",
+        "2025-05-19",
+        "2025-05-20",
+        "2025-05-21"
+      ]
+    },
+    "price-1ec12728f4dc04c2cf24": {
+      "as_of": "2025-07-01",
+      "as_of_close": "617.65",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-06-25",
+        "2025-06-26",
+        "2025-06-27",
+        "2025-06-30",
+        "2025-07-01"
+      ],
+      "evidence_hash": "a72af3931010b0a9bb8827e4df3784a9768a4a36d96db71f567bd8080203b168",
+      "input_hash": "450cb49c65cbad9b5495e81054dd4ddfb8d38e898163b285f61e62e0392fcd96",
+      "label": 1,
+      "outcome_close": "620.45",
+      "outcome_date": "2025-07-02",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "a1ce12ebcbda088efe7d24b5d0fa9f6b329ab73efd766ec7ca2654c82ce956d7",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-06-25",
+        "2025-06-26",
+        "2025-06-27",
+        "2025-06-30",
+        "2025-07-01",
+        "2025-07-02"
+      ]
+    },
+    "price-21954dc6549578eb4fee": {
+      "as_of": "2022-03-25",
+      "as_of_close": "37.16",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-03-21",
+        "2022-03-22",
+        "2022-03-23",
+        "2022-03-24",
+        "2022-03-25"
+      ],
+      "evidence_hash": "e519a38d644921fef73ef5c6918e09b38b9e580f5eb80916d04440f97f63f7ac",
+      "input_hash": "b5e709276be6dbd940badc005addc5aa69b2b1ceede994e9893bafb04777c039",
+      "label": -1,
+      "outcome_close": "36.48",
+      "outcome_date": "2022-03-28",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "b5653091d0433b8885243739d2ccac5dc6485de3cd3c75225e6d00094bb714c6",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-03-21",
+        "2022-03-22",
+        "2022-03-23",
+        "2022-03-24",
+        "2022-03-25",
+        "2022-03-28"
+      ]
+    },
+    "price-2377fd9fff6b6d887ba2": {
+      "as_of": "2025-06-04",
+      "as_of_close": "595.93",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-05-29",
+        "2025-05-30",
+        "2025-06-02",
+        "2025-06-03",
+        "2025-06-04"
+      ],
+      "evidence_hash": "e6987c97e523520543fbde302c2246ab3a13ece7174d62403e2afe4de8ff48c9",
+      "input_hash": "0cf620f745992430eccbe45b5e939f1639350891d7b3dbdb1dcede06786efe41",
+      "label": -1,
+      "outcome_close": "593.05",
+      "outcome_date": "2025-06-05",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "b4a794c2e8737aa15522e77e919a34c9c7549b9aa7c40ea9b9f9e956f60383d9",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-05-29",
+        "2025-05-30",
+        "2025-06-02",
+        "2025-06-03",
+        "2025-06-04",
+        "2025-06-05"
+      ]
+    },
+    "price-31499dabf289ada9b811": {
+      "as_of": "2026-08-26",
+      "as_of_close": "86.37",
+      "cohort": "post",
+      "evidence_dates": [
+        "2026-08-20",
+        "2026-08-21",
+        "2026-08-24",
+        "2026-08-25",
+        "2026-08-26"
+      ],
+      "evidence_hash": "8b054755e6eec47f215969495fb45acc87f98fefc1dc0ab7259b245737ebe7c8",
+      "input_hash": "5d08fd3eb4745e20c36cc473d01a176ca2943c0612ca45786820af3494b45860",
+      "label": 1,
+      "outcome_close": "86.62",
+      "outcome_date": "2026-08-27",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "5e5eae2496c1e37bf557d42712772e23a86b08ab099d0317e1e342abdd17d33e",
+      "ticker": "IAU",
+      "window_dates": [
+        "2026-08-20",
+        "2026-08-21",
+        "2026-08-24",
+        "2026-08-25",
+        "2026-08-26",
+        "2026-08-27"
+      ]
+    },
+    "price-39ea1cb7375c2d6ad178": {
+      "as_of": "2025-01-10",
+      "as_of_close": "50.78",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-01-03",
+        "2025-01-06",
+        "2025-01-07",
+        "2025-01-08",
+        "2025-01-10"
+      ],
+      "evidence_hash": "989db2c54bc18eafb980d570d42ac7baeb7f8240c2bb6363bc72d5347bc45eee",
+      "input_hash": "d90301c24f7717f716ab7419beaa3896948831524b6b8a74e08a4896f1c7e559",
+      "label": -1,
+      "outcome_close": "50.25",
+      "outcome_date": "2025-01-13",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "79f3d53f47bcb3e59bf257b7349e693bcd9e93c7bb2a83ce8e1df4d0bb206f53",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-01-03",
+        "2025-01-06",
+        "2025-01-07",
+        "2025-01-08",
+        "2025-01-10",
+        "2025-01-13"
+      ]
+    },
+    "price-3a2e9c7f70663d44c9d3": {
+      "as_of": "2023-08-15",
+      "as_of_close": "442.89",
+      "cohort": "pre",
+      "evidence_dates": [
+        "2023-08-09",
+        "2023-08-10",
+        "2023-08-11",
+        "2023-08-14",
+        "2023-08-15"
+      ],
+      "evidence_hash": "74f167f366957ea0ded6e899351254b2e02980579918d430e4bb549215d372bd",
+      "input_hash": "a036fc4db942186f0f6fafd72e2c5a166c95e5d1cbef9d2f8e844c6596ab8dfd",
+      "label": -1,
+      "outcome_close": "439.64",
+      "outcome_date": "2023-08-16",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "821895489ecb92bab0d4b32b14508fef90a24d378c97e9ea8861a0451db484bf",
+      "ticker": "SPY",
+      "window_dates": [
+        "2023-08-09",
+        "2023-08-10",
+        "2023-08-11",
+        "2023-08-14",
+        "2023-08-15",
+        "2023-08-16"
+      ]
+    },
+    "price-3d9fef5143756590f0a9": {
+      "as_of": "2025-04-04",
+      "as_of_close": "57.26",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-03-31",
+        "2025-04-01",
+        "2025-04-02",
+        "2025-04-03",
+        "2025-04-04"
+      ],
+      "evidence_hash": "212c43a575ab8cf348b23ee4911d26397e247b21bb2b8b978b992eae89545d10",
+      "input_hash": "970bfad30dab099cf23643a1c86a026e8b17f0f4c63060d8e4bdacd28c78ac34",
+      "label": -1,
+      "outcome_close": "56.10",
+      "outcome_date": "2025-04-07",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "bfa3a6615dc12f299b4a96eaf7ea99c5c2135e314d6e1ecf6764892428c6b862",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-03-31",
+        "2025-04-01",
+        "2025-04-02",
+        "2025-04-03",
+        "2025-04-04",
+        "2025-04-07"
+      ]
+    },
+    "price-42c8b539ba7870571aa1": {
+      "as_of": "2023-09-15",
+      "as_of_close": "36.42",
+      "cohort": "pre",
+      "evidence_dates": [
+        "2023-09-11",
+        "2023-09-12",
+        "2023-09-13",
+        "2023-09-14",
+        "2023-09-15"
+      ],
+      "evidence_hash": "092e3d005c13fc98a7e2f9b19cd06bd6f11a6bc5c6d6d722876ec2f1673ea60f",
+      "input_hash": "d500aa4236e5dc348b507d5d7bfebd790f5b9f00db4a1723d1e485424ebd5da4",
+      "label": 1,
+      "outcome_close": "36.62",
+      "outcome_date": "2023-09-18",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "2fdcaf77a311211089ad98dc0c99270fccec43c1a0331b9482242f17802ec423",
+      "ticker": "IAU",
+      "window_dates": [
+        "2023-09-11",
+        "2023-09-12",
+        "2023-09-13",
+        "2023-09-14",
+        "2023-09-15",
+        "2023-09-18"
+      ]
+    },
+    "price-43f07d3fcb5a1e3b67ee": {
+      "as_of": "2022-01-28",
+      "as_of_close": "441.95",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-01-24",
+        "2022-01-25",
+        "2022-01-26",
+        "2022-01-27",
+        "2022-01-28"
+      ],
+      "evidence_hash": "e4d3201c6f4538bf84986167cb6d51eadfe831f852d39af28233adfd3350f1a9",
+      "input_hash": "e1e5d5290bc4e5fa95191312b3cb070372aaa6b6d802a36fa84bc9fec15305c1",
+      "label": 1,
+      "outcome_close": "449.91",
+      "outcome_date": "2022-01-31",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "6cc2d884fce0f58ac5be7078ebf43db809d179cbfb70f0e14757770a58f58370",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-01-24",
+        "2022-01-25",
+        "2022-01-26",
+        "2022-01-27",
+        "2022-01-28",
+        "2022-01-31"
+      ]
+    },
+    "price-43f62c228873d6c04a67": {
+      "as_of": "2022-10-07",
+      "as_of_close": "32.19",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-10-03",
+        "2022-10-04",
+        "2022-10-05",
+        "2022-10-06",
+        "2022-10-07"
+      ],
+      "evidence_hash": "afd468fe5f4a68bb180bb3f8b8a3f9d31d201fabc2e0a6b0e4401f6cdd1e7acb",
+      "input_hash": "2f382fff09e2df28bebe73d004483edb65cd446823cbee3f5cef57d593fe8db8",
+      "label": -1,
+      "outcome_close": "31.69",
+      "outcome_date": "2022-10-10",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "07191d49e233d89a41a6745027b5f3a17626184b2fee8f0461fcc47890936e57",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-10-03",
+        "2022-10-04",
+        "2022-10-05",
+        "2022-10-06",
+        "2022-10-07",
+        "2022-10-10"
+      ]
+    },
+    "price-4dd67b7086d104f6a7e6": {
+      "as_of": "2025-07-17",
+      "as_of_close": "62.96",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-07-11",
+        "2025-07-14",
+        "2025-07-15",
+        "2025-07-16",
+        "2025-07-17"
+      ],
+      "evidence_hash": "0c5e62ddd336dd80ef35bb336770a69376964670779cfb720990666a4f3ab0d4",
+      "input_hash": "83c3bf2b414fc48dc0bc001e0bc9457116e9e479daec62fe25b67d8d7c6cc0b0",
+      "label": 1,
+      "outcome_close": "63.13",
+      "outcome_date": "2025-07-18",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "8add57ad34bc1f9adb3f3ee1561b99834e7fdc8af61f8ab6e061885977602526",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-07-11",
+        "2025-07-14",
+        "2025-07-15",
+        "2025-07-16",
+        "2025-07-17",
+        "2025-07-18"
+      ]
+    },
+    "price-5d76f434a11f5b5cdd2f": {
+      "as_of": "2023-08-02",
+      "as_of_close": "450.13",
+      "cohort": "pre",
+      "evidence_dates": [
+        "2023-07-27",
+        "2023-07-28",
+        "2023-07-31",
+        "2023-08-01",
+        "2023-08-02"
+      ],
+      "evidence_hash": "73e47f7f3cc608ef10003eb593f3d58adb42aa326cd1502997e14f153b237d9f",
+      "input_hash": "7bbe9228fd3a0a5f0a90ba2be0014e24fc12caab04b1858870f2ce061593b729",
+      "label": -1,
+      "outcome_close": "448.84",
+      "outcome_date": "2023-08-03",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "9509e16b800ce2c4d65477121a80d67461af3aaa04ab2ed2a2de430c624fc39b",
+      "ticker": "SPY",
+      "window_dates": [
+        "2023-07-27",
+        "2023-07-28",
+        "2023-07-31",
+        "2023-08-01",
+        "2023-08-02",
+        "2023-08-03"
+      ]
+    },
+    "price-677206812117e0fcf61a": {
+      "as_of": "2022-02-11",
+      "as_of_close": "440.46",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-02-07",
+        "2022-02-08",
+        "2022-02-09",
+        "2022-02-10",
+        "2022-02-11"
+      ],
+      "evidence_hash": "aa6beaeae1f26066dafd5a6e52da111c080c67540927bf3207dd3bfd294080cc",
+      "input_hash": "7ca664998d9af9fbf797726c5f12415171b0fa23dfc00001a89946f48d792c55",
+      "label": -1,
+      "outcome_close": "439.02",
+      "outcome_date": "2022-02-14",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "0bf62fc0e390a18af250739cb9ea8bf21e5a47007520156d5296ae274740ed50",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-02-07",
+        "2022-02-08",
+        "2022-02-09",
+        "2022-02-10",
+        "2022-02-11",
+        "2022-02-14"
+      ]
+    },
+    "price-6eb9966c80283e7831c3": {
+      "as_of": "2023-10-23",
+      "as_of_close": "420.46",
+      "cohort": "pre",
+      "evidence_dates": [
+        "2023-10-17",
+        "2023-10-18",
+        "2023-10-19",
+        "2023-10-20",
+        "2023-10-23"
+      ],
+      "evidence_hash": "ac833b0660795d5ef8c41ad20114c52a42cb08da2ee71f63249b87fd83efa8ae",
+      "input_hash": "83962c9388a3f747e3a4e8d3804f446783d5b8045d88a5e2276a8d1f35a1c04e",
+      "label": 1,
+      "outcome_close": "423.63",
+      "outcome_date": "2023-10-24",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "98756ffbb9237aec03781e53113b9d9462080380e56684988ce81accca84bba2",
+      "ticker": "SPY",
+      "window_dates": [
+        "2023-10-17",
+        "2023-10-18",
+        "2023-10-19",
+        "2023-10-20",
+        "2023-10-23",
+        "2023-10-24"
+      ]
+    },
+    "price-6f4550356992720910e4": {
+      "as_of": "2025-03-03",
+      "as_of_close": "583.77",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-02-25",
+        "2025-02-26",
+        "2025-02-27",
+        "2025-02-28",
+        "2025-03-03"
+      ],
+      "evidence_hash": "12871e51ee0dad8dda4022cb4609b9beeeccc6f39003832bac9e20f9c8aa2725",
+      "input_hash": "6d69c4fd142e65a0546e55f723bdde6c62328574a00d62c276b0f50f36dbf86c",
+      "label": -1,
+      "outcome_close": "576.86",
+      "outcome_date": "2025-03-04",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "83008a56f022385ac8e44943d8de6c402e9417df74f49045bea022e16c524f9f",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-02-25",
+        "2025-02-26",
+        "2025-02-27",
+        "2025-02-28",
+        "2025-03-03",
+        "2025-03-04"
+      ]
+    },
+    "price-73cda2c7e91708f6916c": {
+      "as_of": "2025-08-12",
+      "as_of_close": "642.69",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-08-06",
+        "2025-08-07",
+        "2025-08-08",
+        "2025-08-11",
+        "2025-08-12"
+      ],
+      "evidence_hash": "182e49ccbc7038323271a6136409b329c8f79e4cbfcc6bb0fb7e8c2e77b51a84",
+      "input_hash": "fac59dba44ff2122dbc6df6ca80b56c839e94e1c8e9dc544bbb885e66c61ffbf",
+      "label": 1,
+      "outcome_close": "644.89",
+      "outcome_date": "2025-08-13",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "662a8fd4c403d17c90ba50bee2fd6d75875bb51fd890a73d56098ba16b6925fb",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-08-06",
+        "2025-08-07",
+        "2025-08-08",
+        "2025-08-11",
+        "2025-08-12",
+        "2025-08-13"
+      ]
+    },
+    "price-79c1b30b718a32fb9b0b": {
+      "as_of": "2023-08-02",
+      "as_of_close": "36.67",
+      "cohort": "pre",
+      "evidence_dates": [
+        "2023-07-27",
+        "2023-07-28",
+        "2023-07-31",
+        "2023-08-01",
+        "2023-08-02"
+      ],
+      "evidence_hash": "78d40598906224c8879a0830c9a3b47295dae2538cc11fb29d79a61240ce6e5b",
+      "input_hash": "704bf09e73d7d58f36ca8c2dc2678d826692aa3fdf0833fbedd970635d289c9d",
+      "label": -1,
+      "outcome_close": "36.65",
+      "outcome_date": "2023-08-03",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "e545b3241dd76e035cdeb69dcea019a253cad46cf93e668823117abbdf3c9a02",
+      "ticker": "IAU",
+      "window_dates": [
+        "2023-07-27",
+        "2023-07-28",
+        "2023-07-31",
+        "2023-08-01",
+        "2023-08-02",
+        "2023-08-03"
+      ]
+    },
+    "price-8583e6d06bbc5ca78365": {
+      "as_of": "2022-03-15",
+      "as_of_close": "36.45",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-03-09",
+        "2022-03-10",
+        "2022-03-11",
+        "2022-03-14",
+        "2022-03-15"
+      ],
+      "evidence_hash": "d02dfbb0503c0680e0ba9860592380f2bb77884190e02054218c1072fd9fe319",
+      "input_hash": "2b44bf64c30cb0aa9710646580b23b23c06178326b8beac588260dbdf2dcad70",
+      "label": 1,
+      "outcome_close": "36.65",
+      "outcome_date": "2022-03-16",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "9efe014807fb099c2040208d9daae82431b8dc3ca6d8f1052368eacca14785ce",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-03-09",
+        "2022-03-10",
+        "2022-03-11",
+        "2022-03-14",
+        "2022-03-15",
+        "2022-03-16"
+      ]
+    },
+    "price-8b29e58f1a76cb711fb6": {
+      "as_of": "2025-06-26",
+      "as_of_close": "62.80",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-06-20",
+        "2025-06-23",
+        "2025-06-24",
+        "2025-06-25",
+        "2025-06-26"
+      ],
+      "evidence_hash": "65a5ce6ce1c7a4cfdfcaefe1235d4d7bfb4e0a54ad582a41f869a103151bf9a6",
+      "input_hash": "12ae34baa0c75cb3be3c55dac25d1e8b4afe119efbd1ba4842e5fb6176fa555e",
+      "label": -1,
+      "outcome_close": "61.65",
+      "outcome_date": "2025-06-27",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "cc7ea1954b858d4bcd6144ef9f85ea0c44c6b3c1f6e3cb77bd226e6dacb99fcb",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-06-20",
+        "2025-06-23",
+        "2025-06-24",
+        "2025-06-25",
+        "2025-06-26",
+        "2025-06-27"
+      ]
+    },
+    "price-8d71ef896d21736c3c06": {
+      "as_of": "2025-09-26",
+      "as_of_close": "661.82",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-09-22",
+        "2025-09-23",
+        "2025-09-24",
+        "2025-09-25",
+        "2025-09-26"
+      ],
+      "evidence_hash": "c2f85ecb39e6dbc12ae9ebf210ebd111ddcc0371b26f0264d5a331a311ed1f02",
+      "input_hash": "d0d3214775fb9b1aca5e46afe655c270626835eb8be8be9d79ea799e3c13778d",
+      "label": 1,
+      "outcome_close": "663.68",
+      "outcome_date": "2025-09-29",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "5f7f97131882d45fcc61bd4bcf09be562eed40c83185d5ffdc48bda7c0040200",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-09-22",
+        "2025-09-23",
+        "2025-09-24",
+        "2025-09-25",
+        "2025-09-26",
+        "2025-09-29"
+      ]
+    },
+    "price-9232103d51f21bccfd90": {
+      "as_of": "2023-10-26",
+      "as_of_close": "37.57",
+      "cohort": "pre",
+      "evidence_dates": [
+        "2023-10-20",
+        "2023-10-23",
+        "2023-10-24",
+        "2023-10-25",
+        "2023-10-26"
+      ],
+      "evidence_hash": "8bab9e4925e92e3147e7c333d0cc4d6188aa1e03f715d8b7937cbf990dba3483",
+      "input_hash": "dc7b39fda44b42b76453a5a39aacd5685ca2adfb26965df96adc42ee1b8a837a",
+      "label": 1,
+      "outcome_close": "38.01",
+      "outcome_date": "2023-10-27",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "497da7e58b60957a25655349b8b0041a6646d5cc48e7ebbfe61d932baa427ab8",
+      "ticker": "IAU",
+      "window_dates": [
+        "2023-10-20",
+        "2023-10-23",
+        "2023-10-24",
+        "2023-10-25",
+        "2023-10-26",
+        "2023-10-27"
+      ]
+    },
+    "price-93f2267d359c8b3cb249": {
+      "as_of": "2025-10-30",
+      "as_of_close": "75.79",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-10-24",
+        "2025-10-27",
+        "2025-10-28",
+        "2025-10-29",
+        "2025-10-30"
+      ],
+      "evidence_hash": "8d0367488ed81db8bc46d937a4e099041592456e884446b456d0d1c7e3458303",
+      "input_hash": "084bb081919994998a4c9456ed824fbdef52d71dfb13fba79b3b90dad4244bbf",
+      "label": -1,
+      "outcome_close": "75.39",
+      "outcome_date": "2025-10-31",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "dd174c3d7e695e2fe5e384a0f756c4de2f8e880fcd68c2cd1ca56c30fc0bcd8f",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-10-24",
+        "2025-10-27",
+        "2025-10-28",
+        "2025-10-29",
+        "2025-10-30",
+        "2025-10-31"
+      ]
+    },
+    "price-95ec6ea164d490a0a255": {
+      "as_of": "2022-09-06",
+      "as_of_close": "390.76",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-08-30",
+        "2022-08-31",
+        "2022-09-01",
+        "2022-09-02",
+        "2022-09-06"
+      ],
+      "evidence_hash": "52d421182777fb7a5f9bd3b2da8840322164a6dd35c7c1f87c0ae0f97311572e",
+      "input_hash": "0a29cb3940bb9128733b4fc8bafa308b3d049fd46e402c2dd25db6fc01552abe",
+      "label": 1,
+      "outcome_close": "397.78",
+      "outcome_date": "2022-09-07",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "e9dba9b635802f3d8c17f5f1519f49a5c05f53dd277c89dfa3d50c39e8bcd5ee",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-08-30",
+        "2022-08-31",
+        "2022-09-01",
+        "2022-09-02",
+        "2022-09-06",
+        "2022-09-07"
+      ]
+    },
+    "price-961d9280ebff66ffb341": {
+      "as_of": "2025-10-21",
+      "as_of_close": "77.38",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-10-15",
+        "2025-10-16",
+        "2025-10-17",
+        "2025-10-20",
+        "2025-10-21"
+      ],
+      "evidence_hash": "b907cf9d8442e6bd057ffc0d9374983c687e072361b67da029e7b009d5ff325a",
+      "input_hash": "1c82f116187d95c6ea9b0d0375a87e64b0a6cf144bae250d95c29bd7c105f46c",
+      "label": -1,
+      "outcome_close": "77.28",
+      "outcome_date": "2025-10-22",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "056c741df5ebf668c4972e02320245e89e344ce123d19c08984e50c141cdbcaa",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-10-15",
+        "2025-10-16",
+        "2025-10-17",
+        "2025-10-20",
+        "2025-10-21",
+        "2025-10-22"
+      ]
+    },
+    "price-98fae3eeb080a65d54c5": {
+      "as_of": "2022-08-03",
+      "as_of_close": "414.45",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-07-28",
+        "2022-07-29",
+        "2022-08-01",
+        "2022-08-02",
+        "2022-08-03"
+      ],
+      "evidence_hash": "b97300424f80bed6a5ffa422d9a4bade4b89681d291d371b02bc353f4a7fff36",
+      "input_hash": "9122457a6ce8fea5128b70b125c9416d1117a7d90c2915d4b080bede5f206cfd",
+      "label": -1,
+      "outcome_close": "414.17",
+      "outcome_date": "2022-08-04",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "0da28a8fc290c8dede09badc189d3b5bc2f6b86aa7a5a3279a6744d684076c9d",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-07-28",
+        "2022-07-29",
+        "2022-08-01",
+        "2022-08-02",
+        "2022-08-03",
+        "2022-08-04"
+      ]
+    },
+    "price-99162dac7fe81bb2dec5": {
+      "as_of": "2025-04-07",
+      "as_of_close": "504.38",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-04-01",
+        "2025-04-02",
+        "2025-04-03",
+        "2025-04-04",
+        "2025-04-07"
+      ],
+      "evidence_hash": "0c843222ed1f3fbc8f469b4ad217f7371b47efae924f32012aa601f04ba90e9c",
+      "input_hash": "1b21924768bb212252b5ab3b5fffe180eb66cabc2f654c5297f78d588f2c2a1c",
+      "label": -1,
+      "outcome_close": "496.48",
+      "outcome_date": "2025-04-08",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "f58840d6bc1d4dc67d36fb1e7679a1d12eaa0755144d24fc01bd439477d3973e",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-04-01",
+        "2025-04-02",
+        "2025-04-03",
+        "2025-04-04",
+        "2025-04-07",
+        "2025-04-08"
+      ]
+    },
+    "price-b1001e5cf900b844ef28": {
+      "as_of": "2023-07-10",
+      "as_of_close": "439.66",
+      "cohort": "pre",
+      "evidence_dates": [
+        "2023-07-03",
+        "2023-07-05",
+        "2023-07-06",
+        "2023-07-07",
+        "2023-07-10"
+      ],
+      "evidence_hash": "d4b7fecda4f5465d23cff06dda688d64ba5f335ca30f3c509114431f6184cfea",
+      "input_hash": "054bf945c22a5fdaaa05ba619d9a9241ea4760fd63d90e6157742c242caadca5",
+      "label": 1,
+      "outcome_close": "442.46",
+      "outcome_date": "2023-07-11",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "ef529066a76a2693da8302f53d1f8538335bcb1ec5f288d656ac79fc1a3eb92b",
+      "ticker": "SPY",
+      "window_dates": [
+        "2023-07-03",
+        "2023-07-05",
+        "2023-07-06",
+        "2023-07-07",
+        "2023-07-10",
+        "2023-07-11"
+      ]
+    },
+    "price-b505ff729c390ff4198e": {
+      "as_of": "2025-09-26",
+      "as_of_close": "70.99",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-09-22",
+        "2025-09-23",
+        "2025-09-24",
+        "2025-09-25",
+        "2025-09-26"
+      ],
+      "evidence_hash": "82f6da2fe38c91e9750517c8f40c8b9ffe973c42882bfe24a61cbd88aa373a71",
+      "input_hash": "0a605bf945943f1d4639bf0ca3150995f25bd63d916fb9187ee527dd25345d4b",
+      "label": 1,
+      "outcome_close": "72.16",
+      "outcome_date": "2025-09-29",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "821f92e6c27a5281e4537e4d0f7c10a5b37e1ab0858d63f4a7e88da61a5266d8",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-09-22",
+        "2025-09-23",
+        "2025-09-24",
+        "2025-09-25",
+        "2025-09-26",
+        "2025-09-29"
+      ]
+    },
+    "price-b5d9b29df310998b8340": {
+      "as_of": "2025-06-11",
+      "as_of_close": "63.12",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-06-05",
+        "2025-06-06",
+        "2025-06-09",
+        "2025-06-10",
+        "2025-06-11"
+      ],
+      "evidence_hash": "42dadf80fa79355f6f589087dfc5aed93aca623814e39e73e95b2b3e8b83c6ef",
+      "input_hash": "db25e32550e7d2b14cb9861fa28c2d584ec20698abc68eda6deffc011dc0adb4",
+      "label": 1,
+      "outcome_close": "63.89",
+      "outcome_date": "2025-06-12",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "6886a8ceb005f151eb04700c12f779928aa6009cc755a8843bf8624180becaa1",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-06-05",
+        "2025-06-06",
+        "2025-06-09",
+        "2025-06-10",
+        "2025-06-11",
+        "2025-06-12"
+      ]
+    },
+    "price-ba1ec952e0af415a4e6f": {
+      "as_of": "2026-09-10",
+      "as_of_close": "81.27",
+      "cohort": "post",
+      "evidence_dates": [
+        "2026-09-03",
+        "2026-09-04",
+        "2026-09-08",
+        "2026-09-09",
+        "2026-09-10"
+      ],
+      "evidence_hash": "d488bd9bcf77bd1368e285f912b58e3c58cc1a01c1f519baf0753efc551cad70",
+      "input_hash": "36ec34b0936598cf7a64b8894d05d57795bc566214c389ec3ef887989d7d08f6",
+      "label": 1,
+      "outcome_close": "81.71",
+      "outcome_date": "2026-09-11",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "7805fb890be3a9547008f0073bcb51d07204ebe4432e99eb399e34b228758ef2",
+      "ticker": "IAU",
+      "window_dates": [
+        "2026-09-03",
+        "2026-09-04",
+        "2026-09-08",
+        "2026-09-09",
+        "2026-09-10",
+        "2026-09-11"
+      ]
+    },
+    "price-bdd46e1c9aa08c29edf4": {
+      "as_of": "2026-10-02",
+      "as_of_close": "77.95",
+      "cohort": "post",
+      "evidence_dates": [
+        "2026-09-28",
+        "2026-09-29",
+        "2026-09-30",
+        "2026-10-01",
+        "2026-10-02"
+      ],
+      "evidence_hash": "7e79db246414f5fa074a8ec94a9c48cecf48a1babfb6b119935192c66af50915",
+      "input_hash": "c11c82383668cfd4810b193b3dec66d986b6857609fb220093bd21458684998b",
+      "label": -1,
+      "outcome_close": "77.82",
+      "outcome_date": "2026-10-05",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "9a07098c1f778c639560d143be98d74cef4862ad6d5d7b00c30afb314be2f5a7",
+      "ticker": "IAU",
+      "window_dates": [
+        "2026-09-28",
+        "2026-09-29",
+        "2026-09-30",
+        "2026-10-01",
+        "2026-10-02",
+        "2026-10-05"
+      ]
+    },
+    "price-c7eaa9e2e8c04e96304e": {
+      "as_of": "2022-05-31",
+      "as_of_close": "34.87",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-05-24",
+        "2022-05-25",
+        "2022-05-26",
+        "2022-05-27",
+        "2022-05-31"
+      ],
+      "evidence_hash": "e08b7ab1bff6da03fdee1c046f199135686f7fc561ab33000c8cb6d603aac53c",
+      "input_hash": "43887578794da7382523c042b58de0fbde282500f2b069e21282fa73a08a21b4",
+      "label": 1,
+      "outcome_close": "35.09",
+      "outcome_date": "2022-06-01",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "c7ff7208e1b7d239209e60e4cdc95e39a7eb3d0fcecbca33d3d86748a37271c2",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-05-24",
+        "2022-05-25",
+        "2022-05-26",
+        "2022-05-27",
+        "2022-05-31",
+        "2022-06-01"
+      ]
+    },
+    "price-cc859a74ffb8ed56fe1d": {
+      "as_of": "2022-09-06",
+      "as_of_close": "32.27",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-08-30",
+        "2022-08-31",
+        "2022-09-01",
+        "2022-09-02",
+        "2022-09-06"
+      ],
+      "evidence_hash": "9ffee5fe0c46c8dbdf60ff858eb5f906f77055e41fd4300365e4b583f2d7fe28",
+      "input_hash": "1628655604c181c37feb10edba645586eb756393c115869f3fbc9537d60aa57a",
+      "label": 1,
+      "outcome_close": "32.61",
+      "outcome_date": "2022-09-07",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "75fdf499f2a8384282caebae8b5f78dc7719db957d535c6b103a69b363383a74",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-08-30",
+        "2022-08-31",
+        "2022-09-01",
+        "2022-09-02",
+        "2022-09-06",
+        "2022-09-07"
+      ]
+    },
+    "price-d3141b09315bc0384e54": {
+      "as_of": "2022-05-11",
+      "as_of_close": "392.75",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-05-05",
+        "2022-05-06",
+        "2022-05-09",
+        "2022-05-10",
+        "2022-05-11"
+      ],
+      "evidence_hash": "9c1fbbc012a425aee804e12e37ce63d1e81d78c3bb9ba6a5822e07ccc2b5586f",
+      "input_hash": "3d1dc0a01cfc541a7508195594fc7399b696dfe0ca13c5e56a54f401c89adb54",
+      "label": -1,
+      "outcome_close": "392.34",
+      "outcome_date": "2022-05-12",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "f698bc31d6878d1c562cb867f62fb2746fa10773b30a20b4de565385aa1b72e8",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-05-05",
+        "2022-05-06",
+        "2022-05-09",
+        "2022-05-10",
+        "2022-05-11",
+        "2022-05-12"
+      ]
+    },
+    "price-d3df6ed6fedf420b5085": {
+      "as_of": "2022-07-22",
+      "as_of_close": "395.09",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-07-18",
+        "2022-07-19",
+        "2022-07-20",
+        "2022-07-21",
+        "2022-07-22"
+      ],
+      "evidence_hash": "5e65ab7be2b89f905a4efb3dd1d1ab2e975a1cd462f08fb6a354cc09c1426be1",
+      "input_hash": "918f6c76e32679d13e5e41a4ae40fdc5ac06f4b6bcb6fcac6ce7cecac508f0f9",
+      "label": 1,
+      "outcome_close": "395.57",
+      "outcome_date": "2022-07-25",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "ebe9988ffdde60bbbc1515cd5c7e1d6d1538fe8a6978ed59d6e1bafbfc0d8c7c",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-07-18",
+        "2022-07-19",
+        "2022-07-20",
+        "2022-07-21",
+        "2022-07-22",
+        "2022-07-25"
+      ]
+    },
+    "price-dac17f381fe174d6af05": {
+      "as_of": "2023-09-25",
+      "as_of_close": "36.27",
+      "cohort": "pre",
+      "evidence_dates": [
+        "2023-09-19",
+        "2023-09-20",
+        "2023-09-21",
+        "2023-09-22",
+        "2023-09-25"
+      ],
+      "evidence_hash": "f944d80de8d91e88ed2b302f954052d1bd0bd2cb67c858726e33858867dbbfb4",
+      "input_hash": "b9acb93a58b8ac0d981a9130415edd6e76d29ab546d27dcdb5d18131d0d8961d",
+      "label": -1,
+      "outcome_close": "35.98",
+      "outcome_date": "2023-09-26",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "0793ce1d42093761a24561266da0cca721b6a57fee8e083a07237cfed5f2253b",
+      "ticker": "IAU",
+      "window_dates": [
+        "2023-09-19",
+        "2023-09-20",
+        "2023-09-21",
+        "2023-09-22",
+        "2023-09-25",
+        "2023-09-26"
+      ]
+    },
+    "price-dec8bb34a40a6643415e": {
+      "as_of": "2025-02-07",
+      "as_of_close": "53.97",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-02-03",
+        "2025-02-04",
+        "2025-02-05",
+        "2025-02-06",
+        "2025-02-07"
+      ],
+      "evidence_hash": "75661a60ca7f2e4b38690e7c970a331925d7207740ef9cf0458ce2e524a78e08",
+      "input_hash": "477ba38ab95cc30606354614e6be29f5a2abeee73dd726be74e69cd0b1dbecd5",
+      "label": 1,
+      "outcome_close": "54.88",
+      "outcome_date": "2025-02-10",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "1da4ab2807ef94151f489b09c0c0a29a5c969364b12c95745d7cc999c6336e6c",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-02-03",
+        "2025-02-04",
+        "2025-02-05",
+        "2025-02-06",
+        "2025-02-07",
+        "2025-02-10"
+      ]
+    },
+    "price-e391f4fb0c8a5e34bcdc": {
+      "as_of": "2022-10-28",
+      "as_of_close": "31.22",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-10-24",
+        "2022-10-25",
+        "2022-10-26",
+        "2022-10-27",
+        "2022-10-28"
+      ],
+      "evidence_hash": "df3b01cb80b1a580f2b83aa47dcab18021e4cf2cd7bb5242312455b0fb27985d",
+      "input_hash": "64c6a85f9faaa996095245e8d195a521462b6f5abffa1181c26b175a7656f60d",
+      "label": -1,
+      "outcome_close": "30.98",
+      "outcome_date": "2022-10-31",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "9c10d288c89a6b9a249f34f603a088c33895383151507914a9110c3caba2d538",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-10-24",
+        "2022-10-25",
+        "2022-10-26",
+        "2022-10-27",
+        "2022-10-28",
+        "2022-10-31"
+      ]
+    },
+    "price-e3da60888a9d7cdf7656": {
+      "as_of": "2025-02-05",
+      "as_of_close": "604.22",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-01-30",
+        "2025-01-31",
+        "2025-02-03",
+        "2025-02-04",
+        "2025-02-05"
+      ],
+      "evidence_hash": "92fd00ddfea8d3b2e57f780463b4043b0517390b996d16ea754ff511bbf50cf5",
+      "input_hash": "c28020dde48787c836144569d828b54853d30442e204f2d8a7b011f501df1c97",
+      "label": 1,
+      "outcome_close": "606.32",
+      "outcome_date": "2025-02-06",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "7e688a58af3fbc06967f233beb180e1c195cbb309337b91999aa83c0bd4be75f",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-01-30",
+        "2025-01-31",
+        "2025-02-03",
+        "2025-02-04",
+        "2025-02-05",
+        "2025-02-06"
+      ]
+    },
+    "price-e61647df3c766eb4bd36": {
+      "as_of": "2026-07-14",
+      "as_of_close": "751.83",
+      "cohort": "post",
+      "evidence_dates": [
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-13",
+        "2026-07-14"
+      ],
+      "evidence_hash": "a17c08f0e7ba8691803628399a6b32a10f465aebf48581a43a4f18b7fadb143d",
+      "input_hash": "d51019f2d51f6b569c5e4300b77bf6f00185d6636c45817ae09fe6d4717d0ee8",
+      "label": 1,
+      "outcome_close": "754.81",
+      "outcome_date": "2026-07-15",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "04a0d7bd2c4e62c50ef2e7072a6587ec87c52db9b91090e28d018b916c83cfb4",
+      "ticker": "SPY",
+      "window_dates": [
+        "2026-07-08",
+        "2026-07-09",
+        "2026-07-10",
+        "2026-07-13",
+        "2026-07-14",
+        "2026-07-15"
+      ]
+    },
+    "price-e7594f3ab629146cd5fc": {
+      "as_of": "2022-05-09",
+      "as_of_close": "35.21",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-05-03",
+        "2022-05-04",
+        "2022-05-05",
+        "2022-05-06",
+        "2022-05-09"
+      ],
+      "evidence_hash": "695d4fba34f7b9837cc5e9f914ae7090465c4a2caa7242088147692a47bf3a54",
+      "input_hash": "8b103c20a968458f330005f04a158793097dc66ace3903f6b6ae661ebea124be",
+      "label": -1,
+      "outcome_close": "34.91",
+      "outcome_date": "2022-05-10",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "e121fbc5fa48321113655b3ed9c6d0669d11c15a1e7123bf582a2061cda6b890",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-05-03",
+        "2022-05-04",
+        "2022-05-05",
+        "2022-05-06",
+        "2022-05-09",
+        "2022-05-10"
+      ]
+    },
+    "price-ebe9fd5125ba412073d1": {
+      "as_of": "2022-04-26",
+      "as_of_close": "416.10",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-04-20",
+        "2022-04-21",
+        "2022-04-22",
+        "2022-04-25",
+        "2022-04-26"
+      ],
+      "evidence_hash": "5588441498c9d4925f2987490705aefafb9493a38081228e8b43bebc11ee76ee",
+      "input_hash": "940bd1a0aeeb91379317ec620ce9545941f097b6d5ae1b073ff717bb0d3db6e5",
+      "label": 1,
+      "outcome_close": "417.27",
+      "outcome_date": "2022-04-27",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "5f3afed5eda1c47511a0665cda192a9f160bb2db3430ca6fca11d322a0b3d214",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-04-20",
+        "2022-04-21",
+        "2022-04-22",
+        "2022-04-25",
+        "2022-04-26",
+        "2022-04-27"
+      ]
+    },
+    "price-ec8f3d9a11ebaadf9f77": {
+      "as_of": "2025-05-07",
+      "as_of_close": "561.15",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-05-01",
+        "2025-05-02",
+        "2025-05-05",
+        "2025-05-06",
+        "2025-05-07"
+      ],
+      "evidence_hash": "6c96b771f0bf9a109c91ae60d8bf9fa0c0634e27cd1200729f0946fca3e5ac5f",
+      "input_hash": "86ec97be3ed479ed9f27720f7ac8deae8aa86cb304ab9a4645db8a3c36decbfd",
+      "label": 1,
+      "outcome_close": "565.06",
+      "outcome_date": "2025-05-08",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "1a5bedff28a28ede131311dbdebda43f0f161e5b98f2441a4da5efb75f160841",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-05-01",
+        "2025-05-02",
+        "2025-05-05",
+        "2025-05-06",
+        "2025-05-07",
+        "2025-05-08"
+      ]
+    },
+    "price-ee28796bc328365aa891": {
+      "as_of": "2025-08-21",
+      "as_of_close": "62.90",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-08-15",
+        "2025-08-18",
+        "2025-08-19",
+        "2025-08-20",
+        "2025-08-21"
+      ],
+      "evidence_hash": "27158952962a8015949a6a40c734f602532698f104c64af0db17ec139d818f1c",
+      "input_hash": "7354595845820059d3204069a07986b2b266115c214d13864f1e52eb5fb51929",
+      "label": 1,
+      "outcome_close": "63.58",
+      "outcome_date": "2025-08-22",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "53ce02427a03c2f69af48801c189efb439f0d1df40b181cab183f5281a5f09e1",
+      "ticker": "IAU",
+      "window_dates": [
+        "2025-08-15",
+        "2025-08-18",
+        "2025-08-19",
+        "2025-08-20",
+        "2025-08-21",
+        "2025-08-22"
+      ]
+    },
+    "price-efd232530888d0db7c7a": {
+      "as_of": "2026-10-23",
+      "as_of_close": "759.97",
+      "cohort": "post",
+      "evidence_dates": [
+        "2026-10-19",
+        "2026-10-20",
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23"
+      ],
+      "evidence_hash": "72fdcce107a307d1a0a6fbdef6f651c391ce0af90541a3df76a387599eac52d0",
+      "input_hash": "1a45c76a7f1442a2872a0a9b80ecfbfaa2c7c634cfb3e4ef11d559742a184634",
+      "label": 1,
+      "outcome_close": "765.37",
+      "outcome_date": "2026-10-26",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "ac25a6c82aad822c538a81e5937210950ca64993ff028c9f07aea2e321de5f2f",
+      "ticker": "SPY",
+      "window_dates": [
+        "2026-10-19",
+        "2026-10-20",
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23",
+        "2026-10-26"
+      ]
+    },
+    "price-f2480e1e091e85755f35": {
+      "as_of": "2022-07-15",
+      "as_of_close": "32.40",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-07-11",
+        "2022-07-12",
+        "2022-07-13",
+        "2022-07-14",
+        "2022-07-15"
+      ],
+      "evidence_hash": "42bd1673516044fbcd3e3f3700debc443288f9ffed11a0c74c6afba04f7cc245",
+      "input_hash": "314e0c9f7b1229641c1ad37150598f599228323d53a32f26e1b394e12de11d0e",
+      "label": 1,
+      "outcome_close": "32.42",
+      "outcome_date": "2022-07-18",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "80eeb7e35c15e52ee296d19ef1ff26b530c51ef04947fe9f2152184688f85b42",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-07-11",
+        "2022-07-12",
+        "2022-07-13",
+        "2022-07-14",
+        "2022-07-15",
+        "2022-07-18"
+      ]
+    },
+    "price-f2acb452e0d158b10f7c": {
+      "as_of": "2022-03-25",
+      "as_of_close": "452.69",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-03-21",
+        "2022-03-22",
+        "2022-03-23",
+        "2022-03-24",
+        "2022-03-25"
+      ],
+      "evidence_hash": "80c9c08760b0355d6784e8f66cb832ce4a426274974e320926fb76b06864d6b4",
+      "input_hash": "ef9bb1fcd7c9b6a752f606dab0dce39fb5d862898e80a1b13f02d51a73d0ac4b",
+      "label": 1,
+      "outcome_close": "455.91",
+      "outcome_date": "2022-03-28",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "4e76060e5d5785dea5aa7d550b34262af0f54ed238b739ccd0306a982326e529",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-03-21",
+        "2022-03-22",
+        "2022-03-23",
+        "2022-03-24",
+        "2022-03-25",
+        "2022-03-28"
+      ]
+    },
+    "price-f4366b03c01e071d9401": {
+      "as_of": "2025-06-16",
+      "as_of_close": "602.68",
+      "cohort": "oos_proxy",
+      "evidence_dates": [
+        "2025-06-10",
+        "2025-06-11",
+        "2025-06-12",
+        "2025-06-13",
+        "2025-06-16"
+      ],
+      "evidence_hash": "fa6c16ac2198896da1bf79ee23edb0c93b99ead8e1b67920dd6f0b86931773ca",
+      "input_hash": "3c3e55d2291d669120917bcc22e299c2188a7cca889dcd3f2ba9bb6717034991",
+      "label": -1,
+      "outcome_close": "597.53",
+      "outcome_date": "2025-06-17",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "fd7b3e033a9e600ab8d8eb78bd1d904391a195388de8e1ac9cfe1bdb5901e51e",
+      "ticker": "SPY",
+      "window_dates": [
+        "2025-06-10",
+        "2025-06-11",
+        "2025-06-12",
+        "2025-06-13",
+        "2025-06-16",
+        "2025-06-17"
+      ]
+    },
+    "price-f9a0273a435521825a03": {
+      "as_of": "2026-10-16",
+      "as_of_close": "78.34",
+      "cohort": "post",
+      "evidence_dates": [
+        "2026-10-12",
+        "2026-10-13",
+        "2026-10-14",
+        "2026-10-15",
+        "2026-10-16"
+      ],
+      "evidence_hash": "3be05dc5b59cb6bee653156b3d9f6e8976d8f5e1cbb0fccd1ef36a838378095c",
+      "input_hash": "757b628f3b20b0e2c4ef8b24fde8e4662b1c5839e56fd3ee2121e853ab004311",
+      "label": -1,
+      "outcome_close": "77.85",
+      "outcome_date": "2026-10-19",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "4980971fff0043d67ba2bb4665c2772c16c3c1adbe52a272831957f6c07377c8",
+      "ticker": "IAU",
+      "window_dates": [
+        "2026-10-12",
+        "2026-10-13",
+        "2026-10-14",
+        "2026-10-15",
+        "2026-10-16",
+        "2026-10-19"
+      ]
+    },
+    "price-fd654bb02e48ea37bc45": {
+      "as_of": "2022-10-06",
+      "as_of_close": "373.20",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-09-30",
+        "2022-10-03",
+        "2022-10-04",
+        "2022-10-05",
+        "2022-10-06"
+      ],
+      "evidence_hash": "2d335d192ddef5f6eeb1fdbf0f0202b132e1cf8ba48e8ca362dfb4586fce30ce",
+      "input_hash": "1e3cd3ab1dc4868e1882d21c3da86305fdeb86d2fc664ff427be83c16693509f",
+      "label": -1,
+      "outcome_close": "362.79",
+      "outcome_date": "2022-10-07",
+      "source_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "target_prompt_hash": "f90000ac1a1ac66c5cc015f38134c7cd71a4d2fcaf182fab5bc0a6c5981331a0",
+      "ticker": "SPY",
+      "window_dates": [
+        "2022-09-30",
+        "2022-10-03",
+        "2022-10-04",
+        "2022-10-05",
+        "2022-10-06",
+        "2022-10-07"
+      ]
+    },
+    "price-ffe9d0df2cd3038dc65f": {
+      "as_of": "2022-08-04",
+      "as_of_close": "34.05",
+      "cohort": "is_proxy",
+      "evidence_dates": [
+        "2022-07-29",
+        "2022-08-01",
+        "2022-08-02",
+        "2022-08-03",
+        "2022-08-04"
+      ],
+      "evidence_hash": "c0be969d3448c3a97b2c35f1050ca78857c3bc1577345a4e93c457c018266b9a",
+      "input_hash": "e12c9cb8476ff907029f68cf9988720170c75c51f2d063546a2aad17eeeecd57",
+      "label": -1,
+      "outcome_close": "33.68",
+      "outcome_date": "2022-08-05",
+      "source_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "target_prompt_hash": "ad886a704fdbe857a70bd9726208eacc8102657cdb6b87dbbd9309eb57f8ec22",
+      "ticker": "IAU",
+      "window_dates": [
+        "2022-07-29",
+        "2022-08-01",
+        "2022-08-02",
+        "2022-08-03",
+        "2022-08-04",
+        "2022-08-05"
+      ]
+    }
+  },
+  "offline_only": true,
+  "schema_version": 1
+}

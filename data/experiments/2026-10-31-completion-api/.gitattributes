@@ -1,0 +1,3 @@
+# Exact source/input bytes are SHA256-bound; preserve them across Git checkouts.
+*.json -text
+raw/*.json -text

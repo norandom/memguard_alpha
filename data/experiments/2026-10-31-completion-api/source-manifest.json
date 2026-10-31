@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "IAU": {
+      "ambient_auth_proxies_netrc": "disabled (Session.trust_env=False)",
+      "bytes": 136464,
+      "http_status": 200,
+      "path": "raw/IAU.chart.json",
+      "request_params": {
+        "events": "div,splits,capitalGains",
+        "includePrePost": "false",
+        "interval": "1d",
+        "range": "5y"
+      },
+      "request_url": "https://query1.finance.yahoo.com/v8/finance/chart/IAU",
+      "response_url": "https://query1.finance.yahoo.com/v8/finance/chart/IAU?range=5y&interval=1d&events=div%2Csplits%2CcapitalGains&includePrePost=false",
+      "retrieved_at_utc": "2026-10-31T16:04:08.820659+00:00",
+      "sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a"
+    },
+    "SPY": {
+      "ambient_auth_proxies_netrc": "disabled (Session.trust_env=False)",
+      "bytes": 137235,
+      "http_status": 200,
+      "path": "raw/SPY.chart.json",
+      "request_params": {
+        "events": "div,splits,capitalGains",
+        "includePrePost": "false",
+        "interval": "1d",
+        "range": "5y"
+      },
+      "request_url": "https://query1.finance.yahoo.com/v8/finance/chart/SPY",
+      "response_url": "https://query1.finance.yahoo.com/v8/finance/chart/SPY?range=5y&interval=1d&events=div%2Csplits%2CcapitalGains&includePrePost=false",
+      "retrieved_at_utc": "2026-10-31T16:04:09.648009+00:00",
+      "sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84"
+    }
+  }
+}

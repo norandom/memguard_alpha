@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "retrieved_at": "2026-10-31",
+  "month_only_policy": "Use the last calendar day of the documented month; preserve later documented post-training cutoffs if supplied. No existing cutoff guard is relaxed.",
+  "models": {
+    "openai/gpt-oss-20b": {
+      "cutoff_registry": "cutoff-registry.json",
+      "documented_cutoff_kind": "knowledge cutoff in section 2.4 Pretraining",
+      "documented_month": "June 2024",
+      "cutoff_source_url": "https://arxiv.org/html/2508.10925v1",
+      "post_training_review": "Section 2.5 describes post-training for reasoning and tool use, but supplies no separate later data cutoff. A knowledge cutoff is not a complete training-data inventory or proof of exclusion.",
+      "catalog_source_url": "https://build.nvidia.com/openai/gpt-oss-20b/modelcard",
+      "catalog_version": "gpt-oss-20b v1.0, August 5, 2025",
+      "alias_uncertainty": null,
+      "identity_basis": "Exact NVIDIA catalog identifier is openai/gpt-oss-20b and its card attributes the model to OpenAI. No other model family's cutoff is inherited.",
+      "hosted_serving_limitations": "The NIM endpoint deployment revision and exact weights are not cryptographically pinned by this preparation. A future access probe must retain the returned model identity and any available revision metadata."
+    },
+    "claude-opus-5-5": {
+      "cutoff_registry": "cutoff-registry.json",
+      "documented_cutoff_kind": "training data cutoff and reliable knowledge cutoff",
+      "documented_month": "June 2026",
+      "cutoff_source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "corroborating_source_url": "https://support.claude.com/en/articles/8114494-how-up-to-date-is-claude-s-training-data",
+      "post_training_review": "The exact model overview reports June 2026 for both training data and reliable knowledge. No separate later post-training cutoff is documented on the checked sources.",
+      "versioning_source_url": "https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions",
+      "versioning_retrieved_at": "2026-10-31",
+      "identity_basis": "Official versioning docs state that IDs from generation 4.6 onward are canonical pinned snapshots, including dateless IDs; they are distinct from earlier convenience aliases.",
+      "alias_uncertainty": null,
+      "hosted_serving_limitations": "Vendor pinning is a stated ID stability guarantee, not a cryptographic deployment attestation. Official docs note that serving infrastructure, safety classifiers and sampling logic can change even with fixed weights.",
+      "selected_native_api_version": "2026-10-21"
+    }
+  },
+  "unsupported_inference": [
+    "Pre-cutoff availability does not establish membership or memorization of these prices or prompts.",
+    "Post-cutoff timing does not prove exclusion from every later tuning, retrieval or serving system.",
+    "Matched historical gaps remain proxies and cannot alone demonstrate reduced recall or causal mitigation.",
+    "No live provider access, capability, fitted calibration or intervention effect is established by these input files."
+  ]
+}

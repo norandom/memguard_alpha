@@ -1,0 +1,129 @@
+{
+  "models": {
+    "claude-opus-5-5": {
+      "post": {
+        "description": "common post-cutoff timing proxy",
+        "historical": {
+          "cutoff": {
+            "alias_uncertainty": null,
+            "date": "2026-06-30",
+            "model": "claude-opus-5-5",
+            "retrieved_at": "2026-10-31",
+            "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+          },
+          "matching": {
+            "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+            "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+            "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+            "task": "next-session quoted-close direction from five trailing completed daily closes"
+          },
+          "matching_group": "common-price-evidence-v1",
+          "outcome_dates": {
+            "price-008daa490c5d23516a22": "2026-09-10",
+            "price-047ab668bf2a87c7cf27": "2026-08-18",
+            "price-31499dabf289ada9b811": "2026-08-27",
+            "price-ba1ec952e0af415a4e6f": "2026-09-11",
+            "price-bdd46e1c9aa08c29edf4": "2026-10-05",
+            "price-e61647df3c766eb4bd36": "2026-07-15",
+            "price-efd232530888d0db7c7a": "2026-10-26",
+            "price-f9a0273a435521825a03": "2026-10-19"
+          },
+          "period": "post"
+        }
+      },
+      "pre": {
+        "description": "common pre-cutoff timing proxy",
+        "historical": {
+          "cutoff": {
+            "alias_uncertainty": null,
+            "date": "2026-06-30",
+            "model": "claude-opus-5-5",
+            "retrieved_at": "2026-10-31",
+            "source_url": "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+          },
+          "matching": {
+            "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+            "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+            "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+            "task": "next-session quoted-close direction from five trailing completed daily closes"
+          },
+          "matching_group": "common-price-evidence-v1",
+          "outcome_dates": {
+            "price-3a2e9c7f70663d44c9d3": "2023-08-16",
+            "price-42c8b539ba7870571aa1": "2023-09-18",
+            "price-5d76f434a11f5b5cdd2f": "2023-08-03",
+            "price-6eb9966c80283e7831c3": "2023-10-24",
+            "price-79c1b30b718a32fb9b0b": "2023-08-03",
+            "price-9232103d51f21bccfd90": "2023-10-27",
+            "price-b1001e5cf900b844ef28": "2023-07-11",
+            "price-dac17f381fe174d6af05": "2023-09-26"
+          },
+          "period": "pre"
+        }
+      }
+    },
+    "openai/gpt-oss-20b": {
+      "post": {
+        "description": "common post-cutoff timing proxy",
+        "historical": {
+          "cutoff": {
+            "alias_uncertainty": null,
+            "date": "2024-06-30",
+            "model": "openai/gpt-oss-20b",
+            "retrieved_at": "2026-10-31",
+            "source_url": "https://arxiv.org/html/2508.10925v1"
+          },
+          "matching": {
+            "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+            "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+            "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+            "task": "next-session quoted-close direction from five trailing completed daily closes"
+          },
+          "matching_group": "common-price-evidence-v1",
+          "outcome_dates": {
+            "price-008daa490c5d23516a22": "2026-09-10",
+            "price-047ab668bf2a87c7cf27": "2026-08-18",
+            "price-31499dabf289ada9b811": "2026-08-27",
+            "price-ba1ec952e0af415a4e6f": "2026-09-11",
+            "price-bdd46e1c9aa08c29edf4": "2026-10-05",
+            "price-e61647df3c766eb4bd36": "2026-07-15",
+            "price-efd232530888d0db7c7a": "2026-10-26",
+            "price-f9a0273a435521825a03": "2026-10-19"
+          },
+          "period": "post"
+        }
+      },
+      "pre": {
+        "description": "common pre-cutoff timing proxy",
+        "historical": {
+          "cutoff": {
+            "alias_uncertainty": null,
+            "date": "2024-06-30",
+            "model": "openai/gpt-oss-20b",
+            "retrieved_at": "2026-10-31",
+            "source_url": "https://arxiv.org/html/2508.10925v1"
+          },
+          "matching": {
+            "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+            "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows",
+            "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+            "task": "next-session quoted-close direction from five trailing completed daily closes"
+          },
+          "matching_group": "common-price-evidence-v1",
+          "outcome_dates": {
+            "price-3a2e9c7f70663d44c9d3": "2023-08-16",
+            "price-42c8b539ba7870571aa1": "2023-09-18",
+            "price-5d76f434a11f5b5cdd2f": "2023-08-03",
+            "price-6eb9966c80283e7831c3": "2023-10-24",
+            "price-79c1b30b718a32fb9b0b": "2023-08-03",
+            "price-9232103d51f21bccfd90": "2023-10-27",
+            "price-b1001e5cf900b844ef28": "2023-07-11",
+            "price-dac17f381fe174d6af05": "2023-09-26"
+          },
+          "period": "pre"
+        }
+      }
+    }
+  },
+  "schema_version": 1
+}

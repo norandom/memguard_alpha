@@ -203,5 +203,28 @@
       "tests/harness/test_intervention_config.py",
       "tests/core/test_provider_anthropic.py"
     ]
+  },
+  "6.1": {
+    "review": "APPROVED",
+    "verification": "Independent source/data review APPROVED; parent fresh102 tests30.30s,offlineartifactrecompute,Ruff/architecture/diffandscoped-text checks pass. Raw independent audit verifies56items,dates/prices/labels/hashes/action exclusion/separation/order. Exact sourced cutoffs2024-06-30NIM/2026-06-30Opus;earliestpostevidence2026-07-08. No paidmodelcalls orfrozenrunsettings yet.",
+    "timestamp": "2026-10-31T16:15:30.200239+00:00",
+    "files": [
+      "scripts/prepare_completion_inputs.py",
+      "tests/scripts/test_prepare_completion_inputs.py",
+      "data/cutoffs.yaml",
+      "data/experiments/2026-10-31-completion-api/.gitattributes",
+      "data/experiments/2026-10-31-completion-api/cutoff-registry.json",
+      "data/experiments/2026-10-31-completion-api/model-provenance.json",
+      "data/experiments/2026-10-31-completion-api/preparation-plan.json",
+      "data/experiments/2026-10-31-completion-api/source-manifest.json",
+      "data/experiments/2026-10-31-completion-api/evaluation.json",
+      "data/experiments/2026-10-31-completion-api/calibration-is.json",
+      "data/experiments/2026-10-31-completion-api/calibration-oos.json",
+      "data/experiments/2026-10-31-completion-api/selected-windows.json",
+      "data/experiments/2026-10-31-completion-api/cohort-definitions.json",
+      "data/experiments/2026-10-31-completion-api/preparation-report.json",
+      "data/experiments/2026-10-31-completion-api/raw/IAU.chart.json",
+      "data/experiments/2026-10-31-completion-api/raw/SPY.chart.json"
+    ]
   }
 }

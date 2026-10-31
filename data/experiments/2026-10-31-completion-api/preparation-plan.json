@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "status": "inputs-only; model-call protocol remains unfrozen until Task 6.2",
+  "selection_salt": "completion-api-2026-10-31-input-selection-v1",
+  "selection_algorithm": "Rank candidates by ascending SHA256(UTF8(salt + '|' + opaque item_id)), tie-break item_id. Greedily accept within cohort/ticker/direction quota if its six-session evidence-plus-outcome window does not overlap an accepted window for the same cohort/ticker. No model outputs, retries, or resampling influence selection. Fail rather than shrink an underfilled stratum.",
+  "completed_through": "2026-10-30",
+  "tickers": ["IAU", "SPY"],
+  "windows": [
+    {"dataset": "evaluation", "cohort": "pre", "period": "pre", "start": "2023-07-01", "end": "2023-10-31", "cutoff": "2024-06-30", "per_stratum": 2},
+    {"dataset": "evaluation", "cohort": "post", "period": "post", "start": "2026-07-01", "end": "2026-10-30", "cutoff": "2026-06-30", "per_stratum": 2},
+    {"dataset": "calibration", "cohort": "is_proxy", "period": "pre", "start": "2022-01-01", "end": "2022-10-31", "cutoff": "2024-06-30", "per_stratum": 5},
+    {"dataset": "calibration", "cohort": "oos_proxy", "period": "post", "start": "2025-01-01", "end": "2025-10-31", "cutoff": "2024-06-30", "per_stratum": 5}
+  ],
+  "evaluation_order": "For each ticker (IAU, SPY) and direction (-1, 1), preserve selection rank within cohorts and emit pre0,post0,post1,pre1. This balances cohort and ticker/direction strata on both item-index parities consumed by the runner's alternating arm order.",
+  "price_basis": "Yahoo indicators.quote[0].close, not adjclose; source may already adjust historical quotes for splits. Round exact JSON Decimal values to USD 0.01 using ROUND_HALF_UP before both evidence and next-session direction. Exclude ties after rounding. This is quoted-price direction, not total return.",
+  "window_rules": "Five consecutive expected completed exchange-session closes ending at as_of, followed by the next expected session outcome. All six dates stay in the declared window. Exclude any missing/invalid bar or declared dividend/split/capital-gain action anywhere in the six dates. All post evaluation evidence, as_of and outcome dates are strictly after the maximum sourced cutoff.",
+  "calendar": {
+    "scope": "Explicit NYSE/Arca weekday/full-day-closure calendar for 2021-2026. Early-close sessions remain eligible; all selected sessions are historical and completed. No fill-forward or invented prices.",
+    "retrieved_at": "2026-10-31",
+    "source_urls": [
+      "https://ir.theice.com/press/news-details/2020/NYSE-Group-Announces-2021-2022-and-2023-Holiday-and-Early-Closings-Calendar/default.aspx",
+      "https://ir.theice.com/press/news-details/2021/NYSE-Group-Announces-2022-2023-and-2024-Holiday-and-Early-Closings-Calendar/default.aspx",
+      "https://ir.theice.com/press/news-details/2022/NYSE-Group-Announces-2023-2024-and-2025-Holiday-and-Early-Closings-Calendar/default.aspx",
+      "https://www.nyse.com/publicdocs/nyse/markets/american-options/rule-interpretations/2025/National_Day_of_Mourning_20250102.pdf",
+      "https://www.nyse.com/trade/hours-calendars"
+    ]
+  },
+  "matching": {
+    "source": "Yahoo Finance public chart API, same collection batch and parameters for both tickers across all periods",
+    "task": "next-session quoted-close direction from five trailing completed daily closes",
+    "format": "price-evidence-v1; identical source-qualified evidence and neutral JSON direction/confidence instructions",
+    "selection": "SHA256 deterministic rank, outcome-balanced cohort/ticker strata, disjoint six-session windows"
+  },
+  "limitations": [
+    "This is a retrospective quote snapshot, not a contemporaneous archive. Revisions and historical split adjustment may affect even old evidence. Source action metadata may be incomplete.",
+    "Source and prompt format are matched; years, price levels, market regimes and calendar composition differ. Matching does not eliminate temporal confounding.",
+    "Outcome labels define a balanced research sample. Each constant-direction baseline has accuracy 0.5. Do not claim population forecasting skill from this selected sample.",
+    "IS/OOS are weak timing proxies for NIM only, not verified training membership; both prompt content and market regime differ across years.",
+    "No provider calls, model-call settings, repetition counts, fidelity audit or request budgets are frozen by input preparation. Tasks 6.2-6.5 remain pending."
+  ]
+}

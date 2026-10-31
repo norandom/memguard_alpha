@@ -59,6 +59,12 @@ models:
   openai/gpt-oss-20b: 2024-06-30   # https://arxiv.org/html/2508.10925v1
   openai/gpt-oss-120b: 2024-06-30  # https://arxiv.org/html/2508.10925v1
 
+  # --- Anthropic native exact model ID (checked 2026-10-31) ---
+  # Opus 5.5 documents training-data and reliable-knowledge cutoff June 2026.
+  # Generation >=4.6 dateless IDs are pinned snapshots under vendor policy;
+  # serving infrastructure may still change. Use conservative month-end.
+  claude-opus-5-5: 2026-06-30  # https://platform.claude.com/docs/en/models/opus-5-5/overview
+
   # --- Microsoft Phi-4-mini-instruct ---
   # Card: "This is a static model trained on offline datasets with the
   # cutoff date of June 2024 for publicly available data."

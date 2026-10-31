@@ -1,0 +1,361 @@
+{
+  "arm_order": {
+    "cohort_counts_per_even_odd_index": {
+      "post": [
+        4,
+        4
+      ],
+      "pre": [
+        4,
+        4
+      ]
+    },
+    "pattern_per_ticker_direction": [
+      "pre",
+      "post",
+      "post",
+      "pre"
+    ]
+  },
+  "artifact_sha256": {
+    "calibration-is.json": "e45d46a597ff6c42da2585f0e15c1a42574a212dca85c064774a1bf8ea3280eb",
+    "calibration-oos.json": "99ba951eda92d5ee88bb1fea0869e2b189aa06e13c2349198fca7a7b7d3ff6f0",
+    "cohort-definitions.json": "70027cddb6911bc1d3660e6e3f3240a49bbaae4d48c5158655304fd539de8786",
+    "cutoff-registry.json": "7f50ba000f1447ea767ca6a86dd1818e75ba3fa5dca1da245efcab3fb8892abb",
+    "evaluation.json": "cb7359e4a5625767d308d35f303778c30df2429c1f6420bf7781b2b3483e6f99",
+    "model-provenance.json": "9b6bdb499bee28c477682609989b32536ba428bfa7ab52b62f3ae4af00d2243c",
+    "preparation-plan.json": "46f9f87577d72cc88cea2d30792579769e466c3787d04118fcc195a84f7ef783",
+    "raw/IAU.chart.json": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+    "raw/SPY.chart.json": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+    "selected-windows.json": "cca1909726447ff9322a5596a34f6dbfc40bd09583889d0009157bf499c168da",
+    "source-manifest.json": "e30f76dc3c69d8ecf732899337583913803744a8d9a07b6a50af5274480cacff"
+  },
+  "candidate_validation": {
+    "calibration/is_proxy/IAU": {
+      "boundary": 5,
+      "corporate_action": 0,
+      "cutoff": 0,
+      "eligible": 201,
+      "expected_as_of": 209,
+      "flat": 3,
+      "invalid_close": 0,
+      "missing_session": 0
+    },
+    "calibration/is_proxy/SPY": {
+      "boundary": 5,
+      "corporate_action": 18,
+      "cutoff": 0,
+      "eligible": 185,
+      "expected_as_of": 209,
+      "flat": 1,
+      "invalid_close": 0,
+      "missing_session": 0
+    },
+    "calibration/oos_proxy/IAU": {
+      "boundary": 5,
+      "corporate_action": 0,
+      "cutoff": 0,
+      "eligible": 204,
+      "expected_as_of": 209,
+      "flat": 0,
+      "invalid_close": 0,
+      "missing_session": 0
+    },
+    "calibration/oos_proxy/SPY": {
+      "boundary": 5,
+      "corporate_action": 18,
+      "cutoff": 0,
+      "eligible": 186,
+      "expected_as_of": 209,
+      "flat": 0,
+      "invalid_close": 0,
+      "missing_session": 0
+    },
+    "evaluation/post/IAU": {
+      "boundary": 5,
+      "corporate_action": 0,
+      "cutoff": 0,
+      "eligible": 81,
+      "expected_as_of": 86,
+      "flat": 0,
+      "invalid_close": 0,
+      "missing_session": 0
+    },
+    "evaluation/post/SPY": {
+      "boundary": 5,
+      "corporate_action": 6,
+      "cutoff": 0,
+      "eligible": 75,
+      "expected_as_of": 86,
+      "flat": 0,
+      "invalid_close": 0,
+      "missing_session": 0
+    },
+    "evaluation/pre/IAU": {
+      "boundary": 5,
+      "corporate_action": 0,
+      "cutoff": 0,
+      "eligible": 79,
+      "expected_as_of": 85,
+      "flat": 1,
+      "invalid_close": 0,
+      "missing_session": 0
+    },
+    "evaluation/pre/SPY": {
+      "boundary": 5,
+      "corporate_action": 6,
+      "cutoff": 0,
+      "eligible": 73,
+      "expected_as_of": 85,
+      "flat": 1,
+      "invalid_close": 0,
+      "missing_session": 0
+    }
+  },
+  "constant_direction_accuracy_baseline": 0.5,
+  "cutoff_provenance": "model-provenance.json",
+  "eligible_strata": {
+    "calibration": {
+      "is_proxy/IAU/-1": 101,
+      "is_proxy/IAU/1": 100,
+      "is_proxy/SPY/-1": 103,
+      "is_proxy/SPY/1": 82,
+      "oos_proxy/IAU/-1": 83,
+      "oos_proxy/IAU/1": 121,
+      "oos_proxy/SPY/-1": 80,
+      "oos_proxy/SPY/1": 106
+    },
+    "evaluation": {
+      "post/IAU/-1": 37,
+      "post/IAU/1": 44,
+      "post/SPY/-1": 39,
+      "post/SPY/1": 36,
+      "pre/IAU/-1": 41,
+      "pre/IAU/1": 38,
+      "pre/SPY/-1": 35,
+      "pre/SPY/1": 38
+    }
+  },
+  "exclusion_accounting": "Each expected as_of has exactly one first-match outcome: boundary, cutoff, missing_session, invalid_close, corporate_action, flat, or eligible. Selection then partitions eligible rows into overlap, quota_full or selected.",
+  "inclusion_counts": {
+    "calibration_is": 20,
+    "calibration_oos": 20,
+    "evaluation": 16
+  },
+  "limitations": [
+    "This is a retrospective quote snapshot, not a contemporaneous archive. Revisions and historical split adjustment may affect even old evidence. Source action metadata may be incomplete.",
+    "Source and prompt format are matched; years, price levels, market regimes and calendar composition differ. Matching does not eliminate temporal confounding.",
+    "Outcome labels define a balanced research sample. Each constant-direction baseline has accuracy 0.5. Do not claim population forecasting skill from this selected sample.",
+    "IS/OOS are weak timing proxies for NIM only, not verified training membership; both prompt content and market regime differ across years.",
+    "No provider calls, model-call settings, repetition counts, fidelity audit or request budgets are frozen by input preparation. Tasks 6.2-6.5 remain pending."
+  ],
+  "live_provider_calls": 0,
+  "model_specific_cohorts": "cohort-definitions.json",
+  "price_basis": "Yahoo indicators.quote[0].close, not adjclose; source may already adjust historical quotes for splits. Round exact JSON Decimal values to USD 0.01 using ROUND_HALF_UP before both evidence and next-session direction. Exclude ties after rounding. This is quoted-price direction, not total return.",
+  "protocol_settings_frozen": false,
+  "reproduce_offline": "uv run python -m scripts.prepare_completion_inputs validate --directory data/experiments/2026-10-31-completion-api",
+  "schema_version": 1,
+  "selected_strata": {
+    "calibration": {
+      "is_proxy/IAU/-1": 5,
+      "is_proxy/IAU/1": 5,
+      "is_proxy/SPY/-1": 5,
+      "is_proxy/SPY/1": 5,
+      "oos_proxy/IAU/-1": 5,
+      "oos_proxy/IAU/1": 5,
+      "oos_proxy/SPY/-1": 5,
+      "oos_proxy/SPY/1": 5
+    },
+    "evaluation": {
+      "post/IAU/-1": 2,
+      "post/IAU/1": 2,
+      "post/SPY/-1": 2,
+      "post/SPY/1": 2,
+      "pre/IAU/-1": 2,
+      "pre/IAU/1": 2,
+      "pre/SPY/-1": 2,
+      "pre/SPY/1": 2
+    }
+  },
+  "selected_windows": "selected-windows.json",
+  "selection_salt": "completion-api-2026-10-31-input-selection-v1",
+  "selection_validation": {
+    "calibration": {
+      "overlap": 14,
+      "quota_full": 722,
+      "selected": 40
+    },
+    "evaluation": {
+      "overlap": 4,
+      "quota_full": 288,
+      "selected": 16
+    }
+  },
+  "separation": {
+    "calibration_evaluation_dates_disjoint": true,
+    "overlap_scope": "same ticker; six dates including outcome",
+    "unique_evidence_hashes": true,
+    "unique_item_ids": true,
+    "within_ticker_cohort_windows_disjoint": true
+  },
+  "source_format_differences": {
+    "remaining": "calendar years, market regimes, price levels and distributions differ; not causal matching",
+    "source": "none by design",
+    "task_and_format": "none by design"
+  },
+  "sources": {
+    "IAU": {
+      "action_counts": {},
+      "actions": [],
+      "adjusted_close_available": true,
+      "completed_bars": 1255,
+      "first_session": "2021-11-01",
+      "incomplete_sessions": [],
+      "invalid_sessions": [],
+      "last_session": "2026-10-30",
+      "missing_sessions": [],
+      "quote_vs_adjclose_different_sessions": 0,
+      "raw_sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a",
+      "request": {
+        "ambient_auth_proxies_netrc": "disabled (Session.trust_env=False)",
+        "bytes": 136464,
+        "http_status": 200,
+        "path": "raw/IAU.chart.json",
+        "request_params": {
+          "events": "div,splits,capitalGains",
+          "includePrePost": "false",
+          "interval": "1d",
+          "range": "5y"
+        },
+        "request_url": "https://query1.finance.yahoo.com/v8/finance/chart/IAU",
+        "response_url": "https://query1.finance.yahoo.com/v8/finance/chart/IAU?range=5y&interval=1d&events=div%2Csplits%2CcapitalGains&includePrePost=false",
+        "retrieved_at_utc": "2026-10-31T16:04:08.820659+00:00",
+        "sha256": "d5e3bf41b99e13172f298be0bd4cd1dd6da2cc247fe752e1178bec10b2f71d7a"
+      },
+      "ticker": "IAU",
+      "timezone": "America/New_York"
+    },
+    "SPY": {
+      "action_counts": {
+        "dividends": 20
+      },
+      "actions": [
+        {
+          "date": "2021-12-17",
+          "type": "dividends"
+        },
+        {
+          "date": "2022-03-18",
+          "type": "dividends"
+        },
+        {
+          "date": "2022-06-17",
+          "type": "dividends"
+        },
+        {
+          "date": "2022-09-16",
+          "type": "dividends"
+        },
+        {
+          "date": "2022-12-16",
+          "type": "dividends"
+        },
+        {
+          "date": "2023-03-17",
+          "type": "dividends"
+        },
+        {
+          "date": "2023-06-16",
+          "type": "dividends"
+        },
+        {
+          "date": "2023-09-15",
+          "type": "dividends"
+        },
+        {
+          "date": "2023-12-15",
+          "type": "dividends"
+        },
+        {
+          "date": "2024-03-15",
+          "type": "dividends"
+        },
+        {
+          "date": "2024-06-21",
+          "type": "dividends"
+        },
+        {
+          "date": "2024-09-20",
+          "type": "dividends"
+        },
+        {
+          "date": "2024-12-20",
+          "type": "dividends"
+        },
+        {
+          "date": "2025-03-21",
+          "type": "dividends"
+        },
+        {
+          "date": "2025-06-20",
+          "type": "dividends"
+        },
+        {
+          "date": "2025-09-19",
+          "type": "dividends"
+        },
+        {
+          "date": "2025-12-19",
+          "type": "dividends"
+        },
+        {
+          "date": "2026-03-20",
+          "type": "dividends"
+        },
+        {
+          "date": "2026-06-18",
+          "type": "dividends"
+        },
+        {
+          "date": "2026-09-18",
+          "type": "dividends"
+        }
+      ],
+      "adjusted_close_available": true,
+      "completed_bars": 1255,
+      "first_session": "2021-11-01",
+      "incomplete_sessions": [],
+      "invalid_sessions": [],
+      "last_session": "2026-10-30",
+      "missing_sessions": [],
+      "quote_vs_adjclose_different_sessions": 1224,
+      "raw_sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84",
+      "request": {
+        "ambient_auth_proxies_netrc": "disabled (Session.trust_env=False)",
+        "bytes": 137235,
+        "http_status": 200,
+        "path": "raw/SPY.chart.json",
+        "request_params": {
+          "events": "div,splits,capitalGains",
+          "includePrePost": "false",
+          "interval": "1d",
+          "range": "5y"
+        },
+        "request_url": "https://query1.finance.yahoo.com/v8/finance/chart/SPY",
+        "response_url": "https://query1.finance.yahoo.com/v8/finance/chart/SPY?range=5y&interval=1d&events=div%2Csplits%2CcapitalGains&includePrePost=false",
+        "retrieved_at_utc": "2026-10-31T16:04:09.648009+00:00",
+        "sha256": "f82bbdf631d6cc598fbe4995d585673185e7de02331a188704f5e103eea8dd84"
+      },
+      "ticker": "SPY",
+      "timezone": "America/New_York"
+    }
+  },
+  "status": "inputs_prepared_only",
+  "timezone": "America/New_York",
+  "unsupported_inference": [
+    "Pre-cutoff availability does not establish membership or memorization of these prices or prompts.",
+    "Post-cutoff timing does not prove exclusion from every later tuning, retrieval or serving system.",
+    "Matched historical gaps remain proxies and cannot alone demonstrate reduced recall or causal mitigation.",
+    "No live provider access, capability, fitted calibration or intervention effect is established by these input files."
+  ]
+}

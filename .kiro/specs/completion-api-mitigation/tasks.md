@@ -144,7 +144,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Requirements: 1.5, 4.6, 4.7, 5.1, 7.2, 8.7_
 
 - [ ] 6. Measurement preparation and execution
-- [ ] 6.1 Prepare sourced models and matched evaluation inputs
+- [x] 6.1 Prepare sourced models and matched evaluation inputs
   - Verify official cutoffs for exact selected models including Anthropic when selected; record source URLs, retrieval dates and alias uncertainty. Build matched pre/post cohorts and hashes without weakening existing cutoff rules.
   - Done when cohort validation reports inclusion/exclusion counts, source/format differences and any unsupported historical inference.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
