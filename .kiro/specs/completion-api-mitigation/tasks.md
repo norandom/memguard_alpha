@@ -63,7 +63,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Requirements: 1.4, 3.1, 3.3, 7.7, 7.9_
 
 - [ ] 3. Ensemble and scoring integration
-- [ ] 3.1 Generalize existing answer ensembles to optional token evidence
+- [x] 3.1 Generalize existing answer ensembles to optional token evidence
   - Adapt existing generation/reduction contracts without a second reducer. Preserve tie-breaking, minimum draws, failure handling and replay; expose agreement independently from MCS.
   - Done when identical legacy draws replay identically and text-only draws produce valid answer statistics with missing MCS explicitly marked.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

@@ -34,6 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Protocol, TypedDict, TypeVar
 
 from recall_guard.core.consensus import (
     MultimodalVerdict,
@@ -46,7 +47,7 @@ from recall_guard.core.consensus import (
     snap_to_grid,
     wilson_interval,
 )
-from recall_guard.core.nvidia_lm import CompletionResult, NvidiaLM
+from recall_guard.core.request_control import BudgetExhaustedError
 
 #: Version tag mixed into the draw-set hash preimage. Bump only when the
 #: canonicalisation changes, since that changes every replayed hash.
@@ -58,6 +59,30 @@ _HASH_SEPARATOR = "\x00"
 
 #: Statuses that mean the credential was rejected rather than the request failed.
 _AUTH_STATUS = frozenset({401, 403})
+
+
+class _ContentResponse(Protocol):
+    """The reducer reads only text; token evidence stays on the original draw."""
+
+    @property
+    def content(self) -> str: ...
+
+
+ResponseT = TypeVar("ResponseT", bound=_ContentResponse)
+ResponseT_co = TypeVar("ResponseT_co", bound=_ContentResponse, covariant=True)
+
+
+class _EnsembleClient(Protocol[ResponseT_co]):
+    """Shared generation surface of legacy and configured completion clients."""
+
+    def generate(
+        self, prompt: str, *, max_tokens: int = ..., temperature: float = ...
+    ) -> ResponseT_co: ...
+
+
+class _GenerationOverrides(TypedDict, total=False):
+    max_tokens: int
+    temperature: float
 
 
 class LocationMode(StrEnum):
@@ -96,7 +121,7 @@ class CostEstimate:
 
 
 @dataclass(frozen=True)
-class EnsembleResult:
+class EnsembleResult[ResponseT: _ContentResponse]:
     """One ensemble's reduced answer plus the evidence behind it.
 
     ``component_verdicts`` carries the separated-cluster check for **every**
@@ -121,7 +146,7 @@ class EnsembleResult:
     corpus is not ground truth against which to judge a fresh ensemble.
     """
 
-    consensus: CompletionResult
+    consensus: ResponseT
     location: Mapping[str, float]
     location_snapped: Mapping[str, float] | None
     grid_adherence: Mapping[str, float] | None
@@ -137,7 +162,16 @@ class EnsembleResult:
     n_parsed: int
     fail_counts: tuple[tuple[str, int], ...]
     draws_sha256: str
-    draws: tuple[CompletionResult, ...] = field(default=())
+    draws: tuple[ResponseT, ...] = field(default=())
+
+    @property
+    def n_attempted(self) -> int:
+        """Known logical draws, including failures, rather than physical requests.
+
+        A partial replay counts only its retained outcomes. Provider retries and
+        other stages are accounted for by the client's shared request budget.
+        """
+        return self.n_parsed + sum(count for _, count in self.fail_counts)
 
 
 @dataclass(frozen=True)
@@ -311,7 +345,7 @@ def _classify(exc: BaseException) -> str:
 
 
 def _canonical_order(
-    draws: Sequence[CompletionResult],
+    draws: Sequence[ResponseT],
     decisions: Sequence[Hashable],
 ) -> list[int]:
     """Indices of ``draws`` in content order.
@@ -327,10 +361,10 @@ def _canonical_order(
 
 
 def _select_consensus(
-    draws: Sequence[CompletionResult],
+    draws: Sequence[ResponseT],
     decisions: Sequence[Hashable],
     modal: Hashable,
-) -> CompletionResult:
+) -> ResponseT:
     """The modal-class draw whose content sorts first.
 
     Deliberately an actually-observed draw, never a synthesised one: a composed
@@ -342,8 +376,8 @@ def _select_consensus(
 
 
 def _reduce_components(
-    parsed: Sequence[CompletionResult],
-    components: Callable[[CompletionResult], Mapping[str, float]],
+    parsed: Sequence[ResponseT],
+    components: Callable[[ResponseT], Mapping[str, float]],
     spec: EnsembleSpec,
 ) -> tuple[
     dict[str, float],
@@ -406,22 +440,26 @@ def _reduce_components(
 
 
 def reduce_draws(
-    draws: Sequence[CompletionResult],
+    draws: Sequence[ResponseT],
     spec: EnsembleSpec,
     *,
-    decide: Callable[[CompletionResult], Hashable],
-    components: Callable[[CompletionResult], Mapping[str, float]] | None = None,
+    decide: Callable[[ResponseT], Hashable],
+    components: Callable[[ResponseT], Mapping[str, float]] | None = None,
     waves: Sequence[int] | None = None,
     n_requested: int | None = None,
     fail_counts: Mapping[str, int] | None = None,
     sampled_at: str | None = None,
-) -> EnsembleResult:
+) -> EnsembleResult[ResponseT]:
     """Reduce a draw set to one answer. Pure: no I/O, no randomness, no clock.
 
     Separated from execution so a stored draw set can be replayed into a
     bit-identical result without contacting a model, which is what makes an
     ensemble auditable after the fact. No clock is read here: ``sampled_at``
     stays ``None`` unless the caller passes through what execution recorded.
+
+    Only ``content`` is required on a response. Consensus and retained draws
+    preserve the original objects, including absent or genuine token evidence;
+    answer agreement and component dispersion do not estimate memorization.
     """
     if not draws:
         raise ValueError("cannot reduce an empty draw set")
@@ -476,26 +514,33 @@ def reduce_draws(
 
 
 def generate_ensemble(
-    lm: NvidiaLM,
+    lm: _EnsembleClient[ResponseT],
     prompt: str,
     spec: EnsembleSpec,
     *,
-    decide: Callable[[CompletionResult], Hashable],
-    components: Callable[[CompletionResult], Mapping[str, float]] | None = None,
-) -> EnsembleResult:
+    decide: Callable[[ResponseT], Hashable],
+    components: Callable[[ResponseT], Mapping[str, float]] | None = None,
+) -> EnsembleResult[ResponseT]:
     """Draw ``spec.draws`` replies to ``prompt`` and reduce them.
+
+    Accepts legacy and configured clients without requiring token evidence or
+    configuration attributes. The spec's request ceiling bounds logical draws;
+    configured clients enforce physical-request limits, including retries.
 
     Raises
     ------
     ValueError
         If a component holds separated clusters and the spec asks to raise.
+    BudgetExhaustedError
+        If the client's shared physical-request budget is exhausted. No further
+        waves are scheduled and no consensus over surviving draws is returned.
     RuntimeError
         If the request budget is exhausted, too few draws are usable, or
         transport failures exceed the configured share. Each of these is a
         refusal to report a confident answer computed from survivors.
     """
     started_at = datetime.now(UTC).isoformat()
-    parsed: list[CompletionResult] = []
+    parsed: list[ResponseT] = []
     wave_tags: list[int] = []
     failures: dict[str, int] = {}
     issued = 0
@@ -518,14 +563,16 @@ def generate_ensemble(
 
         for outcome in outcomes:
             if isinstance(outcome, BaseException):
-                if _is_auth_failure(outcome):
+                if isinstance(outcome, BudgetExhaustedError) or _is_auth_failure(outcome):
                     # Abort rather than paying for the remaining draws; a rejected
-                    # credential will not start working mid-ensemble.
+                    # credential or exhausted budget cannot recover mid-ensemble.
                     raise outcome
                 failures[_classify(outcome)] = failures.get(_classify(outcome), 0) + 1
                 continue
             try:
                 decide(outcome)
+            except BudgetExhaustedError:
+                raise
             except Exception:  # noqa: BLE001 - a caller callback may raise anything
                 failures["projection"] = failures.get("projection", 0) + 1
                 continue
@@ -561,15 +608,15 @@ def generate_ensemble(
 
 
 def _safe_draw(
-    lm: NvidiaLM, prompt: str, spec: EnsembleSpec
-) -> CompletionResult | BaseException:
+    lm: _EnsembleClient[ResponseT], prompt: str, spec: EnsembleSpec
+) -> ResponseT | BaseException:
     """One draw under the spec's generation settings.
 
     Only overrides that the caller actually set are forwarded, so an unset spec
     reproduces the client's own defaults exactly -- which keeps a one-draw
     ensemble byte-identical to the single-draw path.
     """
-    kwargs: dict[str, object] = {}
+    kwargs: _GenerationOverrides = {}
     if spec.max_tokens is not None:
         kwargs["max_tokens"] = spec.max_tokens
     if spec.temperature is not None:

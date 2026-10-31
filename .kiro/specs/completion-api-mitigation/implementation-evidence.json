@@ -67,5 +67,14 @@
       "recall_guard/core/provider_callback.py",
       "tests/core/test_provider_callback.py"
     ]
+  },
+  "3.1": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED; fresh68focusedtests9.17s and Ruff pass; actualRED3initial and1projection regressions, genericlegacyparity and physicalvslogicalcountsverified.",
+    "timestamp": "2026-10-31T10:59:52.772096+00:00",
+    "files": [
+      "recall_guard/core/ensemble.py",
+      "tests/core/test_ensemble_completion.py"
+    ]
   }
 }
