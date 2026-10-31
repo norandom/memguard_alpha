@@ -92,6 +92,80 @@ def fit(target, *, intervention_id="original"):
     )
 
 
+def test_calibration_fingerprint_is_stable_and_changes_with_numeric_fit_state():
+    scorer = fit(Client())
+    original = scorer.calibration_fingerprint
+    assert len(original) == 64 and scorer.calibration_fingerprint == original
+    scorer._mcs.classifier.coef_[0, 0] += 0.01
+    changed = scorer.calibration_fingerprint
+    assert changed != original
+    scorer._baseline.feature_stds["loss"] += 0.01
+    assert scorer.calibration_fingerprint != changed
+
+
+def test_calibration_fingerprint_binds_holdout_evidence_classes_and_feature_order():
+    scorer = fit(Client())
+    for mutate in (
+        lambda: setattr(scorer, "_mcs", replace(scorer._mcs, holdout_probabilities=(0.1, 0.9))),
+        lambda: scorer._mcs.feature_order.reverse(),
+        lambda: scorer._mcs.classifier.classes_.__setitem__(0, 8),
+    ):
+        before = scorer.calibration_fingerprint
+        mutate()
+        assert scorer.calibration_fingerprint != before
+
+
+def test_calibration_fingerprint_binds_observed_defaults_that_change_scoring_acceptance():
+    clients = [Client(), Client()]
+    for client, top_p in zip(clients, (0.1, 0.9), strict=True):
+        client.mutate = lambda response, value=top_p: replace(response, confirmed_settings={"top_p": value})
+    first, second = [fit(client) for client in clients]
+    assert first.calibration_identity == second.calibration_identity
+    assert first._baseline == second._baseline
+    assert first._mcs.classifier.coef_.tolist() == second._mcs.classifier.coef_.tolist()
+    response = clients[0].generate("eval")
+    assert first.score_response("eval", response, client=clients[0]).parse_ok
+    with pytest.raises(ValueError, match="confirmed"):
+        second.score_response("eval", response, client=clients[0])
+    assert first.calibration_fingerprint != second.calibration_fingerprint
+
+
+def test_calibration_fingerprint_supports_canonical_nested_observed_settings():
+    def observed_fit(settings):
+        client = Client()
+        client.mutate = lambda response: replace(response, confirmed_settings=settings)
+        return fit(client)
+
+    first = observed_fit({"response_format": {"type": "json_schema", "options": [None, True, {"limit": 2}]}})
+    reordered = observed_fit({"response_format": {"options": [None, True, {"limit": 2}], "type": "json_schema"}})
+    changed = observed_fit({"response_format": {"type": "json_schema", "options": [None, True, {"limit": 3}]}})
+    assert first.calibration_fingerprint == reordered.calibration_fingerprint
+    assert first.calibration_fingerprint != changed.calibration_fingerprint
+
+
+def test_scorer_observed_fit_settings_are_detached_read_only_and_exclude_credential_refs():
+    client = Client()
+    source = {"response_format": {"options": [{"limit": 2}]}, "top_p": 0.1}
+    client.mutate = lambda response: replace(response, confirmed_settings=source)
+    scorer = fit(client)
+    snapshot = scorer.observed_fit_settings
+    fingerprint = scorer.calibration_fingerprint
+    assert snapshot == scorer._lm.observed_fit_settings
+    with pytest.raises(TypeError):
+        snapshot["top_p"] = 0.9
+    with pytest.raises(TypeError):
+        snapshot["response_format"]["options"][0]["limit"] = 3
+    source["response_format"]["options"][0]["limit"] = 99
+    client.config = replace(client.config, credential_ref="ANOTHER_CREDENTIAL_REFERENCE")
+    assert snapshot["response_format"]["options"][0]["limit"] == 2
+    assert scorer.calibration_fingerprint == fingerprint
+    replacement = Client()
+    replacement.config = replace(replacement.config, credential_ref="REPLACEMENT_CREDENTIAL_REFERENCE")
+    replacement.mutate = lambda response: replace(response, confirmed_settings={
+        "top_p": 0.1, "response_format": {"options": [{"limit": 2}]}})
+    assert fit(replacement).calibration_fingerprint == fingerprint
+
+
 def spec(**changes):
     return EnsembleSpec(**({"draws": 3, "max_workers": 1, "min_parsed": 2, "retain_draws": True} | changes))
 

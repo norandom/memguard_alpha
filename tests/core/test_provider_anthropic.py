@@ -26,6 +26,17 @@ def fixture_response(name="text_only"):
     return json.loads(FIXTURE.read_text(encoding="utf-8"))["responses"][name]
 
 
+def test_probe_explicit_prompt_and_stage_are_provenance_not_body_controls(wire):
+    pending, calls = wire
+    pending.append(fixture_response())
+    budget = CallBudget(1)
+    adapter = client(budget=budget)
+    adapter.probe("EXACT_NATIVE_PROBE_INPUT", stage="execution/probe/target")
+    assert budget.events[0].stage == "execution/probe/target"
+    assert calls[0]["body"]["messages"] == [{"role": "user", "content": "EXACT_NATIVE_PROBE_INPUT"}]
+    assert "stage" not in calls[0]["body"]
+
+
 def config(**overrides):
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     return ModelConfig(**({

@@ -24,6 +24,7 @@ from recall_guard.core.nvidia_lm import CompletionResult
 from recall_guard.core.providers import OpenAICompatibleClient
 from recall_guard.core.request_control import BudgetExhaustedError, CallBudget, RequestError
 from recall_guard.harness.scorer import ConfigurationError, MemoryGuardedScorer
+from recall_guard.harness.scorer_client import LegacyLogprobAdapter
 from recall_guard.mia.control import build_baseline
 from recall_guard.mia.features import compute_mia_features
 from recall_guard.mia.mcs import train
@@ -403,6 +404,40 @@ def test_confirmed_default_observed_during_fit_cannot_change_at_scoring():
     response = dataclasses.replace(client.generate("eval"), confirmed_settings={"temperature": 0.4})
     with pytest.raises(ValueError, match="confirmed|settings|identity"):
         scorer.score_response("eval", response, client=client)
+
+
+def test_observed_fit_settings_snapshot_is_deeply_immutable_and_detached():
+    client = Client()
+    adapter = LegacyLogprobAdapter(client, "original", lambda error: False)
+    source = {"response_format": {"options": [{"limit": 2}]}}
+    response = dataclasses.replace(client.generate("eval"), confirmed_settings=source)
+    adapter.validate_response(response)
+    snapshot = adapter.observed_fit_settings
+    assert snapshot == response.confirmed_settings
+    assert snapshot is not response.confirmed_settings
+    assert snapshot["response_format"] is not response.confirmed_settings["response_format"]
+    with pytest.raises(TypeError):
+        snapshot["top_p"] = 0.1
+    with pytest.raises(TypeError):
+        snapshot["response_format"]["options"][0]["limit"] = 3
+    with pytest.raises(TypeError):
+        snapshot["response_format"]["options"][0] = {"limit": 3}
+    source["response_format"]["options"][0]["limit"] = 99
+    adapter.validate_response(dataclasses.replace(response, confirmed_settings={"top_p": 0.1}))
+    assert "top_p" not in snapshot
+    assert snapshot["response_format"]["options"][0]["limit"] == 2
+    adapter.finish_calibration()
+    frozen = adapter.observed_fit_settings
+    adapter.validate_response(dataclasses.replace(response, confirmed_settings={"seed": 17}))
+    assert adapter.observed_fit_settings == frozen and "seed" not in frozen
+
+
+def test_legacy_calibration_observed_fit_settings_remain_explicitly_unknown():
+    from tests.harness.test_scorer import _calibrate
+
+    legacy = _calibrate()
+    assert legacy.observed_fit_settings is None
+    assert len(legacy.calibration_fingerprint) == 64
 
 
 @pytest.mark.parametrize("entry_point", ["score", "score_many", "score_ensemble"])

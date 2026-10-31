@@ -32,10 +32,12 @@ depend on ``core``, ``mia``, and ``harness.evaluator``. It imports nothing from
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
 from recall_guard.core.completion import CompletionClient, ModelResponse, ParameterValue
@@ -152,6 +154,17 @@ def _rows(prompts: Sequence[str]) -> list[EvalRow]:
     return [EvalRow(prompt=p, target_direction=0, metadata={}) for p in prompts]
 
 
+def _settings_payload(value: ParameterValue) -> ParameterValue:
+    """Serialize only validated JSON generation controls, including nested ones."""
+    if isinstance(value, Mapping):
+        return {name: _settings_payload(child) for name, child in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_settings_payload(child) for child in value]
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    raise TypeError("Observed fit settings must contain JSON-compatible generation controls")
+
+
 @dataclass(frozen=True)
 class EnsembledScore:
     """One prompt scored over many draws.
@@ -255,10 +268,41 @@ class MemoryGuardedScorer:
         return self._lm.identity if isinstance(self._lm, LegacyLogprobAdapter) else None
 
     @property
+    def observed_fit_settings(self) -> Mapping[str, ParameterValue] | None:
+        """Read-only observed calibration controls; unknown for legacy fits.
+
+        Configured fits return a detached snapshot. An absent control was not
+        confirmed during fitting, even if it was requested or later echoed.
+        """
+        return self._lm.observed_fit_settings if isinstance(self._lm, LegacyLogprobAdapter) else None
+
+    @property
     def calibration_valid_counts(self) -> dict[str, int | None]:
         """Actual valid rows, after MIA computation, before the train/holdout split."""
         return {"baseline": self._baseline.n_valid, "is_memorized": self._mcs.n_valid_is,
                 "oos_control": self._mcs.n_valid_oos}
+
+    @property
+    def calibration_fingerprint(self) -> str:
+        """SHA-256 of numeric fit state and observed controls, excluding secrets.
+
+        Recomputed to detect mutation of sklearn's fitted arrays or baseline
+        dictionaries. This identifies a fit; it is not a serialized load API.
+        """
+        classifier = self._mcs.classifier
+        state = {
+            "scheme": "recall_guard.calibration.v1",
+            "identity": None if self.calibration_identity is None else asdict(self.calibration_identity),
+            "observed_fit_settings": _settings_payload(self.observed_fit_settings),
+            "baseline": asdict(self._baseline), "model": self._mcs.model,
+            "feature_order": list(self._mcs.feature_order),
+            "coefficients": classifier.coef_.tolist(), "intercept": classifier.intercept_.tolist(),
+            "classes": classifier.classes_.tolist(), "holdout_auc": self.holdout_auc, "is_weak": self.is_weak,
+            "valid_counts": self.calibration_valid_counts, "holdout_labels": self.holdout_labels,
+            "holdout_probabilities": self.holdout_probabilities,
+        }
+        payload = json.dumps(state, sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     # -- construction ----------------------------------------------------------
 

@@ -154,7 +154,7 @@ class AnthropicClient:
         except requests.RequestException as error:
             raise _transport_failure(error) from None
 
-    def probe(self, prompt: str = "Reply with the word OK.") -> CapabilityReport:
+    def probe(self, prompt: str = "Reply with the word OK.", *, stage: str = "probe") -> CapabilityReport:
         """Probe actual inference access for this exact endpoint/model/settings.
 
         HTTP authentication, billing and parameter failures remain RequestError;
@@ -164,7 +164,7 @@ class AnthropicClient:
         truncated output establishes observed text support and retains its stop
         reason during ordinary generation.
         """
-        response = self._generate(prompt, {}, stage="probe")
+        response = self._generate(prompt, {}, stage=stage)
         source = f"Anthropic Messages API {ANTHROPIC_API_VERSION} authenticated generation probe"
         capabilities = {}
         for name in self.config.inspect(self.features).capabilities:

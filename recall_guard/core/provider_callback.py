@@ -225,13 +225,13 @@ class CallbackClient:
             raise failure
         return response
 
-    def probe(self, prompt: str = "Reply with the word OK.") -> CapabilityReport:
+    def probe(self, prompt: str = "Reply with the word OK.", *, stage: str = "probe") -> CapabilityReport:
         """Observe actual text/token evidence; accepted settings are not echoed ones.
 
         A ready model report does not establish strict request accounting for an
         opaque callback. Its separate ``request_accounting`` stays unverified.
         """
-        response = self._generate(prompt, {}, stage="probe", enforce_mia=False)
+        response = self._generate(prompt, {}, stage=stage, enforce_mia=False)
         capabilities = {}
         for name in self.config.inspect(self.features).capabilities:
             status, observed = CapabilityStatus.SUPPORTED, True

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from threading import Lock
 from types import MappingProxyType
@@ -71,6 +71,16 @@ class LegacyLogprobAdapter:
     @property
     def model(self) -> str:
         return self.identity.model
+
+    @property
+    def observed_fit_settings(self) -> Mapping[str, ParameterValue]:
+        """Detached, deeply immutable controls echoed during calibration only.
+
+        Missing controls remain unobserved. Reuse the response contract's
+        recursive validation/copying rather than expose the adapter's state.
+        """
+        with self._lock:
+            return ModelResponse("", confirmed_settings=self._confirmed_settings).confirmed_settings
 
     def validate_client(
         self, client: CompletionClient, *, intervention_id: str, **parameters: ParameterValue,

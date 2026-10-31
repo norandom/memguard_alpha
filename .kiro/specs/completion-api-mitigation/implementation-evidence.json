@@ -149,5 +149,26 @@
       "tests/harness/test_rewriting.py",
       "tests/mia/test_mcs.py"
     ]
+  },
+  "5.1": {
+    "review": "APPROVED",
+    "verification": "Independent re-review APPROVED after observed-fit-settings fingerprint repair. Parent fresh528focusedtests12.96s and fullRuff/architecture pass. InitialRED14 and fingerprintRED6 logs verified. Balanced arms, fixed draw0, exact physical identities, durable intent, budgeted safe resumes, credential-free config comparison and fit freezing verified.",
+    "timestamp": "2026-10-31T13:50:59.557094+00:00",
+    "files": [
+      "recall_guard/harness/intervention.py",
+      "recall_guard/harness/intervention_journal.py",
+      "recall_guard/harness/intervention_types.py",
+      "recall_guard/harness/workflow.py",
+      "recall_guard/harness/scorer.py",
+      "recall_guard/harness/scorer_client.py",
+      "recall_guard/core/providers.py",
+      "recall_guard/core/provider_anthropic.py",
+      "recall_guard/core/provider_callback.py",
+      "tests/harness/test_intervention.py",
+      "tests/harness/test_workflow_scoring.py",
+      "tests/harness/test_scorer_client.py",
+      "tests/core/test_providers.py",
+      "tests/core/test_provider_anthropic.py"
+    ]
   }
 }

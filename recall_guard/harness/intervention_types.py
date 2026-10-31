@@ -246,7 +246,12 @@ def _outcome(status, error, response=None):
 
 @dataclass(frozen=True)
 class DrawRecord:
-    """One logical target draw, including its exact prompt and partial output."""
+    """One logical target draw, including its exact prompt and partial output.
+
+    Optional JSON metadata retains actual projection/scoring outcomes and
+    diagnostics without live scorer/client state. ``attempted`` there denotes
+    a logical workflow invocation, distinct from physical RequestRecords.
+    """
 
     item_id: str
     arm: EvidenceArm
@@ -256,6 +261,7 @@ class DrawRecord:
     response: ModelResponse | None = None
     stage: str = "target"
     error: str | None = None
+    metadata: Mapping[str, ParameterValue] = field(default_factory=dict)
 
     def __post_init__(self):
         _text(self.item_id, "item_id")
@@ -265,6 +271,7 @@ class DrawRecord:
             _text(self.prompt, "prompt", empty=True)
         object.__setattr__(self, "arm", EvidenceArm(self.arm))
         object.__setattr__(self, "status", _outcome(self.status, self.error, self.response))
+        object.__setattr__(self, "metadata", _mapping(self.metadata, "draw metadata"))
         if self.status == RecordStatus.COMPLETED and (self.response is None or self.prompt is None):
             raise ValueError("completed draws require prompt and response")
 
@@ -280,7 +287,7 @@ class DrawRecord:
         return {"item_id": self.item_id, "arm": self.arm.value, "draw_index": self.draw_index,
                 "status": self.status.value, "prompt": self.prompt,
                 "response": None if self.response is None else self.response.to_dict(),
-                "stage": self.stage, "error": self.error}
+                "stage": self.stage, "error": self.error, "metadata": _plain(self.metadata)}
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "DrawRecord":

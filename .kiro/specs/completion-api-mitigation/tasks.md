@@ -112,7 +112,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Requirements: 7.6, 8.2, 8.3, 9.3_
 
 - [ ] 5. Experiment execution and statistics
-- [ ] 5.1 Implement four-condition execution and record identity
+- [x] 5.1 Implement four-condition execution and record identity
   - Generate paired original/rewrite target draws with balanced arm order; designate draw zero before outcomes as single response. Retain item/arm/draw identity, failure records and rewrite associations; prevent accidental duplicate calls on resume.
   - Done when saved fixtures contain all planned conditions and missing draws remain visible with unchanged target/reduction settings.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
@@ -213,6 +213,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
 
 ## Implementation notes
 
+- Experiment journals preserve write-ahead construction/probe/arm intent and refuse ambiguous restart. Safe resumes use the remaining budget and intentionally re-probe access. Calibration fingerprints include observed fit settings; strict callback provenance remains caller-cooperative, including use of the supplied logical prompt.
 - Workflow calibration probes active roles before preparation and also performs the scorer's fit-specific probe; include both in request budgets. Quality metadata retains paired holdout observations. Configured fatal-state checks run before model fitting.
 - Task 1.2 reopened on 2026-10-31 for a foundation correction: OpenAI documents `-9999.0` as a censored token-logprob marker outside its reported top 20. Preserve raw response data, but make this evidence explicitly unavailable for MIA/MCS before task 4.4. Ordinary valid-response construction and serialization remain compatible. Source: https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create.
 - Credentials resolve at configured-client construction; recreate clients after rotation.

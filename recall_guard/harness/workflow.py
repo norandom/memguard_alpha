@@ -6,6 +6,7 @@ configuration failure, without converting surviving draws into a successful run.
 """
 
 import json
+import math
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
@@ -94,7 +95,7 @@ class _RecordingClient:
     attempts and cannot produce a successful survivor result at the boundary.
     """
 
-    def __init__(self, client, item, prompt, intervention_id, evidence, config, scorer=None):
+    def __init__(self, client, item, prompt, intervention_id, evidence, config, scorer=None, request_namespace=None):
         self.client, self.item, self.prompt = client, item, prompt
         self.config = config
         self.intervention_id, self.evidence_hash = intervention_id, text_hash(evidence)
@@ -106,6 +107,7 @@ class _RecordingClient:
         self.projected = set()
         self.component_values = {}
         self.scorer = scorer
+        self.request_namespace = request_namespace
 
     def update(self, index, **changes):
         with self.lock:
@@ -122,7 +124,8 @@ class _RecordingClient:
             ))
         try:
             _check_settings(self.client, self.config)
-            response = _generate(self.client, prompt, stage="target", parameters=parameters)
+            stage = "target" if self.request_namespace is None else f"{self.request_namespace}/target/{index}"
+            response = _generate(self.client, prompt, stage=stage, parameters=parameters)
             self.update(index, response=response)
             _check_settings(self.client, self.config, response)
             if self.scorer is not None:
@@ -172,6 +175,9 @@ class _RecordingClient:
         if draw.index not in self.component_values:
             try:
                 values = {name: float(value) for name, value in project(draw.response).items()}
+                if any(not isinstance(name, str) or not name.strip() or not math.isfinite(value)
+                       for name, value in values.items()):
+                    raise ValueError("Components require nonempty string names and finite numeric values")
             except Exception as error:
                 kind, message, diagnostics = _failure(error)
                 self.update(draw.index, status=RecordStatus.FAILED, error=message,
@@ -274,18 +280,26 @@ class RecallWorkflow:
                 raise ValueError("Strict budget requires supported physical request accounting for every active role")
         return rewrite, roles, overrides, selected
 
+    def validate(self, *, rewrite: bool = False, ensemble: EnsembleSpec | None = None,
+                 scorer=_DEFAULT_SCORER) -> None:
+        """Validate the selected configuration and fit without provider calls."""
+        self._selection(rewrite, ensemble, scorer=scorer)
+
     def preflight(self, *, rewrite: bool | None = None, ensemble: EnsembleSpec | None = None,
-                  refresh: bool = False, scorer=_DEFAULT_SCORER) -> WorkflowPreflight:
+                  refresh: bool = False, scorer=_DEFAULT_SCORER, request_namespace: str | None = None) -> WorkflowPreflight:
         """Probe only selected roles; changed parameters/configurations invalidate cache.
 
         Accepted controls are capability evidence. Effective values remain
         unknown unless echoed on actual ModelResponses. Probe failures preserve
         completed role reports and never admit an inference batch.
         """
+        if request_namespace is not None and (not isinstance(request_namespace, str) or not request_namespace.strip()):
+            raise ValueError("request_namespace must be a nonempty string")
         _, roles, overrides, selected = self._selection(rewrite, ensemble, scorer=scorer)
-        return self._preflight(roles, overrides, mia_scoring=selected is not None, refresh=refresh)
+        return self._preflight(roles, overrides, mia_scoring=selected is not None, refresh=refresh,
+                               request_namespace=request_namespace)
 
-    def _preflight(self, roles, overrides, *, mia_scoring=False, refresh=False):
+    def _preflight(self, roles, overrides, *, mia_scoring=False, refresh=False, request_namespace=None):
         """Probe selected roles; calibration also uses this before preparation."""
         reports, responses = {}, {}
         for role, client in roles.items():
@@ -300,11 +314,16 @@ class RecallWorkflow:
                 if refresh or key not in self._probes:
                     probe = getattr(client, "probe", None)
                     if callable(probe) and config.parameters == client.config.parameters:
-                        report, response = probe(), None
+                        # Stock probes accept explicit metadata without forwarding it
+                        # as a model control. Their actual response remains unavailable.
+                        report = (probe(prompt=_PROBE_PROMPT, stage=f"{request_namespace}/probe/{role}")
+                                  if request_namespace is not None and isinstance(client, _STOCK_CLIENTS) else probe())
+                        response = None
                         if not isinstance(report, CapabilityReport):
                             raise TypeError("probe must return CapabilityReport")
                     else:
-                        response = _generate(client, _PROBE_PROMPT, stage="probe", parameters=parameters)
+                        stage = "probe" if request_namespace is None else f"{request_namespace}/probe/{role}"
+                        response = _generate(client, _PROBE_PROMPT, stage=stage, parameters=parameters)
                         _check_settings(client, original_config, response)
                         report = self._observed_report(config, response, features)
                     _check_settings(client, original_config)
@@ -361,6 +380,7 @@ class RecallWorkflow:
         decide: Callable[[ModelResponse], Hashable] | None = None,
         components: Callable[[ModelResponse], Mapping[str, float]] | None = None,
         scorer=_DEFAULT_SCORER,
+        request_namespace: str | None = None,
     ) -> WorkflowResult:
         """Infer once or execute the existing ensemble over one shared prompt.
 
@@ -370,6 +390,8 @@ class RecallWorkflow:
         """
         if not isinstance(item, RewriteInput):
             raise TypeError("item must be RewriteInput")
+        if request_namespace is not None and (not isinstance(request_namespace, str) or not request_namespace.strip()):
+            raise ValueError("request_namespace must be a nonempty string")
         if decide is not None and not callable(decide) or components is not None and not callable(components):
             raise TypeError("decide and components must be callable when supplied")
         rewrite, roles, _, selected = self._selection(rewrite, ensemble, scorer=scorer)
@@ -386,7 +408,8 @@ class RecallWorkflow:
                                  "identity": asdict(selected.calibration_identity),
                                  "holdout_auc": selected.holdout_auc, "is_weak": selected.is_weak,
                                  "valid_counts": selected.calibration_valid_counts}})
-        preflight = self.preflight(rewrite=rewrite, ensemble=ensemble, scorer=selected)
+        preflight = self.preflight(rewrite=rewrite, ensemble=ensemble, scorer=selected,
+                                   request_namespace=request_namespace)
         result = replace(result, preflight=preflight)
         if not preflight.ready_for_batch:
             return self._finish(replace(result, status=RecordStatus.FAILED, error=preflight.error,
@@ -417,7 +440,7 @@ class RecallWorkflow:
         prompt = render_target_prompt(item, evidence=result.accepted_evidence)
         recorder = _RecordingClient(self.target, item, prompt,
                                     result.rewrite.fidelity_checks["intervention_id"] if rewrite else None,
-                                    result.accepted_evidence, configurations["target"], selected)
+                                    result.accepted_evidence, configurations["target"], selected, request_namespace)
         project = decide if decide is not None else lambda response: response.content
         choose = lambda draw: recorder.decide(draw, project)  # noqa: E731
         project_components = None if components is None else lambda draw: recorder.components(draw, components)

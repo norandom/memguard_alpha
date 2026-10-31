@@ -226,7 +226,7 @@ class OpenAICompatibleClient:
         except requests.RequestException as error:
             raise _transport_failure(error) from None
 
-    def probe(self, prompt: str = _PROBE_PROMPT) -> CapabilityReport:
+    def probe(self, prompt: str = _PROBE_PROMPT, *, stage: str = "probe") -> CapabilityReport:
         """Perform real generation; distinguish acceptance from effective values.
 
         HTTP/authentication/billing/parameter failures propagate as RequestError.
@@ -237,7 +237,7 @@ class OpenAICompatibleClient:
         The report concerns this exact configured parameter set, endpoint/model
         and feature selection. It is not a guarantee for changed overrides.
         """
-        response = self._generate(prompt, {}, stage="probe", enforce_mia=False)
+        response = self._generate(prompt, {}, stage=stage, enforce_mia=False)
         source = "Authenticated generation probe" if self._credential is not None else "Explicit unauthenticated generation probe"
         capabilities = {}
         for name in self.config.inspect(self.features).capabilities:
