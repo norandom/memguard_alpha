@@ -38,10 +38,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from recall_guard.core.completion import CompletionClient, ModelResponse, ParameterValue
 from recall_guard.core.consensus import lag_dependence, wilson_interval
 from recall_guard.core.ensemble import EnsembleSpec, canonical_draw_hash
 from recall_guard.core.loader import EvalRow
 from recall_guard.core.nvidia_lm import NvidiaLM, check_model_access, generate_many
+from recall_guard.core.request_control import BudgetExhaustedError
 from recall_guard.harness.evaluator import (
     FAIL_ERROR,
     FAIL_PARSE,
@@ -51,6 +53,7 @@ from recall_guard.harness.evaluator import (
     _parse_confidence,
     _parse_direction,
 )
+from recall_guard.harness.scorer_client import CalibrationIdentity, LegacyLogprobAdapter
 from recall_guard.mia.control import ControlBaseline, build_baseline
 from recall_guard.mia.features import MiaFeatures, compute_mia_features
 from recall_guard.mia.mcs import MCSCalibrator
@@ -196,7 +199,7 @@ class MemoryGuardedScorer:
     def __init__(
         self,
         *,
-        lm: NvidiaLM,
+        lm: NvidiaLM | LegacyLogprobAdapter,
         baseline: ControlBaseline,
         mcs: MCSCalibrator,
         ref_lm: NvidiaLM | None,
@@ -221,6 +224,11 @@ class MemoryGuardedScorer:
     def is_weak(self) -> bool:
         """``True`` when ``holdout_auc`` is below the calibration gate (Req 3.4)."""
         return self._mcs.is_weak
+
+    @property
+    def calibration_identity(self) -> CalibrationIdentity | None:
+        """Configured fit provenance; legacy calibrations retain their old contract."""
+        return self._lm.identity if isinstance(self._lm, LegacyLogprobAdapter) else None
 
     # -- construction ----------------------------------------------------------
 
@@ -272,16 +280,85 @@ class MemoryGuardedScorer:
                         "verify inference authorization, model ID and logprob support"
                     ) from error
 
-        oos_rows = _rows(oos_control)
-        is_rows = _rows(is_memorized)
-
-        baseline = build_baseline(
-            lm, oos_rows, ref_lm, min_valid=min_valid, max_workers=max_workers
+        return cls._fit(
+            lm=lm, ref_lm=ref_lm, is_memorized=is_memorized, oos_control=oos_control,
+            min_auc=min_auc, min_valid=min_valid, seed=seed, max_workers=max_workers,
         )
+
+    @classmethod
+    def calibrate_client(
+        cls,
+        *,
+        client: CompletionClient,
+        is_memorized: Sequence[str],
+        oos_control: Sequence[str],
+        intervention_id: str = "original",
+        min_auc: float = 0.6,
+        min_valid: int = 50,
+        seed: int = 0,
+        max_workers: int = 8,
+    ) -> MemoryGuardedScorer:
+        """Fit the existing MIA/MCS estimator with a configured completion client.
+
+        A real generation probe must verify all feature evidence before corpus
+        calls. Text-only clients cannot calibrate this estimator. The immutable
+        fit identity includes exact requested settings and intervention ID.
+        ``intervention_id`` labels already prepared calibration prompts; this
+        method does not rewrite them. A rewritten fit needs both corpora to
+        have passed the same pipeline used at inference.
+
+        Configured scoring currently uses the primary model only. Legacy
+        :meth:`calibrate` continues to support an optional reference model.
+        Credentials, pacing, retries and physical budgets belong to ``client``.
+        """
+        lm = LegacyLogprobAdapter(client, intervention_id, _is_auth_error)
+        try:
+            lm.probe()
+        except BudgetExhaustedError:
+            raise
+        except (TimeoutError, RuntimeError) as error:
+            raise ConfigurationError(
+                f"model {lm.model!r} access check failed; verify inference authorization and MIA support"
+            ) from error
+        try:
+            scorer = cls._fit(
+                lm=lm, ref_lm=None, is_memorized=is_memorized, oos_control=oos_control,
+                min_auc=min_auc, min_valid=min_valid, seed=seed, max_workers=max_workers,
+            )
+            lm.finish_calibration()
+            return scorer
+        except BudgetExhaustedError:
+            raise
+        except RuntimeError as error:
+            if _is_auth_error(error):
+                raise ConfigurationError(f"Credential rejected while calibrating model {lm.model!r}") from error
+            raise
+
+    @classmethod
+    def _fit(
+        cls, *, lm, ref_lm, is_memorized: Sequence[str], oos_control: Sequence[str],
+        min_auc: float, min_valid: int, seed: int, max_workers: int,
+    ) -> MemoryGuardedScorer:
+        """Reuse baseline/train verbatim for both public construction paths."""
+        model = lm.model
+        oos_rows, is_rows = _rows(oos_control), _rows(is_memorized)
+
+        try:
+            baseline = build_baseline(
+                lm, oos_rows, ref_lm, min_valid=min_valid, max_workers=max_workers
+            )
+        finally:
+            if isinstance(lm, LegacyLogprobAdapter):
+                lm.raise_if_fatal()
         if baseline.n_valid == 0:
+            credential_hint = (
+                "check configured credentials, model ID, endpoint and token evidence."
+                if isinstance(lm, LegacyLogprobAdapter)
+                else "check NVIDIA_API_KEY, the model id, and endpoint availability."
+            )
             raise ConfigurationError(
                 f"model {model!r} returned no usable responses during calibration; "
-                "check NVIDIA_API_KEY, the model id, and endpoint availability."
+                + credential_hint
             )
         if not baseline.is_calibrated:
             raise ValueError(
@@ -289,19 +366,46 @@ class MemoryGuardedScorer:
                 f"{baseline.n_valid} usable rows < min_valid={min_valid}."
             )
 
-        mcs = _mcs_train(
-            model_lm=lm,
-            is_memorized=is_rows,
-            oos_control=oos_rows,
-            baseline=baseline,
-            ref_lm=ref_lm,
-            min_auc=min_auc,
-            seed=seed,
-            max_workers=max_workers,
-        )
+        try:
+            mcs = _mcs_train(
+                model_lm=lm,
+                is_memorized=is_rows,
+                oos_control=oos_rows,
+                baseline=baseline,
+                ref_lm=ref_lm,
+                min_auc=min_auc,
+                seed=seed,
+                max_workers=max_workers,
+            )
+        finally:
+            if isinstance(lm, LegacyLogprobAdapter):
+                lm.raise_if_fatal()
         return cls(lm=lm, baseline=baseline, mcs=mcs, ref_lm=ref_lm)
 
     # -- scoring ---------------------------------------------------------------
+
+    def validate_client(
+        self, client: CompletionClient, *, intervention_id: str = "original", **parameters: ParameterValue,
+    ) -> None:
+        """Check workflow/client identity before issuing a target request."""
+        if not isinstance(self._lm, LegacyLogprobAdapter):
+            raise ValueError("Configured response scoring requires a configured-client calibration")
+        self._lm.validate_client(client, intervention_id=intervention_id, **parameters)
+
+    def score_response(
+        self, prompt: str, response: ModelResponse, *, client: CompletionClient,
+        intervention_id: str = "original",
+    ) -> GuardedScore:
+        """Score already generated genuine evidence without another model call.
+
+        The caller supplies its originating client and intervention identity;
+        ModelResponse itself does not contain endpoint/model provenance. Exact
+        requested settings and known confirmed contradictions are also checked.
+        Missing evidence or identity mismatches raise ValueError explicitly.
+        """
+        self.validate_client(client, intervention_id=intervention_id)
+        primary = self._lm.validate_response(response)
+        return self._build_guarded_score(prompt, primary, None)
 
     def score(self, prompt: str) -> GuardedScore:
         """Score one prompt into a :class:`GuardedScore`.
@@ -317,7 +421,20 @@ class MemoryGuardedScorer:
 
     def score_many(self, prompts: Sequence[str], *, max_workers: int = 8) -> list[GuardedScore]:
         """Score many prompts (parallel LM calls); preserves input order."""
-        primaries = generate_many(self._lm, list(prompts), max_workers=max_workers)
+        if isinstance(self._lm, LegacyLogprobAdapter):
+            self._lm.validate_client(self._lm.client, intervention_id=self._lm.identity.intervention_id)
+        try:
+            primaries = generate_many(self._lm, list(prompts), max_workers=max_workers)
+        finally:
+            if isinstance(self._lm, LegacyLogprobAdapter):
+                try:
+                    self._lm.raise_if_fatal()
+                except BudgetExhaustedError:
+                    raise
+                except RuntimeError as error:
+                    if _is_auth_error(error):
+                        raise ConfigurationError(f"Credential rejected while scoring model {self.model!r}") from error
+                    raise
         refs: list = (
             generate_many(self._ref_lm, list(prompts), max_workers=max_workers)
             if self._ref_lm is not None
@@ -370,6 +487,12 @@ class MemoryGuardedScorer:
             raise ValueError(
                 f"conservative_quantile must be in [0, 1]; got {conservative_quantile!r}"
             )
+
+        if isinstance(self._lm, LegacyLogprobAdapter):
+            overrides = {name: value for name, value in (
+                ("max_tokens", spec.max_tokens), ("temperature", spec.temperature),
+            ) if value is not None}
+            self._lm.validate_client(self._lm.client, intervention_id=self._lm.identity.intervention_id, **overrides)
 
         prompt_hash = _hash_prompt(prompt)
         started_at = datetime.now(UTC).isoformat()
@@ -492,7 +615,7 @@ class MemoryGuardedScorer:
     # -- internals -------------------------------------------------------------
 
     @staticmethod
-    def _safe_generate(lm: NvidiaLM | None, prompt: str, *, spec: EnsembleSpec | None = None):
+    def _safe_generate(lm: NvidiaLM | LegacyLogprobAdapter | None, prompt: str, *, spec: EnsembleSpec | None = None):
         """One draw, optionally under an ensemble spec's generation settings.
 
         With no spec the client's own defaults apply, which is what keeps the
@@ -508,6 +631,8 @@ class MemoryGuardedScorer:
             kwargs["temperature"] = spec.temperature
         try:
             return lm.generate(prompt, **kwargs)
+        except BudgetExhaustedError:
+            raise
         except (TimeoutError, RuntimeError) as exc:
             return exc
 

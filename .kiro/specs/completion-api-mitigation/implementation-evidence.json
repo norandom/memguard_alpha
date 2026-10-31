@@ -76,5 +76,15 @@
       "recall_guard/core/ensemble.py",
       "tests/core/test_ensemble_completion.py"
     ]
+  },
+  "3.2": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED;164focusedtests13.69s; parent fresh full1045passed1existingwarning60.90sexit0;Ruff+architecturepass. Configuredidentity/genuineevidence/suppliedresponse and fatalbudget-auth tests verified.",
+    "timestamp": "2026-10-31T11:14:57.585052+00:00",
+    "files": [
+      "recall_guard/harness/scorer.py",
+      "recall_guard/harness/scorer_client.py",
+      "tests/harness/test_scorer_client.py"
+    ]
   }
 }

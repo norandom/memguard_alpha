@@ -62,7 +62,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 1.2, 1.3_
   - _Requirements: 1.4, 3.1, 3.3, 7.7, 7.9_
 
-- [ ] 3. Ensemble and scoring integration
+- [x] 3. Ensemble and scoring integration
 - [x] 3.1 Generalize existing answer ensembles to optional token evidence
   - Adapt existing generation/reduction contracts without a second reducer. Preserve tie-breaking, minimum draws, failure handling and replay; expose agreement independently from MCS.
   - Done when identical legacy draws replay identically and text-only draws produce valid answer statistics with missing MCS explicitly marked.
@@ -71,7 +71,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 1.2, 2.1, 2.2, 2.3_
   - _Requirements: 7.7, 8.1, 8.2, 8.3, 8.4_
 
-- [ ] 3.2 Add configured clients and calibration identity to the scorer
+- [x] 3.2 Add configured clients and calibration identity to the scorer
   - Introduce the optional client path while preserving legacy construction. Require complete feature evidence; bind fitted calibration to endpoint/model/settings/intervention identity and reject mismatch.
   - Done when legacy parity passes and text-only or mismatched scoring is rejected without fabricated probabilities.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
