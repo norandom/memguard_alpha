@@ -127,7 +127,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Experiment statistics_
   - _Requirements: 3.2, 4.2, 4.3, 4.4, 4.5, 4.8, 9.2, 9.6_
 
-- [ ] 5.3 Implement portable reports and offline metric replay
+- [x] 5.3 Implement portable reports and offline metric replay
   - Persist redacted manifest, settings, stage events, original/rewrite text and response records. Record unknown effective settings/cost and distinguish each effect and provider-validation level.
   - Done when a fresh offline process reproduces reported metrics from exported artifacts without API access or absolute machine paths.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
