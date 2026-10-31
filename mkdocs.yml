@@ -54,6 +54,7 @@ nav:
   - Home: index.md
   - PIT architecture: pit-architecture.md
   - Ensemble consensus: ensemble.md
+  - Completion API integration: completion-api.md
   - Divergence decoding: divergence-decoding.md
   - NIM measurement (2026-10-30): results/2026-10-30-nim-measurement.md
   - Completion API pilot (2026-10-31): results/2026-10-31-completion-api-pilot.md

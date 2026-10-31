@@ -188,7 +188,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Requirements: 4.3, 4.8, 5.3, 5.4, 5.5, 9.2, 9.3, 9.6, 9.7_
 
 - [ ] 7. Adoption and final verification
-- [ ] 7.1 Add notebook and application examples
+- [x] 7.1 Add notebook and application examples
   - Demonstrate explicit provider configuration, unsupported parameter errors, optional n draws, rewrite selection and missing MCS. Execute the notebook in a running kernel using deterministic completion fixtures; cite Jane Street in the engineering guide.
   - Done when examples run without shell-only setup or event-loop conflicts and accurately explain available capabilities and failure handling.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

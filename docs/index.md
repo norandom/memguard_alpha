@@ -1,6 +1,7 @@
 # Integrate and verify Recall Guard
 
-Recall Guard has two entry points. The scorer measures contamination-related
+Choose a released scorer or mathematical interface, or opt into the development
+completion workflow. The scorer measures contamination-related
 features in hosted model responses. The experimental divergence utility changes
 next-token logits inside a generation loop you control. Choose the interface
 that matches your runtime.
@@ -9,6 +10,7 @@ that matches your runtime.
 | --- | --- | --- | --- |
 | `MemoryGuardedScorer` | Calibration corpora and prompts | Direction, `p_memorized`, discounted confidence and failure status | NVIDIA NIM with token logprobs |
 | `combine_logits` / `decode_greedy` | Compatible logits or three callbacks | Adjusted logits or generated token IDs | Caller supplied; NumPy helper runs locally |
+| `RecallWorkflow` (unreleased checkout) | Explicit completion config, evidence and feature choices | Answers, optional ensembles/rewriting, unavailable scores and failure records | Native completion clients or synchronous callbacks; [offline application and notebook](completion-api.md) |
 
 ## Install and choose a revision
 

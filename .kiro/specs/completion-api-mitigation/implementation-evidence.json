@@ -315,5 +315,19 @@
       "docs/results/2026-10-31-completion-api/eligibility/latency-01/receipt.json",
       "docs/results/2026-10-31-completion-api/eligibility/latency-amendment.json"
     ]
+  },
+  "7.1": {
+    "review": "APPROVED",
+    "verification": "Independent re-review APPROVED after example choice-path and owned-kernel cleanup repair. Normal-default136tests passed35.70s, including all complete rewriteoff/on and n1/n3 app/kernel paths; independent injected failure confirmed shutdown. Parent fresh13 complete example tests passed39.25s, strictMkDocs15.47s, touchedRuff/architecture/diff passed. Clear notebook, no modelHTTP/credential lookup, frozen59artifacts unchanged. Earlier MemoryError/0xE0000001 mechanisms remain unproven; no featureGO or live coverage claim.",
+    "timestamp": "2026-10-31T19:10:19.744259+00:00",
+    "files": [
+      "examples/completion_workflow.py",
+      "notebooks/completion_workflow.ipynb",
+      "tests/harness/test_completion_examples.py",
+      "docs/completion-api.md",
+      "README.md",
+      "docs/index.md",
+      "mkdocs.yml"
+    ]
   }
 }

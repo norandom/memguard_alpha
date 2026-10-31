@@ -15,6 +15,7 @@ answer was memorized. Recall Guard is not a forecaster.
 | Your goal | Start here | What you need |
 | --- | --- | --- |
 | Score model responses in an application | [Scorer integration](https://norandom.github.io/memguard_alpha/) | NVIDIA API key, a model with token logprobs, and calibration prompts |
+| Configure completion APIs, optional rewriting or n draws | [Completion workflow](docs/completion-api.md) | Development checkout; the default application and notebook fixtures run offline |
 | Try the divergence equation without a model | [Executable example](docs/divergence-decoding.md) | Current checkout, Python and NumPy; no credentials |
 | Steer your own model during generation | [Decoder contract](docs/divergence-decoding.md#caller-responsibilities-and-limits) | Three compatible callbacks that expose next-token logits |
 | Inspect benchmarks or portfolio experiments | [Benchmark](README.benchmark.md) and [engineering guide](docs/index.md) | Repository data; API access for fresh model/price runs |
@@ -35,6 +36,24 @@ Calibrate `MemoryGuardedScorer` for your model, then call `scorer.score(prompt)`
 Read `parse_ok`, `fail_reason` and calibration quality before using
 `p_memorized`. The [engineering example](docs/index.md#integrate-the-scorer)
 shows the complete input path and failure handling.
+
+## Try the completion workflow from a development checkout
+
+The unreleased completion workflow lets you configure a target once and choose
+single answers, n-draw ensembles and optional evidence rewriting. Start with the
+fixed offline callbacks to inspect capabilities, failures and missing MCS:
+
+```text
+uv sync --frozen
+uv run --no-sync python examples/completion_workflow.py
+```
+
+Use a checkout containing that example; these APIs are not in v0.5.0. Open
+`notebooks/completion_workflow.ipynb` in the same installed Python environment
+for the Jupyter path. The [engineering guide](docs/completion-api.md) explains
+explicit provider settings and offline replay of the
+[dated pilot](docs/results/2026-10-31-completion-api-pilot.md). The fixtures test
+mechanics, and the pilot does not establish a mitigation benefit.
 
 ## Try the experimental mathematical layer
 
@@ -148,6 +167,7 @@ the Jane Street feature.
 - [Engineering guide and API reference](https://norandom.github.io/memguard_alpha/)
 - [Point-in-time architecture](docs/pit-architecture.md)
 - [Ensemble scoring](docs/ensemble.md)
+- [Completion API configuration and notebook integration](docs/completion-api.md)
 - [Model cutoff sources](Qualified_Models.md)
 - [Benchmark results](README.benchmark.md)
 
