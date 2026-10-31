@@ -292,5 +292,28 @@
       "data/experiments/2026-10-31-completion-api/eligibility/latency-01/01-nim.json",
       "data/experiments/2026-10-31-completion-api/eligibility/latency-01/receipt.json"
     ]
+  },
+  "6.5": {
+    "review": "APPROVED",
+    "verification": "Independent review APPROVED: primary-record and paired-bootstrap reconciliation, twelve exact source/static-site JSON copies, moved offline replay with no network attempts or provider keys, links, Git attributes and strict docs build passed. Parent fresh bundle metrics/common-valid14 and zero-rewrite checks, twelve byte comparisons and text-unset attributes passed; parent strict MkDocs build exited0 in19.09s. Report explicitly keeps6.2-6.4 and live coverage incomplete; no mitigation or feature-GO claim.",
+    "timestamp": "2026-10-31T18:21:34.162286+00:00",
+    "files": [
+      "README.md",
+      "mkdocs.yml",
+      "docs/results/2026-10-31-completion-api-pilot.md",
+      "docs/results/2026-10-31-completion-api/.gitattributes",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/evidence/anthropic-protocol.json",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/evidence/cutoff-registry.json",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/evidence/eligibility-receipt.json",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/evidence/fidelity-audit.json",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/evidence/operator-run-attestation.json",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/evidence/reconciliation.json",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/evidence/study-plan.json",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/manifest.json",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/metrics.json",
+      "docs/results/2026-10-31-completion-api/anthropic-evaluation-live/records.json",
+      "docs/results/2026-10-31-completion-api/eligibility/latency-01/receipt.json",
+      "docs/results/2026-10-31-completion-api/eligibility/latency-amendment.json"
+    ]
   }
 }

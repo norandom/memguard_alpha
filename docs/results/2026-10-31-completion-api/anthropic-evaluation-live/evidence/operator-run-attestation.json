@@ -1,0 +1,24 @@
+{
+  "actual_request_timestamp_range": {
+    "first": "2026-10-31T16:59:10.924320+00:00",
+    "last": "2026-10-31T17:02:33.221603+00:00"
+  },
+  "asserted_by": "Root controller with direct actual tool execution",
+  "basis": "caller assertion, not cryptographic provider attestation",
+  "coverage_limit": "The verifier role was measured only by an actual access probe; all semantic-verification item calls were withheld by deterministic rejection. NIM remains unmeasured.",
+  "credential_handling": "Root executed native Anthropic CLI with runtime ANTHROPIC_API_KEY references for all roles. Artifact worker never read credentials or made live calls.",
+  "execution": "live_provider",
+  "message": "The live CLI run exited successfully, completed 32 arms and recorded 67 physical requests within the 144-request cap. No pending operation intent or stop reason remained.",
+  "offline_validation": {
+    "command": "uv run --no-sync pytest -q tests/scripts/test_run_intervention.py tests/harness/test_intervention_config.py tests/harness/test_intervention_report.py",
+    "exit_code": 0,
+    "passed": 202,
+    "skip_reason": "Windows symlink support unavailable",
+    "skipped": 1,
+    "source_commit": "cb68419ca854c12c44d1ac2d4d5112a307e5c558"
+  },
+  "schema_version": 1,
+  "source_bundle": "anthropic-evaluation",
+  "source_manifest_sha256": "1f658df5828df025f98c20ecf9077d7bac2315571c903912b48d0d09677f420d",
+  "source_records_sha256": "959e95de4e032bf682e936c699b47b44f5acbbf88b713b5f708820cd9991f56d"
+}

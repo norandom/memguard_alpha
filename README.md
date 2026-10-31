@@ -67,7 +67,11 @@ contamination score.
 The equation needs next-token logits inside the generation loop. An endpoint
 can apply it internally and return text without logprobs, but ordinary
 completion text from OpenAI, Anthropic or another provider is insufficient for
-this client-side decoder. Completion-only mitigation remains an open extension.
+this client-side decoder. The development checkout also provides an opt-in
+fact-preserving rewrite workflow for completion APIs. It is a separate
+experimental method, not part of v0.5.0; the
+[dated pilot](docs/results/2026-10-31-completion-api-pilot.md) records its measured
+limits and incomplete provider coverage.
 
 ## Windows
 
@@ -103,6 +107,22 @@ missing scores. A small score does not certify a model as recall-free.
 is an example consumer. The applied workflow is described in
 [Computational Global Macro with AI for Risk and Portfolio Management](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358).
 Its portfolio results belong to that consumer pipeline.
+
+## Completion API pilot: 2026-10-31
+
+The saved Claude Opus 5.5 pilot does not demonstrate a mitigation benefit.
+All 16 rewrites failed the frozen fidelity gate before rewritten target
+inference, leaving zero valid rewrite pairs. Original single answers were
+correct on 11/16 items and three-draw ensembles on 12/16. The two conditions
+were both correct on 11/14 common usable items; this small dependent sample
+does not establish an aggregation gain or equivalence.
+
+NIM eligibility failed after two 90-second timeouts and an HTTP 504 under a
+600-second timeout. Fresh logprob calibration and required two-mode live
+measurement remain incomplete. Anthropic MCS is unavailable. The
+[dated report and downloadable replay bundle](docs/results/2026-10-31-completion-api-pilot.md)
+include denominators, paired uncertainty, the AI fidelity audit and resource
+usage. The completion workflow is unreleased checkout code.
 
 ## Local measurement: 2026-10-30
 

@@ -1,0 +1,2 @@
+# Portable reports bind exact JSON bytes; preserve them on every checkout.
+**/*.json -text

@@ -56,6 +56,7 @@ nav:
   - Ensemble consensus: ensemble.md
   - Divergence decoding: divergence-decoding.md
   - NIM measurement (2026-10-30): results/2026-10-30-nim-measurement.md
+  - Completion API pilot (2026-10-31): results/2026-10-31-completion-api-pilot.md
   - Twin-strategy contrast: twin-strategy-contrast.md
   - Benchmark: benchmark.md
   - Latest run results: latest-run.md

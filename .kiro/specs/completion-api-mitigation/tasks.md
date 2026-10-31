@@ -177,8 +177,9 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Live measurement_
   - _Depends: 6.3_
   - _Requirements: 2.6, 4.1, 4.2, 4.4, 5.2, 5.6, 8.7, 9.1, 9.7_
+  - _Blocked: The reviewed Opus portion is saved, but the NIM portion requires the unavailable matching calibration from task 6.3. Do not present the partial run as completed two-mode measurement._
 
-- [ ] 6.5 Analyze measured effects and publish a dated local report
+- [x] 6.5 Analyze measured effects and publish a dated local report
   - Recompute effects from saved data, separate rewriting/aggregation/scoring changes and report uncertainty, utility tolerance and fidelity limits. Link portable results from docs and README without presenting a pilot as proof of mitigation.
   - Done when report values reconcile with records and clearly state supported findings, inconclusive findings and missing provider coverage.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
@@ -215,6 +216,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
 
 ## Implementation notes
 
+- Task 6.5 may publish the saved partial pilot while tasks 6.2-6.4 remain blocked: its completion criterion explicitly includes reporting missing provider coverage. Use the reviewed Opus artifacts and verified failed NIM receipts, keep the measurement tasks unchecked, and make no feature-wide GO claim.
 - Task 1.4 reopened on 2026-10-31: a synthetic authorization field in protocol audit metadata was persisted by the runtime journal and re-emitted by the CLI plan before the portable export guard ran. No actual credentials or provider calls were used in this reproduction. Repair the shared metadata contract and its consumers before dependent completion; preserve legitimate labels, answers and raw text.
 - Task 6.2 remains blocked after two bounded debug rounds: two 90-second client timeouts and one HTTP 504 at 302.453 seconds under a 600-second timeout. Anthropic inference passed; NIM eligibility is unproven and the four-request eligibility budget is exhausted. Independent reporting, examples and platform checks may proceed, with missing live coverage explicit.
 - The independently reviewed Opus portion completed 67 physical requests and all planned condition records. All 16 rewrites were rejected before semantic verification or target inference, leaving zero valid rewrite pairs. Original single/ensemble accuracy was 11/16 and 12/16. Saved bundles replay exactly; the AI audit is not independent human proof. Task 6.4 and requirement 9.7 remain incomplete without NIM coverage.

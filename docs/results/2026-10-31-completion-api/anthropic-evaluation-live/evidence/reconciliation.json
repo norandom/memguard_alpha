@@ -1,0 +1,2354 @@
+{
+  "arm_order_matches_alternating_frozen_index": true,
+  "budget": {
+    "original_target_draws": 48,
+    "other_phase_transfers": 0,
+    "phase_cap": 144,
+    "physical_attempts_all_one": true,
+    "physical_requests": 67,
+    "physical_statuses": {
+      "succeeded": 67
+    },
+    "rewrite_generations": 16,
+    "rewritten_target_draws": 0,
+    "role_probes": 3,
+    "semantic_verifications": 0,
+    "unused_phase_requests": 77
+  },
+  "checkpoint_status": "completed",
+  "cohort_metrics": {
+    "post": {
+      "conditions": {
+        "original_ensemble": {
+          "accuracy": {
+            "all_attempted": {
+              "denominator": 8,
+              "estimate": 0.5,
+              "numerator": 4
+            },
+            "usable_answers": {
+              "denominator": 7,
+              "estimate": 0.5714285714285714,
+              "numerator": 4
+            }
+          },
+          "agreement": {
+            "mean": 1.0,
+            "n": 7
+          },
+          "confidence": {
+            "answer_usable_draws": 21,
+            "explicit_draws": 20,
+            "mean": 0.5242857142857142,
+            "n": 7,
+            "sources": {
+              "components.confidence": 20
+            }
+          },
+          "coverage": {
+            "answer_usable": 7,
+            "failed": 1,
+            "incomplete": 0,
+            "physical_target_attempted": 8,
+            "planned": 8,
+            "scored_usable": 0,
+            "started": 8,
+            "target_attempted": 8,
+            "terminal": 8,
+            "unstarted": 0
+          },
+          "draws": {
+            "answer_usable": 21,
+            "attempted": 24,
+            "failures": {
+              "projection": 3
+            },
+            "planned": 24,
+            "responses": 24,
+            "scored_usable": 0,
+            "terminal": 24
+          },
+          "failure_rate": {
+            "denominator": 8,
+            "estimate": 0.125,
+            "numerator": 1
+          },
+          "parse_rate": {
+            "denominator": 24,
+            "estimate": 0.875,
+            "numerator": 21
+          },
+          "scoring": {
+            "calibration_quality": [],
+            "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+            "items_with_calibration_quality": 0,
+            "p_memorized": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_discount": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_memguard_confidence": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_raw_confidence": {
+              "mean": null,
+              "n": 0
+            }
+          },
+          "usage": {
+            "cost": {
+              "known_subtotal": null,
+              "recorded_requests": 0,
+              "requests": 24,
+              "total": null
+            },
+            "cost_unit": "recorded_units_currency_unspecified",
+            "counting": "unique_execution_id_and_call_id; overlapping_condition_views_must_not_be_added",
+            "groups": [
+              {
+                "cost": {
+                  "known_subtotal": null,
+                  "recorded_requests": 0,
+                  "requests": 24,
+                  "total": null
+                },
+                "counters": {
+                  "cache_creation_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 24,
+                    "requests": 24,
+                    "total": 0
+                  },
+                  "cache_read_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 24,
+                    "requests": 24,
+                    "total": 0
+                  },
+                  "input_tokens": {
+                    "known_subtotal": 7824,
+                    "recorded_requests": 24,
+                    "requests": 24,
+                    "total": 7824
+                  },
+                  "output_tokens": {
+                    "known_subtotal": 2046,
+                    "recorded_requests": 24,
+                    "requests": 24,
+                    "total": 2046
+                  }
+                },
+                "endpoint": "https://api.anthropic.com/v1/messages",
+                "latency_s": {
+                  "mean": 2.5299583333156384,
+                  "recorded_requests": 24,
+                  "requests": 24,
+                  "sum": 60.71899999957532
+                },
+                "model": "claude-opus-5-5",
+                "physical_requests": 24,
+                "protocol": "anthropic_messages",
+                "provider": "anthropic",
+                "role": "target",
+                "statuses": {
+                  "succeeded": 24
+                },
+                "usage_sources": {
+                  "physical_event": 24
+                }
+              }
+            ],
+            "latency_unit": "seconds_of_physical_request_work_not_wall_time",
+            "physical_requests": 24,
+            "usage_policy": "reported_keys_separately; missing_counters_unknown; no_token_counter_cross_sums"
+          }
+        },
+        "original_single": {
+          "accuracy": {
+            "all_attempted": {
+              "denominator": 8,
+              "estimate": 0.375,
+              "numerator": 3
+            },
+            "usable_answers": {
+              "denominator": 7,
+              "estimate": 0.42857142857142855,
+              "numerator": 3
+            }
+          },
+          "agreement": {
+            "mean": null,
+            "n": 0
+          },
+          "confidence": {
+            "answer_usable_draws": 7,
+            "explicit_draws": 6,
+            "mean": 0.525,
+            "n": 6,
+            "sources": {
+              "components.confidence": 6
+            }
+          },
+          "coverage": {
+            "answer_usable": 7,
+            "failed": 1,
+            "incomplete": 0,
+            "physical_target_attempted": 8,
+            "planned": 8,
+            "scored_usable": 0,
+            "started": 8,
+            "target_attempted": 8,
+            "terminal": 8,
+            "unstarted": 0
+          },
+          "draws": {
+            "answer_usable": 7,
+            "attempted": 8,
+            "failures": {
+              "projection": 1
+            },
+            "planned": 8,
+            "responses": 8,
+            "scored_usable": 0,
+            "terminal": 8
+          },
+          "failure_rate": {
+            "denominator": 8,
+            "estimate": 0.125,
+            "numerator": 1
+          },
+          "parse_rate": {
+            "denominator": 8,
+            "estimate": 0.875,
+            "numerator": 7
+          },
+          "scoring": {
+            "calibration_quality": [],
+            "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+            "items_with_calibration_quality": 0,
+            "p_memorized": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_discount": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_memguard_confidence": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_raw_confidence": {
+              "mean": null,
+              "n": 0
+            }
+          },
+          "usage": {
+            "cost": {
+              "known_subtotal": null,
+              "recorded_requests": 0,
+              "requests": 8,
+              "total": null
+            },
+            "cost_unit": "recorded_units_currency_unspecified",
+            "counting": "unique_execution_id_and_call_id; overlapping_condition_views_must_not_be_added",
+            "groups": [
+              {
+                "cost": {
+                  "known_subtotal": null,
+                  "recorded_requests": 0,
+                  "requests": 8,
+                  "total": null
+                },
+                "counters": {
+                  "cache_creation_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "cache_read_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "input_tokens": {
+                    "known_subtotal": 2608,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 2608
+                  },
+                  "output_tokens": {
+                    "known_subtotal": 658,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 658
+                  }
+                },
+                "endpoint": "https://api.anthropic.com/v1/messages",
+                "latency_s": {
+                  "mean": 2.5021249999990687,
+                  "recorded_requests": 8,
+                  "requests": 8,
+                  "sum": 20.01699999999255
+                },
+                "model": "claude-opus-5-5",
+                "physical_requests": 8,
+                "protocol": "anthropic_messages",
+                "provider": "anthropic",
+                "role": "target",
+                "statuses": {
+                  "succeeded": 8
+                },
+                "usage_sources": {
+                  "physical_event": 8
+                }
+              }
+            ],
+            "latency_unit": "seconds_of_physical_request_work_not_wall_time",
+            "physical_requests": 8,
+            "usage_policy": "reported_keys_separately; missing_counters_unknown; no_token_counter_cross_sums"
+          }
+        },
+        "rewritten_ensemble": {
+          "accuracy": {
+            "all_attempted": {
+              "denominator": 8,
+              "estimate": 0.0,
+              "numerator": 0
+            },
+            "usable_answers": {
+              "denominator": 0,
+              "estimate": null,
+              "numerator": 0
+            }
+          },
+          "agreement": {
+            "mean": null,
+            "n": 0
+          },
+          "confidence": {
+            "answer_usable_draws": 0,
+            "explicit_draws": 0,
+            "mean": null,
+            "n": 0,
+            "sources": {}
+          },
+          "coverage": {
+            "answer_usable": 0,
+            "failed": 8,
+            "incomplete": 0,
+            "physical_target_attempted": 0,
+            "planned": 8,
+            "scored_usable": 0,
+            "started": 8,
+            "target_attempted": 0,
+            "terminal": 8,
+            "unstarted": 0
+          },
+          "draws": {
+            "answer_usable": 0,
+            "attempted": 0,
+            "failures": {
+              "fidelity_rejected": 24
+            },
+            "planned": 24,
+            "responses": 0,
+            "scored_usable": 0,
+            "terminal": 24
+          },
+          "failure_rate": {
+            "denominator": 8,
+            "estimate": 1.0,
+            "numerator": 8
+          },
+          "parse_rate": {
+            "denominator": 0,
+            "estimate": null,
+            "numerator": 0
+          },
+          "scoring": {
+            "calibration_quality": [],
+            "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+            "items_with_calibration_quality": 0,
+            "p_memorized": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_discount": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_memguard_confidence": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_raw_confidence": {
+              "mean": null,
+              "n": 0
+            }
+          },
+          "usage": {
+            "cost": {
+              "known_subtotal": null,
+              "recorded_requests": 0,
+              "requests": 8,
+              "total": null
+            },
+            "cost_unit": "recorded_units_currency_unspecified",
+            "counting": "unique_execution_id_and_call_id; overlapping_condition_views_must_not_be_added",
+            "groups": [
+              {
+                "cost": {
+                  "known_subtotal": null,
+                  "recorded_requests": 0,
+                  "requests": 8,
+                  "total": null
+                },
+                "counters": {
+                  "cache_creation_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "cache_read_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "input_tokens": {
+                    "known_subtotal": 4400,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 4400
+                  },
+                  "output_tokens": {
+                    "known_subtotal": 1892,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 1892
+                  }
+                },
+                "endpoint": "https://api.anthropic.com/v1/messages",
+                "latency_s": {
+                  "mean": 4.125124999962281,
+                  "recorded_requests": 8,
+                  "requests": 8,
+                  "sum": 33.00099999969825
+                },
+                "model": "claude-opus-5-5",
+                "physical_requests": 8,
+                "protocol": "anthropic_messages",
+                "provider": "anthropic",
+                "role": "rewriter",
+                "statuses": {
+                  "succeeded": 8
+                },
+                "usage_sources": {
+                  "physical_event": 8
+                }
+              }
+            ],
+            "latency_unit": "seconds_of_physical_request_work_not_wall_time",
+            "physical_requests": 8,
+            "usage_policy": "reported_keys_separately; missing_counters_unknown; no_token_counter_cross_sums"
+          }
+        },
+        "rewritten_single": {
+          "accuracy": {
+            "all_attempted": {
+              "denominator": 8,
+              "estimate": 0.0,
+              "numerator": 0
+            },
+            "usable_answers": {
+              "denominator": 0,
+              "estimate": null,
+              "numerator": 0
+            }
+          },
+          "agreement": {
+            "mean": null,
+            "n": 0
+          },
+          "confidence": {
+            "answer_usable_draws": 0,
+            "explicit_draws": 0,
+            "mean": null,
+            "n": 0,
+            "sources": {}
+          },
+          "coverage": {
+            "answer_usable": 0,
+            "failed": 8,
+            "incomplete": 0,
+            "physical_target_attempted": 0,
+            "planned": 8,
+            "scored_usable": 0,
+            "started": 8,
+            "target_attempted": 0,
+            "terminal": 8,
+            "unstarted": 0
+          },
+          "draws": {
+            "answer_usable": 0,
+            "attempted": 0,
+            "failures": {
+              "fidelity_rejected": 8
+            },
+            "planned": 8,
+            "responses": 0,
+            "scored_usable": 0,
+            "terminal": 8
+          },
+          "failure_rate": {
+            "denominator": 8,
+            "estimate": 1.0,
+            "numerator": 8
+          },
+          "parse_rate": {
+            "denominator": 0,
+            "estimate": null,
+            "numerator": 0
+          },
+          "scoring": {
+            "calibration_quality": [],
+            "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+            "items_with_calibration_quality": 0,
+            "p_memorized": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_discount": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_memguard_confidence": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_raw_confidence": {
+              "mean": null,
+              "n": 0
+            }
+          },
+          "usage": {
+            "cost": {
+              "known_subtotal": null,
+              "recorded_requests": 0,
+              "requests": 8,
+              "total": null
+            },
+            "cost_unit": "recorded_units_currency_unspecified",
+            "counting": "unique_execution_id_and_call_id; overlapping_condition_views_must_not_be_added",
+            "groups": [
+              {
+                "cost": {
+                  "known_subtotal": null,
+                  "recorded_requests": 0,
+                  "requests": 8,
+                  "total": null
+                },
+                "counters": {
+                  "cache_creation_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "cache_read_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "input_tokens": {
+                    "known_subtotal": 4400,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 4400
+                  },
+                  "output_tokens": {
+                    "known_subtotal": 1892,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 1892
+                  }
+                },
+                "endpoint": "https://api.anthropic.com/v1/messages",
+                "latency_s": {
+                  "mean": 4.125124999962281,
+                  "recorded_requests": 8,
+                  "requests": 8,
+                  "sum": 33.00099999969825
+                },
+                "model": "claude-opus-5-5",
+                "physical_requests": 8,
+                "protocol": "anthropic_messages",
+                "provider": "anthropic",
+                "role": "rewriter",
+                "statuses": {
+                  "succeeded": 8
+                },
+                "usage_sources": {
+                  "physical_event": 8
+                }
+              }
+            ],
+            "latency_unit": "seconds_of_physical_request_work_not_wall_time",
+            "physical_requests": 8,
+            "usage_policy": "reported_keys_separately; missing_counters_unknown; no_token_counter_cross_sums"
+          }
+        }
+      },
+      "effects": {
+        "aggregation_original": {
+          "all_attempted": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 0.375,
+            "comparison_mean": 0.5,
+            "equivalence_proof": false,
+            "estimate": 0.125,
+            "interval": [
+              0.0,
+              0.375
+            ],
+            "interval_status": "estimated",
+            "n_eligible": 8,
+            "n_failed_pairs": 2,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "baseline": "original_single",
+          "comparison": "original_ensemble",
+          "confidence": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 0.525,
+            "comparison_mean": 0.5233333333333333,
+            "equivalence_proof": false,
+            "estimate": -0.001666666666666668,
+            "interval": [
+              -0.003888888888888905,
+              0.0
+            ],
+            "interval_status": "estimated",
+            "n_eligible": 6,
+            "n_failed_pairs": 2,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "valid_pairs": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 0.5,
+            "comparison_mean": 0.5,
+            "equivalence_proof": false,
+            "estimate": 0.0,
+            "interval": [
+              0.0,
+              0.0
+            ],
+            "interval_status": "degenerate",
+            "n_eligible": 6,
+            "n_failed_pairs": 2,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          }
+        },
+        "aggregation_rewritten": {
+          "all_attempted": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 0.0,
+            "comparison_mean": 0.0,
+            "equivalence_proof": false,
+            "estimate": 0.0,
+            "interval": [
+              0.0,
+              0.0
+            ],
+            "interval_status": "degenerate",
+            "n_eligible": 8,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "baseline": "rewritten_single",
+          "comparison": "rewritten_ensemble",
+          "confidence": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "valid_pairs": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          }
+        },
+        "rewriting_ensemble": {
+          "all_attempted": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 0.5,
+            "comparison_mean": 0.0,
+            "equivalence_proof": false,
+            "estimate": -0.5,
+            "interval": [
+              -0.875,
+              -0.125
+            ],
+            "interval_status": "estimated",
+            "n_eligible": 8,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "baseline": "original_ensemble",
+          "comparison": "rewritten_ensemble",
+          "confidence": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "valid_pairs": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          }
+        },
+        "rewriting_single": {
+          "all_attempted": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 0.375,
+            "comparison_mean": 0.0,
+            "equivalence_proof": false,
+            "estimate": -0.375,
+            "interval": [
+              -0.75,
+              -0.125
+            ],
+            "interval_status": "estimated",
+            "n_eligible": 8,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "baseline": "original_single",
+          "comparison": "rewritten_single",
+          "confidence": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "valid_pairs": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          }
+        }
+      },
+      "fidelity": {
+        "acceptance_rate": {
+          "denominator": 8,
+          "estimate": 0.0,
+          "numerator": 0
+        },
+        "accepted": 0,
+        "accepted_of_planned": {
+          "denominator": 8,
+          "estimate": 0.0,
+          "numerator": 0
+        },
+        "interpretation": "Automated acceptance is not a guarantee of factual equivalence or absence of future knowledge.",
+        "pending_or_missing": 0,
+        "planned": 8,
+        "rejected": 8,
+        "semantic_unperformed": 8,
+        "terminal": 8,
+        "unchanged_evidence": {
+          "denominator": 8,
+          "estimate": 0.0,
+          "numerator": 0
+        },
+        "unperformed_or_indeterminate": 0
+      },
+      "n_items": 8
+    },
+    "pre": {
+      "conditions": {
+        "original_ensemble": {
+          "accuracy": {
+            "all_attempted": {
+              "denominator": 8,
+              "estimate": 1.0,
+              "numerator": 8
+            },
+            "usable_answers": {
+              "denominator": 8,
+              "estimate": 1.0,
+              "numerator": 8
+            }
+          },
+          "agreement": {
+            "mean": 0.9583333333333334,
+            "n": 8
+          },
+          "confidence": {
+            "answer_usable_draws": 24,
+            "explicit_draws": 24,
+            "mean": 0.6620833333333334,
+            "n": 8,
+            "sources": {
+              "components.confidence": 24
+            }
+          },
+          "coverage": {
+            "answer_usable": 8,
+            "failed": 0,
+            "incomplete": 0,
+            "physical_target_attempted": 8,
+            "planned": 8,
+            "scored_usable": 0,
+            "started": 8,
+            "target_attempted": 8,
+            "terminal": 8,
+            "unstarted": 0
+          },
+          "draws": {
+            "answer_usable": 24,
+            "attempted": 24,
+            "failures": {},
+            "planned": 24,
+            "responses": 24,
+            "scored_usable": 0,
+            "terminal": 24
+          },
+          "failure_rate": {
+            "denominator": 8,
+            "estimate": 0.0,
+            "numerator": 0
+          },
+          "parse_rate": {
+            "denominator": 24,
+            "estimate": 1.0,
+            "numerator": 24
+          },
+          "scoring": {
+            "calibration_quality": [],
+            "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+            "items_with_calibration_quality": 0,
+            "p_memorized": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_discount": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_memguard_confidence": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_raw_confidence": {
+              "mean": null,
+              "n": 0
+            }
+          },
+          "usage": {
+            "cost": {
+              "known_subtotal": null,
+              "recorded_requests": 0,
+              "requests": 24,
+              "total": null
+            },
+            "cost_unit": "recorded_units_currency_unspecified",
+            "counting": "unique_execution_id_and_call_id; overlapping_condition_views_must_not_be_added",
+            "groups": [
+              {
+                "cost": {
+                  "known_subtotal": null,
+                  "recorded_requests": 0,
+                  "requests": 24,
+                  "total": null
+                },
+                "counters": {
+                  "cache_creation_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 24,
+                    "requests": 24,
+                    "total": 0
+                  },
+                  "cache_read_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 24,
+                    "requests": 24,
+                    "total": 0
+                  },
+                  "input_tokens": {
+                    "known_subtotal": 7824,
+                    "recorded_requests": 24,
+                    "requests": 24,
+                    "total": 7824
+                  },
+                  "output_tokens": {
+                    "known_subtotal": 4048,
+                    "recorded_requests": 24,
+                    "requests": 24,
+                    "total": 4048
+                  }
+                },
+                "endpoint": "https://api.anthropic.com/v1/messages",
+                "latency_s": {
+                  "mean": 3.092499999969732,
+                  "recorded_requests": 24,
+                  "requests": 24,
+                  "sum": 74.21999999927357
+                },
+                "model": "claude-opus-5-5",
+                "physical_requests": 24,
+                "protocol": "anthropic_messages",
+                "provider": "anthropic",
+                "role": "target",
+                "statuses": {
+                  "succeeded": 24
+                },
+                "usage_sources": {
+                  "physical_event": 24
+                }
+              }
+            ],
+            "latency_unit": "seconds_of_physical_request_work_not_wall_time",
+            "physical_requests": 24,
+            "usage_policy": "reported_keys_separately; missing_counters_unknown; no_token_counter_cross_sums"
+          }
+        },
+        "original_single": {
+          "accuracy": {
+            "all_attempted": {
+              "denominator": 8,
+              "estimate": 1.0,
+              "numerator": 8
+            },
+            "usable_answers": {
+              "denominator": 8,
+              "estimate": 1.0,
+              "numerator": 8
+            }
+          },
+          "agreement": {
+            "mean": null,
+            "n": 0
+          },
+          "confidence": {
+            "answer_usable_draws": 8,
+            "explicit_draws": 8,
+            "mean": 0.6425,
+            "n": 8,
+            "sources": {
+              "components.confidence": 8
+            }
+          },
+          "coverage": {
+            "answer_usable": 8,
+            "failed": 0,
+            "incomplete": 0,
+            "physical_target_attempted": 8,
+            "planned": 8,
+            "scored_usable": 0,
+            "started": 8,
+            "target_attempted": 8,
+            "terminal": 8,
+            "unstarted": 0
+          },
+          "draws": {
+            "answer_usable": 8,
+            "attempted": 8,
+            "failures": {},
+            "planned": 8,
+            "responses": 8,
+            "scored_usable": 0,
+            "terminal": 8
+          },
+          "failure_rate": {
+            "denominator": 8,
+            "estimate": 0.0,
+            "numerator": 0
+          },
+          "parse_rate": {
+            "denominator": 8,
+            "estimate": 1.0,
+            "numerator": 8
+          },
+          "scoring": {
+            "calibration_quality": [],
+            "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+            "items_with_calibration_quality": 0,
+            "p_memorized": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_discount": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_memguard_confidence": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_raw_confidence": {
+              "mean": null,
+              "n": 0
+            }
+          },
+          "usage": {
+            "cost": {
+              "known_subtotal": null,
+              "recorded_requests": 0,
+              "requests": 8,
+              "total": null
+            },
+            "cost_unit": "recorded_units_currency_unspecified",
+            "counting": "unique_execution_id_and_call_id; overlapping_condition_views_must_not_be_added",
+            "groups": [
+              {
+                "cost": {
+                  "known_subtotal": null,
+                  "recorded_requests": 0,
+                  "requests": 8,
+                  "total": null
+                },
+                "counters": {
+                  "cache_creation_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "cache_read_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "input_tokens": {
+                    "known_subtotal": 2608,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 2608
+                  },
+                  "output_tokens": {
+                    "known_subtotal": 1293,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 1293
+                  }
+                },
+                "endpoint": "https://api.anthropic.com/v1/messages",
+                "latency_s": {
+                  "mean": 3.0802499999990687,
+                  "recorded_requests": 8,
+                  "requests": 8,
+                  "sum": 24.64199999999255
+                },
+                "model": "claude-opus-5-5",
+                "physical_requests": 8,
+                "protocol": "anthropic_messages",
+                "provider": "anthropic",
+                "role": "target",
+                "statuses": {
+                  "succeeded": 8
+                },
+                "usage_sources": {
+                  "physical_event": 8
+                }
+              }
+            ],
+            "latency_unit": "seconds_of_physical_request_work_not_wall_time",
+            "physical_requests": 8,
+            "usage_policy": "reported_keys_separately; missing_counters_unknown; no_token_counter_cross_sums"
+          }
+        },
+        "rewritten_ensemble": {
+          "accuracy": {
+            "all_attempted": {
+              "denominator": 8,
+              "estimate": 0.0,
+              "numerator": 0
+            },
+            "usable_answers": {
+              "denominator": 0,
+              "estimate": null,
+              "numerator": 0
+            }
+          },
+          "agreement": {
+            "mean": null,
+            "n": 0
+          },
+          "confidence": {
+            "answer_usable_draws": 0,
+            "explicit_draws": 0,
+            "mean": null,
+            "n": 0,
+            "sources": {}
+          },
+          "coverage": {
+            "answer_usable": 0,
+            "failed": 8,
+            "incomplete": 0,
+            "physical_target_attempted": 0,
+            "planned": 8,
+            "scored_usable": 0,
+            "started": 8,
+            "target_attempted": 0,
+            "terminal": 8,
+            "unstarted": 0
+          },
+          "draws": {
+            "answer_usable": 0,
+            "attempted": 0,
+            "failures": {
+              "fidelity_rejected": 24
+            },
+            "planned": 24,
+            "responses": 0,
+            "scored_usable": 0,
+            "terminal": 24
+          },
+          "failure_rate": {
+            "denominator": 8,
+            "estimate": 1.0,
+            "numerator": 8
+          },
+          "parse_rate": {
+            "denominator": 0,
+            "estimate": null,
+            "numerator": 0
+          },
+          "scoring": {
+            "calibration_quality": [],
+            "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+            "items_with_calibration_quality": 0,
+            "p_memorized": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_discount": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_memguard_confidence": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_raw_confidence": {
+              "mean": null,
+              "n": 0
+            }
+          },
+          "usage": {
+            "cost": {
+              "known_subtotal": null,
+              "recorded_requests": 0,
+              "requests": 8,
+              "total": null
+            },
+            "cost_unit": "recorded_units_currency_unspecified",
+            "counting": "unique_execution_id_and_call_id; overlapping_condition_views_must_not_be_added",
+            "groups": [
+              {
+                "cost": {
+                  "known_subtotal": null,
+                  "recorded_requests": 0,
+                  "requests": 8,
+                  "total": null
+                },
+                "counters": {
+                  "cache_creation_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "cache_read_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "input_tokens": {
+                    "known_subtotal": 4400,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 4400
+                  },
+                  "output_tokens": {
+                    "known_subtotal": 1758,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 1758
+                  }
+                },
+                "endpoint": "https://api.anthropic.com/v1/messages",
+                "latency_s": {
+                  "mean": 3.738375000015367,
+                  "recorded_requests": 8,
+                  "requests": 8,
+                  "sum": 29.907000000122935
+                },
+                "model": "claude-opus-5-5",
+                "physical_requests": 8,
+                "protocol": "anthropic_messages",
+                "provider": "anthropic",
+                "role": "rewriter",
+                "statuses": {
+                  "succeeded": 8
+                },
+                "usage_sources": {
+                  "physical_event": 8
+                }
+              }
+            ],
+            "latency_unit": "seconds_of_physical_request_work_not_wall_time",
+            "physical_requests": 8,
+            "usage_policy": "reported_keys_separately; missing_counters_unknown; no_token_counter_cross_sums"
+          }
+        },
+        "rewritten_single": {
+          "accuracy": {
+            "all_attempted": {
+              "denominator": 8,
+              "estimate": 0.0,
+              "numerator": 0
+            },
+            "usable_answers": {
+              "denominator": 0,
+              "estimate": null,
+              "numerator": 0
+            }
+          },
+          "agreement": {
+            "mean": null,
+            "n": 0
+          },
+          "confidence": {
+            "answer_usable_draws": 0,
+            "explicit_draws": 0,
+            "mean": null,
+            "n": 0,
+            "sources": {}
+          },
+          "coverage": {
+            "answer_usable": 0,
+            "failed": 8,
+            "incomplete": 0,
+            "physical_target_attempted": 0,
+            "planned": 8,
+            "scored_usable": 0,
+            "started": 8,
+            "target_attempted": 0,
+            "terminal": 8,
+            "unstarted": 0
+          },
+          "draws": {
+            "answer_usable": 0,
+            "attempted": 0,
+            "failures": {
+              "fidelity_rejected": 8
+            },
+            "planned": 8,
+            "responses": 0,
+            "scored_usable": 0,
+            "terminal": 8
+          },
+          "failure_rate": {
+            "denominator": 8,
+            "estimate": 1.0,
+            "numerator": 8
+          },
+          "parse_rate": {
+            "denominator": 0,
+            "estimate": null,
+            "numerator": 0
+          },
+          "scoring": {
+            "calibration_quality": [],
+            "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+            "items_with_calibration_quality": 0,
+            "p_memorized": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_discount": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_memguard_confidence": {
+              "mean": null,
+              "n": 0
+            },
+            "per_draw_raw_confidence": {
+              "mean": null,
+              "n": 0
+            }
+          },
+          "usage": {
+            "cost": {
+              "known_subtotal": null,
+              "recorded_requests": 0,
+              "requests": 8,
+              "total": null
+            },
+            "cost_unit": "recorded_units_currency_unspecified",
+            "counting": "unique_execution_id_and_call_id; overlapping_condition_views_must_not_be_added",
+            "groups": [
+              {
+                "cost": {
+                  "known_subtotal": null,
+                  "recorded_requests": 0,
+                  "requests": 8,
+                  "total": null
+                },
+                "counters": {
+                  "cache_creation_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "cache_read_input_tokens": {
+                    "known_subtotal": 0,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 0
+                  },
+                  "input_tokens": {
+                    "known_subtotal": 4400,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 4400
+                  },
+                  "output_tokens": {
+                    "known_subtotal": 1758,
+                    "recorded_requests": 8,
+                    "requests": 8,
+                    "total": 1758
+                  }
+                },
+                "endpoint": "https://api.anthropic.com/v1/messages",
+                "latency_s": {
+                  "mean": 3.738375000015367,
+                  "recorded_requests": 8,
+                  "requests": 8,
+                  "sum": 29.907000000122935
+                },
+                "model": "claude-opus-5-5",
+                "physical_requests": 8,
+                "protocol": "anthropic_messages",
+                "provider": "anthropic",
+                "role": "rewriter",
+                "statuses": {
+                  "succeeded": 8
+                },
+                "usage_sources": {
+                  "physical_event": 8
+                }
+              }
+            ],
+            "latency_unit": "seconds_of_physical_request_work_not_wall_time",
+            "physical_requests": 8,
+            "usage_policy": "reported_keys_separately; missing_counters_unknown; no_token_counter_cross_sums"
+          }
+        }
+      },
+      "effects": {
+        "aggregation_original": {
+          "all_attempted": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 1.0,
+            "comparison_mean": 1.0,
+            "equivalence_proof": false,
+            "estimate": 0.0,
+            "interval": [
+              0.0,
+              0.0
+            ],
+            "interval_status": "degenerate",
+            "n_eligible": 8,
+            "n_failed_pairs": 0,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "baseline": "original_single",
+          "comparison": "original_ensemble",
+          "confidence": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 0.6425,
+            "comparison_mean": 0.6620833333333334,
+            "equivalence_proof": false,
+            "estimate": 0.01958333333333337,
+            "interval": [
+              -0.0041666666666665825,
+              0.045000000000000026
+            ],
+            "interval_status": "estimated",
+            "n_eligible": 8,
+            "n_failed_pairs": 0,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "valid_pairs": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 1.0,
+            "comparison_mean": 1.0,
+            "equivalence_proof": false,
+            "estimate": 0.0,
+            "interval": [
+              0.0,
+              0.0
+            ],
+            "interval_status": "degenerate",
+            "n_eligible": 8,
+            "n_failed_pairs": 0,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          }
+        },
+        "aggregation_rewritten": {
+          "all_attempted": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 0.0,
+            "comparison_mean": 0.0,
+            "equivalence_proof": false,
+            "estimate": 0.0,
+            "interval": [
+              0.0,
+              0.0
+            ],
+            "interval_status": "degenerate",
+            "n_eligible": 8,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "baseline": "rewritten_single",
+          "comparison": "rewritten_ensemble",
+          "confidence": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "valid_pairs": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          }
+        },
+        "rewriting_ensemble": {
+          "all_attempted": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 1.0,
+            "comparison_mean": 0.0,
+            "equivalence_proof": false,
+            "estimate": -1.0,
+            "interval": [
+              -1.0,
+              -1.0
+            ],
+            "interval_status": "degenerate",
+            "n_eligible": 8,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "baseline": "original_ensemble",
+          "comparison": "rewritten_ensemble",
+          "confidence": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "valid_pairs": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          }
+        },
+        "rewriting_single": {
+          "all_attempted": {
+            "adequacy": "no_power_or_equivalence_assessment",
+            "baseline_mean": 1.0,
+            "comparison_mean": 0.0,
+            "equivalence_proof": false,
+            "estimate": -1.0,
+            "interval": [
+              -1.0,
+              -1.0
+            ],
+            "interval_status": "degenerate",
+            "n_eligible": 8,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "baseline": "original_single",
+          "comparison": "rewritten_single",
+          "confidence": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          },
+          "valid_pairs": {
+            "adequacy": "inadequate_items",
+            "baseline_mean": null,
+            "comparison_mean": null,
+            "equivalence_proof": false,
+            "estimate": null,
+            "interval": null,
+            "interval_status": "unavailable",
+            "n_eligible": 0,
+            "n_failed_pairs": 8,
+            "n_incomplete": 0,
+            "n_planned": 8,
+            "unit": "probability_difference"
+          }
+        }
+      },
+      "fidelity": {
+        "acceptance_rate": {
+          "denominator": 8,
+          "estimate": 0.0,
+          "numerator": 0
+        },
+        "accepted": 0,
+        "accepted_of_planned": {
+          "denominator": 8,
+          "estimate": 0.0,
+          "numerator": 0
+        },
+        "interpretation": "Automated acceptance is not a guarantee of factual equivalence or absence of future knowledge.",
+        "pending_or_missing": 0,
+        "planned": 8,
+        "rejected": 8,
+        "semantic_unperformed": 8,
+        "terminal": 8,
+        "unchanged_evidence": {
+          "denominator": 8,
+          "estimate": 0.0,
+          "numerator": 0
+        },
+        "unperformed_or_indeterminate": 0
+      },
+      "n_items": 8
+    }
+  },
+  "condition_metrics": {
+    "original_ensemble": {
+      "accuracy": {
+        "all_attempted": {
+          "denominator": 16,
+          "estimate": 0.75,
+          "numerator": 12
+        },
+        "usable_answers": {
+          "denominator": 15,
+          "estimate": 0.8,
+          "numerator": 12
+        }
+      },
+      "agreement": {
+        "mean": 0.9777777777777777,
+        "n": 15
+      },
+      "confidence": {
+        "answer_usable_draws": 45,
+        "explicit_draws": 44,
+        "mean": 0.5977777777777777,
+        "n": 15,
+        "sources": {
+          "components.confidence": 44
+        }
+      },
+      "coverage": {
+        "answer_usable": 15,
+        "failed": 1,
+        "incomplete": 0,
+        "physical_target_attempted": 16,
+        "planned": 16,
+        "scored_usable": 0,
+        "started": 16,
+        "target_attempted": 16,
+        "terminal": 16,
+        "unstarted": 0
+      },
+      "draws": {
+        "answer_usable": 45,
+        "attempted": 48,
+        "failures": {
+          "projection": 3
+        },
+        "planned": 48,
+        "responses": 48,
+        "scored_usable": 0,
+        "terminal": 48
+      },
+      "failure_rate": {
+        "denominator": 16,
+        "estimate": 0.0625,
+        "numerator": 1
+      },
+      "parse_rate": {
+        "denominator": 48,
+        "estimate": 0.9375,
+        "numerator": 45
+      },
+      "scoring": {
+        "calibration_quality": [],
+        "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+        "items_with_calibration_quality": 0,
+        "p_memorized": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_discount": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_memguard_confidence": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_raw_confidence": {
+          "mean": null,
+          "n": 0
+        }
+      }
+    },
+    "original_single": {
+      "accuracy": {
+        "all_attempted": {
+          "denominator": 16,
+          "estimate": 0.6875,
+          "numerator": 11
+        },
+        "usable_answers": {
+          "denominator": 15,
+          "estimate": 0.7333333333333333,
+          "numerator": 11
+        }
+      },
+      "agreement": {
+        "mean": null,
+        "n": 0
+      },
+      "confidence": {
+        "answer_usable_draws": 15,
+        "explicit_draws": 14,
+        "mean": 0.5921428571428572,
+        "n": 14,
+        "sources": {
+          "components.confidence": 14
+        }
+      },
+      "coverage": {
+        "answer_usable": 15,
+        "failed": 1,
+        "incomplete": 0,
+        "physical_target_attempted": 16,
+        "planned": 16,
+        "scored_usable": 0,
+        "started": 16,
+        "target_attempted": 16,
+        "terminal": 16,
+        "unstarted": 0
+      },
+      "draws": {
+        "answer_usable": 15,
+        "attempted": 16,
+        "failures": {
+          "projection": 1
+        },
+        "planned": 16,
+        "responses": 16,
+        "scored_usable": 0,
+        "terminal": 16
+      },
+      "failure_rate": {
+        "denominator": 16,
+        "estimate": 0.0625,
+        "numerator": 1
+      },
+      "parse_rate": {
+        "denominator": 16,
+        "estimate": 0.9375,
+        "numerator": 15
+      },
+      "scoring": {
+        "calibration_quality": [],
+        "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+        "items_with_calibration_quality": 0,
+        "p_memorized": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_discount": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_memguard_confidence": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_raw_confidence": {
+          "mean": null,
+          "n": 0
+        }
+      }
+    },
+    "rewritten_ensemble": {
+      "accuracy": {
+        "all_attempted": {
+          "denominator": 16,
+          "estimate": 0.0,
+          "numerator": 0
+        },
+        "usable_answers": {
+          "denominator": 0,
+          "estimate": null,
+          "numerator": 0
+        }
+      },
+      "agreement": {
+        "mean": null,
+        "n": 0
+      },
+      "confidence": {
+        "answer_usable_draws": 0,
+        "explicit_draws": 0,
+        "mean": null,
+        "n": 0,
+        "sources": {}
+      },
+      "coverage": {
+        "answer_usable": 0,
+        "failed": 16,
+        "incomplete": 0,
+        "physical_target_attempted": 0,
+        "planned": 16,
+        "scored_usable": 0,
+        "started": 16,
+        "target_attempted": 0,
+        "terminal": 16,
+        "unstarted": 0
+      },
+      "draws": {
+        "answer_usable": 0,
+        "attempted": 0,
+        "failures": {
+          "fidelity_rejected": 48
+        },
+        "planned": 48,
+        "responses": 0,
+        "scored_usable": 0,
+        "terminal": 48
+      },
+      "failure_rate": {
+        "denominator": 16,
+        "estimate": 1.0,
+        "numerator": 16
+      },
+      "parse_rate": {
+        "denominator": 0,
+        "estimate": null,
+        "numerator": 0
+      },
+      "scoring": {
+        "calibration_quality": [],
+        "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+        "items_with_calibration_quality": 0,
+        "p_memorized": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_discount": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_memguard_confidence": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_raw_confidence": {
+          "mean": null,
+          "n": 0
+        }
+      }
+    },
+    "rewritten_single": {
+      "accuracy": {
+        "all_attempted": {
+          "denominator": 16,
+          "estimate": 0.0,
+          "numerator": 0
+        },
+        "usable_answers": {
+          "denominator": 0,
+          "estimate": null,
+          "numerator": 0
+        }
+      },
+      "agreement": {
+        "mean": null,
+        "n": 0
+      },
+      "confidence": {
+        "answer_usable_draws": 0,
+        "explicit_draws": 0,
+        "mean": null,
+        "n": 0,
+        "sources": {}
+      },
+      "coverage": {
+        "answer_usable": 0,
+        "failed": 16,
+        "incomplete": 0,
+        "physical_target_attempted": 0,
+        "planned": 16,
+        "scored_usable": 0,
+        "started": 16,
+        "target_attempted": 0,
+        "terminal": 16,
+        "unstarted": 0
+      },
+      "draws": {
+        "answer_usable": 0,
+        "attempted": 0,
+        "failures": {
+          "fidelity_rejected": 16
+        },
+        "planned": 16,
+        "responses": 0,
+        "scored_usable": 0,
+        "terminal": 16
+      },
+      "failure_rate": {
+        "denominator": 16,
+        "estimate": 1.0,
+        "numerator": 16
+      },
+      "parse_rate": {
+        "denominator": 0,
+        "estimate": null,
+        "numerator": 0
+      },
+      "scoring": {
+        "calibration_quality": [],
+        "interpretation": "Existing calibrated MIA/MCS evidence; confidence alone is not MCS.",
+        "items_with_calibration_quality": 0,
+        "p_memorized": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_discount": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_memguard_confidence": {
+          "mean": null,
+          "n": 0
+        },
+        "per_draw_raw_confidence": {
+          "mean": null,
+          "n": 0
+        }
+      }
+    }
+  },
+  "cost_status": "unknown; no price table or billing receipt used",
+  "coverage": {
+    "completion_only": "Anthropic actual provider run attested by root controller; generation and rejection paths measured, no accepted rewritten target response",
+    "independent_human_fidelity_audit": "not performed",
+    "logprob_capable": "NIM unmeasured; full Task 6.4 and requirement 9.7 incomplete",
+    "mcs": "unavailable; no genuine Anthropic logprobs, fitted scoring or invented membership probabilities",
+    "openai_and_mistral_live": "unmeasured"
+  },
+  "effective_settings": "max_tokens=2048 requested/accepted; unechoed effective controls and omitted defaults remain unknown",
+  "fidelity": {
+    "acceptance_rate": {
+      "denominator": 16,
+      "estimate": 0.0,
+      "numerator": 0
+    },
+    "accepted": 0,
+    "accepted_of_planned": {
+      "denominator": 16,
+      "estimate": 0.0,
+      "numerator": 0
+    },
+    "interpretation": "Automated acceptance is not a guarantee of factual equivalence or absence of future knowledge.",
+    "pending_or_missing": 0,
+    "planned": 16,
+    "rejected": 16,
+    "semantic_unperformed": 16,
+    "terminal": 16,
+    "unchanged_evidence": {
+      "denominator": 16,
+      "estimate": 0.0,
+      "numerator": 0
+    },
+    "unperformed_or_indeterminate": 0
+  },
+  "interpretation": {
+    "all_attempted_rewrite_differences": "End-to-end failure penalties only; no estimate of the effect of accepted rewrites on target answers or recall.",
+    "fidelity": "All16 automatic rejections preserved; 14AI inspections found no material factual discrepancy and2have qualification/attribution caveats. Automated acceptance/rejection and AI judgments are distinct.",
+    "historical": "Pre/post performance gaps and confidence remain temporal proxies, not evidence of known membership, memorization or reduced recall.",
+    "mitigation_success": false,
+    "original_aggregation": "All-attempted change +0.0625 (16 items;95%bootstrap[0,0.1875]); valid-pair change0 (14 items;degenerate[0,0]); tiny shared-draw pilot, no power/equivalence proof.",
+    "rewriting_valid_pair_count": 0
+  },
+  "item_order_matches_frozen_plan": true,
+  "monetary_cost": null,
+  "original_bundle_sha256": {
+    "manifest.json": "1f658df5828df025f98c20ecf9077d7bac2315571c903912b48d0d09677f420d",
+    "metrics.json": "7418c845676f2aec725b241c716f13df14b64cb59c39ba9c267683f9edeba0a9",
+    "records.json": "959e95de4e032bf682e936c699b47b44f5acbbf88b713b5f708820cd9991f56d"
+  },
+  "original_projection_failures": [
+    {
+      "arm": "original",
+      "draw_index": 1,
+      "error": "Workflow operation failed; exception text was not retained.",
+      "failure_kind": "projection",
+      "item_id": "price-f9a0273a435521825a03",
+      "raw_content": "Gold ETFs tend to drift slightly upward, and the last five closes show no clear trend, so I lean marginally toward a higher close. This is close to a coin flip.\n\n{\"direction\": 1, \"confidence\": 0.52}"
+    },
+    {
+      "arm": "original",
+      "draw_index": 2,
+      "error": "Workflow operation failed; exception text was not retained.",
+      "failure_kind": "projection",
+      "item_id": "price-f9a0273a435521825a03",
+      "raw_content": "Five closes give no real directional signal, so this is close to a coin flip. I lean slightly higher because gold has historically had a mild upward drift. An exactly unchanged close at two decimals is unlikely.\n\n{\"direction\": 1, \"confidence\": 0.52}"
+    },
+    {
+      "arm": "original",
+      "draw_index": 0,
+      "error": "Workflow operation failed; exception text was not retained.",
+      "failure_kind": "projection",
+      "item_id": "price-e61647df3c766eb4bd36",
+      "raw_content": "{\"direction\": 1, \"confidence\": 0.53}\n\nThis is close to a coin flip. The five closes show no clear trend, so the call rests mainly on SPY's historical tendency to close higher slightly more often than lower. An exactly unchanged close at two-decimal precision is very unlikely."
+    }
+  ],
+  "paired_effects": {
+    "aggregation_original": {
+      "all_attempted": {
+        "adequacy": "no_power_or_equivalence_assessment",
+        "baseline_mean": 0.6875,
+        "comparison_mean": 0.75,
+        "equivalence_proof": false,
+        "estimate": 0.0625,
+        "interval": [
+          0.0,
+          0.1875
+        ],
+        "interval_status": "estimated",
+        "n_eligible": 16,
+        "n_failed_pairs": 2,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      },
+      "baseline": "original_single",
+      "comparison": "original_ensemble",
+      "confidence": {
+        "adequacy": "no_power_or_equivalence_assessment",
+        "baseline_mean": 0.5921428571428572,
+        "comparison_mean": 0.6026190476190477,
+        "equivalence_proof": false,
+        "estimate": 0.010476190476190497,
+        "interval": [
+          -0.0030952380952380715,
+          0.027857142857142875
+        ],
+        "interval_status": "estimated",
+        "n_eligible": 14,
+        "n_failed_pairs": 2,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      },
+      "valid_pairs": {
+        "adequacy": "no_power_or_equivalence_assessment",
+        "baseline_mean": 0.7857142857142857,
+        "comparison_mean": 0.7857142857142857,
+        "equivalence_proof": false,
+        "estimate": 0.0,
+        "interval": [
+          0.0,
+          0.0
+        ],
+        "interval_status": "degenerate",
+        "n_eligible": 14,
+        "n_failed_pairs": 2,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      }
+    },
+    "aggregation_rewritten": {
+      "all_attempted": {
+        "adequacy": "no_power_or_equivalence_assessment",
+        "baseline_mean": 0.0,
+        "comparison_mean": 0.0,
+        "equivalence_proof": false,
+        "estimate": 0.0,
+        "interval": [
+          0.0,
+          0.0
+        ],
+        "interval_status": "degenerate",
+        "n_eligible": 16,
+        "n_failed_pairs": 16,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      },
+      "baseline": "rewritten_single",
+      "comparison": "rewritten_ensemble",
+      "confidence": {
+        "adequacy": "inadequate_items",
+        "baseline_mean": null,
+        "comparison_mean": null,
+        "equivalence_proof": false,
+        "estimate": null,
+        "interval": null,
+        "interval_status": "unavailable",
+        "n_eligible": 0,
+        "n_failed_pairs": 16,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      },
+      "valid_pairs": {
+        "adequacy": "inadequate_items",
+        "baseline_mean": null,
+        "comparison_mean": null,
+        "equivalence_proof": false,
+        "estimate": null,
+        "interval": null,
+        "interval_status": "unavailable",
+        "n_eligible": 0,
+        "n_failed_pairs": 16,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      }
+    },
+    "rewriting_ensemble": {
+      "all_attempted": {
+        "adequacy": "no_power_or_equivalence_assessment",
+        "baseline_mean": 0.75,
+        "comparison_mean": 0.0,
+        "equivalence_proof": false,
+        "estimate": -0.75,
+        "interval": [
+          -0.9375,
+          -0.5609375000000085
+        ],
+        "interval_status": "estimated",
+        "n_eligible": 16,
+        "n_failed_pairs": 16,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      },
+      "baseline": "original_ensemble",
+      "comparison": "rewritten_ensemble",
+      "confidence": {
+        "adequacy": "inadequate_items",
+        "baseline_mean": null,
+        "comparison_mean": null,
+        "equivalence_proof": false,
+        "estimate": null,
+        "interval": null,
+        "interval_status": "unavailable",
+        "n_eligible": 0,
+        "n_failed_pairs": 16,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      },
+      "valid_pairs": {
+        "adequacy": "inadequate_items",
+        "baseline_mean": null,
+        "comparison_mean": null,
+        "equivalence_proof": false,
+        "estimate": null,
+        "interval": null,
+        "interval_status": "unavailable",
+        "n_eligible": 0,
+        "n_failed_pairs": 16,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      }
+    },
+    "rewriting_single": {
+      "all_attempted": {
+        "adequacy": "no_power_or_equivalence_assessment",
+        "baseline_mean": 0.6875,
+        "comparison_mean": 0.0,
+        "equivalence_proof": false,
+        "estimate": -0.6875,
+        "interval": [
+          -0.875,
+          -0.4375
+        ],
+        "interval_status": "estimated",
+        "n_eligible": 16,
+        "n_failed_pairs": 16,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      },
+      "baseline": "original_single",
+      "comparison": "rewritten_single",
+      "confidence": {
+        "adequacy": "inadequate_items",
+        "baseline_mean": null,
+        "comparison_mean": null,
+        "equivalence_proof": false,
+        "estimate": null,
+        "interval": null,
+        "interval_status": "unavailable",
+        "n_eligible": 0,
+        "n_failed_pairs": 16,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      },
+      "valid_pairs": {
+        "adequacy": "inadequate_items",
+        "baseline_mean": null,
+        "comparison_mean": null,
+        "equivalence_proof": false,
+        "estimate": null,
+        "interval": null,
+        "interval_status": "unavailable",
+        "n_eligible": 0,
+        "n_failed_pairs": 16,
+        "n_incomplete": 0,
+        "n_planned": 16,
+        "unit": "probability_difference"
+      }
+    }
+  },
+  "probe_raw_response": "unavailable; public probe API retains capability reports and physical usage but not raw probe responses",
+  "protocol_id": "cdddf5b0bc5cb73a325ffe0303193b204f5c04ef8940a535e562d4bd422bcd3f",
+  "replay": {
+    "cwd_is_moved_copy": true,
+    "exit_code": 0,
+    "fresh_process": true,
+    "inherited_provider_credentials": false,
+    "metrics_equal": true,
+    "moved_copy": "runs/completion-pilot-20261031/anthropic/moved-replay",
+    "physical_requests": 67,
+    "schema_version": 1,
+    "socket_network_blocked": true,
+    "source": "anthropic-evaluation",
+    "status": "completed"
+  },
+  "reported_input_tokens": 24499,
+  "reported_output_tokens": 9756,
+  "schema_version": 1,
+  "single_reuses_draw_zero": true,
+  "source_sha256": {
+    "anthropic-protocol.json": "a47e9d34bc3ff0796a27edbe488100568c4fd98e717145228aa98ea82874f690",
+    "cutoff-registry.json": "7f50ba000f1447ea767ca6a86dd1818e75ba3fa5dca1da245efcab3fb8892abb",
+    "eligibility/recovery-01/receipt.json": "0def829cc504baf4edb4f8cc77c116a617a3d1ceb11a13eedc84890cf6bfe13c",
+    "evaluation.json": "cb7359e4a5625767d308d35f303778c30df2429c1f6420bf7781b2b3483e6f99",
+    "study-plan.json": "aeba7fb829d7df2d5e9874dd636de183207f405a53ceb01b01277b77d68d37a5"
+  },
+  "stop_reason": null,
+  "study_id": "completion-api-2026-10-31-exploratory-pilot-v1",
+  "terminal_arms": 32,
+  "terminal_logical_draws": 96,
+  "uncertainty": {
+    "count": 2000,
+    "joint_intervals": false,
+    "level": 0.95,
+    "method": "percentile_paired_item_bootstrap",
+    "sampling": "unstratified_within_each_eligible_comparison",
+    "seed": 0,
+    "unit": "item"
+  },
+  "usage_by_role": [
+    {
+      "item_requests": 48,
+      "latency_s_sum": 136.93899999884889,
+      "monetary_cost": null,
+      "physical_requests": 49,
+      "reported_usage_counters": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 15665,
+        "output_tokens": 6098
+      },
+      "role": "target",
+      "role_probe_requests": 1,
+      "statuses": {
+        "succeeded": 49
+      }
+    },
+    {
+      "item_requests": 16,
+      "latency_s_sum": 64.47099999990314,
+      "monetary_cost": null,
+      "physical_requests": 17,
+      "reported_usage_counters": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 8817,
+        "output_tokens": 3654
+      },
+      "role": "rewriter",
+      "role_probe_requests": 1,
+      "statuses": {
+        "succeeded": 17
+      }
+    },
+    {
+      "item_requests": 0,
+      "latency_s_sum": 1.3279999997466803,
+      "monetary_cost": null,
+      "physical_requests": 1,
+      "reported_usage_counters": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 17,
+        "output_tokens": 4
+      },
+      "role": "verifier",
+      "role_probe_requests": 1,
+      "statuses": {
+        "succeeded": 1
+      }
+    }
+  ]
+}
