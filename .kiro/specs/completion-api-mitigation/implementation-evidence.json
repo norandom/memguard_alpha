@@ -86,5 +86,14 @@
       "recall_guard/harness/scorer_client.py",
       "tests/harness/test_scorer_client.py"
     ]
+  },
+  "4.1": {
+    "review": "APPROVED",
+    "verification": "IndependentAPPROVED88focusedtests; parentfresh88pass1.45s,Ruff+architecturepass. ActualRED41OFFgatefailures+Nonefallbackregression; candidatesremainunverified and partialfailures/provenance preserved.",
+    "timestamp": "2026-10-31T11:25:39.209839+00:00",
+    "files": [
+      "recall_guard/harness/rewriting.py",
+      "tests/harness/test_rewriting.py"
+    ]
   }
 }

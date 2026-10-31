@@ -80,7 +80,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Requirements: 3.5, 7.6, 8.2, 9.3_
 
 - [ ] 4. Rewriting and workflow
-- [ ] 4.1 Implement versioned evidence rewriting
+- [x] 4.1 Implement versioned evidence rewriting
   - Separate instructions, evidence and as-of data; generate neutral conversational evidence with preservation constraints and no added external facts. Keep original/rewrite hashes and stage provenance.
   - Done when deterministic fixtures verify task instructions are unchanged and all failures remain explicit.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.
