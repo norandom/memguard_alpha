@@ -20,6 +20,16 @@ availability varies by model. An adapter must preserve the caller's explicit
 choice rather than replace an incompatible control. The fixtures do not select
 a frontier model for live measurement. [OpenAI Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
 
+Rechecked on 2026-10-31 for the task 1.2 evidence-contract correction: OpenAI's
+response schema distinguishes measured token logprobs from the reserved
+`-9999.0` marker. It reports the actual value for tokens within the top 20 and
+uses that marker otherwise, for either a realized token or a returned
+`top_logprobs` alternative. The marker is censored evidence, not a measured
+probability. Retain its exact raw value for audit and text-only generation;
+mark MIA/MCS unavailable and reject legacy scoring conversion when it occurs.
+This is an exact marker check, not a cutoff on ordinary negative logprobs.
+[OpenAI response logprob contract](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+
 The fetched Anthropic Messages schema does not list `temperature`, `top_p`,
 `seed` or `logprobs`. Treat them as unavailable in this audited contract,
 without asserting that every historical API version or hosting platform rejects

@@ -260,6 +260,50 @@ def test_realized_logprobs_without_alternatives_are_not_mia_compatible():
         response.to_legacy()
 
 
+@pytest.mark.parametrize(("realized", "alternative", "location"), [
+    (-9999.0, -0.2, "realized"), (-0.2, -9999.0, "top_logprobs"),
+])
+def test_censored_logprobs_remain_raw_but_are_unavailable_for_mia(realized, alternative, location):
+    entries = (token(), c.TokenEvidence("rare", realized, (
+        c.TokenAlternative("answer", -0.2), c.TokenAlternative("rare", alternative),
+    )))
+    response = c.ModelResponse("answer rare", entries)
+    assert response.content == "answer rare" and response.token_evidence == entries
+    exported = json.loads(json.dumps(response.to_dict(), allow_nan=False))
+    assert exported["token_evidence"][1]["logprob"] == realized
+    assert exported["token_evidence"][1]["top_logprobs"][1]["logprob"] == alternative
+    assert "censored" in response.mia_unavailable_reason
+    assert location in response.mia_unavailable_reason
+    assert "-9999.0" in response.mia_unavailable_reason
+    if location == "realized":
+        assert "censored" in response.logprobs_unavailable_reason
+    else:
+        assert response.logprobs_unavailable_reason is None
+    with pytest.raises(ValueError, match="censored"):
+        response.to_legacy()
+
+
+@pytest.mark.parametrize(("realized", "alternative"), [(-9999.0, -0.2), (-0.2, -9999.0)])
+def test_censored_legacy_logprobs_cannot_be_promoted_to_usable_evidence(realized, alternative):
+    legacy = CompletionResult("answer", [TokenLogprob("answer", realized, [
+        {"token": "answer", "logprob": alternative},
+    ])], None)
+    with pytest.raises(ValueError, match="censored"):
+        c.ModelResponse.from_legacy(legacy)
+    assert legacy.logprobs[0].logprob == realized
+    assert legacy.logprobs[0].top_logprobs[0]["logprob"] == alternative
+
+
+@pytest.mark.parametrize("logprob", [-9998.9, -9999.1, -10000.0])
+def test_ordinary_negative_logprobs_are_not_censored_by_a_numeric_threshold(logprob):
+    response = c.ModelResponse("answer", (c.TokenEvidence("answer", logprob, (
+        c.TokenAlternative("answer", logprob),
+    )),))
+    assert response.mia_unavailable_reason is None
+    restored = c.ModelResponse.from_legacy(response.to_legacy())
+    assert restored.to_dict() == response.to_dict()
+
+
 @pytest.mark.parametrize("kwargs", [
     {"content": None}, {"content": 1}, {"usage": {"input_tokens": -1}}, {"usage": {"input_tokens": True}},
     {"requested_settings": {"Authorization": "secret"}}, {"confirmed_settings": {"temperature": float("nan")}},

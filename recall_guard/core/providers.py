@@ -1,4 +1,4 @@
-"""Synchronous OpenAI-chat transport with genuine optional token evidence.
+"""Synchronous OpenAI-chat transport with optional provider-reported token data.
 
 OpenAI, Mistral and NIM use this explicitly selected wire protocol. This adapter
 does not translate native parameter names or claim model-specific support from
@@ -253,8 +253,9 @@ class OpenAICompatibleClient:
                           f"requested token budget={token_budget or 'omitted'}. "
                           "Inspect the response, adjust the token budget if needed, and repeat the probe before batch execution.")
             elif name == "logprobs" and (self.features.mia_scoring or self.config.parameters.get(name) is True):
-                status = CapabilityStatus.SUPPORTED if response.token_evidence else CapabilityStatus.UNSUPPORTED
-                detail = "Genuine token logprobs observed." if response.token_evidence else "Token logprobs were absent or empty."
+                reason = response.logprobs_unavailable_reason
+                status = CapabilityStatus.SUPPORTED if reason is None else CapabilityStatus.UNSUPPORTED
+                detail = reason or "Genuine token logprobs observed."
             elif name == "top_logprobs" and (self.features.mia_scoring or self.config.parameters.get(name)):
                 status = CapabilityStatus.SUPPORTED if response.mia_unavailable_reason is None else CapabilityStatus.UNSUPPORTED
                 detail = response.mia_unavailable_reason or "Genuine alternatives observed for every token."

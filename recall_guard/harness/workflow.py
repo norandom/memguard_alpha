@@ -320,8 +320,8 @@ class RecallWorkflow:
             detail = "Actual generation accepted the requested control; effective value is unconfirmed unless echoed."
             if name == "text_generation" and not response.content.strip():
                 status, observed, detail = CapabilityStatus.UNVERIFIED, False, "No non-whitespace text observed."
-            elif name == "logprobs" and config.parameters.get(name) is True and not response.token_evidence:
-                status, detail = CapabilityStatus.UNSUPPORTED, "Token logprobs were absent."
+            elif name == "logprobs" and config.parameters.get(name) is True and response.logprobs_unavailable_reason:
+                status, detail = CapabilityStatus.UNSUPPORTED, response.logprobs_unavailable_reason
             elif name == "top_logprobs" and config.parameters.get(name) and response.mia_unavailable_reason:
                 status, detail = CapabilityStatus.UNSUPPORTED, response.mia_unavailable_reason
             capabilities[name] = CapabilityEvidence(status, "Actual configured generation probe", detail, observed)

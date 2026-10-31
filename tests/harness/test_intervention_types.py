@@ -129,6 +129,21 @@ def test_roundtrip_retains_inputs_rewrite_responses_token_evidence_and_partial_f
     assert restored.validate_restart(p, saved.items).prior_used_requests == 4
 
 
+@pytest.mark.parametrize("location", ["realized", "alternative"])
+def test_censored_response_schema_roundtrip_preserves_raw_evidence_and_unavailability(location):
+    evidence = (TokenEvidence("UP", -9999.0 if location == "realized" else -0.1, (
+        TokenAlternative("UP", -9999.0 if location == "alternative" else -0.1),
+    )),)
+    original = draw(response=ModelResponse("UP", evidence))
+    data = json.loads(json.dumps(original.to_dict(), ensure_ascii=False, allow_nan=False))
+    restored = t.DrawRecord.from_dict(data)
+    assert restored.to_dict() == original.to_dict()
+    assert restored.response.content == "UP" and restored.response.token_evidence == evidence
+    assert "censored" in restored.response.mia_unavailable_reason
+    with pytest.raises(ValueError, match="censored"):
+        restored.response.to_legacy()
+
+
 def test_resume_returns_exact_remaining_budget_and_new_request_namespace():
     saved = checkpoint()
     state = saved.validate_restart(saved.protocol, saved.items)

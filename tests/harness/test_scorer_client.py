@@ -304,6 +304,44 @@ def test_provider_probe_and_scoring_share_physical_budget_without_second_generat
     assert budget.used == 26
 
 
+@pytest.mark.parametrize("location", ["realized", "alternative"])
+def test_censored_provider_probe_rejects_calibration_before_corpus(location, monkeypatch):
+    budget = CallBudget(30)
+    client = OpenAICompatibleClient(config(), budget, features=FeatureChoices(mia_scoring=True),
+                                    allow_unauthenticated=True, environment={})
+
+    def post(payload):
+        response = Client().generate(payload["messages"][0]["content"])
+        entries = response.to_dict()["token_evidence"]
+        entry = entries[0] if location == "realized" else entries[0]["top_logprobs"][1]
+        entry["logprob"] = -9999.0
+        return SimpleNamespace(status_code=200, headers={}, json=lambda: {"choices": [{
+            "message": {"content": response.content}, "logprobs": {"content": entries},
+        }]})
+
+    monkeypatch.setattr(client, "_post", post)
+    with pytest.raises(ValueError, match="MIA|token|capabilit"):
+        calibrate(client)
+    assert budget.used == 1
+    assert [event.stage for event in budget.events] == ["probe"]
+
+
+@pytest.mark.parametrize("location", ["realized", "alternative"])
+def test_censored_supplied_response_cannot_enter_existing_mia_math(location):
+    client = Client()
+    scorer = calibrate(client)
+    response = client.generate("eval")
+    evidence = (TokenEvidence("x", -9999.0 if location == "realized" else -0.2, (
+        TokenAlternative("x", -9999.0 if location == "alternative" else -0.2),
+    )),)
+    response = dataclasses.replace(response, token_evidence=evidence)
+    calls_before = len(client.calls)
+    with pytest.raises(ValueError, match="censored"):
+        scorer.score_response("eval", response, client=client)
+    assert response.token_evidence == evidence
+    assert len(client.calls) == calls_before
+
+
 def test_provider_missing_evidence_error_is_explicit_and_cannot_fit_surviving_rows():
     client = Client()
     client.failure = RequestError("MIA evidence unavailable", code="missing_token_evidence")

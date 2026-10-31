@@ -15,11 +15,20 @@
   },
   "1.2": {
     "review": "APPROVED",
-    "verification": "Independent APPROVED after explicit-null remediation;75 focused tests and Ruff pass; RED68 original and2 null regressions.",
-    "timestamp": "2026-10-30T18:45:59.742553+00:00",
+    "verification": "Foundation correction independently APPROVED. Parent fresh 419 tests passed in 11.80s; Ruff and architecture passed. Actual UTF-8 RED logs verify 14 disabled-marker failures and one workflow consumer failure. Raw sentinel values and JSON stay intact; censored realized/alternative evidence cannot enter configured MIA scoring. Ordinary contracts remain covered.",
+    "timestamp": "2026-10-31T12:26:17.213142+00:00",
     "files": [
       "recall_guard/core/completion.py",
-      "tests/core/test_completion.py"
+      "recall_guard/core/providers.py",
+      "recall_guard/core/provider_callback.py",
+      "recall_guard/harness/workflow.py",
+      "tests/core/test_completion.py",
+      "tests/core/test_providers.py",
+      "tests/core/test_provider_callback.py",
+      "tests/harness/test_scorer_client.py",
+      "tests/harness/test_intervention_types.py",
+      "tests/harness/test_workflow.py",
+      ".kiro/specs/completion-api-mitigation/provider-contracts.md"
     ]
   },
   "1.3": {

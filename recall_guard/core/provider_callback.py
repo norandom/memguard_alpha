@@ -240,8 +240,9 @@ class CallbackClient:
                 status, observed = CapabilityStatus.UNVERIFIED, False
                 detail = "No non-whitespace text observed; inspect callback output and repeat the probe before batching."
             elif name == "logprobs" and (self.features.mia_scoring or self.config.parameters.get(name) is True):
-                status = CapabilityStatus.SUPPORTED if response.token_evidence else CapabilityStatus.UNSUPPORTED
-                detail = "Genuine token logprobs supplied by callback." if response.token_evidence else "Token logprobs absent or empty."
+                reason = response.logprobs_unavailable_reason
+                status = CapabilityStatus.SUPPORTED if reason is None else CapabilityStatus.UNSUPPORTED
+                detail = reason or "Genuine token logprobs supplied by callback."
             elif name == "top_logprobs" and (self.features.mia_scoring or self.config.parameters.get(name)):
                 status = CapabilityStatus.SUPPORTED if response.mia_unavailable_reason is None else CapabilityStatus.UNSUPPORTED
                 detail = response.mia_unavailable_reason or "Genuine alternatives supplied for every token."

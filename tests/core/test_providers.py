@@ -349,6 +349,42 @@ def test_missing_or_incomplete_evidence_is_valid_text_but_never_valid_mia(eviden
     assert budget.events[0].status == "failed"
 
 
+@pytest.mark.parametrize("location", ["realized", "alternative"])
+def test_censored_wire_logprobs_preserve_text_but_prevent_mia_readiness(location, wire):
+    pending, calls = wire
+    fixture = fixture_response("openai", "token_evidence")
+    entries = fixture["body"]["choices"][0]["logprobs"]["content"]
+    entry = entries[0] if location == "realized" else entries[0]["top_logprobs"][1]
+    entry["logprob"] = -9999.0
+    pending.extend([fixture, fixture, fixture])
+    parameters = fixture["request_parameters"]
+    response = client(config(parameters=parameters)).generate("text only")
+    assert response.content == "Bullish"
+    expected_evidence = [{
+        "token": entry["token"], "logprob": entry["logprob"],
+        "top_logprobs": [{"token": alt["token"], "logprob": alt["logprob"]} for alt in entry["top_logprobs"]],
+    } for entry in entries]
+    assert response.to_dict()["token_evidence"] == expected_evidence
+    assert "censored" in response.mia_unavailable_reason
+
+    budget = CallBudget(2)
+    adapter = client(config(parameters=parameters), budget, features=FeatureChoices(mia_scoring=True))
+    report = adapter.probe()
+    assert report.capabilities["text_generation"].status == CapabilityStatus.SUPPORTED
+    expected = CapabilityStatus.UNSUPPORTED if location == "realized" else CapabilityStatus.SUPPORTED
+    assert report.capabilities["logprobs"].status == expected
+    assert report.capabilities["top_logprobs"].status == CapabilityStatus.UNSUPPORTED
+    assert "censored" in report.capabilities["top_logprobs"].detail
+    assert not report.ready_for_batch and report.mia_unavailable_reason
+    with pytest.raises(RequestError, match="censored") as caught:
+        adapter.generate("selected MIA")
+    assert caught.value.code == "missing_token_evidence"
+    assert dict(caught.value.usage) == dict(response.usage)
+    assert budget.used == 2 and len(calls) == 3
+    assert [event.stage for event in budget.events] == ["probe", "target"]
+    assert budget.events[-1].status == "failed"
+
+
 @pytest.mark.parametrize("mutation", ["no_choices", "null_content", "non_text", "bad_token"])
 def test_malformed_protocol_response_is_not_silently_reinterpreted(mutation, wire):
     pending, calls = wire

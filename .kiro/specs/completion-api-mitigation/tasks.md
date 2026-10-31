@@ -213,6 +213,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
 
 ## Implementation notes
 
+- Task 1.2 reopened on 2026-10-31 for a foundation correction: OpenAI documents `-9999.0` as a censored token-logprob marker outside its reported top 20. Preserve raw response data, but make this evidence explicitly unavailable for MIA/MCS before task 4.4. Ordinary valid-response construction and serialization remain compatible. Source: https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create.
 - Credentials resolve at configured-client construction; recreate clients after rotation.
 - CallBudget counts physical attempts; RequestControl operates outside pacing locks and returns sanitized failures.
 - Resume consumers use the saved remaining request budget and a fresh execution namespace; ambiguous in-flight work must not replay automatically.

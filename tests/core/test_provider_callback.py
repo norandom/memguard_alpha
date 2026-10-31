@@ -452,6 +452,31 @@ def test_genuine_optional_token_evidence_enables_probe_without_fabrication():
     assert adapter.generate("prompt").mia_unavailable_reason is None
 
 
+@pytest.mark.parametrize("location", ["realized", "alternative"])
+def test_censored_callback_evidence_retains_text_without_claiming_mia(location):
+    response = replace(token_response(), token_evidence=(TokenEvidence(
+        "OK", -9999.0 if location == "realized" else -0.2,
+        (TokenAlternative("OK", -9999.0 if location == "alternative" else -0.2),),
+    ),))
+    settings = config(parameters={"logprobs": True, "top_logprobs": 2})
+
+    def callback(prompt, **parameters):
+        return response
+
+    text = client(callback, settings=settings).generate("prompt")
+    assert text.content == "OK" and text.token_evidence == response.token_evidence
+    adapter = client(callback, settings=settings, features=FeatureChoices(mia_scoring=True))
+    report = adapter.probe()
+    expected = CapabilityStatus.UNSUPPORTED if location == "realized" else CapabilityStatus.SUPPORTED
+    assert report.capabilities["logprobs"].status == expected
+    assert report.capabilities["top_logprobs"].status == CapabilityStatus.UNSUPPORTED
+    assert "censored" in report.capabilities["top_logprobs"].detail
+    assert not report.ready_for_batch
+    with pytest.raises(RequestError, match="censored") as caught:
+        adapter.generate("prompt")
+    assert caught.value.code == "missing_token_evidence"
+
+
 def test_declared_unsupported_parameter_is_rejected_locally():
     settings = config(parameters={"seed": 4}, capabilities={
         "seed": CapabilityEvidence(CapabilityStatus.UNSUPPORTED, "caller documentation"),

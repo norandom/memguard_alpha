@@ -25,6 +25,7 @@ _TRANSPORT_FIELDS = frozenset({
     "model", "messages", "prompt", "endpoint", "url", "protocol", "provider", "timeout", "timeouts",
     "maxretries", "retrybackoffs", "mincallintervals", "stream",
 })
+_CENSORED_LOGPROB = -9999.0
 
 
 def _text(value: str, name: str, *, allow_empty: bool = False) -> None:
@@ -297,7 +298,12 @@ def validate_features(
 
 @dataclass(frozen=True)
 class TokenAlternative:
-    """One genuine provider-reported token probability in natural log units."""
+    """One raw provider-reported logprob, including wire censoring markers.
+
+    Values use natural log units except the reserved ``-9999.0`` marker, which
+    denotes a censored probability. ModelResponse keeps it for audit and text
+    generation but excludes it from genuine evidence for MIA/MCS.
+    """
 
     token: str
     logprob: float
@@ -330,6 +336,8 @@ class ModelResponse:
     ``token_evidence`` is ordered by output position. ``usage`` retains only
     reported token counters; absent counters and usage remain unknown. Requested
     settings do not become confirmed settings merely because a call succeeded.
+    Raw token values retain censoring markers; inspect availability before
+    treating them as measured log probabilities.
     """
 
     content: str
@@ -361,11 +369,24 @@ class ModelResponse:
         object.__setattr__(self, "confirmed_settings", _parameters(self.confirmed_settings))
 
     @property
-    def mia_unavailable_reason(self) -> str | None:
+    def logprobs_unavailable_reason(self) -> str | None:
+        """Why complete measured realized-token logprobs are unavailable."""
         if not self.token_evidence:
             return "MIA/MCS token evidence is unavailable or empty."
+        if any(entry.logprob == _CENSORED_LOGPROB for entry in self.token_evidence):
+            return "MIA/MCS token evidence contains a censored realized-token logprob (-9999.0)."
+        return None
+
+    @property
+    def mia_unavailable_reason(self) -> str | None:
+        if reason := self.logprobs_unavailable_reason:
+            return reason
         if any(not entry.top_logprobs for entry in self.token_evidence):
             return "MIA/MCS token evidence lacks top_logprobs alternatives."
+        if any(
+            alt.logprob == _CENSORED_LOGPROB for entry in self.token_evidence for alt in entry.top_logprobs
+        ):
+            return "MIA/MCS token evidence contains a censored top_logprobs alternative (-9999.0)."
         return None
 
     @classmethod

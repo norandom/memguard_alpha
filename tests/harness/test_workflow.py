@@ -469,6 +469,39 @@ def test_minimal_client_without_probe_uses_actual_generation_for_preflight():
     assert result.preflight.responses["target"].content == "OK"
 
 
+@pytest.mark.parametrize("location", ["realized", "alternative"])
+def test_censored_generic_client_evidence_is_reported_before_target_inference(location):
+    parameters = {"logprobs": True}
+    if location == "alternative":
+        parameters["top_logprobs"] = 2
+    evidence = (TokenEvidence("OK", -9999.0 if location == "realized" else -0.2, (
+        TokenAlternative("OK", -9999.0 if location == "alternative" else -0.2),
+    )),)
+    response = ModelResponse("OK", evidence, requested_settings=parameters)
+
+    class GenericClient:
+        config = ModelConfig("callback", None, "target", parameters=parameters)
+
+        def __init__(self):
+            self.calls = []
+
+        def generate(self, prompt, **overrides):
+            self.calls.append((prompt, overrides))
+            return response
+
+    target = GenericClient()
+    result = RecallWorkflow(target).run(item())
+    assert result.status == RecordStatus.FAILED and result.stage == "preflight"
+    assert not result.preflight.ready_for_batch and len(target.calls) == 1
+    assert result.n_attempted == 0 and result.draws == ()
+    assert result.preflight.responses["target"] is response
+    report = result.preflight.reports["target"]
+    name = "logprobs" if location == "realized" else "top_logprobs"
+    assert report.capabilities[name].status == CapabilityStatus.UNSUPPORTED
+    assert "censored" in report.capabilities[name].detail
+    assert response.token_evidence == evidence
+
+
 def test_declared_observed_capabilities_do_not_skip_actual_workflow_preflight():
     evidence = CapabilityEvidence("supported", "Earlier declaration", observed=True)
     target = Client([ModelResponse("up")], capabilities={"text_generation": evidence})
