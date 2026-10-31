@@ -7,6 +7,8 @@ from threading import Lock
 import pytest
 
 from recall_guard.core.completion import ModelConfig
+from recall_guard.core.consensus import Tail
+from recall_guard.core.ensemble import LocationMode, MultimodalAction, ReferenceMode
 from recall_guard.core.provider_callback import CallbackClient
 from recall_guard.core.request_control import CallBudget, RequestError
 from recall_guard.harness.intervention import ExperimentRunner
@@ -90,6 +92,74 @@ def runner(tmp_path, p=None, *, values=None, **factory_options):
     p = p or protocol()
     factory = Factory(p, **factory_options)
     return ExperimentRunner(p, values or items(), factory, tmp_path / "checkpoint.json"), factory
+
+
+def test_serialized_two_sided_tail_uses_the_actual_two_sided_agreement_interval(tmp_path):
+    p = protocol(ensemble_settings=dict(protocol().ensemble_settings) | {"tail": "two_sided"})
+    restored = ExperimentProtocol.from_dict(json.loads(json.dumps(p.to_dict())))
+    execution, factory = runner(tmp_path, restored, values=items(1))
+    result = execution.run()
+    assert all(condition.status == RecordStatus.COMPLETED for condition in result.conditions)
+    for arm in result.arms:
+        assert arm.outcome["ensemble"]["agreement_ci"] == pytest.approx([0.4385029682449546, 1.0])
+    assert len(factory.calls) == 11
+
+
+@pytest.mark.parametrize("reference_mode", list(ReferenceMode))
+def test_typed_and_serialized_settings_produce_equal_component_results_and_resume(tmp_path, reference_mode):
+    settings = dict(protocol().ensemble_settings) | {
+        "tail": Tail.TWO_SIDED, "location_mode": LocationMode.MEAN,
+        "multimodal_action": MultimodalAction.FLAG, "reference_mode": reference_mode,
+    }
+    typed = protocol(ensemble_settings=settings)
+    serialized = json.loads(json.dumps(typed.to_dict(), ensure_ascii=False, allow_nan=False))
+    restored = ExperimentProtocol.from_dict(serialized)
+    results = []
+    for name, p in (("typed", typed), ("serialized", restored)):
+        responses = iter(["0.0", "0.0", "0.9"] * 2)
+        execution, factory = runner(tmp_path / name, p, values=items(1),
+                                    target=lambda prompt, responses=responses: next(responses))
+        partial = execution.run(max_arms=1, decide=lambda response: "up",
+                                components=lambda response: {"axis": float(response.content)})
+        assert partial.checkpoint.status == RecordStatus.PENDING
+        assert execution.load().checkpoint.protocol.to_dict() == serialized
+        result = execution.run(decide=lambda response: "up",
+                               components=lambda response: {"axis": float(response.content)})
+        assert all(condition.status == RecordStatus.COMPLETED for condition in result.conditions)
+        assert len([call for call in factory.calls if call[0] == "target" and call[1] != PROBE]) == 6
+        results.append(result)
+        for arm in result.arms:
+            assert arm.outcome["ensemble"]["location"] == {"axis": pytest.approx(0.3)}
+            assert arm.outcome["ensemble"]["agreement_ci"] == pytest.approx([0.4385029682449546, 1.0])
+        assert execution.load().checkpoint.to_dict() == result.checkpoint.to_dict()
+    assert typed.protocol_id == restored.protocol_id
+    assert results[0].conditions == results[1].conditions
+    for typed_arm, restored_arm in zip(results[0].arms, results[1].arms, strict=True):
+        for key in ("location", "agreement_ci", "draws_sha256", "n_requested", "n_parsed"):
+            assert typed_arm.outcome["ensemble"][key] == restored_arm.outcome["ensemble"][key]
+
+
+@pytest.mark.parametrize("name, value", [
+    ("tail", "invalid"), ("location_mode", "invalid"), ("multimodal_action", "invalid"),
+    ("reference_mode", "invalid"), ("tail", None), ("location_mode", 1),
+    ("multimodal_action", True), ("reference_mode", []),
+    ("draws", 3.0), ("draws", True), ("draws", 2),
+    ("max_workers", 1.5), ("max_workers", True), ("min_parsed", 1.0), ("min_parsed", None),
+    ("trough_steps", 1.5), ("min_cluster_draws", 8.0), ("max_total_requests", 20.0), ("max_tokens", 64.0),
+    ("retain_draws", 1), ("retain_draws", "false"), ("retain_draws", None),
+    ("confidence", True), ("confidence", None), ("grid", "0.1"), ("trim", False),
+    ("agreement_target", "0.2"), ("mass_min", True), ("density_ratio", "10"),
+    ("min_cluster_density", None), ("max_transport_failure_ratio", True), ("temperature", "0.5"),
+    ("grid", float("inf")), ("density_ratio", float("nan")), ("min_cluster_density", float("inf")),
+    ("max_tokens", 65), ("temperature", 0.5), ("unknown_option", 1),
+])
+def test_invalid_ensemble_settings_fail_before_workflow_factory_or_provider_calls(tmp_path, name, value):
+    factory = Factory(protocol())
+    with pytest.raises((TypeError, ValueError)):
+        p = protocol(ensemble_settings=dict(protocol().ensemble_settings) | {name: value})
+        ExperimentRunner(p, items(1), factory, tmp_path / "checkpoint.json").run()
+    assert not factory.budgets and not factory.calls
+    assert not (tmp_path / "checkpoint.json").exists()
 
 
 def test_saved_four_conditions_reuse_predesignated_draw_zero_and_balance_order(tmp_path):

@@ -9,7 +9,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from recall_guard.core.ensemble import EnsembleSpec
 from recall_guard.core.request_control import CallBudget
 from recall_guard.harness.intervention_journal import (
     ExperimentArm,
@@ -61,10 +60,7 @@ class ExperimentRunner:
             raise ValueError("Experiment requires at least one item")
         self.factory = workflow_factory
         self.journal = ExperimentJournal(checkpoint_path)
-        settings = dict(protocol.ensemble_settings)
-        if "draws" in settings and settings.pop("draws") != protocol.draws:
-            raise ValueError("Ensemble draw count differs from the protocol")
-        self.spec = EnsembleSpec(draws=protocol.draws, **settings)
+        self.spec = protocol.build_ensemble_spec()
         self.scorers = {EvidenceArm.ORIGINAL: original_scorer, EvidenceArm.REWRITTEN: rewritten_scorer}
         if (original_scorer is None) != (rewritten_scorer is None):
             raise ValueError("Scored experiment requires both original and rewritten calibration")

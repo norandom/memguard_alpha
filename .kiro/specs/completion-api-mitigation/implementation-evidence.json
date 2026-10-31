@@ -42,12 +42,13 @@
   },
   "1.4": {
     "review": "APPROVED",
-    "verification": "Independent APPROVED;46 focused tests; full postfoundation784passed; Ruff and architecture pass; identity/restart ledger verified.",
-    "timestamp": "2026-10-30T19:13:10.554092+00:00",
+    "verification": "Reopened ensemble-wire foundation repair independently APPROVED; parent fresh canonical368 passed1Windowslinkprivilege skip39.77s exit0,Ruff/architecture/diffpass; independent368pass+66dependentCLI/configsmoke. ActualRED33fail15controls. Shared typed EnsembleSpec construction preserves protocol identity and existing math; Runner uses it before calls; CLI delegation pending5.4.",
+    "timestamp": "2026-10-31T15:38:02.456102+00:00",
     "files": [
       "recall_guard/harness/intervention_types.py",
+      "recall_guard/harness/intervention.py",
       "tests/harness/test_intervention_types.py",
-      ".kiro/specs/completion-api-mitigation/task-plan-review.md"
+      "tests/harness/test_intervention.py"
     ]
   },
   "2.1": {

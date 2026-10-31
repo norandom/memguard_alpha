@@ -25,6 +25,8 @@ from recall_guard.core.completion import (
     TokenAlternative,
     TokenEvidence,
 )
+from recall_guard.core.consensus import Tail
+from recall_guard.core.ensemble import EnsembleSpec, LocationMode, MultimodalAction, ReferenceMode
 from recall_guard.core.request_control import RequestEvent
 
 SCHEMA_VERSION = 1
@@ -175,6 +177,51 @@ class ExperimentProtocol:
     @property
     def protocol_id(self) -> str:
         return _identity(self.to_dict())
+
+    def build_ensemble_spec(self) -> EnsembleSpec:
+        """Validate executable options and restore enum types without calls.
+
+        Stored settings remain unchanged for hashing and historical inspection.
+        Only this construction boundary translates their JSON representation;
+        core EnsembleSpec retains its existing Python and reduction contracts.
+        Explicit generation controls must equal the shared target settings.
+        """
+        settings = dict(self.ensemble_settings)
+        if "draws" in settings:
+            _integer(settings["draws"], "ensemble draws", 1)
+            if settings.pop("draws") != self.draws:
+                raise ValueError("Ensemble draw count differs from protocol draws")
+        integer_fields = {"max_workers", "min_parsed", "trough_steps", "min_cluster_draws",
+                          "max_total_requests", "max_tokens"}
+        number_fields = {"grid", "confidence", "agreement_target", "trim", "mass_min", "density_ratio",
+                         "min_cluster_density", "max_transport_failure_ratio", "temperature"}
+        nullable_fields = {"grid", "agreement_target", "max_total_requests", "max_tokens", "temperature"}
+        enum_fields = {"tail": Tail, "location_mode": LocationMode,
+                       "multimodal_action": MultimodalAction, "reference_mode": ReferenceMode}
+        unknown = settings.keys() - integer_fields - number_fields - enum_fields.keys() - {"retain_draws"}
+        if unknown:
+            raise ValueError(f"Unknown ensemble settings: {', '.join(sorted(unknown))}")
+        for name, value in settings.items():
+            if name in enum_fields:
+                try:
+                    settings[name] = enum_fields[name](value)
+                except (TypeError, ValueError):
+                    raise ValueError(f"Invalid ensemble {name}: {value!r}") from None
+            elif name == "retain_draws":
+                if type(value) is not bool:
+                    raise ValueError("ensemble retain_draws must be boolean")
+            elif value is None and name in nullable_fields:
+                continue
+            elif name in integer_fields:
+                _integer(value, "ensemble " + name)
+            else:
+                _number(value, "ensemble " + name)
+        spec = EnsembleSpec(draws=self.draws, **settings)
+        for name in ("max_tokens", "temperature"):
+            value = getattr(spec, name)
+            if value is not None and (name not in self.target_model.parameters or value != self.target_model.parameters[name]):
+                raise ValueError("Ensemble generation controls must match the shared target model settings")
+        return spec
 
     def to_dict(self) -> dict:
         return {

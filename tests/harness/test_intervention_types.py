@@ -6,6 +6,8 @@ from dataclasses import FrozenInstanceError, replace
 import pytest
 
 from recall_guard.core.completion import ModelConfig, ModelResponse, TokenAlternative, TokenEvidence
+from recall_guard.core.consensus import Tail
+from recall_guard.core.ensemble import EnsembleSpec, LocationMode, MultimodalAction, ReferenceMode, reduce_draws
 from recall_guard.core.request_control import RequestEvent
 from recall_guard.harness import intervention_types as t
 
@@ -87,6 +89,61 @@ def test_protocol_hash_is_stable_detached_and_credential_free():
         p.cohort_definitions["general"]["historical_claims"] = True
     with pytest.raises(FrozenInstanceError):
         p.draws = 3
+
+
+@pytest.mark.parametrize("name, enum_type", [
+    ("tail", Tail), ("location_mode", LocationMode),
+    ("multimodal_action", MultimodalAction), ("reference_mode", ReferenceMode),
+])
+def test_ensemble_contract_normalizes_every_serialized_enum_without_changing_identity(name, enum_type):
+    for member in enum_type:
+        original = protocol(ensemble_settings={"min_parsed": 1, name: member})
+        serialized = json.loads(json.dumps(original.to_dict(), ensure_ascii=False, allow_nan=False))
+        restored = t.ExperimentProtocol.from_dict(serialized)
+        assert getattr(original.build_ensemble_spec(), name) is member
+        assert getattr(restored.build_ensemble_spec(), name) is member
+        assert restored.protocol_id == original.protocol_id
+        assert restored.to_dict() == serialized
+        assert type(restored.ensemble_settings[name]) is str
+
+
+def test_ensemble_contract_preserves_all_options_and_shared_generation_controls():
+    settings = {
+        "draws": 8, "max_workers": 2, "min_parsed": 4, "grid": 0.1, "confidence": 0.9,
+        "tail": "two_sided", "agreement_target": 0.2, "location_mode": "trimmed", "trim": 0.1,
+        "multimodal_action": "raise", "mass_min": 0.4, "trough_steps": 2, "density_ratio": 5.0,
+        "min_cluster_draws": 6, "min_cluster_density": 2.0, "max_total_requests": 24,
+        "max_transport_failure_ratio": 0.5, "retain_draws": True, "reference_mode": "per_draw",
+        "max_tokens": 32, "temperature": 0.5,
+    }
+    target = replace(protocol().target_model, parameters={"max_tokens": 32, "temperature": 0.5})
+    original = protocol(draws=8, target_model=target, ensemble_settings=settings)
+    serialized = json.loads(json.dumps(original.to_dict(), ensure_ascii=False, allow_nan=False))
+    restored = t.ExperimentProtocol.from_dict(serialized)
+    expected = EnsembleSpec(**(settings | {
+        "tail": Tail.TWO_SIDED, "location_mode": LocationMode.TRIMMED,
+        "multimodal_action": MultimodalAction.RAISE, "reference_mode": ReferenceMode.PER_DRAW,
+    }))
+    assert original.build_ensemble_spec() == restored.build_ensemble_spec() == expected
+    assert restored.to_dict() == serialized and restored.protocol_id == original.protocol_id
+
+
+@pytest.mark.parametrize("action", ["flag", "raise"])
+def test_serialized_multimodal_policy_controls_the_existing_reducer(action):
+    original = protocol(draws=8, ensemble_settings={
+        "min_parsed": 1, "grid": 0.1, "mass_min": 0.4, "multimodal_action": action,
+    })
+    restored = t.ExperimentProtocol.from_dict(json.loads(json.dumps(original.to_dict())))
+    draws = [ModelResponse(value) for value in ["-0.9"] * 4 + ["0.9"] * 4]
+    spec = restored.build_ensemble_spec()
+    if action == "raise":
+        with pytest.raises(ValueError, match="axis.*separated clusters"):
+            reduce_draws(draws, spec, decide=lambda response: "up",
+                         components=lambda response: {"axis": float(response.content)})
+    else:
+        result = reduce_draws(draws, spec, decide=lambda response: "up",
+                              components=lambda response: {"axis": float(response.content)})
+        assert result.multimodal == ("axis",) and result.location == {}
 
 
 def test_roundtrip_retains_inputs_rewrite_responses_token_evidence_and_partial_failures():

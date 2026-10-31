@@ -213,6 +213,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
 
 ## Implementation notes
 
+- Task 1.4 reopened on 2026-10-31: serialized ensemble enum settings need one shared typed construction boundary consumed by the runner and CLI. Raw strings currently change tail/multimodal semantics or fail location reduction after calls. Repair the contract before accepting task 5.4; preserve protocol identity and existing reducer mathematics.
 - Experiment journals preserve write-ahead construction/probe/arm intent and refuse ambiguous restart. Safe resumes use the remaining budget and intentionally re-probe access. Calibration fingerprints include observed fit settings; strict callback provenance remains caller-cooperative, including use of the supplied logical prompt.
 - Workflow calibration probes active roles before preparation and also performs the scorer's fit-specific probe; include both in request budgets. Quality metadata retains paired holdout observations. Configured fatal-state checks run before model fitting.
 - Task 1.2 reopened on 2026-10-31 for a foundation correction: OpenAI documents `-9999.0` as a censored token-logprob marker outside its reported top 20. Preserve raw response data, but make this evidence explicitly unavailable for MIA/MCS before task 4.4. Ordinary valid-response construction and serialization remain compatible. Source: https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create.
