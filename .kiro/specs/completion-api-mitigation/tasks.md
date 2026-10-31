@@ -88,7 +88,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 2.1, 2.2, 2.3_
   - _Requirements: 1.1, 1.3, 2.1, 2.2, 2.3, 3.1_
 
-- [ ] 4.2 Implement fidelity verification and rejection
+- [x] 4.2 Implement fidelity verification and rejection
   - Combine deterministic factual-token checks with structured semantic verification. Treat malformed verification as failure, retain discrepancies and never present acceptance as proof.
   - Done when fixtures reject changed dates, numbers, entities, omitted qualifications and injected instructions before target inference.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

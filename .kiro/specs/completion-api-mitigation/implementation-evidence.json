@@ -95,5 +95,15 @@
       "recall_guard/harness/rewriting.py",
       "tests/harness/test_rewriting.py"
     ]
+  },
+  "4.2": {
+    "review": "APPROVED",
+    "verification": "Independent review APPROVED: 152 focused tests passed. Parent fresh check: 152 passed in 5.23s; Ruff and architecture passed. Verified factual and semantic rejection, partial records, configuration drift and reported settings checks; actual RED regressions recorded.",
+    "timestamp": "2026-10-31T11:39:36.405878+00:00",
+    "files": [
+      "recall_guard/harness/rewriting.py",
+      "recall_guard/harness/rewrite_fidelity.py",
+      "tests/harness/test_rewrite_fidelity.py"
+    ]
   }
 }

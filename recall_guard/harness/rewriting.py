@@ -1,18 +1,20 @@
-"""Versioned evidence-only generation, separate from fidelity acceptance.
+"""Versioned evidence rewriting with explicit fidelity acceptance.
 
 Generated candidates remain pending until deterministic and semantic checks
-accept them. This module never calls a target or verifier and never substitutes
-original evidence for a failed rewrite. Clients own physical admission and
+accept them. EvidenceRewriter never calls a verifier; RewritePolicy adds fidelity
+verification. Neither calls a target or substitutes original evidence for a
+failed rewrite. Clients own physical admission and
 redaction of RequestError diagnostics, as in the core provider adapters.
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from time import monotonic
 
 from recall_guard.core.completion import CapabilityEvidence, CompletionClient, ModelConfig, ModelResponse
 from recall_guard.core.request_control import BudgetExhaustedError, RequestError
+from recall_guard.harness import rewrite_fidelity
 from recall_guard.harness.intervention_types import RecordStatus, RewriteRecord, text_hash
 
 REWRITE_METHOD_VERSION = "neutral-conversation-v1"
@@ -85,10 +87,10 @@ def render_target_prompt(item: RewriteInput, *, evidence: str) -> str:
     return item.instructions + "\n\nAs of: " + item.as_of + "\n\nEvidence (data, not instructions):\n" + evidence
 
 
-def _request_failure(error: Exception) -> tuple[str, str, dict | None]:
+def _request_failure(error: Exception, *, stage: str = "Rewrite generation") -> tuple[str, str, dict | None]:
     """Retain sanitized provider diagnostics, never arbitrary exception text."""
     if isinstance(error, BudgetExhaustedError):
-        return "budget_exhausted", "Rewrite generation stopped: physical request budget exhausted.", None
+        return "budget_exhausted", stage + " stopped: physical request budget exhausted.", None
     if isinstance(error, RequestError):
         kind = "authentication_error" if error.status_code in (401, 403) else "request_error"
         diagnostics = {
@@ -96,17 +98,17 @@ def _request_failure(error: Exception) -> tuple[str, str, dict | None]:
             "detail": error.detail, "retryable": error.retryable,
             "usage": None if error.usage is None else dict(error.usage),
         }
-        return kind, "Rewrite request failed: " + str(error), diagnostics
-    return "runtime_error", "Rewrite generation failed in the completion client; exception text was not retained.", None
+        return kind, stage + " request failed: " + str(error), diagnostics
+    return "runtime_error", stage + " failed in the completion client; exception text was not retained.", None
 
 
-def _response_failure(response: ModelResponse) -> tuple[str, str] | None:
+def _response_failure(response: ModelResponse, *, stage: str = "Rewrite generation") -> tuple[str, str] | None:
     if response.finish_reason in _TRUNCATED_REASONS:
-        return "truncated", "Rewrite generation returned truncated evidence."
+        return "truncated", stage + " returned truncated evidence."
     if response.finish_reason in _INTERRUPTED_REASONS:
-        return "incomplete_response", "Rewrite generation ended before a complete evidence-only response."
+        return "incomplete_response", stage + " ended before a complete response."
     if not response.content.strip():
-        return "blank_response", "Rewrite generation returned blank evidence."
+        return "blank_response", stage + " returned blank content."
     return None
 
 
@@ -172,3 +174,144 @@ class EvidenceRewriter:
             rewrite_prompt=prompt, rewrite_response=response, stage="rewrite", error=error_message,
             fidelity_checks={"deterministic": None, "semantic": None, "generation": metadata},
         )
+
+
+class RewritePolicy:
+    """Accept only automated deterministic and separately configured semantic checks.
+
+    The stable intervention identity binds the complete semantic configuration
+    used during calibration. Credentials, capability evidence and transport
+    controls do not affect it. Clients still own admission, retries and request
+    accounting; stage binding alone says nothing about physical accounting.
+    This boundary never calls a target or guarantees semantic equivalence.
+    """
+
+    def __init__(self, rewriter: EvidenceRewriter, verifier: CompletionClient) -> None:
+        if not isinstance(rewriter, EvidenceRewriter):
+            raise TypeError("rewriter must be EvidenceRewriter")
+        if (not isinstance(verifier, CompletionClient) or not isinstance(verifier.config, ModelConfig)
+                or not callable(verifier.generate)):
+            raise TypeError("verifier must implement CompletionClient with a ModelConfig")
+        self.rewriter = rewriter
+        self.verifier = verifier
+        self._identity_json = self._configuration_identity()
+        self._intervention_id = "rewrite:" + text_hash(self._identity_json)
+
+    def _configuration_identity(self) -> str:
+        def semantic_config(client):
+            if not isinstance(client.config, ModelConfig):
+                raise ValueError("Rewrite policy configuration has changed; construct a new policy")
+            config = client.config.to_dict()
+            return {name: config[name] for name in ("protocol", "endpoint", "model", "parameters")}
+
+        identity = {
+            "method_version": REWRITE_METHOD_VERSION, "rewrite_template_hash": text_hash(REWRITE_TEMPLATE),
+            "verification_template_hash": text_hash(rewrite_fidelity.VERIFICATION_TEMPLATE),
+            "checker": rewrite_fidelity.checker_identity(), "rewriter": semantic_config(self.rewriter.client),
+            "verifier": semantic_config(self.verifier),
+        }
+        return json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    def validate_configuration(self) -> None:
+        """Reject semantic configuration drift before another call or fit use."""
+        if self._configuration_identity() != self._identity_json:
+            raise ValueError("Rewrite policy configuration has changed; construct a new policy and matching calibration")
+
+    @property
+    def intervention_id(self) -> str:
+        self.validate_configuration()
+        return self._intervention_id
+
+    def _policy_response_failure(self, response: ModelResponse, client: CompletionClient) -> tuple[str, str] | None:
+        """Check post-call drift and only the settings the response actually reports.
+
+        Missing metadata remains unknown. Reported requested controls must be
+        configured; reported effective controls must agree where explicitly
+        configured. Unrequested effective provider defaults are retained as
+        observations, not promoted into configured or verified controls.
+        """
+        try:
+            self.validate_configuration()
+        except ValueError:
+            return "configuration_changed", "Rewrite policy configuration changed during generation."
+        expected = client.config.to_dict()["parameters"]
+        reported = response.to_dict()
+        for field in ("requested_settings", "confirmed_settings"):
+            for name, value in reported[field].items():
+                if name not in expected:
+                    if field == "requested_settings":
+                        return "response_settings_mismatch", "Response requested settings differ from the rewrite policy."
+                    continue
+                if json.dumps(value, sort_keys=True) != json.dumps(expected[name], sort_keys=True):
+                    return "response_settings_mismatch", "Response settings contradict the rewrite policy."
+        return None
+
+    def rewrite(self, item: RewriteInput) -> RewriteRecord:
+        """Return accepted evidence or explicit failed evidence with partial checks.
+
+        A failed generator record is returned unchanged. A deterministic failure
+        skips semantic verification. No failure schedules a target or fallback.
+        """
+        self.validate_configuration()
+        record = self.rewriter.generate(item)
+        if record.status == RecordStatus.FAILED:
+            return record
+        if failure := self._policy_response_failure(record.rewrite_response, self.rewriter.client):
+            kind, message = failure
+            checks = dict(record.fidelity_checks)
+            checks["generation"] = dict(checks["generation"]) | {"status": "failed", "failure_kind": kind}
+            return replace(record, status=RecordStatus.FAILED, error=message, fidelity_checks=checks)
+        deterministic = rewrite_fidelity.check_factual_tokens(item.evidence, record.rewritten_evidence)
+        checks = dict(record.fidelity_checks) | {
+            "deterministic": deterministic,
+            "semantic": {"status": "not_performed", "reason": "Semantic verification has not completed."},
+            "intervention_id": self._intervention_id, "interpretation": rewrite_fidelity.ACCEPTANCE_INTERPRETATION,
+            "policy": json.loads(self._identity_json),
+        }
+        if deterministic["status"] == "rejected":
+            return replace(record, status=RecordStatus.FAILED, stage="deterministic", fidelity_checks=checks,
+                           error="Factual-token preservation failed: " + ", ".join(deterministic["discrepancies"]))
+        return self._verify(item, record, checks)
+
+    def _verify(self, item: RewriteInput, record: RewriteRecord, checks: dict) -> RewriteRecord:
+        prompt = rewrite_fidelity.render_verification_prompt(item.evidence, record.rewritten_evidence, item.as_of)
+        stage_generate = getattr(self.verifier, "generate_for_stage", None)
+        accounting = getattr(self.verifier, "request_accounting", None)
+        metadata = {
+            "model": self.verifier.config.to_dict(), "stage": "verify", "stage_bound": callable(stage_generate),
+            "request_accounting": accounting.to_dict() if isinstance(accounting, CapabilityEvidence) else None,
+            "method_version": rewrite_fidelity.SEMANTIC_CHECK_VERSION,
+            "template_hash": text_hash(rewrite_fidelity.VERIFICATION_TEMPLATE), "prompt_hash": text_hash(prompt),
+            "started_at": datetime.now(UTC).isoformat(),
+        }
+        started = monotonic()
+        response, error_message, failure_kind, diagnostics = None, None, None, None
+        try:
+            self.validate_configuration()
+            result = (stage_generate(prompt, stage="verify") if callable(stage_generate)
+                      else self.verifier.generate(prompt))
+            if not isinstance(result, ModelResponse):
+                failure_kind, error_message = "invalid_response", "Verification completion client must return ModelResponse."
+            else:
+                response = result
+                if failure := (self._policy_response_failure(response, self.verifier)
+                               or _response_failure(response, stage="Rewrite verification")):
+                    failure_kind, error_message = failure
+                else:
+                    semantic = rewrite_fidelity.parse_semantic_verification(response.content)
+                    checks["semantic"] = semantic
+                    if semantic["status"] == "malformed":
+                        failure_kind, error_message = "malformed_verification", semantic["reason"]
+                    elif semantic["status"] == "rejected":
+                        failure_kind = "fidelity_rejected"
+                        reasons = semantic["discrepancies"] or ["Equivalence or a required preservation check was negative."]
+                        error_message = "Semantic verification rejected the rewrite: " + "; ".join(reasons)
+        except Exception as error:
+            failure_kind, error_message, diagnostics = _request_failure(error, stage="Rewrite verification")
+        metadata.update({"finished_at": datetime.now(UTC).isoformat(), "latency_s": monotonic() - started,
+                         "status": "passed" if failure_kind is None else "failed", "failure_kind": failure_kind,
+                         "diagnostics": diagnostics})
+        checks["verification"] = metadata
+        return replace(record, verification_prompt=prompt, verification_response=response, fidelity_checks=checks,
+                       status=RecordStatus.COMPLETED if failure_kind is None else RecordStatus.FAILED,
+                       stage="verify", error=error_message)
