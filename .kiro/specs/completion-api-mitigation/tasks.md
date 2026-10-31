@@ -95,7 +95,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Boundary: Rewrite policy_
   - _Requirements: 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 4.3 Integrate configured single and ensemble execution
+- [x] 4.3 Integrate configured single and ensemble execution
   - Compose adapters, shared request budget, optional rewrite and existing ensembles in one workflow. Share one accepted rewrite per item; retain draw associations and explicit unavailable fields.
   - Done when original/rewritten single/ensemble fixtures complete through one configuration and disabled mitigation makes zero rewrite/verification calls.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

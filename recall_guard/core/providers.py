@@ -176,6 +176,11 @@ class OpenAICompatibleClient:
         self._credential = credential
         self._control = RequestControl(config, budget, secrets=() if credential is None else (credential,))
 
+    @property
+    def budget(self) -> CallBudget:
+        """The actual shared physical-request budget, for workflow validation."""
+        return self._control.budget
+
     def generate(self, prompt: str, **parameters: ParameterValue) -> ModelResponse:
         """Generate using configured settings plus explicit per-call overrides."""
         return self._generate(prompt, parameters, stage="target", enforce_mia=self.features.mia_scoring)

@@ -116,6 +116,11 @@ class CallbackClient:
         self._control = RequestControl(config, budget, secrets=secrets)
 
     @property
+    def budget(self) -> CallBudget:
+        """Associated budget; opaque callback accounting still remains unknown."""
+        return self._control.budget
+
+    @property
     def request_accounting(self) -> CapabilityEvidence:
         """Separate cooperative accounting support from observed model features."""
         if self._hook_parameter is None:

@@ -105,5 +105,19 @@
       "recall_guard/harness/rewrite_fidelity.py",
       "tests/harness/test_rewrite_fidelity.py"
     ]
+  },
+  "4.3": {
+    "review": "APPROVED",
+    "verification": "Independent re-review APPROVED after fatal projection classification repair. Parent fresh 416 tests passed in 8.47s; Ruff and architecture passed. Verified all four execution modes, retained draw identities, honest shared accounting, preflight and fatal stopping. Original RED31 and remediation RED10 recorded.",
+    "timestamp": "2026-10-31T12:11:11.967680+00:00",
+    "files": [
+      "recall_guard/harness/workflow.py",
+      "recall_guard/harness/workflow_types.py",
+      "tests/harness/test_workflow.py",
+      "recall_guard/__init__.py",
+      "recall_guard/core/providers.py",
+      "recall_guard/core/provider_anthropic.py",
+      "recall_guard/core/provider_callback.py"
+    ]
   }
 }

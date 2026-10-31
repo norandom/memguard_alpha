@@ -108,6 +108,11 @@ class AnthropicClient:
         self._credential = credential
         self._control = RequestControl(config, budget, secrets=(credential,))
 
+    @property
+    def budget(self) -> CallBudget:
+        """The actual shared physical-request budget, for workflow validation."""
+        return self._control.budget
+
     def generate(self, prompt: str, **parameters: ParameterValue) -> ModelResponse:
         """Generate with native configured settings and explicit per-call overrides."""
         return self._generate(prompt, parameters, stage="target")
