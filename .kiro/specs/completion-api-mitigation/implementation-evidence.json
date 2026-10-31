@@ -42,13 +42,16 @@
   },
   "1.4": {
     "review": "APPROVED",
-    "verification": "Reopened ensemble-wire foundation repair independently APPROVED; parent fresh canonical368 passed1Windowslinkprivilege skip39.77s exit0,Ruff/architecture/diffpass; independent368pass+66dependentCLI/configsmoke. ActualRED33fail15controls. Shared typed EnsembleSpec construction preserves protocol identity and existing math; Runner uses it before calls; CLI delegation pending5.4.",
-    "timestamp": "2026-10-31T15:38:02.456102+00:00",
+    "verification": "Independent APPROVED metadata repair: 523 passed with 1 existing Windows symlink skip. Parent fresh 190 adverse/legitimate-payload tests passed in 5.12s; early synthetic rejection and saved Opus exact replay passed, as did Ruff, architecture and diff checks. Shared private guard protects protocol, journal save/load, CLI plans and portable reports without changing valid identities or raw task data.",
+    "timestamp": "2026-10-31T17:59:15.765776+00:00",
     "files": [
+      "recall_guard/harness/_execution_metadata.py",
       "recall_guard/harness/intervention_types.py",
-      "recall_guard/harness/intervention.py",
-      "tests/harness/test_intervention_types.py",
-      "tests/harness/test_intervention.py"
+      "recall_guard/harness/intervention_journal.py",
+      "recall_guard/harness/intervention_report.py",
+      "recall_guard/harness/intervention_config.py",
+      "tests/harness/test_intervention_metadata.py",
+      "tests/harness/test_intervention_report.py"
     ]
   },
   "2.1": {

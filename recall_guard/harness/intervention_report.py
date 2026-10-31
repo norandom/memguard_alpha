@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import urlsplit
 
+from recall_guard.harness._execution_metadata import check_run_metadata
 from recall_guard.harness.intervention_journal import ExperimentRun
 from recall_guard.harness.intervention_metrics import summarize_experiment
 
@@ -30,10 +31,6 @@ _VERSION = 1
 _FILES = {"records": "records.json", "metrics": "metrics.json"}
 _ROLES = ("target", "rewriter", "verifier")
 _INTEGRITY = "sha256_exact_utf8_file_bytes_including_lf; not_provider_origin_evidence"
-_CREDENTIAL_FIELDS = frozenset({
-    "apikey", "authorization", "accesstoken", "password", "credential", "credentials", "credentialref",
-    "xapikey", "bearertoken", "secret", "clientsecret", "headers",
-})
 
 
 def _object(value, allowed, name, *, required=()):
@@ -108,37 +105,10 @@ def _response_controls(response, source):
             "requested_unconfirmed": sorted(set(response["requested_settings"]) - set(response["confirmed_settings"]))}
 
 
-def _check_metadata_fields(value):
-    """Inspect JSON metadata containers only, never arbitrary objects or text."""
-    if isinstance(value, Mapping):
-        for key, child in value.items():
-            if key.lower().replace("_", "").replace("-", "") in _CREDENTIAL_FIELDS:
-                raise ValueError("Execution metadata must exclude credential and authorization fields")
-            _check_metadata_fields(child)
-    elif isinstance(value, (list, tuple)):
-        for child in value:
-            _check_metadata_fields(child)
-
-
 def _check_snapshot_metadata(snapshot):
     _object(snapshot, ("checkpoint", "arms", "preflight", "stop_reason"), "run snapshot",
             required=("checkpoint", "arms", "preflight", "stop_reason"))
-    # Inspect every saved container, excluding only schema-defined task values.
-    # Raw content, tokens and prompts are strings, which the key check ignores.
-    checkpoint = snapshot["checkpoint"]
-    metadata = dict(snapshot) | {
-        "checkpoint": dict(checkpoint) | {
-            "items": [{key: value for key, value in item.items() if key != "label"}
-                      for item in checkpoint["items"]],
-            "draws": [dict(draw) | {
-                "metadata": {key: value for key, value in draw["metadata"].items() if key != "answer"},
-            } for draw in checkpoint["draws"]],
-        },
-        "arms": [dict(arm) | {
-            "outcome": {key: value for key, value in arm["outcome"].items() if key != "answer"},
-        } for arm in snapshot["arms"]],
-    }
-    _check_metadata_fields(metadata)
+    check_run_metadata(snapshot)
 
 
 def _settings(snapshot):

@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
+from recall_guard.harness._execution_metadata import check_run_metadata
 from recall_guard.harness.intervention_types import EvidenceArm, ExperimentCheckpoint, RecordStatus
 
 
@@ -145,6 +146,7 @@ class ExperimentJournal:
 
     def load(self):
         values = json.loads(self.path.read_text(encoding="utf-8"))
+        check_run_metadata(values)
         if type(values["journal_version"]) is not int or values["journal_version"] != 1:
             raise ValueError("Unsupported experiment journal version")
         if values["intent"] is not None:
@@ -152,8 +154,9 @@ class ExperimentJournal:
         return ExperimentRun.from_dict(values)
 
     def save(self, result, intent=None):
-        temporary = self.path.with_name(self.path.name + ".tmp-" + uuid4().hex)
         values = {"journal_version": 1, **result.to_dict(), "intent": intent}
+        check_run_metadata(values)
+        temporary = self.path.with_name(self.path.name + ".tmp-" + uuid4().hex)
         try:
             with temporary.open("w", encoding="utf-8", newline="\n") as handle:
                 json.dump(values, handle, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2)

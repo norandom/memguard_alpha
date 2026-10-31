@@ -25,6 +25,7 @@ from urllib.parse import urlsplit
 
 from recall_guard.core.completion import CompletionProtocol, FeatureChoices, validate_features
 from recall_guard.core.provider_anthropic import validate_anthropic_config
+from recall_guard.harness._execution_metadata import check_execution_metadata
 from recall_guard.harness.intervention_metrics import CONDITION_ORDER
 from recall_guard.harness.intervention_types import ExperimentCheckpoint, ExperimentItem, ExperimentProtocol
 from recall_guard.harness.rewriting import REWRITE_METHOD_VERSION
@@ -257,7 +258,7 @@ def experiment_plan(config, *, prior_run=None):
                                                       "source": "No actual probe in this offline plan"}
                                                for name in declared.capabilities}}
     fits = sorted(_FIT_KEYS & protocol.data_hashes.keys())
-    return {"protocol_id": protocol.protocol_id, "conditions": list(CONDITION_ORDER), "single_draw_index": 0,
+    plan = {"protocol_id": protocol.protocol_id, "conditions": list(CONDITION_ORDER), "single_draw_index": 0,
             "draws_per_arm": protocol.draws, "rewrite_scope": protocol.rewrite_scope,
             "shared_target_settings": True, "roles": roles, "ready_for_batch": False,
             "calibration": {"required_fingerprints": {key: protocol.data_hashes[key] for key in fits},
@@ -274,3 +275,5 @@ def experiment_plan(config, *, prior_run=None):
                                "basis": "Fresh execution has one probe per role; resume intentionally re-probes. "
                                "Fidelity rejection, failures and hard cap can reduce verification/target calls. "
                                "Single conditions reuse ensemble draw 0; n is not total request cost."}}
+    check_execution_metadata(plan)
+    return plan

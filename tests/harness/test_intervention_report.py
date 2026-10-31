@@ -144,15 +144,19 @@ def test_rehashed_protocol_credentials_are_rejected_on_load(tmp_path, location, 
     destination = tmp_path / "report"
     export_experiment(recorded_run(), destination)
     records = read_json(destination / "records.json")
-    records["run"] = protocol_metadata_run(location, field).to_dict()
-    unsafe_run = ExperimentRun.from_dict(records["run"])
+    protocol = records["run"]["checkpoint"]["protocol"]
+    protocol[location]["review"] = [{"nested": {field: "SYNTHETIC_REVIEW_FIXTURE"}}]
+    # Historical artifacts can contain unsafe raw JSON even though the current
+    # protocol constructor rejects it. Keep the identity/metrics coherent using
+    # the unchanged canonical protocol hash, without constructing unsafe types.
+    protocol_id = hashlib.sha256(json.dumps(protocol, sort_keys=True, ensure_ascii=False, allow_nan=False,
+                                            separators=(",", ":")).encode("utf-8")).hexdigest()
+    records["run"]["checkpoint"]["protocol_id"] = protocol_id
     manifest = read_json(destination / "manifest.json")
-    analysis = manifest["analysis"]
-    metrics = summarize_experiment(unsafe_run, confidence_level=analysis["confidence_level"],
-                                   confidence_component=analysis["confidence_component"])
-    manifest["protocol_id"] = unsafe_run.checkpoint.protocol.protocol_id
-    for role in ("target", "rewriter", "verifier"):
-        manifest["settings"][role]["requested"] = records["run"]["checkpoint"]["protocol"][role + "_model"]["parameters"]
+    metrics = read_json(destination / "metrics.json")["metrics"]
+    metrics["protocol_id"] = protocol_id
+    metrics["provenance"]["cohort_definitions"] = protocol["cohort_definitions"]
+    manifest["protocol_id"] = protocol_id
     write_json(destination / "records.json", records)
     write_json(destination / "metrics.json", {"schema_version": 1, "metrics": metrics})
     write_json(destination / "manifest.json", manifest)

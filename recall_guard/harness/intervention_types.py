@@ -28,6 +28,7 @@ from recall_guard.core.completion import (
 from recall_guard.core.consensus import Tail
 from recall_guard.core.ensemble import EnsembleSpec, LocationMode, MultimodalAction, ReferenceMode
 from recall_guard.core.request_control import RequestEvent
+from recall_guard.harness._execution_metadata import check_execution_metadata
 
 SCHEMA_VERSION = 1
 
@@ -173,6 +174,7 @@ class ExperimentProtocol:
             raise ValueError("data_hashes, cohort_definitions and audit_selection must be predeclared")
         for digest in self.data_hashes.values():
             _digest(digest, "data hash")
+        check_execution_metadata(self.to_dict())
 
     @property
     def protocol_id(self) -> str:
