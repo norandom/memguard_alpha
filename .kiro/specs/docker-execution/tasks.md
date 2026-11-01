@@ -25,7 +25,7 @@ until its shared-recipe replacement is verified.
   - _Requirements: 1.1, 1.4, 2.1, 3.2, 3.3, 3.4, 4.1_
 
 - [ ] 2. Integrate local commands and existing CI
-- [ ] 2.1 Add explicit developer and optional notebook commands
+- [x] 2.1 Add explicit developer and optional notebook commands
   - Define the dev service with no ports/credentials and an explicit output mount; do not bind the host checkout/venv by default.
   - Add an opt-in authenticated notebook service using the dev image with host publication limited to 127.0.0.1. Show runtime-only credential injection only for an explicit existing live protocol.
   - Done when build/test commands and notebook launch work, token authentication is required, output files persist, and startup makes zero provider calls. Shut down smoke services afterward.

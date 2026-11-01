@@ -1,0 +1,42 @@
+x-development: &development
+  image: recall-guard:dev
+  build:
+    context: .
+    target: dev
+  init: true
+  working_dir: /app
+  volumes:
+    - &outputs
+      type: bind
+      source: ./runs/container
+      target: /outputs
+      bind:
+        create_host_path: false
+
+services:
+  dev:
+    <<: *development
+
+  notebook:
+    <<: *development
+    profiles: [notebook]
+    ports:
+      - "127.0.0.1:8888:8888"
+    volumes:
+      - *outputs
+      - type: bind
+        source: ./notebooks
+        target: /app/notebooks
+        bind:
+          create_host_path: false
+    command:
+      - uv
+      - run
+      - --no-sync
+      - jupyter
+      - lab
+      - --ip=0.0.0.0
+      - --port=8888
+      - --no-browser
+      - --ServerApp.root_dir=/app
+      - --ServerApp.preferred_dir=/app/notebooks
