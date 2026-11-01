@@ -1,0 +1,15 @@
+{
+  "1.1": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED after two concrete remediations; parent VERIFIED final full2008passed1skip1warning158.08s/raw0; logSHA87107448ef69d369f6429230abef891c032805fde3aa837ffccfc2cbf2635bbb; 89 focused and6independentregressions; Ruff/architecture/sourcehashes pass",
+    "timestamp": "2026-11-01T08:54:49.734778+00:00",
+    "files": [
+      "recall_guard/core/readiness_types.py",
+      "recall_guard/core/readiness_evidence.py",
+      "tests/core/test_readiness_types.py",
+      ".kiro/specs/adaptive-provider-readiness/design.md",
+      ".kiro/specs/adaptive-provider-readiness/spec.json",
+      ".kiro/specs/adaptive-provider-readiness/task-plan-validation.md"
+    ]
+  }
+}

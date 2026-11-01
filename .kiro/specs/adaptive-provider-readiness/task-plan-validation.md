@@ -27,9 +27,10 @@ requested, selected and observed reporting.
 | 5.1, 5.2, 5.3, 5.4 | 2.3, 5.1–5.2, 6.1–6.2 |
 | 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7 | 3.1–3.2, 4.1–4.2 |
 
-Task 6.2 proposes a separate bounded pilot; it does not authorize requests or
-change the October 31 budget. User approval must explicitly include or exclude
-that allowance. Missing authorization leaves the live task incomplete.
+At review time, task 6.2 proposed a separate bounded pilot. After the PASS,
+the user explicitly approved implementation and its stated allowance. This
+authorization is recorded in spec.json and does not change the October 31
+budget. Offline/platform prerequisites still apply before live execution.
 
 This verdict validates the plan, not implementation correctness, live provider
 support or mitigation effectiveness. No tests or provider requests were made

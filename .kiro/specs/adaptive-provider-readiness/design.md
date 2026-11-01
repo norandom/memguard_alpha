@@ -86,7 +86,8 @@ select a caller-authorized text-only plan; a timeout cannot trigger that choice.
 
 | Path | Responsibility |
 | --- | --- |
-| `recall_guard/core/readiness_types.py` | Validated immutable policy, observation, pending-receipt and partial-response types; serialization |
+| `recall_guard/core/readiness_types.py` | Standard-library-only policy, observation, pending-receipt and cancellation contracts; serialization |
+| `recall_guard/core/readiness_evidence.py` | Complete/partial probe evidence using existing completion contracts; keeps configuration imports acyclic |
 | `recall_guard/core/readiness.py` | Per-operation state, wait decisions, cancellation and observation trace |
 | `recall_guard/core/request_control.py` | Reused one-attempt admission/ledger seam; retry hints and redaction |
 | `recall_guard/core/completion.py` | Optional policy/trace on existing configured contracts; old defaults preserved |

@@ -13,7 +13,7 @@ and the existing Kiro review/verification gates. Do not repeat whole-platform
 validation without a source change or specific concern.
 
 - [ ] 1. Establish shared contracts and physical accounting
-- [ ] 1.1 Define readiness policies, observation states and response evidence
+- [x] 1.1 Define readiness policies, observation states and response evidence
   - Define validated immutable policy, observation, pending-receipt, complete/partial probe evidence and runtime cancellation contracts, including documented units and limits.
   - Separate observed provider progress from elapsed local waiting, answer content from reasoning progress, and complete responses from retained partial data.
   - Done when invalid/non-finite policies fail locally, unavailable capabilities remain explicit and serialization excludes runtime controls/credentials.
@@ -136,7 +136,7 @@ validation without a source change or specific concern.
 
 - [ ] 6.2 Run and report a separately authorized operational pilot
   - Prepare a new dated protocol for the existing NIM model; preserve all October 31 study artifacts and exhausted phase budgets.
-  - Proposed initial ceiling for explicit user approval: at most eight additional physical inference requests, zero status polls while the route is unverified, and 20 minutes of controlled total waiting. Compare four scheduled JSON-mode probes in balanced fixed/adaptive order, with at most one permitted retry each; generation parameters stay identical. Do not switch models or add paid auxiliary-provider calls.
+  - Initial ceiling explicitly approved on 2026-11-01: at most eight additional physical inference requests, zero status polls while the route is unverified, and 20 minutes of controlled total waiting. Compare four scheduled JSON-mode probes in balanced fixed/adaptive order, with at most one permitted retry each; generation parameters stay identical. Do not switch models or add paid auxiliary-provider calls.
   - Record cancellation, early permanent rejection, excessive provider delay and budget stops as partial/inconclusive results. Additional SSE, calibration or rewrite-effect trials require their own declared configuration and allowance.
   - Done when an authorized bounded attempt and its request/latency/availability report reconcile, including any uncompleted comparisons. A missing authorization or unavailable runtime leaves this task incomplete; offline tests never substitute for a live result.
   - _Boundary: Live operational measurement and dated evidence_
@@ -150,3 +150,5 @@ validation without a source change or specific concern.
 - Returning full text without logprobs can support an explicitly selected completion-only plan. A service timeout, missing fitted calibration or rejected rewrite is not that trigger.
 - Fresh evaluation/resume probes are intentional and consume the remaining allowance. Never import preparation observations into an identity-scoped client cache.
 - Old Windows interruption causes remain unknown. The proven Dagger staging issue came from an archive under an ignored parent checkout, not from its CLI/module version difference.
+
+- Task 1.1 keeps stdlib policy/state contracts in readiness_types.py and response-dependent evidence in readiness_evidence.py to avoid reciprocal configuration imports. READY must validate explicitly requested token evidence independently of MIA and compare canonical JSON settings, since Python mapping equality conflates nested boolean/number values.
