@@ -853,6 +853,9 @@ def _legacy_checkpoint_fields(data):
         responses.extend((rewrite.get("rewrite_response"), rewrite.get("verification_response")))
     if any(response is not None and "readiness_trace" in response for response in responses):
         raise ValueError("Readiness trace requires schema version 2")
+    if any(response is not None and any("stream" in response.get(name, {})
+           for name in ("requested_settings", "confirmed_settings")) for response in responses):
+        raise ValueError("Stream response settings require schema version 2")
     for request in data["requests"]:
         if "phase" in request or {"purpose", "operation_id", "request_id"} & request["event"].keys():
             raise ValueError("Readiness request fields require schema version 2")

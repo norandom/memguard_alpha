@@ -36,6 +36,8 @@ def validate_anthropic_config(config: ModelConfig, features: FeatureChoices | No
         raise TypeError("config must be ModelConfig")
     if config.protocol != CompletionProtocol.ANTHROPIC_MESSAGES:
         raise ValueError("AnthropicClient requires the explicit anthropic_messages protocol")
+    if config.readiness is not None:
+        raise ValueError("Anthropic observation profile is unsupported")
     features = FeatureChoices() if features is None else features
     validate_features(config, features)
     if features.mia_scoring:

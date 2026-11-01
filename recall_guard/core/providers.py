@@ -25,6 +25,9 @@ from recall_guard.core.completion import (
     TokenEvidence,
     validate_features,
 )
+from recall_guard.core.provider_observation import exchange, validate_observation_profile
+from recall_guard.core.readiness import ReadinessControl
+from recall_guard.core.readiness_evidence import ProbeEvidence
 from recall_guard.core.request_control import CallBudget, RequestControl, RequestError
 
 _ECHOED_CONTROLS = frozenset({"temperature", "top_p", "seed", "random_seed", "max_tokens", "max_completion_tokens"})
@@ -158,6 +161,7 @@ class OpenAICompatibleClient:
             raise TypeError("config must be ModelConfig")
         if config.protocol != CompletionProtocol.OPENAI_CHAT:
             raise ValueError("OpenAICompatibleClient requires the explicit openai_chat protocol")
+        validate_observation_profile(config)
         self.config = config
         self.features = FeatureChoices() if features is None else features
         validate_features(config, self.features)
@@ -175,6 +179,8 @@ class OpenAICompatibleClient:
             raise ValueError("A credential reference is required unless unauthenticated access is explicitly enabled")
         self._credential = credential
         self._control = RequestControl(config, budget, secrets=() if credential is None else (credential,))
+        self._readiness = None if config.readiness is None else ReadinessControl(self._control)
+        self._last_operation = None
 
     @property
     def budget(self) -> CallBudget:
@@ -189,7 +195,14 @@ class OpenAICompatibleClient:
         """Name the budget-ledger stage without reserving a generation control."""
         return self._generate(prompt, parameters, stage=stage, enforce_mia=self.features.mia_scoring)
 
-    def _generate(self, prompt: str, overrides: dict, *, stage: str, enforce_mia: bool) -> ModelResponse:
+    def _generate(self, prompt: str, overrides: dict, *, stage: str, enforce_mia: bool, purpose=None) -> ModelResponse:
+        if self._readiness is not None:
+            result = self._observe(prompt, overrides, stage=stage, purpose=purpose)
+            if result.ready or not enforce_mia and isinstance(result.response, ModelResponse) and (
+                result.observations[-1].reason == "missing_token_evidence"
+            ):
+                return result.response
+            raise self._readiness_failure(result)
         if not isinstance(prompt, str):
             raise TypeError("prompt must be a string")
         settings = replace(self.config, parameters=dict(self.config.parameters) | overrides)
@@ -211,6 +224,77 @@ class OpenAICompatibleClient:
             return result
 
         return self._control.run(operation, stage=stage)
+
+    @staticmethod
+    def _readiness_failure(result):
+        error = result.error or RequestError("Readiness operation did not complete",
+                                             code=result.observations[-1].state.value,
+                                             response_evidence=result.response)
+        error.readiness_trace = result.observations
+        error.pending = result.pending
+        return error
+
+    def generate_with_readiness(self, prompt: str, *, stage: str = "target", cancellation=None,
+                                on_observation=None, **parameters):
+        """Return terminal evidence, including deferral/partial data, without raising it.
+
+        Runtime cancellation and callbacks are separate from generation settings.
+        Ordinary generate retains its response-or-RequestError interface. The
+        snapshot refers to the most recently started operation on this client.
+        """
+        return self._observe(prompt, parameters, stage=stage, cancellation=cancellation, on_observation=on_observation)
+
+    def _observe(self, prompt, parameters, *, stage, cancellation=None, on_observation=None, purpose=None):
+        if self._readiness is None:
+            raise ValueError("generate_with_readiness requires an explicit readiness policy")
+        if not isinstance(prompt, str):
+            raise TypeError("prompt must be a string")
+        settings = replace(self.config, parameters=dict(self.config.parameters) | parameters)
+        validate_features(settings, self.features)
+        supplied = settings.to_dict()["parameters"]
+        payload = {"model": settings.model, "messages": [{"role": "user", "content": prompt}], **supplied}
+        operation = self._readiness.operation(stage=stage, features=self.features, cancellation=cancellation,
+                    on_observation=on_observation, parameters=supplied, purpose=purpose)
+        self._last_operation = operation
+
+        def perform(context, pending=None):
+            return exchange(settings, self._credential, payload, supplied, context, pending=pending,
+                            parse_response=_chat_response, http_failure=_http_failure,
+                            transport_failure=_transport_failure)
+
+        return operation.run(perform, poll=perform if settings.readiness.pending_status is not None else None)
+
+    def readiness_snapshot(self):
+        """Inspect elapsed local waiting; a snapshot never asserts new progress."""
+        return None if self._last_operation is None else self._last_operation.readiness_snapshot()
+
+    def probe_with_evidence(self, prompt: str = _PROBE_PROMPT, *, stage: str = "probe", cancellation=None,
+                            on_observation=None) -> ProbeEvidence:
+        """Observe this exact configuration; retain failed complete/partial evidence."""
+        if self._readiness is None:
+            raise ValueError("probe_with_evidence requires an explicit readiness policy")
+        result = self._observe(prompt, {}, stage=stage, cancellation=cancellation,
+                    on_observation=on_observation, purpose="probe")
+        report = (self._probe_report(result.response) if isinstance(result.response, ModelResponse)
+                  else CapabilityReport({name: CapabilityEvidence(CapabilityStatus.UNVERIFIED,
+                        "Inference probe did not complete", "Complete capability evidence was not observed.")
+                        for name in self.config.inspect(self.features).capabilities}, self.features))
+        error = result.error
+        terminal = result.observations[-1]
+        if (result.response is None and error is not None
+                and error.status_code in {400, 422}
+                and error.code in {None, "invalid_parameter", "invalid_request_error", "unsupported_parameter"}
+                and terminal.state == "rejected" and terminal.reason == "parameter_rejected"
+                and error.parameter in self.config.parameters and error.parameter in report.capabilities):
+            # This control was rejected for the exact supplied configuration;
+            # neither arbitrary diagnostics nor model-wide incapability follow.
+            capabilities = dict(report.capabilities)
+            capabilities[error.parameter] = CapabilityEvidence(
+                CapabilityStatus.UNSUPPORTED, "Explicit configured probe parameter rejection",
+                "Provider rejected this requested control for this exact configuration.", observed=True,
+            )
+            report = CapabilityReport(capabilities, self.features)
+        return ProbeEvidence(self.config, report, result.response, result.observations)
 
     def _post(self, payload: dict) -> requests.Response:
         headers = {"Content-Type": "application/json"}
@@ -237,7 +321,10 @@ class OpenAICompatibleClient:
         The report concerns this exact configured parameter set, endpoint/model
         and feature selection. It is not a guarantee for changed overrides.
         """
-        response = self._generate(prompt, {}, stage=stage, enforce_mia=False)
+        response = self._generate(prompt, {}, stage=stage, enforce_mia=False, purpose="probe")
+        return self._probe_report(response)
+
+    def _probe_report(self, response):
         source = "Authenticated generation probe" if self._credential is not None else "Explicit unauthenticated generation probe"
         capabilities = {}
         for name in self.config.inspect(self.features).capabilities:

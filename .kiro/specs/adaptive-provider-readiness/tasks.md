@@ -38,7 +38,7 @@ validation without a source change or specific concern.
   - _Depends: 1.1, 1.2_
   - _Requirements: 1.3, 2.1, 2.2, 3.5, 3.6, 4.2, 4.3, 4.4_
 
-- [ ] 2. Observe and handle variable provider behavior
+- [x] 2. Observe and handle variable provider behavior
 - [x] 2.1 Add bounded waiting, cooldown and cancellation decisions
   - Interpret valid server delays, use configured bounded fallback backoff, and share a model/client cooldown across concurrent callers without holding a lock over network operations.
   - Keep ambiguous outcomes visible and require explicit replay permission; stop future admission on cancellation, deferral or limits.
@@ -57,7 +57,7 @@ validation without a source change or specific concern.
   - _Depends: 1.1_
   - _Requirements: 2.1, 3.4, 4.3, 4.4, 5.2_
 
-- [ ] 2.3 Integrate configured provider observation and explicit pending handling
+- [x] 2.3 Integrate configured provider observation and explicit pending handling
   - Connect the readiness loop and stream assembler to the existing configured OpenAI-chat client and evidence-bearing probe contract.
   - Preserve verified pending request headers. Enable status retrieval only with an explicitly supported trusted profile; count each GET and defer the initial gpt-oss profile while its route remains unverified.
   - Reject unsupported observation profiles before calls, preserve redirects/credential controls, and keep native Anthropic/callback default behavior unchanged.
@@ -160,3 +160,5 @@ validation without a source change or specific concern.
 - Task 2.1 adds ReadinessControl.operation(...).run(exchange) with admission-time ExchangeContext bounds and ReadinessResult. Pending transport remains deferred for task 2.3; RetryAfterHint now lives in readiness_types.py and remains import-compatible through request_control.py. Shared cooldown is on RequestControl, including terminal failures. ReadinessOperation._complete sanitizes locally failed complete evidence; preserve that boundary when integrating providers. RFC850 dates use receipt-relative years and valid oversized delays defer without fabricated numeric timing.
 
 - Task 2.2 adds standalone StreamAssembler/StreamProgress. Transport bytes count supplied chunks, independently of processed/event limits; local metadata must be UTF-8 encodable. Constructor stream-setting acceptance remains task 2.3. Focused Windows uv76passed and canonical Linux2235passed; the single full Windows uv exit0xE0000001 is preserved without a causal claim, and task6.1 remains required. All project commands now use uv run --no-sync per user instruction.
+
+- Task 2.3 integrates nvidia_nim observation and explicit loopback fixture polling. Probe capability reports preserve gated exact requested-control rejections; auth/quota/service failures do not imply missing token capability. Task 3.1 must add a compatible response-bearing legacy probe adaptation for readiness=None (including native Anthropic/callback); do not force optional NIM adaptive readiness to prepare frontier fallback. Keep old probe defaults unchanged. Final full Linux2303passed; full platform/kernel/wheel gates remain6.1.

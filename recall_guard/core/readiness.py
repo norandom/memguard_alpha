@@ -97,6 +97,8 @@ class ExchangeContext:
     connect_timeout_s: float
     socket_idle_timeout_s: float
     cancellation: CancellationToken
+    check: Callable[[], None] | None = None
+    on_progress: Callable | None = None
 
 
 @dataclass(frozen=True)
@@ -142,9 +144,10 @@ class ReadinessControl:
 
     def operation(self, *, stage: str, features: FeatureChoices | None = None,
                   cancellation: CancellationToken | None = None,
-                  on_observation: ObservationCallback | None = None) -> "ReadinessOperation":
+                  on_observation: ObservationCallback | None = None,
+                  parameters=None, purpose: str | None = None) -> "ReadinessOperation":
         return ReadinessOperation(self, stage, features or FeatureChoices(),
-                                  cancellation or CancellationToken(), on_observation)
+                                  cancellation or CancellationToken(), on_observation, parameters, purpose)
 
 
 class ReadinessOperation:
@@ -155,7 +158,7 @@ class ReadinessOperation:
     Completed snapshots freeze at the actual terminal observation time.
     """
 
-    def __init__(self, owner, stage, features, cancellation, callback):
+    def __init__(self, owner, stage, features, cancellation, callback, parameters=None, purpose=None):
         _text(stage, "stage")
         validate_features(owner.control.config, features)
         if not isinstance(cancellation, CancellationToken):
@@ -164,6 +167,8 @@ class ReadinessOperation:
             raise TypeError("on_observation must be callable")
         self.owner, self.control, self.policy = owner, owner.control, owner.policy
         self.stage, self.features, self.cancellation = stage, features, cancellation
+        self.parameters = owner.control.config.parameters if parameters is None else parameters
+        self.purpose = purpose or ("probe" if stage == "probe" else "inference")
         self.operation_id = str(uuid4())
         self._callback = callback
         self._lock = Lock()
@@ -173,6 +178,8 @@ class ReadinessOperation:
         self._waiting_s = 0.0
         self._response = self._pending = self._error = None
         self._call_id = self._request_id = self._status_code = None
+        self._progress = {}
+        self._progress_before_exchange = {}
 
     def _elapsed(self):
         return max(0.0, self.control._clock() - self._started_at)
@@ -201,9 +208,12 @@ class ReadinessOperation:
             timestamp=self.owner.utcnow().astimezone(UTC).isoformat(), elapsed_s=self._elapsed(),
             state=state, call_id=self._call_id, request_id=self._request_id, status_code=self._status_code,
             waiting_s=min(self._waiting_s, self._elapsed()), reason=reason, delay_s=delay_s,
-            delay_source=delay_source, credential_eligibility=eligibility)
+            delay_source=delay_source, credential_eligibility=eligibility, **self._progress)
         with self._lock:
-            self._observations.append(observation)
+            if state == ReadinessState.PROGRESS and self._observations and self._observations[-1].state == state:
+                self._observations[-1] = observation
+            else:
+                self._observations.append(observation)
         if notify and self._callback is not None:
             try:
                 self._callback(observation)
@@ -245,7 +255,19 @@ class ReadinessOperation:
         remaining_s = self._remaining()
         return ExchangeContext(self.operation_id, remaining_s,
                                min(self.policy.connect_timeout_s, remaining_s),
-                               min(self.policy.socket_idle_timeout_s, remaining_s), self.cancellation)
+                               min(self.policy.socket_idle_timeout_s, remaining_s), self.cancellation,
+                               self._guard, self._observe_progress)
+
+    def _observe_progress(self, progress):
+        """Coalesce immutable cumulative snapshots; bytes alone never imply progress."""
+        previous = self._progress
+        self._progress = {name: self._progress_before_exchange.get(name, 0) + getattr(progress, name) for name in (
+            "answer_characters", "reasoning_characters", "answer_deltas", "reasoning_deltas",
+            "transport_bytes", "keepalive_events")}
+        semantic = any(self._progress[name] > previous.get(name, 0)
+                       for name in ("answer_characters", "reasoning_characters"))
+        if semantic:
+            self._emit(ReadinessState.PROGRESS)
 
     def _exchange_record(self):
         rows = [row for row in self.control.budget.events if row.operation_id == self.operation_id]
@@ -314,12 +336,12 @@ class ReadinessOperation:
 
     def _validate_response(self, response):
         if not response.content.strip() or json.dumps(_plain(response.requested_settings), sort_keys=True) != json.dumps(
-            _plain(self.control.config.parameters), sort_keys=True
+            _plain(self.parameters), sort_keys=True
         ):
             return ReadinessReason.MALFORMED_RESPONSE
-        if (self.features.mia_scoring or self.control.config.parameters.get("logprobs") is True) and response.logprobs_unavailable_reason:
+        if (self.features.mia_scoring or self.parameters.get("logprobs") is True) and response.logprobs_unavailable_reason:
             return ReadinessReason.MISSING_TOKEN_EVIDENCE
-        if (self.features.mia_scoring or (self.control.config.parameters.get("top_logprobs") or 0) > 0) and response.mia_unavailable_reason:
+        if (self.features.mia_scoring or (self.parameters.get("top_logprobs") or 0) > 0) and response.mia_unavailable_reason:
             return ReadinessReason.MISSING_TOKEN_EVIDENCE
         return None
 
@@ -335,7 +357,8 @@ class ReadinessOperation:
             self._guard()
             reason = self._validate_response(response)
             if reason is not None:
-                self._error = RequestError("Completed response failed readiness checks", response_evidence=response)
+                self._error = RequestError("Completed response failed readiness checks", response_evidence=response,
+                    code="missing_token_evidence" if reason == ReadinessReason.MISSING_TOKEN_EVIDENCE else "invalid_response")
                 raise _Stop(ReadinessState.REJECTED, reason)
             self._error = None
             self._emit(ReadinessState.READY)
@@ -345,15 +368,24 @@ class ReadinessOperation:
                 self._error = self.control._failure(self._error)
             raise
 
-    def _run(self, exchange):
+    def _run(self, exchange, poll):
         self._emit(ReadinessState.WAITING)
-        for attempt in range(1, self.control.config.max_retries + 2):
+        attempt, polls = 1, 0
+        while True:
             self._guard()
             failure = None
             try:
+                pending = self._pending
+                if pending is not None:
+                    if polls >= self.policy.max_poll_requests:
+                        raise _Stop(ReadinessState.EXHAUSTED, ReadinessReason.POLL_LIMIT)
+                    polls += 1
+                self._progress_before_exchange = self._progress.copy()
                 response = self.control.run_attempt(
-                    lambda: exchange(self._context()), stage=self.stage, attempt=attempt,
-                    purpose=("probe" if self.stage == "probe" else "inference") if attempt == 1 else "retry",
+                    lambda pending=pending: exchange(self._context()) if pending is None else poll(self._context(), pending),
+                    stage=self.stage, attempt=attempt if pending is None else polls,
+                    purpose=(self.purpose if attempt == 1 else "retry") if pending is None else "status",
+                    request_id=None if pending is None else pending.request_id,
                     operation_id=self.operation_id, admission_guard=self._guard, wait=self._wait)
             except RequestError as error:
                 failure = error
@@ -375,11 +407,25 @@ class ReadinessOperation:
                     else:
                         self._emit(ReadinessState.PENDING)
                     self._guard()
-                    raise _Stop(ReadinessState.DEFERRED, ReadinessReason.PENDING_ROUTE_UNAVAILABLE)
+                    if poll is None:
+                        raise _Stop(ReadinessState.DEFERRED, ReadinessReason.PENDING_ROUTE_UNAVAILABLE)
+                    if polls >= self.policy.max_poll_requests:
+                        raise _Stop(ReadinessState.EXHAUSTED, ReadinessReason.POLL_LIMIT)
+                    if self.control.budget.remaining == 0:
+                        raise _Stop(ReadinessState.EXHAUSTED, ReadinessReason.REQUEST_BUDGET)
+                    delay = self._delay(hint, polls + 1)
+                    self._publish_delay(delay[0])
+                    self._wait(*delay)
+                    continue
                 self._complete(response)
                 return
             self._error = failure
             self._response = failure.response_evidence
+            self._guard()
+            if failure.code == "pending_identity_unavailable":
+                raise _Stop(ReadinessState.DEFERRED, ReadinessReason.PENDING_ROUTE_UNAVAILABLE)
+            if failure.code == "callback_failed":
+                raise _Stop(ReadinessState.DEFERRED, ReadinessReason.CALLBACK_FAILED)
             state, reason = self._classify(failure)
             delay = None
             if state != ReadinessState.REJECTED:
@@ -402,8 +448,9 @@ class ReadinessOperation:
             if self.control.budget.remaining == 0:
                 raise _Stop(ReadinessState.EXHAUSTED, ReadinessReason.REQUEST_BUDGET)
             self._wait(*delay)
+            attempt += 1
 
-    def run(self, exchange: Callable[[ExchangeContext], ModelResponse | PendingReceipt]) -> ReadinessResult:
+    def run(self, exchange: Callable[[ExchangeContext], ModelResponse | PendingReceipt], *, poll=None) -> ReadinessResult:
         """Execute once; failed/deferred results retain a terminal trace and evidence."""
         if not callable(exchange):
             raise TypeError("exchange must be callable")
@@ -414,7 +461,7 @@ class ReadinessOperation:
         stopped = None
         interrupted = None
         try:
-            self._run(exchange)
+            self._run(exchange, poll)
         except BudgetExhaustedError:
             stopped = _Stop(ReadinessState.EXHAUSTED, ReadinessReason.REQUEST_BUDGET)
         except _Stop as stop:

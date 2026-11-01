@@ -24,7 +24,7 @@ _CREDENTIAL_FIELDS = frozenset({
 })
 _TRANSPORT_FIELDS = frozenset({
     "model", "messages", "prompt", "endpoint", "url", "protocol", "provider", "timeout", "timeouts",
-    "maxretries", "retrybackoffs", "mincallintervals", "stream",
+    "maxretries", "retrybackoffs", "mincallintervals",
 })
 _CENSORED_LOGPROB = -9999.0
 
@@ -76,6 +76,8 @@ def _parameters(values: Mapping[str, ParameterValue]) -> Mapping[str, ParameterV
         raise TypeError("Generation parameters must be a mapping")
     for name, value in values.items():
         _text(name, "parameter name")
+        if name.lower().replace("_", "").replace("-", "") == "stream" and (name != "stream" or not isinstance(value, bool)):
+            raise ValueError("stream must be an explicit boolean generation parameter")
         if name.lower().replace("_", "").replace("-", "") in _TRANSPORT_FIELDS:
             raise ValueError("Generation parameters cannot override transport or input fields")
         if value is None:
@@ -245,6 +247,8 @@ class ModelConfig:
         _number(self.min_call_interval_s, "min_call_interval_s")
         if self.readiness is not None and not isinstance(self.readiness, ReadinessPolicy):
             raise TypeError("readiness must be ReadinessPolicy or None")
+        if "stream" in self.parameters and (self.readiness is None or self.protocol != CompletionProtocol.OPENAI_CHAT):
+            raise ValueError("stream requires opt-in OpenAI-chat readiness")
         if self.readiness is not None and self.readiness.pending_status is not None:
             pending = self.readiness.pending_status
             if (pending.model, pending.endpoint) != (self.model, self.endpoint):

@@ -357,3 +357,13 @@ def test_saved_version_one_reports_replay_exact_bytes_and_metrics(name):
     assert _json_bytes({"schema_version": 1, "run": report.run.to_dict()}) == (directory / "records.json").read_bytes()
     assert _json_bytes({"schema_version": 1, "metrics": report.metrics}) == (directory / "metrics.json").read_bytes()
 
+
+@pytest.mark.parametrize("settings", ["requested_settings", "confirmed_settings"])
+def test_v1_checkpoint_rejects_stream_response_metadata(settings):
+    directory = Path(__file__).resolve().parents[2] / "data" / "experiments" / "2026-10-31-completion-api" / "anthropic-evaluation-live"
+    payload = json.loads((directory / "records.json").read_text(encoding="utf-8"))["run"]["checkpoint"]
+    response = next(draw["response"] for draw in payload["draws"] if draw["response"] is not None)
+    response[settings]["stream"] = True
+    with pytest.raises(ValueError, match="[Ss]tream.*version 2"):
+        t.ExperimentCheckpoint.from_dict(payload)
+

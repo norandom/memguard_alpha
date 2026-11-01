@@ -62,5 +62,21 @@
       "tests/core/test_provider_stream.py",
       ".kiro/steering/recall-guard-package.md"
     ]
+  },
+  "2.3": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED after one remediation; parent verified9current overlays and Linux CPython3.12.12 canonical2303passed/raw0; logSHA25692687818c0a58891c89c8a0ab9402578df6717bc0f08c6d2e3fab0372fc48925. Original Windows focused483pass; final Linux focused507pass; rejected-control RED/GREEN verified; Ruff/architecture/diff/integrity pass. Report runs/readiness-2-3-fixed-review.md. Native uv abort unexplained; full6.1 matrix retained. Legacy response-bearing probe adaptation explicitly left for3.1.",
+    "timestamp": "2026-11-01T12:03:45.720168+00:00",
+    "files": [
+      "recall_guard/core/completion.py",
+      "recall_guard/core/provider_anthropic.py",
+      "recall_guard/core/provider_callback.py",
+      "recall_guard/core/providers.py",
+      "recall_guard/core/provider_observation.py",
+      "recall_guard/core/readiness.py",
+      "recall_guard/harness/intervention_types.py",
+      "tests/core/test_provider_readiness.py",
+      "tests/harness/test_readiness_persistence.py"
+    ]
   }
 }

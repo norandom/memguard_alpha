@@ -99,6 +99,8 @@ class CallbackClient:
             raise TypeError("config must be ModelConfig")
         if config.protocol != CompletionProtocol.CALLBACK:
             raise ValueError("CallbackClient requires the explicit callback protocol")
+        if config.readiness is not None:
+            raise ValueError("Callback observation profile is unsupported")
         if not callable(callback):
             raise TypeError("callback must be callable")
         if not isinstance(strict_budget, bool):
