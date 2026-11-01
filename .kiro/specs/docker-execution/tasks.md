@@ -24,14 +24,14 @@ until its shared-recipe replacement is verified.
   - _Boundary: Dockerfile runtime target_
   - _Requirements: 1.1, 1.4, 2.1, 3.2, 3.3, 3.4, 4.1_
 
-- [ ] 2. Integrate local commands and existing CI
+- [x] 2. Integrate local commands and existing CI
 - [x] 2.1 Add explicit developer and optional notebook commands
   - Define the dev service with no ports/credentials and an explicit output mount; do not bind the host checkout/venv by default.
   - Add an opt-in authenticated notebook service using the dev image with host publication limited to 127.0.0.1. Show runtime-only credential injection only for an explicit existing live protocol.
   - Done when build/test commands and notebook launch work, token authentication is required, output files persist, and startup makes zero provider calls. Shut down smoke services afterward.
   - _Boundary: Compose commands and mounts_
   - _Requirements: 1.2, 2.2, 2.3, 2.4, 3.2, 3.3, 3.4_
-- [ ] 2.2 Switch Dagger to the shared recipe without changing outputs
+- [x] 2.2 Switch Dagger to the shared recipe without changing outputs
   - Replace duplicate environment construction with the verified Dockerfile dev target and supported Python selector. Preserve test/lint/build/docs function inputs, wheel/sdist/site outputs and existing release matrix/shims.
   - Use the already-installed environment without incidental synchronization; do not mount a Docker socket or add a nested daemon.
   - Write artifacts under the non-root writable output directory and return wheel/sdist/site directories through the unchanged function contracts.

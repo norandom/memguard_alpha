@@ -5,7 +5,7 @@ runner (Req 6.1, 6.4). GitHub Actions is a thin control plane that *calls* these
 functions rather than re-implementing the steps in YAML.
 
 Functions:
-- ``base``        — the project container (uv image + synced environment).
+- ``base``        — the root Dockerfile's locked development target.
 - ``test``        — run the suite for one Python version.
 - ``test_matrix`` — run the suite across the supported Python matrix (Req 6.2).
 - ``lint``        — run ruff plus the structural-architecture gate (Req 6.3). The gate
@@ -19,40 +19,52 @@ Distribution (the "publish" pipeline op) is a GitHub Release built from ``build`
 output, created by the release workflow; there is no PyPI publish.
 """
 
+from typing import Annotated
+
 import dagger
 from dagger import dag, function, object_type
 
 #: Supported interpreter matrix (consumer pin + dev).
 PYTHONS = ("3.12", "3.14")
 
-#: uv-provided images carry uv + the requested CPython, pinned per call.
-_UV_IMAGE = "ghcr.io/astral-sh/uv:python{python}-bookworm-slim"
+# Filter secrets and bulky local state before host upload. The complete build
+# exclusions are still read from .dockerignore in base().
+SourceDirectory = Annotated[
+    dagger.Directory,
+    dagger.Ignore([
+        "**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/.aws", "**/.ssh",
+        "**/.venv", "**/venv", "**/.git", ".agent", ".agents", ".claude",
+        ".codex", ".kiro", "HANDOFF.md", "ci/sdk", "runs", "site", "dist",
+        "build", "wheels", "**/__pycache__", "data/lookaheadbench",
+    ]),
+]
 
 
 @object_type
 class Ci:
     @function
-    def base(self, source: dagger.Directory, python: str = "3.12") -> dagger.Container:
-        """Project container for ``python``: uv image + a synced, cached environment."""
-        return (
-            dag.container()
-            .from_(_UV_IMAGE.format(python=python))
-            .with_mounted_cache("/root/.cache/uv", dag.cache_volume(f"uv-cache-{python}"))
-            .with_env_variable("UV_PYTHON", python)
-            .with_directory("/src", source)
-            .with_workdir("/src")
-            .with_exec(["uv", "sync", "--frozen"])
+    async def base(self, source: SourceDirectory, python: str = "3.12") -> dagger.Container:
+        """Build the root Dockerfile's locked development environment."""
+        if python not in PYTHONS:
+            raise ValueError(f"Unsupported Python version {python!r}; choose one of {PYTHONS}")
+        rules = (await source.file(".dockerignore").contents()).splitlines()
+        exclusions = [rule.strip() for rule in rules if rule.strip() and not rule.lstrip().startswith("#")]
+        if any(rule.startswith("!") for rule in exclusions):
+            raise ValueError("Dagger context filtering requires exclusion-only .dockerignore rules")
+        context = dag.directory().with_directory("/", source, exclude=exclusions)
+        return context.docker_build(
+            target="dev",
+            build_args=[dagger.BuildArg(name="PYTHON_VERSION", value=python)],
         )
 
     @function
-    async def test(self, source: dagger.Directory, python: str = "3.12") -> str:
+    async def test(self, source: SourceDirectory, python: str = "3.12") -> str:
         """Run the test suite for one Python version (Req 6.2)."""
-        return await (
-            self.base(source, python).with_exec(["uv", "run", "pytest", "-q"]).stdout()
-        )
+        container = await self.base(source, python)
+        return await container.with_exec(["uv", "run", "--no-sync", "pytest", "-q"]).stdout()
 
     @function
-    async def test_matrix(self, source: dagger.Directory) -> str:
+    async def test_matrix(self, source: SourceDirectory) -> str:
         """Run the suite across the supported Python matrix (Req 6.2)."""
         lines: list[str] = []
         for python in PYTHONS:
@@ -62,33 +74,33 @@ class Ci:
         return "\n".join(lines)
 
     @function
-    async def lint(self, source: dagger.Directory) -> str:
+    async def lint(self, source: SourceDirectory) -> str:
         """Run ruff plus the structural-architecture gate (Req 6.3)."""
+        container = await self.base(source)
         return await (
-            self.base(source)
-            .with_exec(["uv", "run", "ruff", "check", "."])
-            .with_exec(["uv", "run", "python", "scripts/check_architecture.py"])
+            container
+            .with_exec(["uv", "run", "--no-sync", "ruff", "check", "."])
+            .with_exec(["uv", "run", "--no-sync", "python", "scripts/check_architecture.py"])
             .stdout()
         )
 
     @function
-    def build(self, source: dagger.Directory) -> dagger.Directory:
+    async def build(self, source: SourceDirectory) -> dagger.Directory:
         """Build the wheel + sdist; returns the ``dist/`` directory (Req 6.1, 6.5)."""
+        container = await self.base(source)
         return (
-            dag.container()
-            .from_(_UV_IMAGE.format(python="3.12"))
-            .with_directory("/src", source)
-            .with_workdir("/src")
-            .with_exec(["uv", "build", "--out-dir", "/dist"])
-            .directory("/dist")
+            container
+            .with_exec(["uv", "build", "--out-dir", "/outputs/dist"])
+            .directory("/outputs/dist")
         )
 
     @function
-    def docs(self, source: dagger.Directory) -> dagger.Directory:
+    async def docs(self, source: SourceDirectory) -> dagger.Directory:
         """Strict-build the documentation site; returns the ``site/`` directory."""
+        container = await self.base(source)
         return (
-            self.base(source)
+            container
             .with_env_variable("DISABLE_MKDOCS_2_WARNING", "true")
-            .with_exec(["uv", "run", "mkdocs", "build", "--strict", "--site-dir", "/site"])
-            .directory("/site")
+            .with_exec(["uv", "run", "--no-sync", "mkdocs", "build", "--strict", "--site-dir", "/outputs/site"])
+            .directory("/outputs/site")
         )
