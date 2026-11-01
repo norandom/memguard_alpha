@@ -4,7 +4,7 @@ Proposal — 2026-11-01. No builds, source cleanup or live inference are part of
 writing this specification. Tasks are sequential; existing CI remains working
 until its shared-recipe replacement is verified.
 
-- [ ] 1. Build and verify the shared locked environment
+- [x] 1. Build and verify the shared locked environment
 - [x] 1.1 Verify the existing Dagger SDK can consume the shared recipe
   - Exercise the pinned SDK's Dockerfile build, target/build arguments and source exclusion handling with a small local build spike; do not upgrade Dagger or create a second installation recipe.
   - Select concrete compatible uv/Python image pins for default 3.12 and supported 3.14 and record them once through the Dockerfile versioned image template.
@@ -17,7 +17,7 @@ until its shared-recipe replacement is verified.
   - Done when focused tests, Ruff and architecture commands run through uv run --no-sync, context canaries are absent, and non-root output files persist to the host without reusing its environment.
   - _Boundary: Dockerfile development target and context_
   - _Requirements: 1.1, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4_
-- [ ] 1.3 Build and smoke the lean installed-package target
+- [x] 1.3 Build and smoke the lean installed-package target
   - Reuse locked runtime dependencies and the existing wheel build; exclude dev/notebook/plot tooling and source tree. No resolving or syncing dependencies on startup.
   - Follow the design's locked runtime-dependencies → built wheel → no-dependency wheel installation path; use the same environment path and Python base when copying into runtime.
   - Done when the runtime target imports the installed wheel from outside the checkout as non-root, exposes correct metadata and contains no development extras. Direct non-container wheel use remains unchanged.

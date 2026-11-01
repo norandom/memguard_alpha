@@ -27,3 +27,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen
 USER app
 CMD ["uv", "run", "--no-sync", "python", "examples/completion_workflow.py"]
+
+FROM base AS runtime-build
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+COPY . .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv build --wheel --out-dir /wheelhouse \
+    && uv pip install --python /opt/venv/bin/python --no-deps /wheelhouse/*.whl
+
+FROM base AS runtime
+COPY --from=runtime-build /opt/venv /opt/venv
+WORKDIR /outputs
+USER app
+CMD ["python", "-c", "import recall_guard; print(recall_guard.__file__)"]
