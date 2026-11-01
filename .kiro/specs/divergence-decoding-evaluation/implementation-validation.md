@@ -36,3 +36,20 @@ supplied semantic audit attestations, declared intentional fact exposure and
 control source/period proportions with explicit whole-document discrepancies.
 Token counts remain declarations until checked by the later tokenizer fitter.
 No real study corpus has been admitted or fitted by these tests.
+
+## Task 1.2
+
+Status: verified complete after independent review on 2026-11-01.
+
+Optional Docker image built successfully and was independently inspected:
+`sha256:acdf5deaffe08298a0ada7d99918eaae181140029deff35433ee0ee7e3b28c47`.
+Network-disabled inventory and pinned dependency/GPT-OSS class imports passed.
+The reviewer ran 71 focused packaging/experiment tests, scoped Ruff and the
+offline uv lock check, all exit 0. The lean installed wheel passed independent
+checks outside the checkout with experimental and inference packages absent.
+
+The optional dependency group and Docker target do not alter library runtime
+dependencies. Slow dependency download/export and transient WSL connection
+errors resolved without configuration changes. Image imports establish software
+availability, not GPU capacity or model feasibility. No model artifacts or
+inference were used. See `environment-validation.md` for versions and receipts.

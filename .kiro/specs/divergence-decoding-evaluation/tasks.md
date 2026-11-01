@@ -20,8 +20,7 @@ Do not mark a task complete solely because its scaffolding exists.
   - _Depends: None_
   - _Requirements: 1, 4, 6, 7_
 
-- [ ] 1.2 Add the optional locked Docker experiment environment
-  - _Blocked: Optional CUDA dependency build is pending; no completed optional-image import/digest receipt. Preserve owned build session and cache._
+- [x] 1.2 Add the optional locked Docker experiment environment
   - Select compatible pinned inference packages in the existing lock and add an optional target to the canonical Dockerfile; exclude experimental code from the library wheel.
   - Record image identity and dependency versions. Verify lightweight imports without inference packages and the experimental import path in Docker.
   - Done when the optional image builds and imports, default library dependency isolation passes, and no weights were fetched by build/tests.
@@ -31,10 +30,9 @@ Do not mark a task complete solely because its scaffolding exists.
 
 ## 2. Corpus admission and auxiliary artifacts
 
-Tasks 2.1 and 2.2 may proceed using the already validated development image while
-task 1.2 waits on external dependency downloads. Their declared prerequisites
-do not require the optional inference image. Task 3.1 still requires completed
-environment acceptance; this scheduling exception does not waive that gate.
+Tasks 2.1 and 2.2 proceeded using the validated development image during task
+1.2's dependency download. Its build/import acceptance has now passed independent
+review; the temporary scheduling exception has ended.
 
 - [x] 2.1 Validate temporal provenance and partition boundaries
   - Implement manifest checks for rights references, publication/revision evidence, content hashes, source/window counts and duplicated held-out documents.

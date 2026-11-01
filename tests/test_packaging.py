@@ -47,6 +47,18 @@ def test_default_runtime_dependency_set_stays_lean() -> None:
     assert not ({"matplotlib", "vectorbt", "mkdocs", "pytest", "dagger-io"} & roots)
 
 
+def test_experiment_dependencies_are_pinned_checkout_tooling() -> None:
+    """Inference tooling must not become a consumer extra or runtime dependency."""
+    data = _load()
+    inference_packages = {"torch", "transformers", "accelerate", "kernels", "triton"}
+    group = data["dependency-groups"]["experiment"]
+    assert {dep.split("==")[0] for dep in group} == inference_packages
+    assert all("==" in dep for dep in group)
+    assert "experiment" not in data["project"]["optional-dependencies"]
+    runtime = {dep.split("[")[0].split(">=")[0] for dep in data["project"]["dependencies"]}
+    assert not inference_packages & runtime
+
+
 def test_citation_doi_matches_the_released_version() -> None:
     """This drifted once: CITATION.cff carried v0.2.0's DOI under version 0.4.1.
 

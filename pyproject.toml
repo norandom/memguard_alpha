@@ -57,6 +57,18 @@ dev = [
 pipeline = [
     "dagger-io>=0.18",
 ]
+# Optional local GPT-OSS tooling; never installed by default or published as an extra.
+experiment = [
+    "torch==2.8.0",
+    "transformers==4.55.4",
+    "accelerate==1.10.1",
+    "kernels==0.9.0",
+    "triton==3.4.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[tool.uv.dependency-groups]
+# Torch 2.8 wheels support these interpreters; the library keeps its own floor.
+experiment = {requires-python = ">=3.12,<3.14"}
 
 [build-system]
 requires = ["hatchling"]
