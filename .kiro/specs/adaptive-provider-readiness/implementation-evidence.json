@@ -52,5 +52,15 @@
       "recall_guard/core/request_control.py",
       "tests/core/test_readiness.py"
     ]
+  },
+  "2.2": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED after one remediation; parent verified current source/test hashes and full Linux CPython3.12.12 suite2235passed in228.99s/raw0; logSHA256 c0527de4bf746fd21816590cf9a0eaa5dd8d5bdb7b8ca72d963c4895a1f18b21. Windows uv focused76pass; Linux focused284pass; RED verified; Ruff/architecture/integrity pass. Full Windows uv abort preserved/unexplained; task6.1 matrix remains open. Report runs/readiness-2-2-fixed-review-verdict.md. User invocation policy recorded in steering.",
+    "timestamp": "2026-11-01T11:22:35.802418+00:00",
+    "files": [
+      "recall_guard/core/provider_stream.py",
+      "tests/core/test_provider_stream.py",
+      ".kiro/steering/recall-guard-package.md"
+    ]
   }
 }

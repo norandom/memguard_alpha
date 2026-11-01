@@ -48,7 +48,7 @@ validation without a source change or specific concern.
   - _Depends: 1.3_
   - _Requirements: 1.2, 2.1, 2.2, 2.4, 3.1, 3.2, 3.5, 3.6, 4.1, 4.2, 4.3, 5.2_
 
-- [ ] 2.2 Assemble streamed responses without losing evidence
+- [x] 2.2 Assemble streamed responses without losing evidence
   - Decode incremental UTF-8 and SSE boundaries, preserve choice-zero answer/token alignment, and track reasoning separately from answer content.
   - Require terminal framing/finish evidence, enforce event/response size limits and retain bounded partial output on interruption or malformed content.
   - Treat absent usage or token probabilities as unavailable; do not infer stream-scoring support from a model name.
@@ -158,3 +158,5 @@ validation without a source change or specific concern.
 - Task 1.3 exposes RequestControl.run_attempt and typed RequestError.response_evidence (never raw .response). Task 2.1/2.3 must preserve server timing hints on pending responses as well as errors and classify detached failures without status/code conservatively; retryable alone does not prove safe replay. Legacy run intentionally retains old event serialization.
 
 - Task 2.1 adds ReadinessControl.operation(...).run(exchange) with admission-time ExchangeContext bounds and ReadinessResult. Pending transport remains deferred for task 2.3; RetryAfterHint now lives in readiness_types.py and remains import-compatible through request_control.py. Shared cooldown is on RequestControl, including terminal failures. ReadinessOperation._complete sanitizes locally failed complete evidence; preserve that boundary when integrating providers. RFC850 dates use receipt-relative years and valid oversized delays defer without fabricated numeric timing.
+
+- Task 2.2 adds standalone StreamAssembler/StreamProgress. Transport bytes count supplied chunks, independently of processed/event limits; local metadata must be UTF-8 encodable. Constructor stream-setting acceptance remains task 2.3. Focused Windows uv76passed and canonical Linux2235passed; the single full Windows uv exit0xE0000001 is preserved without a causal claim, and task6.1 remains required. All project commands now use uv run --no-sync per user instruction.

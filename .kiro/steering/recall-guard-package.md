@@ -141,3 +141,7 @@ Request admission waits under the pacing lock and records the actual wakeup time
 Network POSTs remain outside the lock so calls can overlap. This supersedes the
 older reservation-based implementation described in the release history above.
 Delayed wakeups must not compress subsequent starts.
+
+## Project command invocation
+
+Per user instruction on 2026-11-01, invoke project Python commands through `uv run --no-sync ...` from the repository root. Use `uv run --no-sync python ...` for scripts and `uv run --no-sync pytest ...` for tests. Do not invoke a hard-coded base interpreter or `.venv/Scripts/python.exe` directly. Interpreter metadata alone does not establish the cause of prior abnormal process exits; retain those receipts without attributing them to Windows or uv. Existing Dagger/Linux validation remains available, and the full platform matrix remains required.
