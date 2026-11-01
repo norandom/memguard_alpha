@@ -108,6 +108,7 @@ def _response_controls(response, source):
 def _check_snapshot_metadata(snapshot):
     _object(snapshot, ("checkpoint", "arms", "preflight", "stop_reason"), "run snapshot",
             required=("checkpoint", "arms", "preflight", "stop_reason"))
+    _version(snapshot["checkpoint"]["schema_version"])
     check_run_metadata(snapshot)
 
 
@@ -189,6 +190,8 @@ def export_experiment(run: ExperimentRun, directory, *, confidence_level=0.95,
     These are caller assertions, not inferred from synthetic successful records.
     Inputs must already satisfy the sanitized ExperimentRun contracts.
     """
+    if run.checkpoint.schema_version != 1:
+        raise ValueError("Version-2 execution requires preparation-aware report export")
     metrics = summarize_experiment(run, confidence_level=confidence_level, confidence_component=confidence_component)
     protocol = run.checkpoint.protocol
     validation = _validation(protocol, provenance)

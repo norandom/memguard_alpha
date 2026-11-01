@@ -13,6 +13,7 @@ from time import monotonic, sleep
 from types import MappingProxyType
 
 from recall_guard.core.completion import ModelConfig, ModelResponse
+from recall_guard.core.readiness_types import _fields, _text
 
 _TRANSIENT_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504, 529})
 _NONTRANSIENT_CODES = frozenset({
@@ -84,19 +85,37 @@ class RequestEvent:
     parameter: str | None = None
     detail: str | None = None
     code: str | None = None
+    purpose: str | None = None
+    operation_id: str | None = None
+    request_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "usage", _usage_snapshot(self.usage))
+        if self.purpose is not None and self.purpose not in {"inference", "probe", "retry", "status"}:
+            raise ValueError("purpose must be inference, probe, retry or status")
+        for name in ("operation_id", "request_id"):
+            if getattr(self, name) is not None:
+                _text(getattr(self, name), name)
 
     def to_dict(self) -> dict:
         """Return detached JSON-compatible provenance without request bodies."""
-        return {
+        result = {
             "call_id": self.call_id, "stage": self.stage, "model": self.model, "attempt": self.attempt,
             "started_at": self.started_at, "timestamp": self.timestamp, "status": self.status,
             "latency_s": self.latency_s, "usage": None if self.usage is None else dict(self.usage), "cost": self.cost,
             "status_code": self.status_code, "error": self.error,
             "parameter": self.parameter, "detail": self.detail, "code": self.code,
         }
+        for name in ("purpose", "operation_id", "request_id"):
+            if getattr(self, name) is not None:
+                result[name] = getattr(self, name)
+        return result
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**_fields(data, {"call_id", "stage", "model", "attempt", "started_at", "timestamp", "status",
+                                   "latency_s", "usage", "cost", "status_code", "error", "parameter", "detail", "code",
+                                   "purpose", "operation_id", "request_id"}))
 
 
 class CallBudget:

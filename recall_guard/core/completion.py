@@ -14,6 +14,7 @@ from typing import Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
 from recall_guard.core.nvidia_lm import CompletionResult, TokenLogprob
+from recall_guard.core.readiness_types import ReadinessObservation, ReadinessPolicy, _fields
 
 type ParameterValue = str | int | float | bool | None | list[ParameterValue] | tuple[ParameterValue, ...] | Mapping[str, ParameterValue]
 
@@ -221,6 +222,7 @@ class ModelConfig:
     max_retries: int = 2
     retry_backoff_s: float = 2.0
     min_call_interval_s: float = 0.0
+    readiness: ReadinessPolicy | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -241,6 +243,12 @@ class ModelConfig:
         _integer(self.max_retries, "max_retries")
         _number(self.retry_backoff_s, "retry_backoff_s")
         _number(self.min_call_interval_s, "min_call_interval_s")
+        if self.readiness is not None and not isinstance(self.readiness, ReadinessPolicy):
+            raise TypeError("readiness must be ReadinessPolicy or None")
+        if self.readiness is not None and self.readiness.pending_status is not None:
+            pending = self.readiness.pending_status
+            if (pending.model, pending.endpoint) != (self.model, self.endpoint):
+                raise ValueError("Pending route does not match the selected configuration")
         object.__setattr__(self, "parameters", _parameters(self.parameters))
         object.__setattr__(self, "capabilities", _capabilities(self.capabilities))
 
@@ -269,13 +277,26 @@ class ModelConfig:
 
     def to_dict(self) -> dict:
         """Export provenance without resolving or serializing credentials."""
-        return {
+        result = {
             "protocol": self.protocol.value, "endpoint": self.endpoint, "model": self.model, "provider": self.provider,
             "parameters": _plain(self.parameters),
             "capabilities": {name: evidence.to_dict() for name, evidence in self.capabilities.items()},
             "timeout_s": self.timeout_s, "max_retries": self.max_retries,
             "retry_backoff_s": self.retry_backoff_s, "min_call_interval_s": self.min_call_interval_s,
         }
+        if self.readiness is not None:
+            result["readiness"] = self.readiness.to_dict()
+        return result
+
+    @classmethod
+    def from_dict(cls, data):
+        values = _fields(data, {"protocol", "endpoint", "model", "provider", "parameters", "capabilities", "timeout_s",
+                               "max_retries", "retry_backoff_s", "min_call_interval_s", "readiness"})
+        values["capabilities"] = {name: CapabilityEvidence(**_fields(entry, {"status", "source", "detail", "observed"}))
+                                  for name, entry in values.get("capabilities", {}).items()}
+        if values.get("readiness") is not None:
+            values["readiness"] = ReadinessPolicy.from_dict(values["readiness"])
+        return cls(**values)
 
 
 def validate_features(
@@ -347,9 +368,15 @@ class ModelResponse:
     requested_settings: Mapping[str, ParameterValue] = field(default_factory=dict)
     confirmed_settings: Mapping[str, ParameterValue] = field(default_factory=dict)
     request_id: str | None = None
+    readiness_trace: tuple[ReadinessObservation, ...] | None = None
 
     def __post_init__(self) -> None:
         _text(self.content, "content", allow_empty=True)
+        if self.readiness_trace is not None:
+            trace = tuple(self.readiness_trace)
+            if not all(isinstance(item, ReadinessObservation) for item in trace):
+                raise TypeError("readiness_trace must contain ReadinessObservation values")
+            object.__setattr__(self, "readiness_trace", trace)
         for name in ("finish_reason", "request_id"):
             if getattr(self, name) is not None:
                 _text(getattr(self, name), name)
@@ -420,7 +447,7 @@ class ModelResponse:
         )
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "content": self.content,
             "token_evidence": None if self.token_evidence is None else [
                 {"token": entry.token, "logprob": entry.logprob,
@@ -430,6 +457,25 @@ class ModelResponse:
             "requested_settings": _plain(self.requested_settings), "confirmed_settings": _plain(self.confirmed_settings),
             "request_id": self.request_id,
         }
+        if self.readiness_trace is not None:
+            result["readiness_trace"] = [item.to_dict() for item in self.readiness_trace]
+        return result
+
+    @classmethod
+    def from_dict(cls, data):
+        values = _fields(data, {"content", "token_evidence", "usage", "finish_reason", "requested_settings",
+                               "confirmed_settings", "request_id", "readiness_trace"})
+        if values.get("token_evidence") is not None:
+            tokens = []
+            for entry in values["token_evidence"]:
+                token = _fields(entry, {"token", "logprob", "top_logprobs"})
+                token["top_logprobs"] = tuple(TokenAlternative(**_fields(alt, {"token", "logprob"}))
+                                             for alt in token.get("top_logprobs", ()))
+                tokens.append(TokenEvidence(**token))
+            values["token_evidence"] = tuple(tokens)
+        if "readiness_trace" in values:
+            values["readiness_trace"] = tuple(ReadinessObservation.from_dict(item) for item in values["readiness_trace"])
+        return cls(**values)
 
 
 @runtime_checkable

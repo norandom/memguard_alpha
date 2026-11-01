@@ -55,6 +55,8 @@ class ExperimentRunner:
                  original_scorer=None, rewritten_scorer=None):
         if not isinstance(protocol, ExperimentProtocol) or not callable(workflow_factory):
             raise TypeError("ExperimentRunner requires ExperimentProtocol and a workflow factory")
+        if protocol.schema_version == 2:
+            raise ValueError("Version-2 execution requires preparation-aware accounting")
         self.protocol, self.items = protocol, tuple(items)
         if not self.items:
             raise ValueError("Experiment requires at least one item")

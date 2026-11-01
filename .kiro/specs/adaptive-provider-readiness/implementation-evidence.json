@@ -11,5 +11,22 @@
       ".kiro/specs/adaptive-provider-readiness/spec.json",
       ".kiro/specs/adaptive-provider-readiness/task-plan-validation.md"
     ]
+  },
+  "1.2": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED; current ten source hashes verified. Linux CPython 3.12.12 canonical Dagger suite: 2061 passed in 212.59s, raw exit 0; log SHA256 4ca9d420bb639f9a5db403d398aea71076a188bd246ef2275b0141bf5b77bc24. Focused Windows 549 passed/1 skipped; RED verified; Ruff/architecture/diff passed. Native Windows full-run 0xE0000001 unresolved; task 6.1 retained. Detailed evidence runs/readiness-1-2-linux-review-evidence.json.",
+    "timestamp": "2026-11-01T09:39:12.135416+00:00",
+    "files": [
+      "recall_guard/core/completion.py",
+      "recall_guard/core/readiness_evidence.py",
+      "recall_guard/core/readiness_types.py",
+      "recall_guard/core/request_control.py",
+      "recall_guard/harness/intervention.py",
+      "recall_guard/harness/intervention_report.py",
+      "recall_guard/harness/intervention_types.py",
+      "recall_guard/harness/workflow_plan.py",
+      "tests/harness/test_intervention_types.py",
+      "tests/harness/test_readiness_persistence.py"
+    ]
   }
 }

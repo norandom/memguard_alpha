@@ -20,7 +20,7 @@ validation without a source change or specific concern.
   - _Boundary: Core configuration and transport contracts_
   - _Requirements: 1.1, 1.2, 1.4, 2.1, 2.2, 2.3, 2.4, 4.1, 4.3, 4.4_
 
-- [ ] 1.2 Integrate optional configuration and versioned execution-plan contracts
+- [x] 1.2 Integrate optional configuration and versioned execution-plan contracts
   - Add optional readiness configuration and trace fields, requested/resolved plan and fallback-policy types, and version-2 persistence contracts with explicit typed loaders and metadata whitelists.
   - Keep absent-option legacy behavior and exact version-1 serialization, identities and saved metrics. Reject readiness/plan fields in version-1 protocols instead of silently upgrading them.
   - Define phase/execution namespaces and preparation-artifact bindings before runtime producers consume them.
@@ -152,3 +152,5 @@ validation without a source change or specific concern.
 - Old Windows interruption causes remain unknown. The proven Dagger staging issue came from an archive under an ignored parent checkout, not from its CLI/module version difference.
 
 - Task 1.1 keeps stdlib policy/state contracts in readiness_types.py and response-dependent evidence in readiness_evidence.py to avoid reciprocal configuration imports. READY must validate explicitly requested token evidence independently of MIA and compare canonical JSON settings, since Python mapping equality conflates nested boolean/number values.
+
+- Task 1.2 persists acyclic plan contracts in harness/workflow_plan.py. Task 4.1 must replace interim version-2 runner/resume guards; task 4.2 must replace version-2-in-version-1 report-envelope guards. A Linux 3.12 canonical full run passed (2061 tests); native Windows full-run termination 0xE0000001 remains unexplained and does not waive task 6.1.

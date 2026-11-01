@@ -11,7 +11,9 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
 from recall_guard.core.completion import (
+    CapabilityEvidence,
     CapabilityReport,
+    FeatureChoices,
     ModelConfig,
     ModelResponse,
     ParameterValue,
@@ -19,7 +21,7 @@ from recall_guard.core.completion import (
     _integer,
     _plain,
 )
-from recall_guard.core.readiness_types import ReadinessObservation, ReadinessState
+from recall_guard.core.readiness_types import ReadinessObservation, ReadinessState, _fields
 
 
 class PartialResponseReason(StrEnum):
@@ -81,6 +83,18 @@ class PartialResponse:
         return response.to_dict() | {"complete": False, "reason": self.reason.value,
                                      "reasoning_characters": self.reasoning_characters,
                                      "max_retained_bytes": self.max_retained_bytes}
+
+    @classmethod
+    def from_dict(cls, data):
+        values = _fields(data, {"content", "token_evidence", "usage", "finish_reason", "requested_settings",
+                               "confirmed_settings", "request_id", "complete", "reason", "reasoning_characters",
+                               "max_retained_bytes"}, required={"complete"})
+        if values.pop("complete") is not False:
+            raise ValueError("Partial response must remain incomplete")
+        partial = {name: values.pop(name) for name in ("reason", "reasoning_characters", "max_retained_bytes") if name in values}
+        response = ModelResponse.from_dict(values)
+        return cls(response.content, response.token_evidence, response.usage, response.finish_reason,
+                   response.requested_settings, response.confirmed_settings, response.request_id, **partial)
 
 
 @dataclass(frozen=True)
@@ -156,3 +170,24 @@ class ProbeEvidence:
                            "features": {"mia_scoring": features.mia_scoring, "ensemble_draws": features.ensemble_draws,
                                         "rewriting": features.rewriting}},
                 "response": response, "observations": [item.to_dict() for item in self.observations]}
+
+    @classmethod
+    def from_dict(cls, data):
+        values = _fields(data, {"config", "report", "response", "observations"},
+                         required={"config", "report", "response", "observations"})
+        report = _fields(values["report"], {"capabilities", "features"}, required={"capabilities", "features"})
+        report = CapabilityReport(
+            {name: CapabilityEvidence(**_fields(entry, {"status", "source", "detail", "observed"}))
+             for name, entry in report["capabilities"].items()},
+            FeatureChoices(**_fields(report["features"], {"mia_scoring", "ensemble_draws", "rewriting"})),
+        )
+        response = values["response"]
+        if response is not None:
+            if response.get("complete") is False:
+                response = PartialResponse.from_dict(response)
+            elif response.get("complete") is True:
+                response = ModelResponse.from_dict({key: value for key, value in response.items() if key != "complete"})
+            else:
+                raise ValueError("Probe response requires an explicit complete marker")
+        return cls(ModelConfig.from_dict(values["config"]), report, response,
+                   tuple(ReadinessObservation.from_dict(item) for item in values["observations"]))

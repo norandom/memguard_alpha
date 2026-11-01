@@ -7,13 +7,20 @@ whereas physical call IDs refer to the existing shared request ledger.
 
 import math
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
 from threading import Event
 from urllib.parse import urlsplit
 from uuid import UUID
+
+
+def _fields(data, allowed, *, required=()):
+    """Copy an explicit persisted-field whitelist; never inspect live objects."""
+    if not isinstance(data, Mapping) or data.keys() - set(allowed) or set(required) - data.keys():
+        raise ValueError("Invalid persisted contract fields")
+    return dict(data)
 
 
 def _text(value: str, name: str) -> None:
@@ -125,6 +132,10 @@ class PendingStatusPolicy:
                 "status_url_template": self.status_url_template, "request_id_header": self.request_id_header,
                 "verified": self.verified}
 
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**_fields(data, {"profile", "model", "endpoint", "status_url_template", "request_id_header", "verified"}))
+
 
 @dataclass(frozen=True)
 class ReadinessPolicy:
@@ -177,6 +188,15 @@ class ReadinessPolicy:
                 "jitter_fraction": self.jitter_fraction, "allow_ambiguous_replay": self.allow_ambiguous_replay,
                 "pending_status": None if self.pending_status is None else self.pending_status.to_dict(),
                 "max_event_bytes": self.max_event_bytes, "max_response_bytes": self.max_response_bytes}
+
+    @classmethod
+    def from_dict(cls, data):
+        values = _fields(data, {"connect_timeout_s", "socket_idle_timeout_s", "max_wait_s", "max_poll_requests",
+                               "backoff_initial_s", "backoff_max_s", "jitter_fraction", "allow_ambiguous_replay",
+                               "pending_status", "max_event_bytes", "max_response_bytes"})
+        if values.get("pending_status") is not None:
+            values["pending_status"] = PendingStatusPolicy.from_dict(values["pending_status"])
+        return cls(**values)
 
 
 class ReadinessState(StrEnum):
@@ -311,6 +331,13 @@ class ReadinessObservation:
                 "keepalive_events": self.keepalive_events, "credential_eligibility": self.credential_eligibility.value,
                 "reason": None if self.reason is None else self.reason.value}
 
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**_fields(data, {"operation_id", "stage", "model", "timestamp", "elapsed_s", "state", "call_id",
+                                   "request_id", "status_code", "delay_s", "delay_source", "waiting_s", "answer_characters",
+                                   "reasoning_characters", "answer_deltas", "reasoning_deltas", "transport_bytes",
+                                   "keepalive_events", "credential_eligibility", "reason"}))
+
 
 @dataclass(frozen=True)
 class PendingReceipt:
@@ -336,6 +363,14 @@ class PendingReceipt:
         return {"operation_id": self.operation_id, "model": self.model, "request_id": self.request_id,
                 "timestamp": self.timestamp, "provider_status": self.provider_status,
                 "status_code": self.status_code, "complete": self.complete}
+
+    @classmethod
+    def from_dict(cls, data):
+        values = _fields(data, {"operation_id", "model", "request_id", "timestamp", "provider_status", "status_code", "complete"})
+        complete, status = values.pop("complete", False), values.pop("status_code", 202)
+        if complete is not False or type(status) is not int or status != 202:
+            raise ValueError("Pending receipt must remain incomplete with status_code 202")
+        return cls(**values)
 
 
 class CancellationToken:

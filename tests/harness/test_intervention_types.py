@@ -355,7 +355,7 @@ def test_persisted_schema_rejects_unsupported_or_unreplayable_values(case):
     p = protocol()
     with pytest.raises((TypeError, ValueError)):
         if case == "version":
-            t.ExperimentProtocol.from_dict(p.to_dict() | {"schema_version": 2})
+            t.ExperimentProtocol.from_dict(p.to_dict() | {"schema_version": 3})
         elif case == "nan":
             replace(p, audit_selection={"size": float("nan")})
         elif case == "missing_response":
