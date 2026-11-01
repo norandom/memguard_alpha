@@ -460,6 +460,9 @@ def reduce_draws(
     Only ``content`` is required on a response. Consensus and retained draws
     preserve the original objects, including absent or genuine token evidence;
     answer agreement and component dispersion do not estimate memorization.
+    ``waves`` aligns positionally with input ``draws`` and follows the same
+    canonical permutation. Each named component's location retains its caller-
+    defined scalar units; ``grid``, when supplied, uses those same units.
     """
     if not draws:
         raise ValueError("cannot reduce an empty draw set")

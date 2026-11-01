@@ -163,8 +163,9 @@ def _write_bytes(path, content):
 class ExperimentReport:
     """Loaded records and verified metrics; per-draw scores are retained, not refit.
 
-    Analyzer rows remain item/arm/draw with the single condition sharing draw
-    zero. Metric units and eligible denominators belong to the existing analyzer.
+    Retained draws use item/arm/draw grain; analyzer rows use item/condition.
+    The single condition shares draw zero with its arm's ensemble. Metric units
+    and eligible denominators belong to the existing analyzer.
     Calibration quality is replayed from its whitelist; no scorer is loaded.
     """
 

@@ -46,6 +46,10 @@ class WorkflowCalibration:
     Valid counts are from owning MIA producers after feature skips, before the
     train/holdout split. They remain unknown on a failed fit, rather than being
     inferred from accepted input counts. No result installs a default scorer.
+
+    ``holdout_labels`` and ``holdout_probabilities`` pair by index in the MIA
+    producer's holdout order, independently of preparation-item order. Labels
+    are 1 for IS and 0 for OOS; probabilities of class 1 are in [0, 1].
     """
 
     identity: CalibrationIdentity

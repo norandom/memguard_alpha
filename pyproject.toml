@@ -83,7 +83,8 @@ extend-exclude = [
 # E/W = pycodestyle, F = pyflakes, I = isort, B = bugbear, UP = pyupgrade.
 # E501 (line-too-long) is off because a few constants and formatted-string
 # lines (e.g. evaluator's direction-word tuples) intentionally run long;
-# the file-level ceiling is enforced by sentrux instead of ruff.
+# Review module length and responsibilities alongside the architecture checker;
+# Ruff and tests provide the automated quality gates.
 # UP047 (PEP-695 type parameters) is off because rewriting `TypeVar`
 # generics is style-only churn that breaks the Protocol pattern in
 # portfolio.cmmd / portfolio.backtest.

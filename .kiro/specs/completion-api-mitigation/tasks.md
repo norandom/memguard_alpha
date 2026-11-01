@@ -196,7 +196,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 5.4_
   - _Requirements: 6.5, 7.8, 7.9, 8.2_
 
-- [ ] 7.2 Verify legacy compatibility and readable public contracts
+- [x] 7.2 Verify legacy compatibility and readable public contracts
   - Run focused integration/regression tests followed by the full offline suite, Ruff and architecture checker. Review every new public contract and array/DataFrame alignment.
   - Done when required gates pass with fresh evidence, legacy calls retain behavior, no hidden network calls occur in tests and outstanding live gaps are listed separately.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

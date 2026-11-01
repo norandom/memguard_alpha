@@ -288,6 +288,10 @@ class MemoryGuardedScorer:
 
         Recomputed to detect mutation of sklearn's fitted arrays or baseline
         dictionaries. This identifies a fit; it is not a serialized load API.
+        For the existing binary fit, coefficients have shape
+        ``(1, len(feature_order))``: columns follow ``feature_order`` and the
+        sole row/intercept describe class 1 versus class 0. ``classes`` records
+        the class axis used by ``predict_proba``.
         """
         classifier = self._mcs.classifier
         state = {

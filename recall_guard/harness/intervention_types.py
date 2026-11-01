@@ -135,6 +135,8 @@ class ExperimentProtocol:
     metadata. Audit selection retains deterministic selection method/seed,
     sample sizes and strata; selected items/judgments live in rewrite checks.
     Reduction settings must not override the shared target settings.
+    ``utility_tolerance`` is an absolute accuracy difference in probability
+    units (0.01 means one percentage point), not a relative percent change.
     """
 
     target_model: ModelConfig

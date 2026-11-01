@@ -236,5 +236,7 @@ capabilities, existing ensemble integration and comparisons of feature effects.
 Implementation mechanisms and fidelity-check algorithms belong in design.
 The user approved requirements with the capability-driven configuration and
 ensemble clarification on 2026-10-30. These revisions incorporate that direction.
-Design and tasks still require phase review. No mitigation measurement has
-yet been performed.
+The user also approved the design and tasks on 2026-10-30. Implementation is
+in progress. The saved 2026-10-31 completion-only pilot is partial measurement;
+logprob-capable live coverage and a mitigation-effectiveness conclusion remain
+unavailable. See the dated pilot report for measured outcomes and limitations.

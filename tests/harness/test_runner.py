@@ -40,6 +40,12 @@ TINY_OOS = FIXTURES_DIR / "tiny_oos_control.jsonl"
 TINY_CUTOFFS = FIXTURES_DIR / "tiny_cutoffs.yaml"
 
 
+@pytest.fixture(autouse=True)
+def isolate_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These fake-client tests must not read the checkout's .env file.
+    monkeypatch.setattr(runner_mod, "load_dotenv", lambda *args, **kwargs: False)
+
+
 # --- Fake LM machinery -------------------------------------------------------
 
 
