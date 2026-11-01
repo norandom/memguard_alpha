@@ -187,7 +187,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Depends: 5.3, 6.4_
   - _Requirements: 4.3, 4.8, 5.3, 5.4, 5.5, 9.2, 9.3, 9.6, 9.7_
 
-- [ ] 7. Adoption and final verification
+- [x] 7. Adoption and final verification
 - [x] 7.1 Add notebook and application examples
   - Demonstrate explicit provider configuration, unsupported parameter errors, optional n draws, rewrite selection and missing MCS. Execute the notebook in a running kernel using deterministic completion fixtures; cite Jane Street in the engineering guide.
   - Done when examples run without shell-only setup or event-loop conflicts and accurately explain available capabilities and failure handling.
@@ -205,7 +205,7 @@ Use idiomatic Python and names matching domain meaning and representation. Docum
   - _Requirements: 1.2, 3.4, 5.6, 6.1, 6.2, 6.3, 6.4, 6.5, 7.8, 7.9, 8.2_
 
 
-- [ ] 7.3 Verify native platforms, notebook execution and docs build
+- [x] 7.3 Verify native platforms, notebook execution and docs build
   - Run the supported Windows/Linux Python matrix, notebook kernel smoke and strict documentation build after compatibility checks. Record commands and environments; keep live-provider coverage separate.
   - Done when platform and notebook checks pass with fresh evidence and all documented examples and links build successfully.
   - Verify the quality contract for this task's code or artifacts, including semantic names and explicit evidence availability.

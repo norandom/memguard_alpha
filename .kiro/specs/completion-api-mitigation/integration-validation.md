@@ -115,8 +115,6 @@ Kiro fresh-evidence assessment: `VERIFIED` for these `TEST_OR_BUILD` results
 at the current source state. The requirements/design checks above support
 submission for independent review. No feature-completion claim is made.
 
-## Evidence limits
-
 ## Independent review and parent verification, 2026-11-01
 
 The fresh independent review returned `APPROVED` with no blocking findings.
@@ -154,3 +152,23 @@ measurement is available. The saved Opus portion rejected all 16 rewrites and
 has zero valid rewrite pairs, so efficacy is unavailable. See
 [the dated partial pilot report](../../../docs/results/2026-10-31-completion-api-pilot.md).
 These offline gates do not establish two-mode coverage or feature-wide GO.
+
+## Feature coverage assessment after platform review, 2026-11-01
+
+Task 7.3 now has independent APPROVED review and fresh parent verification;
+see [platform validation](platform-validation.md). The earlier pending-platform
+status is superseded. The full supported matrix, installed-artifact workflows,
+actual notebook kernels, Unicode replay and strict documentation gates passed.
+
+A separate read-only integration audit mapped all 58 acceptance criteria across
+all nine requirement areas and identified no new concrete integration defect.
+The detailed matrix is retained in `runs/completion-api-integration-audit-20261101.md`.
+Mapping does not establish fulfilled live coverage: requirement 9.7 remains
+incomplete, 7.6 and 9.3 lack fresh logprob calibration/scoring measurements, and
+5.2 has only the reviewed partial Opus audit. Tasks 6.2, 6.3 and full 6.4 remain
+open. The new readiness pilot allowance is a separate operational study and
+does not authorize the missing calibration or rewrite-effect experiment.
+
+Feature-level result: **NO-GO for completion of the full specification** due to
+missing required live evidence. No mitigation-effectiveness result is claimed.
+The reviewed offline implementation and platform gates remain valid.
