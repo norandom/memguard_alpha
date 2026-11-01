@@ -1,0 +1,46 @@
+{
+  "feature_name": "docker-execution",
+  "created_at": "2026-11-01T14:27:09.1414339+01:00",
+  "updated_at": "2026-11-01T13:44:53.6811667+00:00",
+  "language": "en",
+  "phase": "implementing",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "approval_context": "User instructed proceed after reviewing the Docker requirements, design, tasks and concrete acceptance/delivery follow-up. Approval covers Docker implementation and offline validation; no live inference or readiness repair is inferred.",
+  "related_feature": "adaptive-provider-readiness",
+  "design_review": {
+    "decision": "GO",
+    "report": "design-validation.md",
+    "repair_passes": 0,
+    "mode": "independent"
+  },
+  "task_graph_review": {
+    "report": "design-validation.md",
+    "decision": "PASS",
+    "repair_passes": 0,
+    "executable_tasks": 7,
+    "mode": "independent",
+    "criteria_covered": 16
+  },
+  "planning_follow_up": {
+    "date": "2026-11-01",
+    "scope": "Concrete acceptance commands, runtime wheel installation, writable artifacts and cross-spec delivery order; no added implementation tasks or approval",
+    "review_mode": "inline",
+    "report": "design-validation.md",
+    "acceptance": "acceptance.md",
+    "delivery_order": "delivery-plan.md"
+  }
+}

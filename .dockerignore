@@ -1,0 +1,39 @@
+# Credentials at any depth (never copy runtime environment files).
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/.aws
+**/.ssh
+
+# Host environments, repository metadata and agent state.
+**/.venv
+**/venv
+**/.git
+.agent
+.agents
+.claude
+.codex
+.kiro
+AGENTS.md
+HANDOFF.md
+ci/sdk
+
+# Generated output and downloaded corpus; keep tracked tests and fixtures.
+runs
+site
+dist
+build
+wheels
+**/*.egg-info
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.ipynb_checkpoints
+.coverage
+.coverage.*
+htmlcov
+notebooks/figures
+data/lookaheadbench
