@@ -98,6 +98,13 @@ per callback from sparse counts, not a dense vocabulary-cubed table. Serialize
 the policy and document resets. Fitting enforces document, token and memory
 caps and reports actual counts without silently truncating the approved corpus.
 
+The fitter's memory admission uses a conservative estimate of allocations it
+owns (text/token buffers and sparse-count containers), checked before growth;
+report its accounting method and observed container sizes explicitly. This is
+not a process-RSS or GPU-memory guarantee. An arbitrary tokenizer callback can
+allocate outside that estimate. Whole-process memory limits and measurements
+remain required at the worker/container execution boundary before a real run.
+
 Harmony structural tokens and unused output slots must receive identical
 auxiliary log-scores in both roles, making their adjustment zero. The first
 version neutralizes auxiliary adjustment while the prefix is inside Harmony

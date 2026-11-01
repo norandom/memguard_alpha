@@ -42,7 +42,7 @@ review; the temporary scheduling exception has ended.
   - _Depends: 1.1_
   - _Requirements: 2, 7_
 
-- [ ] 2.2 Fit and persist the two sparse trigram estimators
+- [x] 2.2 Fit and persist the two sparse trigram estimators
   - Implement the designed interpolation with outgoing-transition denominators, document resets, short-prefix backoff and finite full-vocabulary vectors.
   - Enforce fitting volume/memory caps, preserve tokenizer identity and serialize sparse counts without unsafe object deserialization.
   - Done when hand-calculated tiny corpora verify normalization, unseen contexts and document-end behavior, and artifact reload reproduces scores.
