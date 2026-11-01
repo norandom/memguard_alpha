@@ -41,5 +41,16 @@
       "tests/core/test_providers.py",
       "tests/core/test_provider_callback.py"
     ]
+  },
+  "2.1": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED after one remediation; parent verified four current source hashes, exact approval, Linux CPython3.12.12 canonical suite2159passed in215.90s/raw0; logSHA256 6bee65f03290079d6034ec73d1b61c63bbafa7df1074f54848101b46b61883c8. Native core823passed; meaningful RED and independent sanitizer regression verified; Ruff/architecture/diffpassed. Evidence runs/readiness-2-1-fixed-review.md. Task6.1 platform matrix retained.",
+    "timestamp": "2026-11-01T10:28:45.534845+00:00",
+    "files": [
+      "recall_guard/core/readiness.py",
+      "recall_guard/core/readiness_types.py",
+      "recall_guard/core/request_control.py",
+      "tests/core/test_readiness.py"
+    ]
   }
 }

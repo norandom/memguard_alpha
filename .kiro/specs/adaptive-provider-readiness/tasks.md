@@ -39,7 +39,7 @@ validation without a source change or specific concern.
   - _Requirements: 1.3, 2.1, 2.2, 3.5, 3.6, 4.2, 4.3, 4.4_
 
 - [ ] 2. Observe and handle variable provider behavior
-- [ ] 2.1 Add bounded waiting, cooldown and cancellation decisions
+- [x] 2.1 Add bounded waiting, cooldown and cancellation decisions
   - Interpret valid server delays, use configured bounded fallback backoff, and share a model/client cooldown across concurrent callers without holding a lock over network operations.
   - Keep ambiguous outcomes visible and require explicit replay permission; stop future admission on cancellation, deferral or limits.
   - Expose immutable transition notifications and an elapsed-time snapshot, with cooperative synchronous-I/O limits documented honestly.
@@ -156,3 +156,5 @@ validation without a source change or specific concern.
 - Task 1.2 persists acyclic plan contracts in harness/workflow_plan.py. Task 4.1 must replace interim version-2 runner/resume guards; task 4.2 must replace version-2-in-version-1 report-envelope guards. A Linux 3.12 canonical full run passed (2061 tests); native Windows full-run termination 0xE0000001 remains unexplained and does not waive task 6.1.
 
 - Task 1.3 exposes RequestControl.run_attempt and typed RequestError.response_evidence (never raw .response). Task 2.1/2.3 must preserve server timing hints on pending responses as well as errors and classify detached failures without status/code conservatively; retryable alone does not prove safe replay. Legacy run intentionally retains old event serialization.
+
+- Task 2.1 adds ReadinessControl.operation(...).run(exchange) with admission-time ExchangeContext bounds and ReadinessResult. Pending transport remains deferred for task 2.3; RetryAfterHint now lives in readiness_types.py and remains import-compatible through request_control.py. Shared cooldown is on RequestControl, including terminal failures. ReadinessOperation._complete sanitizes locally failed complete evidence; preserve that boundary when integrating providers. RFC850 dates use receipt-relative years and valid oversized delays defer without fabricated numeric timing.

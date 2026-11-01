@@ -231,6 +231,8 @@ class ReadinessReason(StrEnum):
     MISSING_TOKEN_EVIDENCE = "missing_token_evidence"
     CALLBACK_FAILED = "callback_failed"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
+    RETRY_AFTER_INVALID = "retry_after_invalid"
+    RETRY_AFTER_TOO_LARGE = "retry_after_too_large"
 
 
 class DelaySource(StrEnum):
@@ -340,6 +342,27 @@ class ReadinessObservation:
 
 
 @dataclass(frozen=True)
+class RetryAfterHint:
+    """One bounded Retry-After value and its UTC receipt time, before parsing.
+
+    Invalid values remain evidence for the readiness policy to ignore. Values
+    exceeding 1024 characters become an invalid marker, never a valid prefix.
+    The controller redacts known secrets before exposing this transport hint.
+    No raw response-header mapping or delay decision is retained here.
+    """
+
+    value: str
+    received_at: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.value, str):
+            raise TypeError("Retry-After value must be a string")
+        _timestamp(self.received_at)
+        if len(self.value) > 1024:
+            object.__setattr__(self, "value", "[oversized Retry-After ignored]")
+
+
+@dataclass(frozen=True)
 class PendingReceipt:
     """Accepted HTTP 202 work, never a completed logical generation."""
 
@@ -348,6 +371,7 @@ class PendingReceipt:
     request_id: str
     timestamp: str
     provider_status: str | None = None
+    retry_after: RetryAfterHint | None = None
     status_code: int = field(default=202, init=False)
     complete: bool = field(default=False, init=False)
 
@@ -356,17 +380,24 @@ class PendingReceipt:
             _text(getattr(self, name), name)
         object.__setattr__(self, "request_id", _uuid(self.request_id))
         _timestamp(self.timestamp)
+        if self.retry_after is not None and not isinstance(self.retry_after, RetryAfterHint):
+            raise TypeError("retry_after must be RetryAfterHint or None")
         if self.provider_status is not None:
             _text(self.provider_status, "provider_status")
 
     def to_dict(self) -> dict:
-        return {"operation_id": self.operation_id, "model": self.model, "request_id": self.request_id,
-                "timestamp": self.timestamp, "provider_status": self.provider_status,
-                "status_code": self.status_code, "complete": self.complete}
+        result = {"operation_id": self.operation_id, "model": self.model, "request_id": self.request_id,
+                  "timestamp": self.timestamp, "provider_status": self.provider_status,
+                  "status_code": self.status_code, "complete": self.complete}
+        if self.retry_after is not None:
+            result["retry_after"] = {"value": self.retry_after.value, "received_at": self.retry_after.received_at}
+        return result
 
     @classmethod
     def from_dict(cls, data):
-        values = _fields(data, {"operation_id", "model", "request_id", "timestamp", "provider_status", "status_code", "complete"})
+        values = _fields(data, {"operation_id", "model", "request_id", "timestamp", "provider_status", "status_code", "complete", "retry_after"})
+        if values.get("retry_after") is not None:
+            values["retry_after"] = RetryAfterHint(**_fields(values["retry_after"], {"value", "received_at"}))
         complete, status = values.pop("complete", False), values.pop("status_code", 202)
         if complete is not False or type(status) is not int or status != 202:
             raise ValueError("Pending receipt must remain incomplete with status_code 202")

@@ -14,7 +14,7 @@ from types import MappingProxyType
 
 from recall_guard.core.completion import ModelConfig, ModelResponse
 from recall_guard.core.readiness_evidence import PartialResponse
-from recall_guard.core.readiness_types import PendingReceipt, _fields, _integer, _text, _timestamp
+from recall_guard.core.readiness_types import PendingReceipt, RetryAfterHint, _fields, _integer, _text
 
 _TRANSIENT_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504, 529})
 _NONTRANSIENT_CODES = frozenset({
@@ -37,27 +37,6 @@ def _usage_snapshot(usage: Mapping[str, int] | None) -> Mapping[str, int] | None
 
 class BudgetExhaustedError(RuntimeError):
     """The shared physical-request limit has been reached."""
-
-
-@dataclass(frozen=True)
-class RetryAfterHint:
-    """One bounded Retry-After value and its UTC receipt time, before parsing.
-
-    Invalid values remain evidence for the readiness policy to ignore. Values
-    exceeding 1024 characters become an invalid marker, never a valid prefix.
-    The controller redacts known secrets before exposing this transport hint.
-    No raw response-header mapping or delay decision is retained here.
-    """
-
-    value: str
-    received_at: str
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.value, str):
-            raise TypeError("Retry-After value must be a string")
-        _timestamp(self.received_at)
-        if len(self.value) > 1024:
-            object.__setattr__(self, "value", "[oversized Retry-After ignored]")
 
 
 class RequestError(RuntimeError):
@@ -255,6 +234,12 @@ class RequestControl:
         self._retry_if = retry_if
         self._admission_lock = Lock()
         self._last_request_start: float | None = None
+        self._readiness_cooldown_until = 0.0
+
+    def extend_readiness_cooldown(self, until: float) -> None:
+        """Extend this client/model's monotonic cooldown without holding network I/O."""
+        with self._admission_lock:
+            self._readiness_cooldown_until = max(self._readiness_cooldown_until, until)
 
     def _redact(self, value: str | None) -> str | None:
         if value is None:
@@ -270,7 +255,12 @@ class RequestControl:
     def _admit(
         self, stage: str, attempt: int, *, purpose: str | None = None,
         operation_id: str | None = None, request_id: str | None = None,
+        admission_guard: Callable[[], None] | None = None,
+        wait: Callable[[float], None] | None = None,
     ) -> RequestEvent:
+        if admission_guard is not None:
+            return self._admit_guarded(stage, attempt, purpose=purpose, operation_id=operation_id,
+                                       request_id=request_id, guard=admission_guard, wait=wait or self._sleep)
         with self._admission_lock:
             if self._last_request_start is not None and self.config.min_call_interval_s > 0:
                 next_start = self._last_request_start + self.config.min_call_interval_s
@@ -284,6 +274,27 @@ class RequestControl:
                                        operation_id=self._redact(operation_id), request_id=self._redact(request_id))
             self._last_request_start = actual_start
             return event
+
+    def _admit_guarded(self, stage, attempt, *, purpose, operation_id, request_id, guard, wait):
+        # Recompute actual start spacing after every wake. All waits release the
+        # admission lock; guard checks must be fast and must not call user code.
+        while True:
+            with self._admission_lock:
+                guard()
+                now = self._clock()
+                paced_start = now if self._last_request_start is None else (
+                    self._last_request_start + self.config.min_call_interval_s)
+                delay_s = max(paced_start, self._readiness_cooldown_until) - now
+                if self.budget.remaining == 0:
+                    raise BudgetExhaustedError("Physical request budget exhausted")
+                if delay_s <= 0:
+                    event = self.budget._admit(
+                        stage=self._redact(stage), model=self._redact(self.config.model), attempt=attempt,
+                        started_at=now, purpose=purpose, operation_id=self._redact(operation_id),
+                        request_id=self._redact(request_id))
+                    self._last_request_start = now
+                    return event
+            wait(delay_s)
 
     def _redact_evidence(
         self, response: ModelResponse | PartialResponse | None,
@@ -333,7 +344,7 @@ class RequestControl:
                 return PartialResponse("", reason=response.reason, max_retained_bytes=response.max_retained_bytes)
         return ModelResponse.from_dict(values)
 
-    def _failure(self, error: Exception) -> RequestError:
+    def _failure(self, error: Exception, *, preserve_transport_kind: bool = False) -> RequestError:
         retryable = False
         if not _permanent(error):
             try:
@@ -352,7 +363,9 @@ class RequestControl:
         return RequestError(
             self._redact(str(error)), status_code=_status_code(error), retryable=retryable,
             parameter=self._redact(getattr(error, "parameter", None)), detail=self._redact(getattr(error, "detail", None)),
-            code=self._redact(getattr(error, "code", None)), usage=self._usage(usage),
+            code=self._redact(getattr(error, "code", None) or (
+                "timeout" if preserve_transport_kind and isinstance(error, TimeoutError) else
+                "disconnect" if preserve_transport_kind and isinstance(error, ConnectionError) else None)), usage=self._usage(usage),
             request_id=None if typed_error is None else self._redact(typed_error.request_id),
             retry_after=None if hint is None else RetryAfterHint(self._redact(hint.value), hint.received_at),
             response_evidence=None if typed_error is None else self._redact_evidence(typed_error.response_evidence),
@@ -361,22 +374,31 @@ class RequestControl:
     def run_attempt(
         self, operation: Callable[[], ModelResponse | PendingReceipt], *, stage: str, attempt: int = 1,
         purpose: str | None = None, operation_id: str | None = None, request_id: str | None = None,
+        admission_guard: Callable[[], None] | None = None,
+        wait: Callable[[float], None] | None = None,
     ) -> ModelResponse | PendingReceipt:
-        """Admit one exchange, with no retry, poll or retry-delay sleep.
+        """Admit one exchange, with no hidden retry or status poll.
 
         Pacing and the shared physical cap apply to every invocation. A pending
         receipt succeeds physically but does not complete the logical answer.
         Caller-supplied IDs/purpose are recorded even while the call is in flight;
         a response identity is retained on completion. Retry policy decisions
         and any follow-up exchange belong to the caller of this seam.
+        The optional readiness guard runs under the admission lock immediately
+        before budget admission; it must only inspect local state. Its paired
+        wait function runs outside locks and handles cooperative pacing/cooldown.
+        Without a guard the exact legacy pacing path remains unchanged.
         """
         return self._attempt(operation, stage=stage, attempt=attempt, purpose=purpose,
-                             operation_id=operation_id, request_id=request_id, allow_pending=True)
+                             operation_id=operation_id, request_id=request_id, allow_pending=True,
+                             admission_guard=admission_guard, wait=wait)
 
     def _attempt(
         self, operation: Callable[[], ModelResponse | PendingReceipt], *, stage: str, attempt: int,
         purpose: str | None = None, operation_id: str | None = None, request_id: str | None = None,
         allow_pending: bool = False,
+        admission_guard: Callable[[], None] | None = None,
+        wait: Callable[[float], None] | None = None,
     ) -> ModelResponse | PendingReceipt:
         if not isinstance(stage, str) or not stage.strip():
             raise ValueError("stage must be a nonempty string")
@@ -388,7 +410,8 @@ class RequestControl:
         for name, value in (("operation_id", operation_id), ("request_id", request_id)):
             if value is not None:
                 _text(value, name)
-        event = self._admit(stage, attempt, purpose=purpose, operation_id=operation_id, request_id=request_id)
+        event = self._admit(stage, attempt, purpose=purpose, operation_id=operation_id, request_id=request_id,
+                            admission_guard=admission_guard, wait=wait)
         failure = None
         try:
             response = operation()
@@ -404,7 +427,7 @@ class RequestControl:
                 _text(response.request_id, "request_id")
         except Exception as error:
             latency_s = self._clock() - event.started_at
-            failure = self._failure(error)
+            failure = self._failure(error, preserve_transport_kind=allow_pending)
             self.budget._finish(
                 event, status="failed", latency_s=latency_s,
                 usage=failure.usage, error=str(failure), status_code=failure.status_code,
