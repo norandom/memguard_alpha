@@ -1,0 +1,71 @@
+{
+  "budget": {
+    "events": [
+      {
+        "attempt": 1,
+        "call_id": 1,
+        "cost": null,
+        "latency_s": 302.23630607999803,
+        "model": "openai/gpt-oss-20b",
+        "purpose": "probe",
+        "stage": "probe",
+        "started_at": 22784.802504224,
+        "status": "failed",
+        "status_code": 504,
+        "timestamp": "2026-11-01T15:22:49.831193+00:00",
+        "usage": null
+      }
+    ],
+    "limit": 2,
+    "used": 1
+  },
+  "observations": [
+    {
+      "answer_characters": 0,
+      "answer_deltas": 0,
+      "call_id": null,
+      "credential_eligibility": "unverified",
+      "delay_s": null,
+      "delay_source": null,
+      "elapsed_s": 2.8303998988121748e-05,
+      "keepalive_events": 0,
+      "model": "openai/gpt-oss-20b",
+      "operation_id": "2cf099d1-4fa9-4010-8776-2aa5c99d1915",
+      "reason": null,
+      "reasoning_characters": 0,
+      "reasoning_deltas": 0,
+      "request_id": null,
+      "stage": "probe",
+      "state": "waiting",
+      "status_code": null,
+      "timestamp": "2026-11-01T15:22:49.831103+00:00",
+      "transport_bytes": 0,
+      "waiting_s": 0.0
+    },
+    {
+      "answer_characters": 0,
+      "answer_deltas": 0,
+      "call_id": 1,
+      "credential_eligibility": "unverified",
+      "delay_s": 1.0,
+      "delay_source": "backoff",
+      "elapsed_s": 302.251610831001,
+      "keepalive_events": 0,
+      "model": "openai/gpt-oss-20b",
+      "operation_id": "2cf099d1-4fa9-4010-8776-2aa5c99d1915",
+      "reason": "gateway_timeout",
+      "reasoning_characters": 0,
+      "reasoning_deltas": 0,
+      "request_id": "542c572b-5eb4-4a3b-b820-020e0bae7d48",
+      "stage": "probe",
+      "state": "unknown_outcome",
+      "status_code": 504,
+      "timestamp": "2026-11-01T15:27:52.081207+00:00",
+      "transport_bytes": 0,
+      "waiting_s": 0.0
+    }
+  ],
+  "ready": false,
+  "response": null,
+  "stage": "probe"
+}

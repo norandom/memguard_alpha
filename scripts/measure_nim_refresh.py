@@ -67,8 +67,11 @@ def load_inputs(directory: Path) -> dict[str, tuple[ExperimentItem, ...]]:
     return groups
 
 
-def build_plan(directory: Path) -> dict:
+def build_plan(directory: Path, *, eligibility_request_cap: int = 2) -> dict:
+    if type(eligibility_request_cap) is not int or eligibility_request_cap not in {1, 2}:
+        raise ValueError("Eligibility request cap must be 1 or 2")
     groups = load_inputs(directory)
+    phase_caps = dict(PHASE_CAPS, eligibility=eligibility_request_cap)
     return {
         "schema": "recall_guard.nim_refresh.v1", "status": "offline_plan",
         "target": target_config().to_dict(), "credential_reference": "NVIDIA_API_KEY",
@@ -76,7 +79,7 @@ def build_plan(directory: Path) -> dict:
         "input_hashes": {name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
                          for name in INPUT_FILES},
         "input_counts": {name: len(rows) for name, rows in groups.items()},
-        "phase_caps": dict(PHASE_CAPS), "maximum_total_requests": sum(PHASE_CAPS.values()),
+        "phase_caps": phase_caps, "maximum_total_requests": sum(phase_caps.values()),
         "nominal_requests": {"eligibility": 1, "calibration": 62, "evaluation": 49},
         "calibration": {"min_valid": 10, "min_auc": 0.6, "seed": 0, "max_workers": 1},
         "single_view": "draw_index=0, shared with ensemble; no additional requests",
@@ -207,11 +210,12 @@ def credential_environment(path: Path) -> dict[str, str]:
     return {"NVIDIA_API_KEY": value}
 
 
-def run(inputs: Path, output: Path, *, plan_file: Path, credential_file: Path | None = None) -> dict:
+def run(inputs: Path, output: Path, *, plan_file: Path, credential_file: Path | None = None,
+        eligibility_request_cap: int = 2) -> dict:
     """Execute only after explicit external approval of this separate budget."""
     if output.exists() and any(output.iterdir()):
         raise FileExistsError("Nonempty output: ambiguous restart is forbidden")
-    plan = build_plan(inputs)
+    plan = build_plan(inputs, eligibility_request_cap=eligibility_request_cap)
     frozen_plan = json.loads(plan_file.read_text(encoding="utf-8"))
     if json.dumps(frozen_plan, sort_keys=True, allow_nan=False) != json.dumps(plan, sort_keys=True, allow_nan=False):
         raise ValueError("Frozen plan differs from current inputs or configuration")
@@ -236,7 +240,7 @@ def run(inputs: Path, output: Path, *, plan_file: Path, credential_file: Path | 
         receipt["phase"] = phase
         directory = output / phase
         directory.mkdir()
-        budgets[phase] = CallBudget(PHASE_CAPS[phase])
+        budgets[phase] = CallBudget(plan["phase_caps"][phase])
         checkpoint()  # Client construction may resolve credentials; intent precedes it.
         client = RecordedClient(target_config(), budgets[phase], directory=directory, deadline=deadline,
                                 environment=environment)
@@ -310,15 +314,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--credential-file", type=Path, help="Run only: explicit dotenv secret path")
     parser.add_argument("--plan-file", type=Path, help="Run only: previously frozen offline plan")
+    parser.add_argument("--eligibility-request-cap", type=int, choices=(1, 2), default=2)
     args = parser.parse_args(argv)
     if args.run:
         if args.output is None or args.plan_file is None:
             parser.error("--run requires explicit --output and --plan-file")
-        result = run(args.inputs, args.output, plan_file=args.plan_file, credential_file=args.credential_file)
+        result = run(args.inputs, args.output, plan_file=args.plan_file, credential_file=args.credential_file,
+                     eligibility_request_cap=args.eligibility_request_cap)
     else:
         if args.credential_file:
             parser.error("--credential-file requires --run")
-        result = build_plan(args.inputs)
+        result = build_plan(args.inputs, eligibility_request_cap=args.eligibility_request_cap)
         if args.output:
             if args.output.exists():
                 raise FileExistsError("Plan destination already exists")

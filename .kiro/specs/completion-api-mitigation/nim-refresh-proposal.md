@@ -93,3 +93,13 @@ scoring (112 physical requests), draw-zero reuse, one failed item with the other
 plan mismatch and admission-window enforcement. Ruff and architecture passed.
 Independent review APPROVED after correcting pacing across the deadline with
 the existing CancellationToken guard. No core changes or live calls were made.
+
+## Live authorization
+
+User approved the 146-request ceiling on 2026-11-01T15:22:42.6349154+00:00. Scope: NIM openai/gpt-oss-20b eligibility, fresh original calibration and single/three-draw comparison; no paid auxiliary providers, no transfer from the readiness allowance.
+
+## First attempt and optional explicit follow-up
+
+The approved first attempt consumed one physical eligibility request and returned HTTP 504 after302.24s. Credential eligibility remains unverified; no calibration/evaluation calls ran. Raw evidence is published in docs/results/2026-11-01-nim-refresh/. Automatic replay remains disabled.
+
+A separately selected new attempt may use retry-plan.json with eligibility cap1, calibration80, evaluation64: maximum145 remaining, plus the prior consumed1 equals the original146 ceiling. No call allowance is reset. The helper's lower-cap option passed18 Docker tests and independent review. One additional eligibility operation would require explicit user replay permission because the first provider outcome is unknown; no second request has been sent.

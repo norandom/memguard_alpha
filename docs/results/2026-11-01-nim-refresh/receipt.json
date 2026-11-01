@@ -1,0 +1,34 @@
+{
+  "admission_window_exhausted": false,
+  "budgets": {
+    "eligibility": {
+      "events": [
+        {
+          "attempt": 1,
+          "call_id": 1,
+          "cost": null,
+          "latency_s": 302.23630607999803,
+          "model": "openai/gpt-oss-20b",
+          "purpose": "probe",
+          "stage": "probe",
+          "started_at": 22784.802504224,
+          "status": "failed",
+          "status_code": 504,
+          "timestamp": "2026-11-01T15:22:49.831193+00:00",
+          "usage": null
+        }
+      ],
+      "limit": 2,
+      "used": 1
+    }
+  },
+  "cost": null,
+  "cost_unavailable_reason": "Provider pricing and monetary cost unavailable",
+  "elapsed_s": 302.3262428380003,
+  "failed_items": 0,
+  "failure_kind": "request_error",
+  "phase": "eligibility",
+  "physical_requests": 1,
+  "processed_items": 0,
+  "status": "incomplete"
+}

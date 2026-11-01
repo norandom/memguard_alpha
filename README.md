@@ -160,6 +160,15 @@ is an example consumer. The applied workflow is described in
 [Computational Global Macro with AI for Risk and Portfolio Management](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358).
 Its portfolio results belong to that consumer pipeline.
 
+## NIM refresh: 2026-11-01
+
+The Docker refresh of `openai/gpt-oss-20b` stopped at its first eligibility
+request: HTTP 504 after about 302 seconds. Key eligibility remains unverified.
+Fresh calibration and the planned single-versus-three-draw ensemble comparison
+did not run, so the earlier results remain the latest successful measurements.
+The updated harness passed its offline checks; that does not establish provider
+availability. See the [dated report and raw receipts](docs/results/2026-11-01-nim-refresh.md).
+
 ## Completion API pilot: 2026-10-31
 
 The saved Claude Opus 5.5 pilot does not demonstrate a mitigation benefit.

@@ -1,7 +1,7 @@
 {
   "feature_name": "completion-api-mitigation",
-  "created_at": "2026-10-30T17:52:02.048349+00:00",
-  "updated_at": "2026-10-31T19:15:21+00:00",
+  "created_at": "2026-10-30T18:52:02.048349+01:00",
+  "updated_at": "2026-11-01T15:43:09.4641171+00:00",
   "language": "en",
   "phase": "implementing",
   "approvals": {
@@ -31,5 +31,20 @@
     "report": "task-plan-review.md"
   },
   "workflow_note": "Requirements, design and tasks were approved on 2026-10-30. Implementation is in progress; the saved 2026-10-31 completion-only pilot does not complete the required two-mode live measurement.",
-  "implementation_authorization": "User approved proposed design and tasks on 2026-10-30."
+  "implementation_authorization": "User approved proposed design and tasks on 2026-10-30.",
+  "nim_refresh": {
+    "date": "2026-11-01",
+    "model": "openai/gpt-oss-20b",
+    "approved_total_cap": 146,
+    "actual_physical_requests": 1,
+    "remaining_total_cap": 145,
+    "status": "eligibility_gateway_timeout",
+    "credential_eligibility": "unverified",
+    "calibration_performed": false,
+    "evaluation_performed": false,
+    "raw_receipt": "docs/results/2026-11-01-nim-refresh/receipt.json",
+    "report": "docs/results/2026-11-01-nim-refresh.md",
+    "explicit_followup_permission": "pending",
+    "original_readiness_allowance_used": 0
+  }
 }

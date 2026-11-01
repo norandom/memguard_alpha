@@ -1,0 +1,17 @@
+{
+  "measurement_date": "2026-11-01",
+  "measurement_code_commit": "d0beae3",
+  "docker_image": "sha256:94138c218ba138c61e259dedcbe2f4f618c96751a4fdee425ef5a21e48139b0c",
+  "runtime_source_state": "Committed measurement helper plus preserved uncommitted readiness work; not a published release.",
+  "actual_physical_requests": 1,
+  "actual_calibration_requests": 0,
+  "actual_evaluation_requests": 0,
+  "approved_total_cap": 146,
+  "unused_total_cap": 145,
+  "status": "incomplete_eligibility_gateway_timeout",
+  "credential_eligibility": "unverified",
+  "model_card": "https://build.nvidia.com/openai/gpt-oss-20b/modelcard",
+  "model_card_checked_at": "2026-11-01",
+  "rewriting_active": false,
+  "divergence_active": false
+}

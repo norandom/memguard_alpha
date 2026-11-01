@@ -95,18 +95,23 @@ def fixture_transport(monkeypatch, *, missing_logprobs=False, reject=False):
     monkeypatch.setattr(providers, "exchange", exchange)
 
 
-def frozen_plan(tmp_path, inputs=INPUTS):
+def frozen_plan(tmp_path, inputs=INPUTS, *, eligibility_request_cap=2):
     path = tmp_path / "frozen-plan.json"
-    path.write_text(json.dumps(refresh.build_plan(inputs)), encoding="utf-8")
+    path.write_text(json.dumps(refresh.build_plan(inputs, eligibility_request_cap=eligibility_request_cap)),
+                    encoding="utf-8")
     return path
 
 
-def test_full_fixture_run_reuses_draw_zero_and_real_budget(tmp_path, monkeypatch):
+@pytest.mark.parametrize("eligibility_request_cap", [1, 2])
+def test_full_fixture_run_reuses_draw_zero_and_real_budget(tmp_path, monkeypatch, eligibility_request_cap):
     fixture_transport(monkeypatch)
     output = tmp_path / "run"
-    receipt = refresh.run(INPUTS, output, plan_file=frozen_plan(tmp_path))
+    receipt = refresh.run(INPUTS, output,
+                          plan_file=frozen_plan(tmp_path, eligibility_request_cap=eligibility_request_cap),
+                          eligibility_request_cap=eligibility_request_cap)
     assert receipt["status"] == "completed", receipt
     assert receipt["physical_requests"] == 112
+    assert receipt["budgets"]["eligibility"]["limit"] == eligibility_request_cap
     assert {name: value["used"] for name, value in receipt["budgets"].items()} == {
         "eligibility": 1, "calibration": 62, "evaluation": 49}
     rows = [json.loads(path.read_text()) for path in sorted(output.glob("item-??.json"))]
@@ -228,3 +233,22 @@ def test_pacing_cannot_admit_a_second_request_after_run_deadline(tmp_path, monke
     assert [event.started_at for event in budget.events] == [99.0]
     receipt = json.loads((tmp_path / "request-002.receipt.json").read_text())
     assert receipt["observations"][-1]["state"] == "cancelled"
+
+
+def test_lower_eligibility_cap_plan(capsys):
+    assert refresh.main(["--plan", "--eligibility-request-cap", "1"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["phase_caps"] == {"eligibility": 1, "calibration": 80, "evaluation": 64}
+    assert plan["maximum_total_requests"] == 145
+    assert sum(plan["nominal_requests"].values()) == 112
+    assert plan["target"] == refresh.target_config().to_dict()
+
+
+def test_lower_cap_requires_matching_frozen_plan_before_credentials(tmp_path, monkeypatch):
+    plan_file = frozen_plan(tmp_path)
+    monkeypatch.setattr(refresh, "credential_environment", lambda *a: pytest.fail("read secret"))
+    monkeypatch.setattr(refresh, "RecordedClient", lambda *a, **k: pytest.fail("constructed client"))
+    with pytest.raises(ValueError, match="Frozen plan differs"):
+        refresh.run(INPUTS, tmp_path / "run", plan_file=plan_file, eligibility_request_cap=1,
+                    credential_file=Path("never-read.env"))
+    assert not (tmp_path / "run").exists()
