@@ -145,6 +145,15 @@ engineVersion v0.21.4 still belongs to task1.1. Do not infer pinned-version
 compatibility from the latest documentation. Source filtering must be verified
 before passing the context; no build secrets or SSH socket are required.
 
+Implementation clarification: all public directory arguments use one shared
+Annotated Directory/Ignore declaration to exclude credentials and bulky local
+state before host upload. Dagger cannot derive those pre-call rules from a host
+.dockerignore automatically. The complete build exclusions are still read from
+.dockerignore before Dockerfile construction; keep the small pre-upload filter
+aligned for newly added credential/large-state paths. This adds no dependency
+recipe, configuration service or staging controller. Actual v0.21.4 execution
+verified the annotation and shared Dockerfile path.
+
 Existing build/docs outputs need an explicit writable directory under non-root
 execution. Use /outputs/dist and /outputs/site internally, returning those
 directories from Dagger as before. Preserve the function-level wheel/sdist/site
@@ -183,6 +192,7 @@ results. A missing Docker daemon is a tooling prerequisite, not a library defect
 | ci/src/ci/main.py | Consume shared Dockerfile; preserve orchestration contracts |
 | README.md | Adopter quick start and explicit live-run boundary, using COBESY |
 | docs/development.md; mkdocs.yml | Engineering commands, outputs, troubleshooting and navigation, using COBESY |
+| .kiro/steering/recall-guard-package.md | Current Docker validation policy and the user's explicit exclusion of native Windows work |
 | Existing container/packaging tests | Extend only where needed to protect installed-wheel, context or output contracts; no new test framework |
 
 Do not create an image registry, configuration framework or helper package for

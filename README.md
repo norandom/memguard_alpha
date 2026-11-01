@@ -14,6 +14,7 @@ answer was memorized. Recall Guard is not a forecaster.
 
 | Your goal | Start here | What you need |
 | --- | --- | --- |
+| Run checkout examples and tests in Docker | [Docker quick start](#run-the-checkout-in-docker) | Docker with Compose and a current checkout; the first example needs no keys |
 | Score model responses in an application | [Scorer integration](https://norandom.github.io/memguard_alpha/) | NVIDIA API key, a model with token logprobs, and calibration prompts |
 | Configure completion APIs, optional rewriting or n draws | [Completion workflow](docs/completion-api.md) | Development checkout; the default application and notebook fixtures run offline |
 | Try the divergence equation without a model | [Executable example](docs/divergence-decoding.md) | Current checkout, Python and NumPy; no credentials |
@@ -36,6 +37,38 @@ Calibrate `MemoryGuardedScorer` for your model, then call `scorer.score(prompt)`
 Read `parse_ok`, `fail_reason` and calibration quality before using
 `p_memorized`. The [engineering example](docs/index.md#integrate-the-scorer)
 shows the complete input path and failure handling.
+
+## Run the checkout in Docker
+
+Use the same locked Python environment for local examples, tests and Dagger CI.
+From a current development checkout, create the `runs/container` folder, then run:
+
+```text
+docker compose build dev
+docker compose run --rm dev
+```
+
+The default command runs the offline completion example. Expect an accepted
+rewritten ensemble, a rejected rewrite, unavailable MCS and zero HTTP requests.
+No API credentials are needed. This checkout tooling is separate from the
+published v0.5.0 package.
+
+Run tests or open the optional notebook environment:
+
+```text
+docker compose run --rm dev uv run --no-sync pytest -q
+docker compose --profile notebook up notebook
+```
+
+Open the localhost URL printed by Jupyter, including its login token. Notebook
+edits persist in `notebooks/`; write other artifacts to `/outputs`, which maps to
+`runs/container`. Stop the notebook with Ctrl+C, then use
+`docker compose --profile notebook down` to remove its container and network.
+Source-code changes take effect after `docker compose build dev`.
+
+The [engineering guide](docs/development.md) covers prerequisites, focused tests,
+the lean runtime image, Dagger and explicit provider credentials. Direct Python
+and existing Jupyter kernels remain supported.
 
 ## Try the completion workflow from a development checkout
 
@@ -102,9 +135,9 @@ For a contributor checkout:
 
 ```text
 uv sync --frozen
-uv run pytest -q
-uv run python harness.py --help
-uv run mkdocs serve
+uv run --no-sync pytest -q
+uv run --no-sync python harness.py --help
+uv run --no-sync mkdocs serve
 ```
 
 Hosted scoring needs NVIDIA credentials and network access on every operating

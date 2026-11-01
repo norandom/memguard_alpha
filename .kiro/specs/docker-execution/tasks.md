@@ -41,7 +41,7 @@ until its shared-recipe replacement is verified.
   - _Requirements: 1.1, 1.2, 1.3, 2.2, 3.4, 4.1, 4.4_
 
 - [ ] 3. Validate and document the shared execution path
-- [ ] 3.1 Accept the image and publish runnable adopter/engineering instructions
+- [x] 3.1 Accept the image and publish runnable adopter/engineering instructions
   - Run one coherent offline full regression, lint/architecture, packaging, strict docs, installed-wheel/runtime import and notebook/output smoke. Reuse unchanged receipts rather than repeating whole suites per reviewer.
   - Use acceptance.md for command/output checks and delivery-plan.md for cross-spec order; record only a short dated receipt, not a new validation framework.
   - Use COBESY for README and MkDocs instructions: prerequisites, build/test/focused commands, outputs, optional notebook and explicit live-run limits. Explain direct Python use and provider availability independently of container reproducibility.
@@ -56,3 +56,13 @@ until its shared-recipe replacement is verified.
   - _Boundary: Existing workflow/container smoke integration_
   - _Depends: 3.1_
   - _Requirements: 4.2_
+  - _Blocked: Awaiting adaptive-provider-readiness task 4.1; outside the current Docker-only delivery._
+
+## Implementation notes
+
+Docker core tasks 1.1–3.1 are independently approved and verified. See
+[implementation-validation.md](implementation-validation.md): final full Docker
+regression 2385 passed, Docker Ruff/architecture passed, pinned Dagger packaging
+and strict docs passed, runtime and authenticated notebook smoke checks passed.
+No native Windows matrix or live provider calls were run. Task 3.2 remains a
+separate follow-up; the usable Docker environment does not depend on it.

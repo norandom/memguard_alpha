@@ -144,4 +144,29 @@ Delayed wakeups must not compress subsequent starts.
 
 ## Project command invocation
 
-Per user instruction on 2026-11-01, invoke project Python commands through `uv run --no-sync ...` from the repository root. Use `uv run --no-sync python ...` for scripts and `uv run --no-sync pytest ...` for tests. Do not invoke a hard-coded base interpreter or `.venv/Scripts/python.exe` directly. Interpreter metadata alone does not establish the cause of prior abnormal process exits; retain those receipts without attributing them to Windows or uv. Existing Dagger/Linux validation remains available, and the full platform matrix remains required.
+Per user instruction on 2026-11-01, invoke project Python commands through `uv run --no-sync ...` from the repository root. Use `uv run --no-sync python ...` for scripts and `uv run --no-sync pytest ...` for tests. Do not invoke a hard-coded base interpreter or `.venv/Scripts/python.exe` directly. Interpreter metadata alone does not establish the cause of prior abnormal process exits; retain those receipts without attributing them to Windows or uv.
+
+## Portable scope and proportionate validation — 2026-11-01
+
+User reassessment supersedes earlier task-by-task full-platform-matrix guidance.
+Recall Guard is a portable Python library for API calls and calculations. Do not
+add OS-specific business logic or treat unexplained host process exits as a
+native application dependency. Runtime Python packages remain dependencies.
+
+Use focused behavioral tests and relevant Ruff/architecture checks for changes,
+then one full offline regression at a coherent integration boundary with an
+application/existing-kernel smoke. Reviewers may use an unchanged source-matched
+integration receipt; rerun broad checks only for changed source or a concrete
+unresolved integration concern. Existing CI/release compatibility matrices remain
+in place; do not manually repeat them for every helper or review iteration.
+
+The canonical tooling environment is one Dockerfile using the existing
+uv lock and shared by Compose and Dagger. Docker is optional for library users;
+do not duplicate dependency recipes, add services, or require container imports.
+See [docker-execution](../specs/docker-execution/design.md) and the readiness
+[infrastructure assessment](../specs/adaptive-provider-readiness/infrastructure-assessment.md).
+The user approved proceeding with Docker implementation, then explicitly made
+Docker the focus and native Windows work out of scope. Use container checks for
+this delivery; do not add native interpreter diagnostics or platform matrices.
+The revised readiness proposal remains separate: Docker acceptance does not
+resume its paused execution repair, remove unrelated files or authorize calls.

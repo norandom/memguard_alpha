@@ -68,3 +68,29 @@ Added acceptance.md with observable checks, short receipts and bounded stop
 conditions. Added delivery-plan.md to make Docker-first order, no-cycle fallback
 smoke and availability-versus-efficacy measurement explicit. These are planning
 artifacts; no image was built and no provider was contacted.
+
+## Implementation evidence — user approved proceeding
+
+Tasks1.1–2.1 were independently reviewed and committed. Actual Docker and actual
+Dagger CLI/engine0.21.4 verified target/Python/context behavior. The shared
+versioned image family is uv0.9.7 with Python3.12.12/3.14.0; initially considered
+0.13.5 derived tags were not published. Resolved digests and exact commands are
+in runs/docker-1-1.md. Runtime/dev checks and notebook/auth/output receipts are
+in runs/docker-1-2.md, docker-1-3.md and docker-2-1.md. No inference calls.
+
+Real repository integration adds pre-call filters using a shared SourceDirectory
+annotation. [Dagger directory filtering](https://docs.dagger.io/reference/api/directory/#filters)
+documents that Directory arguments upload host contents before the function;
+post-call filtering alone therefore cannot prevent upload of local venvs/state.
+The [SDK Ignore annotation](https://dagger-io.readthedocs.io/en/latest/module.html#dagger.Ignore)
+provides that early boundary. The full build exclusion authority stays in
+.dockerignore; no staging controller or second dependency recipe is introduced.
+The filtered actual-root build passed on pinned0.21.4 as uid1000.
+
+COBESY composition blueprint applied before README/guide prose: adopters need a
+first offline result with no credential/setup detour; engineers need commands,
+input/output ownership and proof of one shared recipe. The suspected adoption
+barrier is environment friction, not missing statistical detail. README leads
+with build/run and the expected result; MkDocs groups checks, notebook, runtime,
+credentials, CI and concrete failure responses. The existing mathematical and
+measurement caveats remain explicit, with the Jane Street source linked.
