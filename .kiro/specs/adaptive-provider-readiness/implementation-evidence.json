@@ -78,5 +78,21 @@
       "tests/core/test_provider_readiness.py",
       "tests/harness/test_readiness_persistence.py"
     ]
+  },
+  "3.1": {
+    "review": "APPROVED",
+    "verification": "Independent APPROVED; parent verified9current hashes, canonical Linux CPython3.12.12 suite2352passed/raw0/logSHA256 6b338db545b65cd9f9c67c6a90d4b34f3415e3ff275cb0db146e6d55d27f9b4e. Frozen native task-local45pass; broad443pass before exception-detachment-only delta; RED/static/source integrity verified. Report runs/readiness-3-1-review-verdict.md. Full6.1 platform matrix remains.",
+    "timestamp": "2026-11-01T12:30:26.893950+00:00",
+    "files": [
+      "recall_guard/core/provider_probe.py",
+      "recall_guard/core/provider_anthropic.py",
+      "recall_guard/core/provider_callback.py",
+      "recall_guard/core/providers.py",
+      "recall_guard/core/request_control.py",
+      "recall_guard/harness/workflow_preparation.py",
+      "tests/harness/test_workflow_preparation.py",
+      "tests/core/test_providers.py",
+      "tests/core/test_provider_readiness.py"
+    ]
   }
 }

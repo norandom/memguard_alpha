@@ -67,7 +67,7 @@ validation without a source change or specific concern.
   - _Requirements: 1.1, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 3.1, 3.3, 3.4, 3.5, 3.6, 4.1, 4.2, 4.4, 5.1, 5.2_
 
 - [ ] 3. Resolve explicit completion-only fallback
-- [ ] 3.1 Prepare requested and selected workflow plans
+- [x] 3.1 Prepare requested and selected workflow plans
   - Resolve declared/observed missing token evidence before rejecting client construction or selecting a scorer. Apply fallback only when the caller supplied it.
   - Omit only explicitly authorized logprob controls; retain model/endpoint and all other settings. Reject unrelated configuration/service errors, explicit contradictions and missing calibration as fallback triggers.
   - Construct fresh clients on the same preparation budget and validate changed target settings plus newly active rewrite/verifier roles.
@@ -162,3 +162,5 @@ validation without a source change or specific concern.
 - Task 2.2 adds standalone StreamAssembler/StreamProgress. Transport bytes count supplied chunks, independently of processed/event limits; local metadata must be UTF-8 encodable. Constructor stream-setting acceptance remains task 2.3. Focused Windows uv76passed and canonical Linux2235passed; the single full Windows uv exit0xE0000001 is preserved without a causal claim, and task6.1 remains required. All project commands now use uv run --no-sync per user instruction.
 
 - Task 2.3 integrates nvidia_nim observation and explicit loopback fixture polling. Probe capability reports preserve gated exact requested-control rejections; auth/quota/service failures do not imply missing token capability. Task 3.1 must add a compatible response-bearing legacy probe adaptation for readiness=None (including native Anthropic/callback); do not force optional NIM adaptive readiness to prepare frontier fallback. Keep old probe defaults unchanged. Final full Linux2303passed; full platform/kernel/wheel gates remain6.1.
+
+- Task3.1 adds prepare_workflow with explicit runtime rewrite_policy/scorer/fallback_ensemble, plus opt-in response-bearing legacy probes with guarded cancellation. Existing default probes/retries/event bytes remain unchanged. Preparation requires a fresh exclusively owned budget; invalid factory side effects raise detached FactoryContractError retaining immutable truthful plan/ledger/count snapshots, with no guessed prompt hash. Preserve these seams for3.2; do not seed evaluation probe caches. Canonical Linux2352passed; final6.1 platform matrix remains required.

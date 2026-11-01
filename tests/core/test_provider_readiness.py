@@ -14,6 +14,8 @@ from recall_guard.core.providers import OpenAICompatibleClient
 from recall_guard.core.readiness_evidence import ProbeEvidence
 from recall_guard.core.readiness_types import CancellationToken, PendingStatusPolicy, ReadinessPolicy
 from recall_guard.core.request_control import CallBudget, RequestError
+from recall_guard.harness.workflow_plan import CompletionFallbackPolicy, WorkflowRequest
+from recall_guard.harness.workflow_preparation import prepare_workflow
 
 REQUEST_ID = "12345678-1234-1234-1234-123456789abc"
 BODY = {"choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}]}
@@ -87,6 +89,35 @@ def test_missing_token_probe_preserves_complete_response_without_ready():
         assert evidence.complete and not evidence.ready
         assert evidence.response.content == "OK"
         assert set(evidence.report.unsupported) == {"logprobs", "top_logprobs"}
+
+
+def test_preparation_reuses_actual_readiness_probe_and_reprobes_selected_settings():
+    with server([(200, {}, BODY), (200, {}, BODY)]) as (endpoint, seen):
+        cfg = client(endpoint, parameters={"logprobs": True, "top_logprobs": 2, "max_tokens": 20}).config
+        budget = CallBudget(2)
+        result = prepare_workflow(WorkflowRequest({"target": cfg}, FeatureChoices(mia_scoring=True)),
+            CompletionFallbackPolicy(FeatureChoices(), True),
+            lambda config, budget, features: OpenAICompatibleClient(config, budget, features=features,
+                                                                     allow_unauthenticated=True), budget)
+        assert result.ready and budget.used == len(seen) == 2
+        assert seen[0][2]["logprobs"] is True and "logprobs" not in seen[1][2]
+        assert seen[1][2]["max_tokens"] == 20
+        assert [probe.response.content for probe in result.artifact.evidence["target"]] == ["OK", "OK"]
+        assert all(record.event.purpose == "probe" for record in result.artifact.requests)
+
+
+def test_preparation_pending_is_inspectable_without_fallback_or_evaluation():
+    with server([(202, {"NVCF-REQID": REQUEST_ID, "NVCF-STATUS": "pending"}, {})]) as (endpoint, seen):
+        cfg = client(endpoint).config
+        result = prepare_workflow(WorkflowRequest({"target": cfg}, FeatureChoices(mia_scoring=True)),
+            CompletionFallbackPolicy(FeatureChoices(), True),
+            lambda config, budget, features: OpenAICompatibleClient(config, budget, features=features,
+                                                                     allow_unauthenticated=True), CallBudget(3))
+        assert not result.ready and result.plan.reason is None
+        assert result.artifact.stopping_reason == "pending_route_unavailable"
+        assert len(seen) == len(result.artifact.requests) == 1
+        assert any(observation.request_id == REQUEST_ID
+                   for observation in result.artifact.evidence["target"][0].observations)
 
 
 def test_nim_pending_defers_without_guessing_status_route():

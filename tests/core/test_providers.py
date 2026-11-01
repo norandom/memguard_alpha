@@ -49,6 +49,35 @@ def test_probe_explicit_prompt_and_stage_are_provenance_not_body_controls(wire):
     assert "stage" not in calls[0]["body"]
 
 
+def test_legacy_response_bearing_probe_uses_one_exchange_and_preserves_default_probe_ledger(wire):
+    pending, calls = wire
+    pending.extend([fixture_response(), fixture_response()])
+    budget = CallBudget(2)
+    adapter = client(budget=budget)
+    evidence = adapter.probe_with_evidence(stage="preparation/probe/target")
+    assert evidence.response.content and evidence.complete and evidence.ready
+    assert evidence.observations[-1].timestamp
+    assert budget.used == len(calls) == 1
+    assert budget.events[0].purpose == "probe"
+    assert adapter.config.readiness is None
+    adapter.probe()
+    assert budget.used == len(calls) == 2
+    assert "purpose" not in budget.events[1].to_dict()
+
+
+def test_legacy_typed_rejection_preserves_failure_without_hidden_second_generate(wire):
+    pending, calls = wire
+    entry = fixture_response()
+    entry = dict(entry, status_code=400, body={"error": {"message": "Unsupported control", "param": "logprobs"}})
+    pending.append(entry)
+    budget = CallBudget(1)
+    adapter = client(settings=config(parameters={"logprobs": True}), budget=budget)
+    evidence = adapter.probe_with_evidence()
+    assert not evidence.ready and evidence.response is None
+    assert evidence.report.capabilities["logprobs"].status == CapabilityStatus.UNSUPPORTED
+    assert budget.used == len(calls) == 1
+
+
 def client(settings=None, budget=None, **options):
     return OpenAICompatibleClient(settings or config(), budget or CallBudget(10),
                                   environment={"TEST_PROVIDER_KEY": FAKE_KEY}, **options)

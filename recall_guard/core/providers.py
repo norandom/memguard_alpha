@@ -195,7 +195,8 @@ class OpenAICompatibleClient:
         """Name the budget-ledger stage without reserving a generation control."""
         return self._generate(prompt, parameters, stage=stage, enforce_mia=self.features.mia_scoring)
 
-    def _generate(self, prompt: str, overrides: dict, *, stage: str, enforce_mia: bool, purpose=None) -> ModelResponse:
+    def _generate(self, prompt: str, overrides: dict, *, stage: str, enforce_mia: bool, purpose=None,
+                  admission_guard=None, wait=None) -> ModelResponse:
         if self._readiness is not None:
             result = self._observe(prompt, overrides, stage=stage, purpose=purpose)
             if result.ready or not enforce_mia and isinstance(result.response, ModelResponse) and (
@@ -223,7 +224,8 @@ class OpenAICompatibleClient:
                 raise RequestError(reason, code="missing_token_evidence", usage=result.usage, response_evidence=result)
             return result
 
-        return self._control.run(operation, stage=stage)
+        return self._control.run(operation, stage=stage, purpose=purpose,
+                                         admission_guard=admission_guard, wait=wait)
 
     @staticmethod
     def _readiness_failure(result):
@@ -272,7 +274,13 @@ class OpenAICompatibleClient:
                             on_observation=None) -> ProbeEvidence:
         """Observe this exact configuration; retain failed complete/partial evidence."""
         if self._readiness is None:
-            raise ValueError("probe_with_evidence requires an explicit readiness policy")
+            from recall_guard.core.provider_probe import legacy_probe
+
+            return legacy_probe(self.config, self.features, self.budget,
+                                lambda guard, wait: self._generate(prompt, {}, stage=stage, enforce_mia=False, purpose="probe",
+                                    admission_guard=guard, wait=wait),
+                                self._probe_report, stage=stage, cancellation=cancellation,
+                                on_observation=on_observation)
         result = self._observe(prompt, {}, stage=stage, cancellation=cancellation,
                     on_observation=on_observation, purpose="probe")
         report = (self._probe_report(result.response) if isinstance(result.response, ModelResponse)
@@ -321,7 +329,8 @@ class OpenAICompatibleClient:
         The report concerns this exact configured parameter set, endpoint/model
         and feature selection. It is not a guarantee for changed overrides.
         """
-        response = self._generate(prompt, {}, stage=stage, enforce_mia=False, purpose="probe")
+        response = self._generate(prompt, {}, stage=stage, enforce_mia=False,
+                                  purpose="probe" if self._readiness is not None else None)
         return self._probe_report(response)
 
     def _probe_report(self, response):

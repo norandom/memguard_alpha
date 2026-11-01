@@ -447,20 +447,28 @@ class RequestControl:
         # Outside the original handler: do not retain provider exception chains.
         raise failure
 
-    def run(self, operation: Callable[[], ModelResponse], *, stage: str) -> ModelResponse:
+    def run(self, operation: Callable[[], ModelResponse], *, stage: str,
+            purpose: str | None = None, admission_guard: Callable[[], None] | None = None,
+            wait: Callable[[float], None] | None = None) -> ModelResponse:
         """Execute a physical operation with bounded retries; retain every attempt.
 
         Raise sanitized failures outside the original exception handler so both
         ``__cause__`` and ``__context__`` exclude the original provider exception.
         Authentication/parameter rejections and hard quota failures never retry,
         even when a custom predicate accepts other application-specific errors.
+        Optional runtime guard/wait controls reuse guarded admission for explicit
+        legacy probes. Without them the original admission and sleep paths remain.
         """
         for attempt in range(1, self.config.max_retries + 2):
             failure = None
             try:
-                return self._attempt(operation, stage=stage, attempt=attempt)
+                return self._attempt(operation, stage=stage, attempt=attempt,
+                                     purpose="retry" if purpose is not None and attempt > 1 else purpose,
+                                     admission_guard=admission_guard, wait=wait)
             except RequestError as error:
                 failure = error
             if not failure.retryable or attempt > self.config.max_retries:
                 raise failure
-            self._sleep(self.config.retry_backoff_s * 2 ** (attempt - 1))
+            if admission_guard is not None:
+                admission_guard()
+            (wait or self._sleep)(self.config.retry_backoff_s * 2 ** (attempt - 1))

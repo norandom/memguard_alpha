@@ -167,7 +167,8 @@ class CallbackClient:
         """Associate every hooked attempt with an explicit workflow stage."""
         return self._generate(prompt, parameters, stage=stage, enforce_mia=self.features.mia_scoring)
 
-    def _generate(self, prompt: str, overrides: dict, *, stage: str, enforce_mia: bool) -> ModelResponse:
+    def _generate(self, prompt: str, overrides: dict, *, stage: str, enforce_mia: bool, purpose=None,
+                  admission_guard=None, wait=None) -> ModelResponse:
         if not isinstance(prompt, str):
             raise TypeError("prompt must be a string")
         if not isinstance(stage, str) or not stage.strip():
@@ -196,7 +197,8 @@ class CallbackClient:
                     raise _callback_error(error) from None
 
             try:
-                return self._control.run(physical_operation, stage=stage)
+                return self._control.run(physical_operation, stage=stage, purpose=purpose,
+                                         admission_guard=admission_guard, wait=wait)
             except BudgetExhaustedError:
                 exhausted = True
                 raise
@@ -237,6 +239,9 @@ class CallbackClient:
         opaque callback. Its separate ``request_accounting`` stays unverified.
         """
         response = self._generate(prompt, {}, stage=stage, enforce_mia=False)
+        return self._probe_report(response)
+
+    def _probe_report(self, response):
         capabilities = {}
         for name in self.config.inspect(self.features).capabilities:
             status, observed = CapabilityStatus.SUPPORTED, True
@@ -256,3 +261,13 @@ class CallbackClient:
                           else "Parameter accepted; effective value unconfirmed (not echoed).")
             capabilities[name] = CapabilityEvidence(status, "Actual synchronous callback probe", detail, observed=observed)
         return CapabilityReport(capabilities, self.features)
+
+    def probe_with_evidence(self, prompt: str = "Reply with the word OK.", *, stage: str = "probe",
+                            cancellation=None, on_observation=None):
+        """Probe once through the legacy transport, retaining actual response evidence."""
+        from recall_guard.core.provider_probe import legacy_probe
+
+        return legacy_probe(self.config, self.features, self.budget,
+                            lambda guard, wait: self._generate(prompt, {}, stage=stage, enforce_mia=False, purpose="probe",
+                                    admission_guard=guard, wait=wait), self._probe_report, stage=stage,
+                            cancellation=cancellation, on_observation=on_observation)

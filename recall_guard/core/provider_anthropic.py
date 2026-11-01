@@ -125,7 +125,8 @@ class AnthropicClient:
         """Name a budget-ledger stage without reserving a generation control."""
         return self._generate(prompt, parameters, stage=stage)
 
-    def _generate(self, prompt: str, overrides: dict, *, stage: str) -> ModelResponse:
+    def _generate(self, prompt: str, overrides: dict, *, stage: str, purpose=None,
+                  admission_guard=None, wait=None) -> ModelResponse:
         if not isinstance(prompt, str):
             raise TypeError("prompt must be a string")
         settings = replace(self.config, parameters=dict(self.config.parameters) | overrides)
@@ -143,7 +144,8 @@ class AnthropicClient:
                 raise _http_failure(response, body)
             return _messages_response(response, body, parameters)
 
-        return self._control.run(operation, stage=stage)
+        return self._control.run(operation, stage=stage, purpose=purpose,
+                                         admission_guard=admission_guard, wait=wait)
 
     def _post(self, payload: dict) -> requests.Response:
         headers = {"Content-Type": "application/json", "anthropic-version": ANTHROPIC_API_VERSION,
@@ -169,6 +171,9 @@ class AnthropicClient:
         reason during ordinary generation.
         """
         response = self._generate(prompt, {}, stage=stage)
+        return self._probe_report(response)
+
+    def _probe_report(self, response):
         source = f"Anthropic Messages API {ANTHROPIC_API_VERSION} authenticated generation probe"
         capabilities = {}
         for name in self.config.inspect(self.features).capabilities:
@@ -185,3 +190,13 @@ class AnthropicClient:
                 detail = "Parameter accepted; effective value remains unconfirmed (not echoed)."
             capabilities[name] = CapabilityEvidence(status, source, detail, observed=observed)
         return CapabilityReport(capabilities, self.features)
+
+    def probe_with_evidence(self, prompt: str = "Reply with the word OK.", *, stage: str = "probe",
+                            cancellation=None, on_observation=None):
+        """Probe once through the legacy transport, retaining actual response evidence."""
+        from recall_guard.core.provider_probe import legacy_probe
+
+        return legacy_probe(self.config, self.features, self.budget,
+                            lambda guard, wait: self._generate(prompt, {}, stage=stage, purpose="probe",
+                                    admission_guard=guard, wait=wait), self._probe_report, stage=stage,
+                            cancellation=cancellation, on_observation=on_observation)
