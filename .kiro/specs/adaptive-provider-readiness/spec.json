@@ -1,0 +1,50 @@
+{
+  "feature_name": "adaptive-provider-readiness",
+  "created_at": "2026-11-01T07:50:00+00:00",
+  "updated_at": "2026-11-01T08:22:02.597734+00:00",
+  "language": "en",
+  "phase": "tasks-approved",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "approval_context": "User approved requirements, reviewed design, and implementation tasks on 2026-11-01. Explicitly approved implementation and bounded pilot.",
+  "parent_feature": "completion-api-mitigation",
+  "design_review": {
+    "decision": "GO",
+    "mode": "independent",
+    "repair_passes": 1,
+    "remaining_critical_findings": 0,
+    "report": "design-validation.md"
+  },
+  "task_graph_review": {
+    "decision": "PASS",
+    "mode": "independent",
+    "repair_passes": 0,
+    "report": "task-plan-validation.md",
+    "executable_tasks": 14,
+    "criteria_covered": 29
+  },
+  "live_pilot_authorization": {
+    "approved": true,
+    "date": "2026-11-01",
+    "max_physical_inference_requests": 8,
+    "max_status_polls": 0,
+    "max_controlled_wait_s": 1200,
+    "model": "openai/gpt-oss-20b",
+    "paid_auxiliary_calls": false,
+    "requires_offline_platform_gates": true,
+    "scope": "Four scheduled JSON probes, balanced fixed/adaptive order, at most one permitted retry each; unchanged generation parameters."
+  }
+}
