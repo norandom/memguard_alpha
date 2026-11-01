@@ -11,7 +11,7 @@ until its shared-recipe replacement is verified.
   - Done when Docker and the current SDK build the same minimal target, select Python correctly and exclude a synthetic secret canary. If the SDK contract fails, record the exact incompatibility before changing CI or proposing an upgrade.
   - _Boundary: Shared build recipe feasibility_
   - _Requirements: 1.1, 1.2, 1.3, 3.1_
-- [ ] 1.2 Create the non-root development image and bounded build context
+- [x] 1.2 Create the non-root development image and bounded build context
   - Install frozen dev dependencies from uv.lock, separate the container environment from host mounts, copy required source/fixtures and exclude host venv, credentials, generated artifacts and agent state.
   - Provision build/test backend resources needed by existing packaging tests at build time; require no real provider keys. Keep source baked in and writable home/tmp/output locations explicit.
   - Done when focused tests, Ruff and architecture commands run through uv run --no-sync, context canaries are absent, and non-root output files persist to the host without reusing its environment.
