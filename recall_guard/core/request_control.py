@@ -13,7 +13,8 @@ from time import monotonic, sleep
 from types import MappingProxyType
 
 from recall_guard.core.completion import ModelConfig, ModelResponse
-from recall_guard.core.readiness_types import _fields, _text
+from recall_guard.core.readiness_evidence import PartialResponse
+from recall_guard.core.readiness_types import PendingReceipt, _fields, _integer, _text, _timestamp
 
 _TRANSIENT_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504, 529})
 _NONTRANSIENT_CODES = frozenset({
@@ -38,26 +39,63 @@ class BudgetExhaustedError(RuntimeError):
     """The shared physical-request limit has been reached."""
 
 
+@dataclass(frozen=True)
+class RetryAfterHint:
+    """One bounded Retry-After value and its UTC receipt time, before parsing.
+
+    Invalid values remain evidence for the readiness policy to ignore. Values
+    exceeding 1024 characters become an invalid marker, never a valid prefix.
+    The controller redacts known secrets before exposing this transport hint.
+    No raw response-header mapping or delay decision is retained here.
+    """
+
+    value: str
+    received_at: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.value, str):
+            raise TypeError("Retry-After value must be a string")
+        _timestamp(self.received_at)
+        if len(self.value) > 1024:
+            object.__setattr__(self, "value", "[oversized Retry-After ignored]")
+
+
 class RequestError(RuntimeError):
     """Provider diagnostics; controllers create a sanitized detached failure.
 
     Adapters should supply status/code/parameter rather than ask callers to
     classify text. Nontransient quota errors retain their own status and code.
     Usage may be reported even when a physical request fails validation.
+    ``response_evidence`` retains complete missing-token evidence or incomplete stream
+    evidence; neither turns this failed capability check into a usable answer.
+    Retry hints carry receipt time so HTTP dates need not be interpreted later
+    against a shifted clock. These runtime fields do not alter legacy events.
     """
 
     def __init__(
         self, message: str, *, status_code: int | None = None, parameter: str | None = None,
         detail: str | None = None, code: str | None = None, retryable: bool = False,
         usage: Mapping[str, int] | None = None,
+        request_id: str | None = None, retry_after: RetryAfterHint | None = None,
+        response_evidence: ModelResponse | PartialResponse | None = None,
     ) -> None:
+        if retry_after is not None and not isinstance(retry_after, RetryAfterHint):
+            raise TypeError("retry_after must be RetryAfterHint or None")
+        if response_evidence is not None and not isinstance(response_evidence, (ModelResponse, PartialResponse)):
+            raise TypeError("response_evidence must be complete/partial typed evidence or None")
+        request_id = request_id if request_id is not None else getattr(response_evidence, "request_id", None)
+        if request_id is not None:
+            _text(request_id, "request_id")
         super().__init__(message)
         self.status_code = status_code
         self.parameter = parameter
         self.detail = detail
         self.code = code
         self.retryable = retryable
-        self.usage = _usage_snapshot(usage)
+        self.usage = _usage_snapshot(response_evidence.usage if usage is None and response_evidence is not None else usage)
+        self.request_id = request_id
+        self.retry_after = retry_after
+        self.response_evidence = response_evidence
 
 
 @dataclass(frozen=True)
@@ -149,12 +187,16 @@ class CallBudget:
         with self._lock:
             return tuple(self._events)
 
-    def _admit(self, *, stage: str, model: str, attempt: int, started_at: float) -> RequestEvent:
+    def _admit(
+        self, *, stage: str, model: str, attempt: int, started_at: float,
+        purpose: str | None = None, operation_id: str | None = None, request_id: str | None = None,
+    ) -> RequestEvent:
         with self._lock:
             if len(self._events) >= self._limit:
                 raise BudgetExhaustedError("Physical request budget exhausted")
             event = RequestEvent(len(self._events) + 1, stage, model, attempt, started_at,
-                                 datetime.now(UTC).isoformat())
+                                 datetime.now(UTC).isoformat(), purpose=purpose,
+                                 operation_id=operation_id, request_id=request_id)
             self._events.append(event)
             return event
 
@@ -225,7 +267,10 @@ class RequestControl:
     def _usage(self, usage: Mapping[str, int] | None) -> Mapping[str, int] | None:
         return None if usage is None else {self._redact(name): count for name, count in usage.items()}
 
-    def _admit(self, stage: str, attempt: int) -> RequestEvent:
+    def _admit(
+        self, stage: str, attempt: int, *, purpose: str | None = None,
+        operation_id: str | None = None, request_id: str | None = None,
+    ) -> RequestEvent:
         with self._admission_lock:
             if self._last_request_start is not None and self.config.min_call_interval_s > 0:
                 next_start = self._last_request_start + self.config.min_call_interval_s
@@ -235,9 +280,58 @@ class RequestControl:
                     remaining_s = next_start - self._clock()
             actual_start = self._clock()
             event = self.budget._admit(stage=self._redact(stage), model=self._redact(self.config.model),
-                                       attempt=attempt, started_at=actual_start)
+                                       attempt=attempt, started_at=actual_start, purpose=purpose,
+                                       operation_id=self._redact(operation_id), request_id=self._redact(request_id))
             self._last_request_start = actual_start
             return event
+
+    def _redact_evidence(
+        self, response: ModelResponse | PartialResponse | None,
+    ) -> ModelResponse | PartialResponse | None:
+        if response is None:
+            return None
+
+        def clean(value):
+            if isinstance(value, str):
+                return self._redact(value)
+            if isinstance(value, dict):
+                return {self._redact(key): clean(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [clean(item) for item in value]
+            return value
+
+        # Preserve schema keys and fixed enums. A caller's secret may contain
+        # words such as "token"; replacing those in the schema corrupts evidence
+        # and can raise a secondary exception inside the provider error handler.
+        values = response.to_dict()
+        for name in ("content", "finish_reason", "request_id"):
+            values[name] = self._redact(values[name])
+        for name in ("usage", "requested_settings", "confirmed_settings"):
+            values[name] = clean(values[name])
+        for token in values["token_evidence"] or ():
+            token["token"] = self._redact(token["token"])
+            for alternative in token["top_logprobs"]:
+                alternative["token"] = self._redact(alternative["token"])
+        trace_identity_redacted = False
+        for observation in values.get("readiness_trace") or ():
+            original_request_id = observation["request_id"]
+            for name in ("operation_id", "stage", "model", "request_id"):
+                observation[name] = self._redact(observation[name])
+            if observation["state"] == "pending" and observation["request_id"] != original_request_id:
+                trace_identity_redacted = True
+        if trace_identity_redacted:
+            # A pending trace requires a genuine UUID. Omit a trace containing
+            # credential material instead of inventing an identity or leaking it
+            # through a secondary validation exception. Keep answer evidence.
+            values.pop("readiness_trace")
+        if isinstance(response, PartialResponse):
+            try:
+                return PartialResponse.from_dict(values)
+            except ValueError:
+                # Redaction can expand short secrets beyond the original byte
+                # bound. Keep the incomplete reason without leaking raw data.
+                return PartialResponse("", reason=response.reason, max_retained_bytes=response.max_retained_bytes)
+        return ModelResponse.from_dict(values)
 
     def _failure(self, error: Exception) -> RequestError:
         retryable = False
@@ -252,11 +346,83 @@ class RequestControl:
         except ValueError:
             # Arbitrary callback exception metadata is not verified token usage.
             usage = None
+        # Arbitrary callback attributes are not trusted readiness evidence.
+        typed_error = error if isinstance(error, RequestError) else None
+        hint = None if typed_error is None else typed_error.retry_after
         return RequestError(
             self._redact(str(error)), status_code=_status_code(error), retryable=retryable,
             parameter=self._redact(getattr(error, "parameter", None)), detail=self._redact(getattr(error, "detail", None)),
             code=self._redact(getattr(error, "code", None)), usage=self._usage(usage),
+            request_id=None if typed_error is None else self._redact(typed_error.request_id),
+            retry_after=None if hint is None else RetryAfterHint(self._redact(hint.value), hint.received_at),
+            response_evidence=None if typed_error is None else self._redact_evidence(typed_error.response_evidence),
         )
+
+    def run_attempt(
+        self, operation: Callable[[], ModelResponse | PendingReceipt], *, stage: str, attempt: int = 1,
+        purpose: str | None = None, operation_id: str | None = None, request_id: str | None = None,
+    ) -> ModelResponse | PendingReceipt:
+        """Admit one exchange, with no retry, poll or retry-delay sleep.
+
+        Pacing and the shared physical cap apply to every invocation. A pending
+        receipt succeeds physically but does not complete the logical answer.
+        Caller-supplied IDs/purpose are recorded even while the call is in flight;
+        a response identity is retained on completion. Retry policy decisions
+        and any follow-up exchange belong to the caller of this seam.
+        """
+        return self._attempt(operation, stage=stage, attempt=attempt, purpose=purpose,
+                             operation_id=operation_id, request_id=request_id, allow_pending=True)
+
+    def _attempt(
+        self, operation: Callable[[], ModelResponse | PendingReceipt], *, stage: str, attempt: int,
+        purpose: str | None = None, operation_id: str | None = None, request_id: str | None = None,
+        allow_pending: bool = False,
+    ) -> ModelResponse | PendingReceipt:
+        if not isinstance(stage, str) or not stage.strip():
+            raise ValueError("stage must be a nonempty string")
+        if not callable(operation):
+            raise TypeError("operation must be callable")
+        _integer(attempt, "attempt", minimum=1)
+        if purpose is not None and purpose not in {"inference", "probe", "retry", "status"}:
+            raise ValueError("purpose must be inference, probe, retry or status")
+        for name, value in (("operation_id", operation_id), ("request_id", request_id)):
+            if value is not None:
+                _text(value, name)
+        event = self._admit(stage, attempt, purpose=purpose, operation_id=operation_id, request_id=request_id)
+        failure = None
+        try:
+            response = operation()
+            if allow_pending and isinstance(response, PendingReceipt):
+                if (response.model != self.config.model
+                        or operation_id is not None and response.operation_id != operation_id
+                        or request_id is not None and response.request_id != request_id):
+                    raise ValueError("Pending receipt identity does not match the admitted operation")
+            elif not isinstance(response, ModelResponse):
+                expected = "ModelResponse or PendingReceipt" if allow_pending else "ModelResponse"
+                raise TypeError(f"operation must return {expected}")
+            if allow_pending and response.request_id is not None:
+                _text(response.request_id, "request_id")
+        except Exception as error:
+            latency_s = self._clock() - event.started_at
+            failure = self._failure(error)
+            self.budget._finish(
+                event, status="failed", latency_s=latency_s,
+                usage=failure.usage, error=str(failure), status_code=failure.status_code,
+                parameter=failure.parameter, detail=failure.detail, code=failure.code,
+                request_id=event.request_id or (failure.request_id if allow_pending else None),
+            )
+        else:
+            pending = isinstance(response, PendingReceipt)
+            self.budget._finish(
+                event, status="succeeded", latency_s=self._clock() - event.started_at,
+                usage=None if pending else self._usage(response.usage),
+                status_code=202 if pending else None,
+                request_id=event.request_id or (self._redact(response.request_id) if allow_pending else None),
+                operation_id=event.operation_id or (self._redact(response.operation_id) if pending else None),
+            )
+            return response
+        # Outside the original handler: do not retain provider exception chains.
+        raise failure
 
     def run(self, operation: Callable[[], ModelResponse], *, stage: str) -> ModelResponse:
         """Execute a physical operation with bounded retries; retain every attempt.
@@ -266,29 +432,12 @@ class RequestControl:
         Authentication/parameter rejections and hard quota failures never retry,
         even when a custom predicate accepts other application-specific errors.
         """
-        if not isinstance(stage, str) or not stage.strip():
-            raise ValueError("stage must be a nonempty string")
-        if not callable(operation):
-            raise TypeError("operation must be callable")
         for attempt in range(1, self.config.max_retries + 2):
-            event = self._admit(stage, attempt)
             failure = None
             try:
-                response = operation()
-                if not isinstance(response, ModelResponse):
-                    raise TypeError("operation must return ModelResponse")
-            except Exception as error:
-                latency_s = self._clock() - event.started_at
-                failure = self._failure(error)
-                self.budget._finish(
-                    event, status="failed", latency_s=latency_s,
-                    usage=failure.usage, error=str(failure), status_code=failure.status_code,
-                    parameter=failure.parameter, detail=failure.detail, code=failure.code,
-                )
-            else:
-                self.budget._finish(event, status="succeeded", latency_s=self._clock() - event.started_at,
-                                    usage=self._usage(response.usage))
-                return response
+                return self._attempt(operation, stage=stage, attempt=attempt)
+            except RequestError as error:
+                failure = error
             if not failure.retryable or attempt > self.config.max_retries:
                 raise failure
             self._sleep(self.config.retry_backoff_s * 2 ** (attempt - 1))

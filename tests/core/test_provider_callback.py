@@ -440,6 +440,25 @@ def test_missing_requested_mia_is_reported_by_probe_and_rejected_by_generation()
     with pytest.raises(RequestError) as caught:
         adapter.generate("prompt")
     assert caught.value.code == "missing_token_evidence"
+    assert isinstance(caught.value.response_evidence, ModelResponse)
+    assert caught.value.response_evidence.content == "OK" and caught.value.response_evidence.mia_unavailable_reason
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def test_missing_tokens_retain_callback_evidence_without_inventing_a_physical_event():
+    budget = CallBudget(1)
+    response = ModelResponse("answer", usage={"output_tokens": 2}, request_id="callback-id")
+    adapter = client(lambda prompt, **parameters: response, budget=budget,
+                     settings=config(parameters={"logprobs": True, "top_logprobs": 2}),
+                     features=FeatureChoices(mia_scoring=True))
+    with pytest.raises(RequestError) as caught:
+        adapter.generate("prompt")
+    assert caught.value.response_evidence.content == response.content
+    assert caught.value.response_evidence.usage == response.usage
+    assert caught.value.response_evidence.request_id == response.request_id
+    assert caught.value.response_evidence.requested_settings == {"logprobs": True, "top_logprobs": 2}
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert budget.used == 0
 
 
 def test_genuine_optional_token_evidence_enables_probe_without_fabrication():

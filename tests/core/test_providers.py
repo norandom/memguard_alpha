@@ -14,6 +14,7 @@ from recall_guard.core.completion import (
     CompletionClient,
     FeatureChoices,
     ModelConfig,
+    ModelResponse,
 )
 from recall_guard.core.providers import OpenAICompatibleClient
 from recall_guard.core.request_control import BudgetExhaustedError, CallBudget, RequestError
@@ -358,6 +359,31 @@ def test_missing_or_incomplete_evidence_is_valid_text_but_never_valid_mia(eviden
     assert caught.value.code == "missing_token_evidence"
     assert dict(caught.value.usage) == {"prompt_tokens": 8, "completion_tokens": 1, "total_tokens": 9}
     assert budget.events[0].status == "failed"
+    assert caught.value.response_evidence == response
+    assert caught.value.__context__ is None and caught.value.__cause__ is None
+
+
+def test_missing_token_failure_retains_sanitized_complete_wire_evidence(wire):
+    pending, calls = wire
+    fixture = fixture_response()
+    fixture["body"]["choices"][0]["message"]["content"] = f"answer-{FAKE_KEY}"
+    fixture["headers"] = {"x-request-id": f"id-{FAKE_KEY}"}
+    pending.append(fixture)
+    budget = CallBudget(5)
+    settings = config(parameters={"logprobs": True, "top_logprobs": 2}, max_retries=3)
+    with pytest.raises(RequestError) as caught:
+        client(settings, budget, features=FeatureChoices(mia_scoring=True)).generate("prompt")
+    error = caught.value
+    assert isinstance(error.response_evidence, ModelResponse)
+    assert error.response_evidence.content == "answer-[REDACTED]"
+    assert error.response_evidence.request_id == "id-[REDACTED]"
+    assert error.response_evidence.mia_unavailable_reason is not None
+    assert FAKE_KEY not in json.dumps(error.response_evidence.to_dict())
+    assert error.__cause__ is None and error.__context__ is None
+    assert len(calls) == budget.used == 1
+    assert budget.events[0].status == "failed"
+    assert budget.events[0].usage == error.response_evidence.usage
+    assert not {"purpose", "request_id", "operation_id"}.intersection(budget.events[0].to_dict())
 
 
 @pytest.mark.parametrize("location", ["realized", "alternative"])

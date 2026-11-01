@@ -12,7 +12,7 @@ Every behavioral task includes meaningful RED/GREEN evidence, failure paths
 and the existing Kiro review/verification gates. Do not repeat whole-platform
 validation without a source change or specific concern.
 
-- [ ] 1. Establish shared contracts and physical accounting
+- [x] 1. Establish shared contracts and physical accounting
 - [x] 1.1 Define readiness policies, observation states and response evidence
   - Define validated immutable policy, observation, pending-receipt, complete/partial probe evidence and runtime cancellation contracts, including documented units and limits.
   - Separate observed provider progress from elapsed local waiting, answer content from reasoning progress, and complete responses from retained partial data.
@@ -29,7 +29,7 @@ validation without a source change or specific concern.
   - _Depends: 1.1_
   - _Requirements: 1.1, 1.3, 4.2, 4.3, 4.4, 6.2, 6.3, 6.6_
 
-- [ ] 1.3 Expose one physical exchange per admitted attempt
+- [x] 1.3 Expose one physical exchange per admitted attempt
   - Reuse existing admission, pacing and sanitized failure handling through a single-attempt seam; represent pending exchange results without claiming logical answer completion.
   - Preserve typed request IDs, request purposes and retry-delay evidence, and retain complete responses rejected only for missing token evidence.
   - Keep legacy retry behavior when readiness is disabled and count every new physical exchange exactly once.
@@ -154,3 +154,5 @@ validation without a source change or specific concern.
 - Task 1.1 keeps stdlib policy/state contracts in readiness_types.py and response-dependent evidence in readiness_evidence.py to avoid reciprocal configuration imports. READY must validate explicitly requested token evidence independently of MIA and compare canonical JSON settings, since Python mapping equality conflates nested boolean/number values.
 
 - Task 1.2 persists acyclic plan contracts in harness/workflow_plan.py. Task 4.1 must replace interim version-2 runner/resume guards; task 4.2 must replace version-2-in-version-1 report-envelope guards. A Linux 3.12 canonical full run passed (2061 tests); native Windows full-run termination 0xE0000001 remains unexplained and does not waive task 6.1.
+
+- Task 1.3 exposes RequestControl.run_attempt and typed RequestError.response_evidence (never raw .response). Task 2.1/2.3 must preserve server timing hints on pending responses as well as errors and classify detached failures without status/code conservatively; retryable alone does not prove safe replay. Legacy run intentionally retains old event serialization.

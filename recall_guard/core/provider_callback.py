@@ -54,6 +54,9 @@ def _callback_error(error: Exception) -> RequestError:
         usage = getattr(error, "usage", None)
         return RequestError(str(error), status_code=status, parameter=parameter, code=code,
                             detail=getattr(error, "detail", None), usage=usage,
+                            response_evidence=error.response_evidence if isinstance(error, RequestError) else None,
+                            request_id=error.request_id if isinstance(error, RequestError) else None,
+                            retry_after=error.retry_after if isinstance(error, RequestError) else None,
                             retryable=isinstance(error, (TimeoutError, ConnectionError))
                             or isinstance(error, RequestError) and error.retryable)
     except ValueError:
@@ -208,7 +211,7 @@ class CallbackClient:
                 raise RequestError("Callback returned without a hooked physical operation; accounting is unverified",
                                    code="unverified_request_accounting")
             if enforce_mia and (reason := response.mia_unavailable_reason):
-                raise RequestError(reason, code="missing_token_evidence", usage=response.usage)
+                raise RequestError(reason, code="missing_token_evidence", usage=response.usage, response_evidence=response)
         except BudgetExhaustedError:
             budget_exhausted = True
         except Exception as error:

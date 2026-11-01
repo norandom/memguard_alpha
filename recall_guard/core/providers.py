@@ -207,7 +207,7 @@ class OpenAICompatibleClient:
                 raise _http_failure(response, body)
             result = _chat_response(response, body, parameters)
             if enforce_mia and (reason := result.mia_unavailable_reason):
-                raise RequestError(reason, code="missing_token_evidence", usage=result.usage)
+                raise RequestError(reason, code="missing_token_evidence", usage=result.usage, response_evidence=result)
             return result
 
         return self._control.run(operation, stage=stage)
