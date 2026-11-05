@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from threading import Lock
 from types import MappingProxyType
 
@@ -18,6 +18,7 @@ from recall_guard.core.completion import (
     ParameterValue,
     validate_features,
 )
+from recall_guard.core.local_evidence import LocalModelIdentity, validate_local_evidence
 from recall_guard.core.nvidia_lm import CompletionResult
 from recall_guard.core.request_control import BudgetExhaustedError
 from recall_guard.harness.request_failures import FATAL_FAILURES, failure_kind
@@ -37,6 +38,24 @@ class CalibrationIdentity:
     model: str
     parameters_json: str
     intervention_id: str
+    local_identity: LocalModelIdentity | None = None
+
+    @property
+    def reuse_scope(self) -> str:
+        """Unknown observations allow exploration on the original client only."""
+        if self.local_identity is None:
+            return "legacy"
+        observed = asdict(self.local_identity.observed)
+        semantics = observed.pop("score_semantics")
+        complete = all(value is not None for value in (*observed.values(), *semantics.values()))
+        return "observed_identity" if complete else "within_run"
+
+    def to_dict(self) -> dict:
+        """Preserve the exact legacy fingerprint payload when provenance is absent."""
+        result = asdict(self)
+        if self.local_identity is None:
+            result.pop("local_identity")
+        return result
 
     @classmethod
     def from_config(cls, config: ModelConfig, intervention_id: str) -> CalibrationIdentity:
@@ -44,7 +63,7 @@ class CalibrationIdentity:
             raise ValueError("intervention_id must identify the calibration intervention")
         return cls(config.protocol, config.endpoint, config.model,
                    json.dumps(config.to_dict()["parameters"], sort_keys=True, separators=(",", ":")),
-                   intervention_id)
+                   intervention_id, config.local_identity)
 
 
 class LegacyLogprobAdapter:
@@ -62,6 +81,8 @@ class LegacyLogprobAdapter:
     ) -> None:
         self.client = client
         self.identity = CalibrationIdentity.from_config(client.config, intervention_id)
+        self._client_identity = self.identity
+        self._local_response_seen = False
         self._is_auth_error = is_auth_error
         self._fatal: Exception | None = None
         self._confirmed_settings = {}
@@ -85,19 +106,25 @@ class LegacyLogprobAdapter:
     def validate_client(
         self, client: CompletionClient, *, intervention_id: str, **parameters: ParameterValue,
     ) -> None:
-        if CalibrationIdentity.from_config(client.config, intervention_id) != self.identity:
+        expected = self._client_identity if client is self.client else self.identity
+        if client is not self.client and self.identity.reuse_scope == "within_run":
+            raise ValueError("Unknown local provenance permits within-run calibration reuse on the original client only")
+        if CalibrationIdentity.from_config(client.config, intervention_id) != expected:
             raise ValueError("Client model/endpoint/protocol/settings/intervention identity differs from calibration")
         config = replace(client.config, parameters=dict(client.config.parameters) | parameters)
-        if CalibrationIdentity.from_config(config, intervention_id) != self.identity:
+        if CalibrationIdentity.from_config(config, intervention_id) != expected:
             raise ValueError("Client model/endpoint/protocol/settings/intervention identity differs from calibration")
 
     def validate_response(self, response: ModelResponse) -> CompletionResult:
         if not isinstance(response, ModelResponse):
             raise ValueError("Configured MIA scoring requires a ModelResponse with genuine token evidence")
         settings = ModelConfig(self.identity.protocol, self.identity.endpoint, self.identity.model,
-                               parameters=response.requested_settings)
-        if CalibrationIdentity.from_config(settings, self.identity.intervention_id) != self.identity:
+                               parameters=response.requested_settings, local_identity=response.local_identity)
+        candidate = CalibrationIdentity.from_config(settings, self.identity.intervention_id)
+        if replace(candidate, local_identity=None) != replace(self.identity, local_identity=None):
             raise ValueError("Response requested settings differ from calibration identity")
+        if self.identity.local_identity is not None or response.local_identity is not None:
+            self._validate_local_response(response)
         result = response.to_legacy()
         with self._lock:
             expected = dict(response.requested_settings) | self._confirmed_settings
@@ -108,6 +135,31 @@ class LegacyLogprobAdapter:
                 self._confirmed_settings.update(response.confirmed_settings)
         return result
 
+    def _validate_local_response(self, response: ModelResponse) -> None:
+        local = response.local_identity
+        if local is None:
+            raise ValueError("Response lost local calibration identity")
+        validate_local_evidence(response, required_alternatives=1)
+        with self._lock:
+            expected = self.identity.local_identity
+            if not self._fitting and not self._local_response_seen:
+                raise ValueError("Local response identity was not observed during calibration")
+            if self._local_response_seen:
+                if local != expected:
+                    raise ValueError("Response local identity differs from calibration")
+            elif expected is not None:
+                # The first response may supply observations absent from configuration.
+                # Only null observations can be filled; declarations stay declarations.
+                if local.declared != expected.declared:
+                    raise ValueError("Response declared local identity differs from calibration")
+                before, after = asdict(expected.observed), asdict(local.observed)
+                before.update(before.pop("score_semantics"))
+                after.update(after.pop("score_semantics"))
+                if any(value is not None and after[name] != value for name, value in before.items()):
+                    raise ValueError("Response observed local identity differs from calibration")
+            self.identity = replace(self.identity, local_identity=local)
+            self._local_response_seen = True
+
     def finish_calibration(self) -> None:
         """Freeze observed fit settings; inference cannot change fit provenance."""
         with self._lock:
@@ -117,10 +169,14 @@ class LegacyLogprobAdapter:
     def probe(self) -> None:
         features = FeatureChoices(mia_scoring=True)
         required = validate_features(self.client.config, features).capabilities
-        probe = getattr(self.client, "probe", None)
+        local = self.identity.local_identity is not None
+        probe = getattr(self.client, "probe_with_evidence" if local else "probe", None)
         if not callable(probe):
             raise ValueError("An actual generation probe is required before MIA calibration")
-        report = probe()
+        evidence = probe()
+        report = evidence.report if local else evidence
+        if local:
+            self.validate_response(evidence.response)
         self.validate_client(self.client, intervention_id=self.identity.intervention_id)
         if not isinstance(report, CapabilityReport) or set(required) - report.capabilities.keys():
             raise ValueError("Generation probe lacks required MIA capabilities")

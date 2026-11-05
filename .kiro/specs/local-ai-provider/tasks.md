@@ -59,7 +59,7 @@ No driver, BIOS or WSL changes are included.
   - _Depends: 1.2_
   - _Requirements: 2.1, 2.2, 2.4, 2.5, 3.1, 3.2, 3.4, 3.6, 3.7_
 
-- [ ] 3. Integrate evidence and calibration provenance
+- [x] 3. Integrate evidence and calibration provenance
 - [x] 3.1 Implement shared local identity and token-evidence validation
   - Consolidate proven probe checks into pure typed contracts; document token positions, vocabulary axes, units and channel mapping with domain-accurate variable names.
   - Cover Unicode, whitespace, censored/invalid scores, missing alternatives and partial-distribution handling with fixtures. Do not manufacture alignment by retokenizing.
@@ -75,7 +75,7 @@ No driver, BIOS or WSL changes are included.
   - _Boundary: Local evidence and provenance, existing provider integration_
   - _Requirements: 1.1, 1.2, 1.3, 3.3, 6.1_
 
-- [ ] 3.3 Bind local provenance to the existing calibrator
+- [x] 3.3 Bind local provenance to the existing calibrator
   - Extend client and response identity checks together so response reconstruction preserves provenance.
   - Preserve absent-field legacy identities. Unknown provenance permits labeled within-run exploration but never establishes cross-run reuse.
   - Done when regressions verify drift rejection, missing-evidence score unavailability and unchanged existing-client behavior.

@@ -67,6 +67,7 @@ class Client:
 
     def probe(self):
         response = self.generate("probe")
+        self.last_probe_response = response
         required = self.config.inspect(FeatureChoices(mia_scoring=True)).capabilities
         capabilities = {name: CapabilityEvidence(
             CapabilityStatus.UNSUPPORTED if name in {"logprobs", "top_logprobs"}
@@ -325,17 +326,22 @@ def test_lost_evidence_or_response_identity_during_fit_stops_queued_calls():
         assert len(client.calls) == 4
 
 
-def test_provider_probe_and_scoring_share_physical_budget_without_second_generation(monkeypatch):
+@pytest.mark.parametrize("local", [False, True])
+def test_provider_probe_and_scoring_share_physical_budget_without_second_generation(monkeypatch, local):
     budget = CallBudget(26)
-    client = OpenAICompatibleClient(config(), budget, features=FeatureChoices(mia_scoring=True),
+    fixture = local_client() if local else Client()
+    client = OpenAICompatibleClient(fixture.config, budget, features=FeatureChoices(mia_scoring=True),
                                     allow_unauthenticated=True, environment={})
 
     def post(payload):
-        response = Client().generate(payload["messages"][0]["content"])
-        return SimpleNamespace(status_code=200, headers={}, json=lambda: {"choices": [{
+        response = fixture.generate(payload["messages"][0]["content"])
+        body = {"choices": [{
             "message": {"content": response.content},
             "logprobs": {"content": response.to_dict()["token_evidence"]},
-        }]})
+        }]}
+        if local:
+            body["recall_guard_local"] = response.local_identity.to_dict()
+        return SimpleNamespace(status_code=200, headers={}, json=lambda: body)
 
     monkeypatch.setattr(client, "_post", post)
     scorer = calibrate(client)
@@ -502,3 +508,172 @@ def test_configured_no_valid_control_rows_has_provider_neutral_diagnostic():
     with pytest.raises(ConfigurationError, match="configured credentials") as caught:
         calibrate(client)
     assert "NVIDIA_API_KEY" not in str(caught.value)
+
+
+def local_client(identity=None):
+    from recall_guard.core.local_evidence import LocalModelIdentity
+
+    client = Client(config(local_identity=identity or LocalModelIdentity()))
+
+    def aligned(response):
+        words = ("Direction: ", "1", "\nConfidence", ": ", "0.8")
+        evidence = tuple(dataclasses.replace(token, token=word)
+                         for token, word in zip(response.token_evidence, words, strict=True))
+        return dataclasses.replace(response, token_evidence=evidence, local_identity=client.config.local_identity)
+
+    client.response_change = aligned
+
+    def probe_with_evidence():
+        report = client.probe()
+        # Reuse the single generated response captured by the test double.
+        return SimpleNamespace(report=report, response=client.last_probe_response)
+
+    client.probe_with_evidence = probe_with_evidence
+    return client
+
+
+def test_local_misaligned_probe_stops_before_corpus():
+    client = local_client()
+    transform = client.response_change
+    client.response_change = lambda response: dataclasses.replace(transform(response), content="unaligned")
+    with pytest.raises(ValueError, match="alignment"):
+        calibrate(client)
+    assert len(client.calls) == 1
+
+
+def test_local_unknown_identity_is_bound_to_original_client():
+    client = local_client()
+    scorer = calibrate(client)
+    assert scorer.score("eval").parse_ok
+    assert scorer.calibration_identity.local_identity == client.config.local_identity
+    with pytest.raises(ValueError, match="within.run|provenance"):
+        scorer.validate_client(local_client())
+
+
+@pytest.mark.parametrize("field", ["artifact_digest", "artifact_revision", "quantization", "tokenizer", "template",
+                                    "runtime", "runtime_version", "backend", "driver_version", "context_length"])
+@pytest.mark.parametrize("location", ["client", "response"])
+@pytest.mark.parametrize("lost", [False, True])
+def test_local_known_provenance_drift_and_loss_rejected(field, location, lost):
+    from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance
+
+    value = 2048 if field == "context_length" else "initial"
+    original = LocalModelIdentity(observed=LocalModelProvenance(**{field: value}))
+    client = local_client(original)
+    scorer = calibrate(client)
+    changed = LocalModelIdentity(observed=dataclasses.replace(original.observed, **{
+        field: None if lost else 4096 if field == "context_length" else "changed",
+    }))
+    response = client.generate("eval")
+    if location == "client":
+        client.config = dataclasses.replace(client.config, local_identity=changed)
+    else:
+        response = dataclasses.replace(response, local_identity=changed)
+    with pytest.raises(ValueError, match="identity|provenance"):
+        scorer.score_response("eval", response, client=client)
+
+
+@pytest.mark.parametrize("mutation", ["identity", "alignment", "alternatives"])
+def test_local_every_response_requires_provenance_and_evidence(mutation):
+    client = local_client()
+    scorer = calibrate(client)
+    response = client.generate("eval")
+    if mutation == "identity":
+        response = dataclasses.replace(response, local_identity=None)
+    elif mutation == "alignment":
+        response = dataclasses.replace(response, content="unaligned")
+    else:
+        response = dataclasses.replace(response, token_evidence=tuple(
+            dataclasses.replace(token, top_logprobs=()) for token in response.token_evidence))
+    with pytest.raises(ValueError, match="identity|alignment|alternatives"):
+        scorer.score_response("eval", response, client=client)
+
+
+def complete_local_identity():
+    from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance, ScoreSemantics
+
+    return LocalModelIdentity(observed=LocalModelProvenance(
+        artifact_digest="digest", artifact_revision="revision", quantization="Q4", tokenizer="tokenizer",
+        template="template", runtime="runtime", runtime_version="1", backend="cpu", driver_version="1",
+        context_length=2048, score_semantics=ScoreSemantics("full_vocabulary_log_softmax", "e", "base_model"),
+    ))
+
+
+def test_local_complete_observations_allow_matching_new_client():
+    identity = complete_local_identity()
+    client = local_client(identity)
+    scorer = calibrate(client)
+    other = local_client(identity)
+    assert scorer.calibration_identity.reuse_scope == "observed_identity"
+    assert scorer.score_response("eval", other.generate("eval"), client=other).parse_ok
+
+
+@pytest.mark.parametrize("field,value", [("normalization", "partial_top_k"), ("log_base", "10"),
+                                          ("sampling_stage", "sampling_transformed")])
+@pytest.mark.parametrize("location", ["client", "response"])
+def test_local_score_semantics_drift_rejected(field, value, location):
+    identity = complete_local_identity()
+    client = local_client(identity)
+    scorer = calibrate(client)
+    response = client.generate("eval")
+    changed = dataclasses.replace(identity, observed=dataclasses.replace(identity.observed,
+        score_semantics=dataclasses.replace(identity.observed.score_semantics, **{field: value})))
+    if location == "client":
+        client.config = dataclasses.replace(client.config, local_identity=changed)
+    else:
+        response = dataclasses.replace(response, local_identity=changed)
+    with pytest.raises(ValueError, match="identity"):
+        scorer.score_response("eval", response, client=client)
+
+
+def test_local_first_response_can_establish_observations_without_promoting_declarations():
+    from recall_guard.core.local_evidence import LocalModelIdentity
+
+    observed = complete_local_identity()
+    client = local_client()
+    transform = client.response_change
+    client.response_change = lambda response: dataclasses.replace(transform(response), local_identity=observed)
+    scorer = calibrate(client)
+    assert scorer.calibration_identity.local_identity == observed
+    assert client.config.local_identity == LocalModelIdentity()
+    assert scorer.score("eval").parse_ok
+    assert scorer.score_response("eval", local_client(observed).generate("eval"), client=local_client(observed)).parse_ok
+
+
+def test_local_declarations_do_not_prove_reuse():
+    from recall_guard.core.local_evidence import LocalModelIdentity
+
+    identity = LocalModelIdentity(declared=complete_local_identity().observed)
+    client = local_client(identity)
+    scorer = calibrate(client)
+    assert scorer.calibration_identity.reuse_scope == "within_run"
+    with pytest.raises(ValueError, match="within.run"):
+        scorer.validate_client(local_client(identity))
+
+
+def test_local_probe_without_response_contract_rejected_without_generation():
+    client = local_client()
+    del client.probe_with_evidence
+    with pytest.raises(ValueError, match="probe"):
+        calibrate(client)
+    assert not client.calls
+
+
+def test_legacy_fingerprint_payload_omits_optional_provenance(monkeypatch):
+    from recall_guard.harness.scorer_client import CalibrationIdentity
+
+    scorer = calibrate()
+    fingerprint = scorer.calibration_fingerprint
+    original_fields = ("protocol", "endpoint", "model", "parameters_json", "intervention_id")
+    legacy_payload = {name: getattr(scorer.calibration_identity, name) for name in original_fields}
+    assert scorer.calibration_identity.to_dict() == legacy_payload
+    monkeypatch.setattr(CalibrationIdentity, "to_dict", lambda self: legacy_payload)
+    assert scorer.calibration_fingerprint == fingerprint
+
+
+def test_legacy_fit_cannot_acquire_local_identity_after_fit():
+    scorer = calibrate()
+    client = Client()
+    response = dataclasses.replace(client.generate("eval"), local_identity=complete_local_identity())
+    with pytest.raises(ValueError):
+        scorer.score_response("eval", response, client=client)

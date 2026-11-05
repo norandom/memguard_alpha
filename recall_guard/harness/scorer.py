@@ -296,7 +296,7 @@ class MemoryGuardedScorer:
         classifier = self._mcs.classifier
         state = {
             "scheme": "recall_guard.calibration.v1",
-            "identity": None if self.calibration_identity is None else asdict(self.calibration_identity),
+            "identity": None if self.calibration_identity is None else self.calibration_identity.to_dict(),
             "observed_fit_settings": _settings_payload(self.observed_fit_settings),
             "baseline": asdict(self._baseline), "model": self._mcs.model,
             "feature_order": list(self._mcs.feature_order),
