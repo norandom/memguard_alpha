@@ -103,7 +103,7 @@ No driver, BIOS or WSL changes are included.
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 2.4, 3.1, 3.6, 5.2, 6.1_
 
 - [ ] 5. Integrate bounded local measurements
-- [ ] 5.1 Implement frozen plans and bounded attempt persistence
+- [x] 5.1 Implement frozen plans and bounded attempt persistence
   - Validate model/configuration manifests, corpus hashes, token/context/time/request bounds and explicit limits before execution.
   - Reuse existing request controls for journaled admission, cancellation and partial outcomes; include a CLI dry-run that makes no inference calls.
   - Done when tests prove limits include probes/retries, cancellation stops new admissions and unknown outcomes are retained without silent replay or secret/private-prompt export.
