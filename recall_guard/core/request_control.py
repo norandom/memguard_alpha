@@ -319,6 +319,15 @@ class RequestControl:
             values[name] = self._redact(values[name])
         for name in ("usage", "requested_settings", "confirmed_settings"):
             values[name] = clean(values[name])
+        if values.get("local_identity") is not None:
+            for kind in ("declared", "observed"):
+                provenance = values["local_identity"][kind]
+                for fields in (provenance, provenance["score_semantics"]):
+                    for name, value in fields.items():
+                        if isinstance(value, str) and self._redact(value) != value:
+                            # Redacted identity is unknown, not a new verified
+                            # identifier; preserve schema keys and enum validity.
+                            fields[name] = None
         for token in values["token_evidence"] or ():
             token["token"] = self._redact(token["token"])
             for alternative in token["top_logprobs"]:

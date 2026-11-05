@@ -40,7 +40,7 @@ No driver, BIOS or WSL changes are included.
 
 - [ ] 2. Establish feasibility before integration build-out
 - [x] 2.1 Probe Ollama using the existing compatible adapter
-  - _Outcome: Probe implementation independently reviewed; 181 focused/regression tests passed. Gemma subsequently passed one live probe: aligned logprobs and five alternatives, 8.547 seconds, CPU execution, context 2048. GPT-OSS download remains pending. See ollama-feasibility-receipt.json; no GPU/NPU or mitigation claim._
+  - _Outcome: Probe implementation independently reviewed; 181 focused/regression tests passed. Gemma passed one live probe: aligned logprobs and five alternatives, 8.547 seconds, CPU execution, context 2048. GPT-OSS responded in 24.953 seconds on CPU but failed exact token-text alignment and remains ineligible. Two physical attempts total, no retries. See ollama-feasibility-receipt.json; no GPU/NPU or mitigation claim._
   - Build a standalone bounded diagnostic using existing request controls, with frozen prompts, independent candidate receipts and explicit unauthenticated access; never attach a NIM credential.
   - Validate nonempty output, aligned logprobs and required alternatives locally in the probe; do not depend on the later shared validator. Read back the effective context configuration where available.
   - Record observed model/runtime/mode, timing, memory and unknowns. Persist admission before the attempt, redact secrets/private prompts and retain timeout outcomes without replay or assuming remote execution stopped.
@@ -68,7 +68,7 @@ No driver, BIOS or WSL changes are included.
   - _Depends: 2.1, 2.2_
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 6.4_
 
-- [ ] 3.2 Integrate optional provenance into existing provider contracts
+- [x] 3.2 Integrate optional provenance into existing provider contracts
   - Add optional configuration/response provenance and parse the versioned local response extension through the existing adapter; keep metadata out of generation settings.
   - Bind Ollama sidecar observations before/after batches without claiming atomic identity guarantees. Record driver, backend, context and template changes as revalidation triggers.
   - Done when fixtures show correct provenance round trips, explicit unknowns and unchanged legacy serialization when optional fields are absent.

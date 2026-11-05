@@ -158,6 +158,66 @@
       },
       "host_process_id": 31216,
       "context_source": "process-start-environment"
+    },
+    {
+      "candidate_id": "ollama-gpt-oss-20b",
+      "model": "gpt-oss:20b",
+      "endpoint": "http://localhost:11434/v1/chat/completions",
+      "authentication": "none",
+      "status": "ineligible",
+      "reason": "token_text_alignment_failed",
+      "physical_attempts": 1,
+      "unknown_outcome": false,
+      "events": [
+        {
+          "call_id": 1,
+          "attempt": 1,
+          "started_at": 314838.531,
+          "timestamp": "2026-11-05T08:56:53.655298+00:00",
+          "status": "succeeded",
+          "latency_s": 24.95299999997951,
+          "status_code": null,
+          "usage": {
+            "prompt_tokens": 73,
+            "completion_tokens": 30,
+            "total_tokens": 103
+          }
+        }
+      ],
+      "timestamp": "2026-11-05T08:56:51.407496+00:00",
+      "configured_context_tokens": 2048,
+      "elapsed_s": 24.95299999997951,
+      "host_execution_stopped": null,
+      "load_time_s": null,
+      "generation_time_s": null,
+      "dedicated_gpu_memory_bytes": null,
+      "shared_gpu_memory_bytes": null,
+      "system_ram_usage_bytes": null,
+      "score_semantics": "unknown",
+      "alternative_distribution": "partial_top_k",
+      "tokenizer_identity": null,
+      "observed_before": {
+        "runtime_version": "0.40.11",
+        "digest": "sha256:f38aa0c53da5f8c49d08c43a99df24ff53167fe68e24664a7777288e7656fdfe",
+        "loaded_models": [],
+        "effective_context_tokens": null,
+        "model_allocation_bytes": null,
+        "accelerator_allocation_bytes": null,
+        "observed_backend": null
+      },
+      "observed_after": {
+        "runtime_version": "0.40.11",
+        "digest": "sha256:f38aa0c53da5f8c49d08c43a99df24ff53167fe68e24664a7777288e7656fdfe",
+        "loaded_models": [
+          "gpt-oss:20b"
+        ],
+        "effective_context_tokens": 2048,
+        "model_allocation_bytes": 13902492466,
+        "accelerator_allocation_bytes": 0,
+        "observed_backend": "CPU"
+      },
+      "host_process_id": 31216,
+      "context_source": "process-start-environment"
     }
   ]
 }

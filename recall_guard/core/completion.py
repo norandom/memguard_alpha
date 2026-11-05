@@ -13,6 +13,7 @@ from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
+from recall_guard.core.local_evidence import LocalModelIdentity
 from recall_guard.core.nvidia_lm import CompletionResult, TokenLogprob
 from recall_guard.core.readiness_types import ReadinessObservation, ReadinessPolicy, _fields
 
@@ -24,7 +25,7 @@ _CREDENTIAL_FIELDS = frozenset({
 })
 _TRANSPORT_FIELDS = frozenset({
     "model", "messages", "prompt", "endpoint", "url", "protocol", "provider", "timeout", "timeouts",
-    "maxretries", "retrybackoffs", "mincallintervals",
+    "maxretries", "retrybackoffs", "mincallintervals", "localidentity", "recallguardlocal",
 })
 _CENSORED_LOGPROB = -9999.0
 
@@ -225,6 +226,7 @@ class ModelConfig:
     retry_backoff_s: float = 2.0
     min_call_interval_s: float = 0.0
     readiness: ReadinessPolicy | None = None
+    local_identity: LocalModelIdentity | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -232,6 +234,8 @@ class ModelConfig:
         except ValueError:
             raise ValueError("protocol must be openai_chat, anthropic_messages or callback") from None
         _text(self.model, "model")
+        if self.local_identity is not None and not isinstance(self.local_identity, LocalModelIdentity):
+            raise TypeError("local_identity must be LocalModelIdentity or None")
         if self.provider is not None:
             _text(self.provider, "provider")
         if self.endpoint is not None or self.protocol != CompletionProtocol.CALLBACK:
@@ -290,16 +294,20 @@ class ModelConfig:
         }
         if self.readiness is not None:
             result["readiness"] = self.readiness.to_dict()
+        if self.local_identity is not None:
+            result["local_identity"] = self.local_identity.to_dict()
         return result
 
     @classmethod
     def from_dict(cls, data):
         values = _fields(data, {"protocol", "endpoint", "model", "provider", "parameters", "capabilities", "timeout_s",
-                               "max_retries", "retry_backoff_s", "min_call_interval_s", "readiness"})
+                               "max_retries", "retry_backoff_s", "min_call_interval_s", "readiness", "local_identity"})
         values["capabilities"] = {name: CapabilityEvidence(**_fields(entry, {"status", "source", "detail", "observed"}))
                                   for name, entry in values.get("capabilities", {}).items()}
         if values.get("readiness") is not None:
             values["readiness"] = ReadinessPolicy.from_dict(values["readiness"])
+        if values.get("local_identity") is not None:
+            values["local_identity"] = LocalModelIdentity.from_dict(values["local_identity"])
         return cls(**values)
 
 
@@ -373,9 +381,12 @@ class ModelResponse:
     confirmed_settings: Mapping[str, ParameterValue] = field(default_factory=dict)
     request_id: str | None = None
     readiness_trace: tuple[ReadinessObservation, ...] | None = None
+    local_identity: LocalModelIdentity | None = None
 
     def __post_init__(self) -> None:
         _text(self.content, "content", allow_empty=True)
+        if self.local_identity is not None and not isinstance(self.local_identity, LocalModelIdentity):
+            raise TypeError("local_identity must be LocalModelIdentity or None")
         if self.readiness_trace is not None:
             trace = tuple(self.readiness_trace)
             if not all(isinstance(item, ReadinessObservation) for item in trace):
@@ -463,12 +474,14 @@ class ModelResponse:
         }
         if self.readiness_trace is not None:
             result["readiness_trace"] = [item.to_dict() for item in self.readiness_trace]
+        if self.local_identity is not None:
+            result["local_identity"] = self.local_identity.to_dict()
         return result
 
     @classmethod
     def from_dict(cls, data):
         values = _fields(data, {"content", "token_evidence", "usage", "finish_reason", "requested_settings",
-                               "confirmed_settings", "request_id", "readiness_trace"})
+                               "confirmed_settings", "request_id", "readiness_trace", "local_identity"})
         if values.get("token_evidence") is not None:
             tokens = []
             for entry in values["token_evidence"]:
@@ -479,6 +492,8 @@ class ModelResponse:
             values["token_evidence"] = tuple(tokens)
         if "readiness_trace" in values:
             values["readiness_trace"] = tuple(ReadinessObservation.from_dict(item) for item in values["readiness_trace"])
+        if values.get("local_identity") is not None:
+            values["local_identity"] = LocalModelIdentity.from_dict(values["local_identity"])
         return cls(**values)
 
 

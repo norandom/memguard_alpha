@@ -16,6 +16,26 @@ from recall_guard.core.local_evidence import (
 )
 
 
+@pytest.mark.parametrize("context_length", [True, 0, -1, 1.5, "2048"])
+def test_context_length_is_positive_token_count(context_length):
+    with pytest.raises(ValueError, match="context_length"):
+        LocalModelProvenance(context_length=context_length)
+
+
+def test_sidecar_native_merge_preserves_known_fields_and_semantic_conflicts():
+    from recall_guard.core.local_evidence import merge_local_observations
+
+    sidecar = LocalModelProvenance(artifact_digest="a", score_semantics=ScoreSemantics(log_base="e"))
+    native = LocalModelProvenance(backend="cpu", score_semantics=ScoreSemantics(sampling_stage="base_model"))
+    merged, conflicts = merge_local_observations(sidecar, native)
+    assert conflicts == ()
+    assert merged.artifact_digest == "a" and merged.backend == "cpu"
+    assert merged.template is None
+    assert merged.score_semantics == ScoreSemantics(log_base="e", sampling_stage="base_model")
+    _, conflicts = merge_local_observations(sidecar, replace(native, score_semantics=ScoreSemantics(log_base="2")))
+    assert conflicts == ("score_semantics.log_base",)
+
+
 def response(texts=(" café", "\n", "🙂")):
     return ModelResponse("".join(texts), tuple(TokenEvidence(text, -0.5, (
         TokenAlternative("a", -1.0), TokenAlternative("b", -2.0),

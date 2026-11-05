@@ -102,6 +102,7 @@ receipts, not model generation parameters.
 | `recall_guard/core/local_evidence.py` | New pure token-alignment validation and local provenance value types |
 | `recall_guard/core/completion.py` | Optional typed provenance on configuration/response, defaults preserving existing clients |
 | `recall_guard/core/providers.py` | Parse the optional local provenance extension; reuse existing request and token parsing |
+| `recall_guard/core/request_control.py` | Preserve registered-secret redaction in response/error provenance |
 | `recall_guard/harness/scorer_client.py` | Bind optional provenance to calibration identity and validate it |
 | `recall_guard/harness/local_evaluation.py` | Local admission, frozen plan, evaluation and report assembly |
 | `scripts/probe_local_model.py` | PowerShell-invoked CLI for bounded endpoint feasibility |

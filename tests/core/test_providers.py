@@ -639,3 +639,163 @@ def test_probe_and_multiple_clients_share_the_same_budget(wire):
         target.generate("target")
     assert len(calls) == budget.used == 2
     assert [event.stage for event in budget.events] == ["probe", "rewrite"]
+
+# Task 3.2 provenance fixtures use the existing HTTP transport.
+def test_local_identity_roundtrips_and_legacy_omission():
+    from recall_guard.core.local_evidence import LocalModelIdentity
+
+    identity = LocalModelIdentity()
+    for value in (config(), ModelResponse('ok')):
+        assert 'local_identity' not in value.to_dict()
+        enriched = replace(value, local_identity=identity)
+        assert type(value).from_dict(enriched.to_dict()).to_dict() == enriched.to_dict()
+        assert enriched.to_dict()['local_identity']['observed']['backend'] is None
+        with pytest.raises(TypeError, match='local_identity'):
+            replace(value, local_identity={})
+
+
+def test_local_extension_and_sidecar_binding(wire):
+    from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance
+
+    pending, calls = wire
+    snapshot = LocalModelProvenance(artifact_digest='sha256:a', runtime='ollama', backend='cpu')
+    identity = LocalModelIdentity(observed=snapshot)
+    entry = fixture_response()
+    entry['body']['recall_guard_local'] = identity.to_dict()
+    pending.extend([entry, fixture_response()])
+    adapter = client(settings=config(local_identity=LocalModelIdentity()))
+    adapter.begin_local_batch(snapshot)
+    assert adapter.generate('x').local_identity == identity
+    assert adapter.generate('y').local_identity.observed == snapshot
+    check = adapter.end_local_batch(snapshot)
+    assert check.condition_matched
+    assert check.unknown_fields and not check.atomic
+    assert all('local_identity' not in call['body'] and 'recall_guard_local' not in call['body'] for call in calls)
+
+
+@pytest.mark.parametrize('field,value', [('driver_version', '2'), ('backend', 'gpu'), ('context_length', 4096), ('template', 'new')])
+def test_local_batch_reports_revalidation(field, value):
+    from recall_guard.core.local_evidence import LocalModelProvenance
+
+    before = LocalModelProvenance(artifact_digest='a', driver_version='1', backend='cpu', context_length=2048, template='old')
+    adapter = client()
+    adapter.begin_local_batch(before)
+    check = adapter.end_local_batch(replace(before, **{field: value}))
+    assert not check.condition_matched
+    assert field in check.revalidation_fields
+
+
+@pytest.mark.parametrize('after', [None, 'unknown'])
+def test_local_batch_cannot_reestablish_identity(after):
+    from recall_guard.core.local_evidence import LocalModelProvenance
+
+    adapter = client()
+    adapter.begin_local_batch(LocalModelProvenance(artifact_digest='a'))
+    check = adapter.end_local_batch(None if after is None else LocalModelProvenance())
+    assert not check.condition_matched
+
+
+@pytest.mark.parametrize('extension', [None, {}, {'version': 2, 'declared': {}, 'observed': {}}])
+def test_invalid_local_extension_is_not_silently_ignored(wire, extension):
+    pending, _ = wire
+    entry = fixture_response()
+    entry['body']['recall_guard_local'] = extension
+    pending.append(entry)
+    with pytest.raises(RequestError) as error:
+        client().generate('x')
+    assert error.value.code == 'invalid_response'
+
+
+def test_conflicting_native_and_sidecar_observation_rejected(wire):
+    from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance
+
+    pending, _ = wire
+    entry = fixture_response()
+    entry['body']['recall_guard_local'] = LocalModelIdentity(observed=LocalModelProvenance(backend='gpu')).to_dict()
+    pending.append(entry)
+    adapter = client()
+    adapter.begin_local_batch(LocalModelProvenance(backend='cpu'))
+    with pytest.raises(RequestError) as error:
+        adapter.generate('x')
+    assert error.value.code == 'local_identity_mismatch'
+    assert not adapter.end_local_batch(LocalModelProvenance(backend='cpu')).condition_matched
+
+
+@pytest.mark.parametrize('name', ['local_identity', 'recall_guard_local'])
+def test_provenance_is_not_a_generation_control(name):
+    with pytest.raises(ValueError):
+        config(parameters={name: {}})
+
+
+def test_native_local_identity_without_sidecar_preserves_unknown_observations(wire):
+    from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance
+
+    pending, _ = wire
+    identity = LocalModelIdentity(declared=LocalModelProvenance(backend='npu'))
+    entry = fixture_response()
+    entry['body']['recall_guard_local'] = identity.to_dict()
+    pending.append(entry)
+    result = client().generate('x')
+    assert result.local_identity == identity
+    assert result.local_identity.observed.backend is None
+
+
+def test_local_batch_lifecycle_and_unknowns(wire):
+    from recall_guard.core.local_evidence import LocalModelProvenance
+
+    pending, _ = wire
+    adapter = client()
+    with pytest.raises(ValueError, match='no local batch'):
+        adapter.end_local_batch(None)
+    with pytest.raises(TypeError):
+        adapter.begin_local_batch({})
+    adapter.begin_local_batch(LocalModelProvenance())
+    with pytest.raises(ValueError, match='already active'):
+        adapter.begin_local_batch(LocalModelProvenance())
+    assert not adapter.end_local_batch(LocalModelProvenance()).condition_matched
+    pending.append(fixture_response())
+    assert adapter.generate('after batch').local_identity is None
+
+
+def test_native_drift_within_sidecar_batch_is_retained(wire):
+    from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance
+
+    pending, _ = wire
+    for backend in ('cpu', 'gpu'):
+        entry = fixture_response()
+        entry['body']['recall_guard_local'] = LocalModelIdentity(
+            observed=LocalModelProvenance(backend=backend)).to_dict()
+        pending.append(entry)
+    adapter = client()
+    snapshot = LocalModelProvenance(artifact_digest='a')
+    adapter.begin_local_batch(snapshot)
+    assert adapter.generate('x').local_identity.observed.backend == 'cpu'
+    with pytest.raises(RequestError, match='observations disagree'):
+        adapter.generate('y')
+    assert 'backend' in adapter.end_local_batch(snapshot).revalidation_fields
+
+
+def test_local_provenance_failure_evidence_redacts_registered_secret(wire):
+    from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance
+
+    pending, _ = wire
+    entry = fixture_response()
+    entry['body']['recall_guard_local'] = LocalModelIdentity(
+        observed=LocalModelProvenance(runtime=FAKE_KEY)).to_dict()
+    pending.append(entry)
+    with pytest.raises(RequestError) as caught:
+        client(features=FeatureChoices(mia_scoring=True)).generate('x')
+    assert FAKE_KEY not in json.dumps(caught.value.response_evidence.to_dict())
+    assert caught.value.response_evidence.local_identity.observed.runtime is None
+
+
+def test_local_sidecar_batch_rejects_streaming_before_transport(wire):
+    from recall_guard.core.local_evidence import LocalModelProvenance
+    from recall_guard.core.readiness_types import ReadinessPolicy
+
+    adapter = client(settings=replace(config(readiness=ReadinessPolicy()), provider='fixture',
+                                      endpoint='http://127.0.0.1/v1/chat/completions'))
+    adapter.begin_local_batch(LocalModelProvenance(backend='cpu'))
+    with pytest.raises(ValueError, match='non-streaming'):
+        adapter.generate('x', stream=True)
+    assert adapter.budget.used == 0

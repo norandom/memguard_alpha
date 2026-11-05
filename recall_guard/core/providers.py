@@ -25,6 +25,13 @@ from recall_guard.core.completion import (
     TokenEvidence,
     validate_features,
 )
+from recall_guard.core.local_evidence import (
+    LocalBatchCheck,
+    LocalModelIdentity,
+    LocalModelProvenance,
+    check_local_batch,
+    merge_local_observations,
+)
 from recall_guard.core.provider_observation import exchange, validate_observation_profile
 from recall_guard.core.readiness import ReadinessControl
 from recall_guard.core.readiness_evidence import ProbeEvidence
@@ -132,6 +139,8 @@ def _chat_response(response: requests.Response, body: object, parameters: dict) 
             content=message["content"], token_evidence=_token_evidence(choice), usage=usage,
             finish_reason=choice.get("finish_reason"), requested_settings=parameters,
             confirmed_settings=confirmed,
+            local_identity=(LocalModelIdentity.from_dict(body["recall_guard_local"])
+                            if "recall_guard_local" in body else None),
             request_id=_string(response.headers.get("x-request-id")) or _string(body.get("id")),
         )
     except (KeyError, ValueError, TypeError) as error:
@@ -181,6 +190,54 @@ class OpenAICompatibleClient:
         self._control = RequestControl(config, budget, secrets=() if credential is None else (credential,))
         self._readiness = None if config.readiness is None else ReadinessControl(self._control)
         self._last_operation = None
+        self._local_observed: LocalModelProvenance | None = None
+        self._local_conflicts: set[str] = set()
+
+    def begin_local_batch(self, before: LocalModelProvenance) -> None:
+        """Bind an explicit sidecar snapshot for a serial batch; no host discovery.
+
+        Finish with end_local_batch, including after failures, and exclude the
+        whole batch from calibrated claims on a mismatch. Do not share this
+        client across overlapping batches or concurrent calls.
+        """
+        if not isinstance(before, LocalModelProvenance):
+            raise TypeError("before must be LocalModelProvenance")
+        if self._local_observed is not None:
+            raise ValueError("local batch already active")
+        self._local_observed = before
+        self._local_conflicts.clear()
+
+    def end_local_batch(self, after: LocalModelProvenance | None) -> LocalBatchCheck:
+        """Check the closing snapshot; None records failed observation.
+
+        Earlier immutable responses retain their observations. This check
+        applies to all of them; matching snapshots are not atomic evidence and
+        unknown fields cannot establish cross-run calibration compatibility.
+        Native evidence learned during the batch must also be re-established.
+        """
+        if self._local_observed is None:
+            raise ValueError("no local batch active")
+        check = check_local_batch(self._local_observed, after, conflicts=self._local_conflicts)
+        self._local_observed = None
+        self._local_conflicts.clear()
+        return check
+
+    def _parse_response(self, response: requests.Response, body: object, parameters: dict) -> ModelResponse:
+        result = _chat_response(response, body, parameters)
+        if self._local_observed is None:
+            return result
+        identity = result.local_identity
+        observed, conflicts = merge_local_observations(
+            self._local_observed, None if identity is None else identity.observed)
+        if conflicts:
+            self._local_conflicts.update(conflicts)
+            raise RequestError("Native and sidecar local observations disagree", code="local_identity_mismatch",
+                               usage=result.usage, response_evidence=result)
+        self._local_observed = observed
+        declared = (identity.declared if identity is not None else
+                    self.config.local_identity.declared if self.config.local_identity is not None else
+                    LocalModelProvenance())
+        return replace(result, local_identity=LocalModelIdentity(declared=declared, observed=observed))
 
     @property
     def budget(self) -> CallBudget:
@@ -238,7 +295,7 @@ class OpenAICompatibleClient:
                 body = None
             if not 200 <= response.status_code < 300:
                 raise _http_failure(response, body)
-            result = _chat_response(response, body, parameters)
+            result = self._parse_response(response, body, parameters)
             if enforce_mia and (reason := result.mia_unavailable_reason):
                 raise RequestError(reason, code="missing_token_evidence", usage=result.usage, response_evidence=result)
             return result
@@ -271,6 +328,8 @@ class OpenAICompatibleClient:
         if not isinstance(prompt, str):
             raise TypeError("prompt must be a string")
         settings = replace(self.config, parameters=dict(self.config.parameters) | parameters)
+        if self._local_observed is not None and settings.parameters.get("stream") is True:
+            raise ValueError("Local sidecar batches require non-streaming responses")
         validate_features(settings, self.features)
         supplied = settings.to_dict()["parameters"]
         payload = {"model": settings.model, "messages": [{"role": "user", "content": prompt}], **supplied}
@@ -280,7 +339,7 @@ class OpenAICompatibleClient:
 
         def perform(context, pending=None):
             return exchange(settings, self._credential, payload, supplied, context, pending=pending,
-                            parse_response=_chat_response, http_failure=_http_failure,
+                            parse_response=self._parse_response, http_failure=_http_failure,
                             transport_failure=_transport_failure)
 
         return operation.run(perform, poll=perform if settings.readiness.pending_status is not None else None)

@@ -61,12 +61,17 @@ class LocalModelProvenance:
     runtime: str | None = None
     runtime_version: str | None = None
     backend: str | None = None
+    driver_version: str | None = None
+    context_length: int | None = None
     score_semantics: ScoreSemantics = field(default_factory=ScoreSemantics)
 
     def __post_init__(self) -> None:
         if not isinstance(self.score_semantics, ScoreSemantics):
             raise TypeError("score_semantics must be ScoreSemantics")
-        _nullable_strings({key: value for key, value in asdict(self).items() if key != "score_semantics"})
+        if self.context_length is not None and (type(self.context_length) is not int or self.context_length < 1):
+            raise ValueError("context_length must be a positive integer or null")
+        _nullable_strings({key: value for key, value in asdict(self).items()
+                           if key not in {"score_semantics", "context_length"}})
 
     @classmethod
     def from_dict(cls, data: Mapping) -> LocalModelProvenance:
@@ -112,6 +117,61 @@ class LocalModelIdentity:
     @property
     def identity_hash(self) -> str:
         return hashlib.sha256(self.canonical_json().encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class LocalBatchCheck:
+    """Closing sidecar check applies to every response in the serial batch.
+
+    Equal snapshots do not prove atomic identity or resolve unknown fields.
+    Callers must exclude condition-mismatched batches from calibrated claims.
+    """
+
+    condition_matched: bool
+    revalidation_fields: tuple[str, ...]
+    unknown_fields: tuple[str, ...]
+    atomic: bool = field(default=False, init=False)
+
+
+def _provenance_fields(snapshot: LocalModelProvenance) -> dict:
+    values = asdict(snapshot)
+    semantics = values.pop("score_semantics")
+    return values | {f"score_semantics.{name}": value for name, value in semantics.items()}
+
+
+def check_local_batch(
+    before: LocalModelProvenance, after: LocalModelProvenance | None, *, conflicts: set[str] | None = None,
+) -> LocalBatchCheck:
+    """Detect changed/lost observations, including backend, driver and context.
+
+    A wholly unknown observation cannot re-establish even within-run identity.
+    Unknowns retained in a partial match still prohibit cross-run assumptions.
+    """
+    if not isinstance(before, LocalModelProvenance) or (
+        after is not None and not isinstance(after, LocalModelProvenance)
+    ):
+        raise TypeError("snapshots must be LocalModelProvenance or an unavailable after snapshot")
+    opening = _provenance_fields(before)
+    closing = _provenance_fields(after or LocalModelProvenance())
+    changed = {name for name in opening if opening[name] != closing[name]} | (conflicts or set())
+    unknown = tuple(sorted(name for name in opening if opening[name] is None or closing[name] is None))
+    if after is None or not any(value is not None for value in closing.values()):
+        changed.add("observation_unavailable")
+    return LocalBatchCheck(not changed, tuple(sorted(changed)), unknown)
+
+
+def merge_local_observations(
+    sidecar: LocalModelProvenance, native: LocalModelProvenance | None,
+) -> tuple[LocalModelProvenance, tuple[str, ...]]:
+    """Combine known observations only; never promote declarations to evidence."""
+    if native is None:
+        return sidecar, ()
+    left, right = _provenance_fields(sidecar), _provenance_fields(native)
+    conflicts = tuple(sorted(name for name in left
+                             if left[name] is not None and right[name] is not None and left[name] != right[name]))
+    merged = {name: right[name] if right[name] is not None else left[name] for name in left}
+    semantics = {name: merged.pop(f"score_semantics.{name}") for name in asdict(ScoreSemantics())}
+    return LocalModelProvenance(**merged, score_semantics=ScoreSemantics(**semantics)), conflicts
 
 
 def validate_local_evidence(response: ModelResponse, *, required_alternatives: int = 0) -> None:
