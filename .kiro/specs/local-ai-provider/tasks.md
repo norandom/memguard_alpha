@@ -21,7 +21,7 @@ If the cap cannot cover a required check, retain it as unperformed. Downloads an
 larger measurement batches need concrete artifact and budget plans before execution.
 No driver, BIOS or WSL changes are included.
 
-- [ ] 1. Establish local runtime prerequisites
+- [x] 1. Establish local runtime prerequisites
 - [x] 1.1 Inventory existing hosting and prepare the candidate manifest
   - Identify installed Ollama, models and hardware without starting inference.
   - Select exact small Gemma and GPT-OSS-20B candidates separately; record digests, licensing, context configuration, tokenizer/template and available metadata.
@@ -30,7 +30,8 @@ No driver, BIOS or WSL changes are included.
   - _Boundary: Local endpoint admission, Gemma NPU feasibility gate_
   - _Requirements: 1.1, 1.2, 1.4, 3.5, 3.7, 6.1, 6.3_
 
-- [ ] 1.2 Prepare the isolated optional NPU environment
+- [x] 1.2 Prepare the isolated optional NPU environment
+  - _Outcome: Failed-prerequisite assessment reviewed; see npu-setup-receipt.json. No NPU runtime installed or support verified._
   - Use the selected manifest to set up only the compatible user-space environment and artifact; keep accelerator dependencies outside the library environment.
   - Pin and record runtime, artifact and driver versions. Verify imports and artifact availability without inference.
   - Done when setup is reproducible or a sanitized failed-prerequisite receipt explicitly disables the NPU branch.
@@ -48,6 +49,7 @@ No driver, BIOS or WSL changes are included.
   - _Requirements: 1.1, 1.3, 1.4, 2.1, 2.2, 2.3, 3.3, 3.4, 3.5, 3.6, 5.1, 5.2, 5.5_
 
 - [ ] 2.2 Probe Gemma token evidence and actual NPU execution
+  - _Blocked: NPU setup prerequisites failed in task 1.2; live probe unperformed. This conditional branch does not block Ollama integration._
   - Build a self-contained diagnostic with its own bounded accounting, sanitized receipts and probe-local validation; use fake-runtime tests before live execution.
   - Verify text-only generation, matching prefix/token positions and observed NPU placement. Capture score semantics and perform stable natural-log normalization only over full-vocabulary logits.
   - Reject pruned-only scores, missing alignment and unverified placement; do not substitute another model or infer NPU use from configuration.
@@ -81,6 +83,7 @@ No driver, BIOS or WSL changes are included.
 
 - [ ] 4. Connect eligible NPU evidence to an endpoint, conditionally
 - [ ] 4.1 Check an existing NPU server against the required contract
+  - _Blocked: Conditional skip because task 2.2 cannot establish NPU eligibility._
   - Execute only after task 2.2 establishes actual eligibility; otherwise record a conditional skip.
   - Within the frozen feasibility budget, verify a vendor endpoint's token evidence, selected controls and provenance; prefer reusing it unchanged.
   - Done when a routing receipt selects the verified existing server, identifies the specific missing server capability, or records that budget prevented verification.
@@ -89,6 +92,7 @@ No driver, BIOS or WSL changes are included.
   - _Requirements: 1.3, 2.1, 2.3, 3.1, 6.1_
 
 - [ ] 4.2 Supply a minimal experimental bridge only when necessary
+  - _Blocked: Conditional skip because direct NPU eligibility is unverified; no bridge build-out._
   - Execute only after direct NPU eligibility and a recorded failure of the existing server contract. A successful existing server makes this task unnecessary.
   - Implement one configured text-only model, non-streaming compatible responses, genuine token evidence and observed provenance in an isolated host; use loopback and a bounded single-request queue.
   - Test unsupported settings, model mismatch, nontext/streaming rejection, queue saturation and probability semantics with a fake runtime. Stop and rescope if a general server or more than the bounded task is required.

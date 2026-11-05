@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "assessment_date": "2026-11-05",
+  "task": "1.2",
+  "candidate_id": "amd-gemma3-4b-npu",
+  "status": "failed-prerequisites",
+  "assessment_complete": true,
+  "setup_reproducible": false,
+  "npu_branch_enabled": false,
+  "npu_support_verified": false,
+  "scope": "Assessment of approved task 1.1 evidence only; no new hardware, network or runtime observations",
+  "evidence": {
+    "inventory_commit": "050f308",
+    "manifest": ".kiro/specs/local-ai-provider/candidate-manifest.json",
+    "inventory_receipt": ".kiro/specs/local-ai-provider/inventory-receipt.md",
+    "observation_date": "2026-11-05"
+  },
+  "identity": {
+    "model": "amd/gemma-3-4b-npu-basic-text-logit-pruning_rai_1.9.0_npu",
+    "artifact_revision": null,
+    "artifact_download_bytes": null,
+    "artifact_quantization": null,
+    "tokenizer_identity": null,
+    "template_digest": null,
+    "artifact_specific_license": null,
+    "selected_runtime_release": "Ryzen AI 1.9.0",
+    "installed_runtime_version": null,
+    "compatible_oga_version": null,
+    "observed_driver_version": "32.0.20102.3930",
+    "documented_driver_version": "32.0.201.448",
+    "driver_compatibility": "unverified",
+    "requested_backend": "NPU",
+    "observed_backend": null
+  },
+  "failed_prerequisites": [
+    {
+      "gate": "exact-artifact",
+      "evidence": "Linked artifact page returned HTTP 401 during inventory; revision, footprint and artifact-specific license were unavailable",
+      "decision": "Cannot pin or plan a verified artifact download"
+    },
+    {
+      "gate": "compatible-runtime",
+      "evidence": "AMD documentation names OGA 0.18.0 in change notes and 0.14.0 in its compatible API section",
+      "decision": "No OGA version selected or guessed package installed"
+    },
+    {
+      "gate": "compatible-driver",
+      "evidence": "Installed driver 32.0.20102.3930 differs from documented 32.0.201.448; numeric ordering does not establish compatibility",
+      "decision": "Driver exists but release compatibility remains unverified; no driver change"
+    },
+    {
+      "gate": "isolated-runtime-availability",
+      "evidence": "C:/Program Files/RyzenAI was absent in inventory; other locations were not exhaustively searched",
+      "decision": "No known compatible isolated runtime available; absence elsewhere is not asserted"
+    }
+  ],
+  "checks_not_performed": [
+    {"check": "Runtime imports", "reason": "No pinned compatible isolated environment"},
+    {"check": "Local artifact availability and digest", "reason": "Exact artifact revision unavailable; no artifact downloaded"},
+    {"check": "Text-only generation and aligned token probabilities", "reason": "Setup prerequisite gate failed"},
+    {"check": "Observed NPU placement", "reason": "No inference attempted"}
+  ],
+  "actions": {
+    "environment_created": false,
+    "packages_installed": false,
+    "runtime_or_model_downloads": 0,
+    "inference_attempts": 0,
+    "driver_changes": false,
+    "bios_changes": false,
+    "wsl_changes": false,
+    "core_accelerator_dependencies_added": false
+  },
+  "conditional_outcome": {
+    "npu_probe": "disabled pending prerequisite reassessment",
+    "npu_server_validation": "disabled; direct NPU eligibility not established",
+    "npu_bridge": "disabled; direct NPU eligibility not established",
+    "ollama_work": "may continue independently under its existing candidate and budget gates",
+    "budget_transfer": false,
+    "task_state_updates": "Owned by parent controller; this receipt does not edit task checkboxes"
+  },
+  "reassessment_requires": [
+    "Accessible selected Gemma artifact with exact revision, footprint and verified licensing",
+    "Release-matched runtime and OGA version resolved from authoritative vendor evidence",
+    "Compatibility of the installed driver with the selected release established without assuming numeric version order",
+    "Concrete verified download and isolated user-space installation plan outside the library environment and CI image"
+  ],
+  "limitations": [
+    "Completed assessment is not completed installation or verified NPU support",
+    "No inference, token evidence, memory, latency or execution placement was measured",
+    "The logit-pruning artifact name is not evidence of usable full-vocabulary probabilities",
+    "Unknown fields are null, never inferred zero; zero action counts mean those actions did not occur in task 1.2"
+  ],
+  "requirements_checked": ["1.2", "3.1", "3.7", "6.1"],
+  "design_sections_checked": ["Allowed Dependencies", "Technology Stack", "Gemma NPU feasibility gate", "Data Models and System Flow", "Error Handling", "Testing Strategy"]
+}
