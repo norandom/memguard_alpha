@@ -173,6 +173,18 @@ resume its paused execution repair, remove unrelated files or authorize calls.
 
 ## Endpoint-based divergence evaluation — 2026-11-01 scope amendment
 
+### Local-provider scope split — 2026-11-05
+
+Current work focuses on [local-ai-provider](../specs/local-ai-provider/requirements.md):
+small local models, Gemma prioritized for NPU evaluation, mandatory observed log
+probabilities, and explicit hardware/runtime feasibility. Opus and other frontier
+APIs without logprobs remain a separate alternative path; they are not fallback
+providers in this local spec. Treat the observed November 5 NIM attempts as
+"NIM unavailable", retaining HTTP 504 receipts without assigning a root cause.
+Optional local hosting does not make accelerator dependencies mandatory for the
+library. This split supersedes any interpretation that local-provider delivery
+must also implement the frontier completion-only experiment.
+
 Divergence evaluation follows configured endpoints and statistical sources:
 capability/evidence assessment, auxiliary provenance, development calibration of
 correction strength, frozen configuration, and paired held-out measurement.

@@ -1,5 +1,12 @@
 # Requirements: endpoint-based divergence calibration and evaluation
 
+> Scope split, 2026-11-05: local endpoint support with mandatory log probabilities
+> is specified separately in [local-ai-provider](../local-ai-provider/requirements.md).
+> Opus and the completion-only frontier alternative remain independent concerns.
+> This study's broader requirements do not make that alternative a prerequisite
+> for the local-provider extension. The November 5 NIM attempts are operationally
+> classified as "NIM unavailable"; their diagnostic evidence remains unchanged.
+
 Revision 2, 2026-11-01. Supersedes revision 1. User authorized the scope amendment;
 this generated revision awaits review before revised design and implementation.
 See [scope amendment](scope-amendment.md).
