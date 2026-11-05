@@ -1,5 +1,42 @@
 # Candidate evidence and design questions
 
+## Design discovery — 2026-11-05
+
+Used `kiro-spec-design` integration-focused discovery, synthesis and review rules.
+Inspected `completion.py`, `providers.py`, `provider_callback.py`,
+`provider_probe.py`, `harness/scorer.py` and `harness/scorer_client.py`.
+Reuse the existing HTTP client and scorer instead of adding a parallel provider
+hierarchy. Extend calibration provenance because the existing identity does not
+include model digest, tokenizer, quantization or runtime.
+
+Fresh official checks:
+
+- Ollama documents logprobs on its OpenAI-compatible chat endpoint:
+  <https://docs.ollama.com/api/openai-compatibility>. This supports reuse of the
+  current adapter but does not verify the installed runtime/model pair.
+- AMD's current OGA page links Gemma to
+  `amd/gemma-3-4b-npu-basic-text-logit-pruning_rai_1.9.0_npu`.
+  The artifact's name makes full-vocabulary access a material verification gate.
+  The model page itself could not be fetched during this review; no claim about
+  its actual output tensors has been established.
+- AMD's page says 1.9 models require matching runtime releases and contains both
+  0.18.0 upgrade and 0.14.0 compatibility text. Do not select a package version
+  from that contradiction; record the installed release and matched artifact in
+  the feasibility receipt before build-out.
+
+Build-versus-adopt decision: adopt a verified serving endpoint where possible.
+Only if direct OGA supplies valid evidence and an existing server does not expose
+it, build a small optional experimental bridge. A failed direct probe stops that
+branch; it does not trigger a different model, CPU substitution or driver project.
+
+Project environment decision: Windows commands use PowerShell. WSL is exclusively
+for Dagger CI. No NPU runtime, model download or inference was performed for design.
+
+Self-review covered every requirement, legacy calibration compatibility, special
+token alignment, sidecar identity limitations and the distinction between requested
+and observed NPU use. The gate passes for a feasibility-first design; it does not
+certify NPU support or authorize an inference batch.
+
 2026-11-05. These are design inputs, not local validation results.
 
 - Ollama documents partial CPU/GPU loading and reports the split with `ollama ps`:

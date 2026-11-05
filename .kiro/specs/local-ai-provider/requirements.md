@@ -76,5 +76,7 @@ requested. Admit a configuration only after observing genuine log probabilities.
 ## Review status
 
 Requirements review: self-reviewed against EARS, coverage and scope boundaries.
-Design and tasks await requirements approval under the project's phased workflow.
+Requirements approved by the user's instruction to continue the spec on 2026-11-05.
+Design and tasks retain their separate review gates. Windows operations use
+PowerShell; WSL is reserved for Dagger CI, per project memory.
 No new installation, inference batch or hardware change is authorized by this draft.

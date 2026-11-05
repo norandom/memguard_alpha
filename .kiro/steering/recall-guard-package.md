@@ -144,6 +144,11 @@ Delayed wakeups must not compress subsequent starts.
 
 ## Project command invocation
 
+Current shell/environment policy: [execution-environment.md](execution-environment.md).
+Use PowerShell on Windows. WSL is reserved for Dagger CI, not ordinary commands,
+local hosting, measurements or direct Docker validation. This November 5 user
+decision supersedes conflicting historical execution guidance below.
+
 Per user instruction on 2026-11-01, invoke project Python commands through `uv run --no-sync ...` from the repository root. Use `uv run --no-sync python ...` for scripts and `uv run --no-sync pytest ...` for tests. Do not invoke a hard-coded base interpreter or `.venv/Scripts/python.exe` directly. Interpreter metadata alone does not establish the cause of prior abnormal process exits; retain those receipts without attributing them to Windows or uv.
 
 ## Portable scope and proportionate validation — 2026-11-01
