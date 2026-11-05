@@ -195,6 +195,25 @@ class OpenAICompatibleClient:
         """Name the budget-ledger stage without reserving a generation control."""
         return self._generate(prompt, parameters, stage=stage, enforce_mia=self.features.mia_scoring)
 
+    def generate_for_execution(self, prompt, *, stage, cancellation=None, on_observation=None, **parameters):
+        """Opt-in execution controls, without enabling an observation profile."""
+        if self._readiness is not None:
+            result = self._observe(prompt, parameters, stage=stage, cancellation=cancellation,
+                                   on_observation=on_observation)
+            if result.ready:
+                return result.response
+            raise self._readiness_failure(result)
+        from recall_guard.core.provider_probe import legacy_generation
+
+        return legacy_generation(self.config, self.features, self.budget,
+            lambda guard, wait: self._generate(prompt, parameters, stage=stage, enforce_mia=self.features.mia_scoring,
+                purpose="inference", admission_guard=guard, wait=wait), self._probe_report, stage=stage,
+            cancellation=cancellation, on_observation=on_observation, sanitize_failure=self.sanitize_execution_failure)
+
+    def sanitize_execution_failure(self, error, *, response=None):
+        """Retain failed evidence through the owning registered-secret sanitizer."""
+        return self._control.sanitize_failure(error, response=response)
+
     def _generate(self, prompt: str, overrides: dict, *, stage: str, enforce_mia: bool, purpose=None,
                   admission_guard=None, wait=None) -> ModelResponse:
         if self._readiness is not None:

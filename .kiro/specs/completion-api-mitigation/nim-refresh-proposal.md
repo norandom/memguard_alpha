@@ -103,3 +103,39 @@ User approved the 146-request ceiling on 2026-11-01T15:22:42.6349154+00:00. Scop
 The approved first attempt consumed one physical eligibility request and returned HTTP 504 after302.24s. Credential eligibility remains unverified; no calibration/evaluation calls ran. Raw evidence is published in docs/results/2026-11-01-nim-refresh/. Automatic replay remains disabled.
 
 A separately selected new attempt may use retry-plan.json with eligibility cap1, calibration80, evaluation64: maximum145 remaining, plus the prior consumed1 equals the original146 ceiling. No call allowance is reset. The helper's lower-cap option passed18 Docker tests and independent review. One additional eligibility operation would require explicit user replay permission because the first provider outcome is unknown; no second request has been sent.
+
+## Explicit follow-up authorization
+
+User approved the one additional eligibility attempt on 2026-11-01T15:48:49.2709883+00:00. If eligibility succeeds, continue the already-approved calibration and ensemble study. New attempt capped at145; prior consumed1 keeps the combined ceiling146. No automatic third eligibility attempt or model switch is authorized.
+
+## Pacing update after the completed attempts
+
+The user specified a 40 RPM NIM quota and approved leaving margin on 2026-11-01.
+Future plans use 2 seconds between request starts (at most 30 RPM per client),
+with one worker and automatic retries disabled. A 429 stops this measurement;
+it does not authorize another request. This client-local policy cannot account
+for traffic from other processes sharing the same provider quota.
+
+Previously frozen plans and receipts retain their original 1.5-second setting.
+Generate a new offline plan before any separately authorized future measurement;
+the updated runner deliberately rejects those older plans as a configuration
+mismatch. This pacing change authorizes no additional live requests.
+
+## Final follow-up outcome and next experiment
+
+Follow-up eligibility succeeded after 189.54s with provider-reported token
+evidence, then calibration preflight returned HTTP 504 after 302.21s. Combined
+with the initial failure, three physical requests were consumed; no fitting or
+evaluation occurred. The remaining 143 requests are not permission for automatic
+replay. The final report and byte-preserved follow-up artifacts are in
+`docs/results/2026-11-01-nim-refresh.md` and its `followup-01/` artifact directory.
+
+The documentation now distinguishes single-answer and ensemble evidence and
+proposes a real-model divergence decoding experiment in
+`docs/divergence-decoding-evaluation.md`. Open weights with known compatible
+tokenizers make that experiment possible when full next-token vectors and
+selection control are available. Tokenizer knowledge alone does not extend a
+completion API. Selection of a compatible main/older/newer trio, documented
+training windows and an explicit compute budget remains necessary. Synthetic
+rewriting is a separate completion-only intervention. This proposal does not
+mark the existing two-mode measurement tasks complete or approve a new run.

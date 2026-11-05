@@ -1,0 +1,18 @@
+{
+  "feature_name": "divergence-decoding-evaluation",
+  "created_at": "2026-11-01",
+  "updated_at": "2026-11-01",
+  "language": "en",
+  "phase": "implementing",
+  "approvals": {
+    "requirements": {"generated": true, "approved": true},
+    "design": {"generated": true, "approved": true},
+    "tasks": {"generated": true, "approved": true}
+  },
+  "ready_for_implementation": true,
+  "selection_approved": true,
+  "approval_context": "User approved gpt-oss-20b as mandatory target with two proposed tokenizer-aligned trigram auxiliaries; proceed to requirements. No training or inference budget approved.",
+  "selection_source": "../divergence-decoding/model-selection.md",
+  "requirements_review": {"decision": "PASS", "report": "requirements-review.md", "mode": "self-review"},
+  "task_plan_review": {"decision": "PASS", "mode": "independent", "repair_passes": 1, "executable_tasks": 18, "report": "task-plan-review.md"}
+}

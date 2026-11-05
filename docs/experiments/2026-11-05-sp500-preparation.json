@@ -1,0 +1,49 @@
+{
+  "status": "prepared_not_executed",
+  "prepared_on": "2026-11-05",
+  "bundle_sha256": "f64843789112c323f1bde5cc8a26c6e1dee9994934ffe1597084721075385b9d",
+  "source_sha256": "10a58cc1355b4835202c11090c436ac3a3467a55b4dd5ac677b990171458ed15",
+  "source_rows": 2607,
+  "missing_source_rows": 96,
+  "last_available": "2026-11-03",
+  "selected_dates": {
+    "openai/gpt-oss-20b": {
+      "post": [
+        "2024-08-07",
+        "2024-09-23",
+        "2024-10-04",
+        "2024-10-16"
+      ],
+      "pre": [
+        "2024-02-06",
+        "2024-02-15",
+        "2024-04-10",
+        "2024-04-26"
+      ]
+    },
+    "claude-opus-5-5": {
+      "post": [
+        "2026-07-31",
+        "2026-08-05",
+        "2026-09-14",
+        "2026-10-28"
+      ],
+      "pre": [
+        "2026-02-04",
+        "2026-02-12",
+        "2026-02-24",
+        "2026-04-10"
+      ]
+    }
+  },
+  "planned_items": 16,
+  "planned_measurement_requests": 48,
+  "maximum_total_requests": 50,
+  "overlapping_context_pairs": 9,
+  "model_requests_executed": 0,
+  "validation": {
+    "focused_tests_passed": 39,
+    "ruff": "PASS"
+  },
+  "uncertainty": "Mechanics pilot; no inferential confidence interval or efficacy claim"
+}

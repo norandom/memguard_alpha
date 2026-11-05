@@ -1,0 +1,31 @@
+{
+  "counts": {
+    "is_memorized": {
+      "accepted": 0,
+      "attempted": 0,
+      "input": 20,
+      "training_valid": null
+    },
+    "oos_control": {
+      "accepted": 0,
+      "attempted": 0,
+      "baseline_valid": null,
+      "input": 20,
+      "training_valid": null
+    }
+  },
+  "failure_kind": "request_error",
+  "fingerprint": null,
+  "holdout_auc": null,
+  "holdout_labels": null,
+  "holdout_probabilities": null,
+  "identity": {
+    "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "intervention_id": "original",
+    "model": "openai/gpt-oss-20b",
+    "parameters_json": "{\"logprobs\":true,\"max_tokens\":2048,\"temperature\":0,\"top_logprobs\":20}",
+    "protocol": "openai_chat"
+  },
+  "is_weak": null,
+  "status": "failed"
+}

@@ -1,0 +1,58 @@
+{
+  "admission_window_exhausted": false,
+  "budgets": {
+    "calibration": {
+      "events": [
+        {
+          "attempt": 1,
+          "call_id": 1,
+          "cost": null,
+          "latency_s": 302.20885846900273,
+          "model": "openai/gpt-oss-20b",
+          "purpose": "probe",
+          "stage": "probe",
+          "started_at": 24550.961386155,
+          "status": "failed",
+          "status_code": 504,
+          "timestamp": "2026-11-01T15:52:15.990074+00:00",
+          "usage": null
+        }
+      ],
+      "limit": 80,
+      "used": 1
+    },
+    "eligibility": {
+      "events": [
+        {
+          "attempt": 1,
+          "call_id": 1,
+          "cost": null,
+          "latency_s": 189.5377713300004,
+          "model": "openai/gpt-oss-20b",
+          "purpose": "probe",
+          "stage": "probe",
+          "started_at": 24361.379035681,
+          "status": "succeeded",
+          "status_code": null,
+          "timestamp": "2026-11-01T15:49:06.407729+00:00",
+          "usage": {
+            "completion_tokens": 30,
+            "prompt_tokens": 71,
+            "total_tokens": 101
+          }
+        }
+      ],
+      "limit": 1,
+      "used": 1
+    }
+  },
+  "cost": null,
+  "cost_unavailable_reason": "Provider pricing and monetary cost unavailable",
+  "elapsed_s": 491.87010685199857,
+  "failed_items": 0,
+  "failure_kind": "request_error",
+  "phase": "calibration",
+  "physical_requests": 2,
+  "processed_items": 0,
+  "status": "incomplete"
+}

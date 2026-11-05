@@ -1,3 +1,25 @@
+# Reassessment update — 2026-11-01
+
+The user requested a smaller portable API/calculation delivery and a Docker
+approach. This update supersedes broader delivery assumptions in the historical
+research below. Applied kiro-spec-design synthesis and kiro-spec-tasks graph
+review: reuse current clients, ledger and calculations; integrate the actual
+adopter flow before adding infrastructure. The local design template is absent;
+use the skill's boundary/flow/file-plan/validation/traceability fallback structure.
+
+The [infrastructure assessment](infrastructure-assessment.md) records concrete
+callers and keep/consolidate/defer/prune decisions. In particular, active polling
+has only a loopback fixture route, not a verified hosted NIM route. Preserve
+accepted-request identity and safe deferral. Keep existing optional SSE integrity,
+study tools and Dagger; defer new paired-runner/resume/profile expansion.
+
+The separate [Docker research](../docker-execution/research.md) covers the shared
+uv/Dagger environment. No Docker builds, application tests, deletions or provider
+calls were made while writing these proposals. Prior implementation receipts
+remain historical; current task3.2 repair is partial and unvalidated.
+
+---
+
 # Research: adaptive provider readiness
 
 Date: 2026-11-01. Discovery: extension with focused provider-contract and

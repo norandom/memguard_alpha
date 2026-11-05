@@ -1,0 +1,258 @@
+{
+  "measured_on": "2026-11-05",
+  "bundle_sha256": "f64843789112c323f1bde5cc8a26c6e1dee9994934ffe1597084721075385b9d",
+  "summary": {
+    "cost_note": "Unknown until reconciled with reported usage/billing",
+    "cost_usd": null,
+    "models": {
+      "claude-opus-5-5": {
+        "cohorts": {
+          "post": {
+            "arms": {
+              "anonymous": {
+                "mean_normalized_absolute_error": 0.5507196596611448,
+                "planned": 4,
+                "status_counts": {
+                  "parsed": 4
+                },
+                "descriptive_return_errors": {
+                  "count": 4,
+                  "mean_signed_error": -0.0016784507354298186,
+                  "sample_variance": 2.3431025853526632e-05,
+                  "units": "daily log return; variance in squared units; descriptive only"
+                }
+              },
+              "identified": {
+                "mean_normalized_absolute_error": 0.5754417380201347,
+                "planned": 4,
+                "status_counts": {
+                  "parsed": 4
+                },
+                "descriptive_return_errors": {
+                  "count": 4,
+                  "mean_signed_error": -0.0003267877498674889,
+                  "sample_variance": 2.5928512848239363e-05,
+                  "units": "daily log return; variance in squared units; descriptive only"
+                }
+              },
+              "recall": {
+                "exact_matches": 0,
+                "mean_absolute_relative_error": null,
+                "planned": 4,
+                "status_counts": {
+                  "abstained": 4
+                }
+              }
+            },
+            "common_usable_pairs": 4,
+            "mean_identity_advantage": -0.024722078358989787,
+            "baseline_on_parsed_identified": {
+              "count": 4,
+              "mean_loss": 0.5801590707932275
+            }
+          },
+          "pre": {
+            "arms": {
+              "anonymous": {
+                "mean_normalized_absolute_error": 0.9264211451203165,
+                "planned": 4,
+                "status_counts": {
+                  "parsed": 4
+                },
+                "descriptive_return_errors": {
+                  "count": 4,
+                  "mean_signed_error": 0.00438621337505965,
+                  "sample_variance": 8.949011154332358e-05,
+                  "units": "daily log return; variance in squared units; descriptive only"
+                }
+              },
+              "identified": {
+                "mean_normalized_absolute_error": 0.9154879474674408,
+                "planned": 4,
+                "status_counts": {
+                  "parsed": 4
+                },
+                "descriptive_return_errors": {
+                  "count": 4,
+                  "mean_signed_error": 0.004130685111469551,
+                  "sample_variance": 9.117292976835065e-05,
+                  "units": "daily log return; variance in squared units; descriptive only"
+                }
+              },
+              "recall": {
+                "exact_matches": 0,
+                "mean_absolute_relative_error": null,
+                "planned": 4,
+                "status_counts": {
+                  "abstained": 4
+                }
+              }
+            },
+            "common_usable_pairs": 4,
+            "mean_identity_advantage": 0.01093319765287561,
+            "baseline_on_parsed_identified": {
+              "count": 4,
+              "mean_loss": 0.8989820372958246
+            }
+          }
+        },
+        "confidence_interval": null,
+        "cutoff_contrast": 0.0356552760118654,
+        "interpretation": "mechanics pilot; no inferential claim"
+      },
+      "openai/gpt-oss-20b": {
+        "cohorts": {
+          "post": {
+            "arms": {
+              "anonymous": {
+                "mean_normalized_absolute_error": null,
+                "planned": 4,
+                "status_counts": {
+                  "unperformed": 4
+                },
+                "descriptive_return_errors": {
+                  "count": 0,
+                  "mean_signed_error": null,
+                  "sample_variance": null,
+                  "units": "daily log return; variance in squared units; descriptive only"
+                }
+              },
+              "identified": {
+                "mean_normalized_absolute_error": null,
+                "planned": 4,
+                "status_counts": {
+                  "unperformed": 4
+                },
+                "descriptive_return_errors": {
+                  "count": 0,
+                  "mean_signed_error": null,
+                  "sample_variance": null,
+                  "units": "daily log return; variance in squared units; descriptive only"
+                }
+              },
+              "recall": {
+                "exact_matches": 0,
+                "mean_absolute_relative_error": null,
+                "planned": 4,
+                "status_counts": {
+                  "unperformed": 4
+                }
+              }
+            },
+            "common_usable_pairs": 0,
+            "mean_identity_advantage": null,
+            "baseline_on_parsed_identified": {
+              "count": 0,
+              "mean_loss": null
+            }
+          },
+          "pre": {
+            "arms": {
+              "anonymous": {
+                "mean_normalized_absolute_error": null,
+                "planned": 4,
+                "status_counts": {
+                  "unperformed": 4
+                },
+                "descriptive_return_errors": {
+                  "count": 0,
+                  "mean_signed_error": null,
+                  "sample_variance": null,
+                  "units": "daily log return; variance in squared units; descriptive only"
+                }
+              },
+              "identified": {
+                "mean_normalized_absolute_error": null,
+                "planned": 4,
+                "status_counts": {
+                  "unperformed": 4
+                },
+                "descriptive_return_errors": {
+                  "count": 0,
+                  "mean_signed_error": null,
+                  "sample_variance": null,
+                  "units": "daily log return; variance in squared units; descriptive only"
+                }
+              },
+              "recall": {
+                "exact_matches": 0,
+                "mean_absolute_relative_error": null,
+                "planned": 4,
+                "status_counts": {
+                  "unperformed": 4
+                }
+              }
+            },
+            "common_usable_pairs": 0,
+            "mean_identity_advantage": null,
+            "baseline_on_parsed_identified": {
+              "count": 0,
+              "mean_loss": null
+            }
+          }
+        },
+        "confidence_interval": null,
+        "cutoff_contrast": null,
+        "interpretation": "mechanics pilot; no inferential claim"
+      }
+    },
+    "physical_requests": 26,
+    "providers": {
+      "claude-opus-5-5": {
+        "physical_requests": 25,
+        "status": "completed"
+      },
+      "openai/gpt-oss-20b": {
+        "physical_requests": 1,
+        "status": "provider_failure"
+      }
+    }
+  },
+  "offline_replay": "PASS",
+  "minimum_call_spacing_s": 2.004462027000045,
+  "provider_accounting": {
+    "claude-opus-5-5": {
+      "physical_requests": 25,
+      "status_counts": {
+        "succeeded": 25
+      },
+      "reported_usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 6523,
+        "output_tokens": 748
+      },
+      "requests_without_reported_usage": 0,
+      "failure_codes": [],
+      "http_statuses": [],
+      "latency_range_s": [
+        1.1796299380000619,
+        2.4225709090001146
+      ]
+    },
+    "openai/gpt-oss-20b": {
+      "physical_requests": 1,
+      "status_counts": {
+        "failed": 1
+      },
+      "reported_usage": {},
+      "requests_without_reported_usage": 1,
+      "failure_codes": [],
+      "http_statuses": [
+        504
+      ],
+      "latency_range_s": [
+        302.24798849900003,
+        302.24798849900003
+      ]
+    }
+  },
+  "artifact_sha256": {
+    "events.jsonl": "ed0bd6af7e12d3929e5e6b930236967de4f53cf6b72f760969d33f8e7133e264",
+    "execution.json": "34d6364f3e8a1fb096488136ae09518259c9a4f155331ba5dd51a38b00a6ff02",
+    "ledger-0.json": "3151c65b261e84fc4a1c532b096472dab0f0ff7a2cea9f779174fa001dae42ef",
+    "ledger-1.json": "dbe693e588d0f0109bc5257ae079a845cfda1b9f40d4a9cd28bb452e68372d77",
+    "scores.json": "11104a9094752fda5cf153d5434db1066333577314850c8c8497a3d8a6b35554",
+    "summary.json": "bb5c22965c42760b20e2e22f1ed1b8c11624985b3a4a8111566b5cfc5f5a9966"
+  }
+}

@@ -303,6 +303,7 @@ def prepare_workflow(requested, fallback_policy, client_factory, budget, cancell
                 raise _PreparationStop((observed.observations[-1].reason or observed.observations[-1].state).value)
         if cancellation is not None and cancellation.cancelled:
             raise _PreparationStop("caller_cancelled")
+        candidate.bind_plan(plan, cancellation=cancellation, on_observation=on_observation)
         workflow = candidate
     except _PreparationStop as stop:
         stopping_reason = str(stop)

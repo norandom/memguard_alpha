@@ -1,16 +1,54 @@
-# NIM returned a gateway timeout before calibration or ensemble evaluation
+# NIM accepted access once; calibration then stopped at a gateway timeout
 
 Measurement date: **2026-11-01**. Target: NVIDIA-hosted
 `openai/gpt-oss-20b`. Execution: the locked Recall Guard Docker development
 image, using an explicitly approved ceiling of 146 physical requests.
 
-The eligibility request returned **HTTP 504 after 302.24 seconds**. The run
-stopped before fitting or evaluation. Credential eligibility remains
-**unverified**: this response does not establish either an invalid key or usable
-access to the requested model/logprobs. There are no new NIM ensemble or
-calibration metrics to interpret.
+Across two attempts, **three physical requests** ran. Initial eligibility
+returned HTTP 504 after 302.24 seconds. Explicitly approved follow-up eligibility
+succeeded after 189.54 seconds, with provider-reported token evidence. The fresh
+calibration probe then returned HTTP 504 after 302.21 seconds. No classifier
+was fitted and no evaluation item ran. There are no new NIM ensemble or
+calibration metrics to interpret. Access was accepted at the successful probe;
+the latest failed operation does not independently verify credential state.
 
-## What actually ran
+## The approved follow-up verified access but did not reach fitting
+
+| Physical request | Result | Latency |
+| --- | --- | --- |
+| First eligibility | HTTP 504 | 302.24s |
+| Follow-up eligibility | Accepted; token evidence available | 189.54s |
+| Calibration preflight | HTTP 504 | 302.21s |
+
+The successful response contained final text `OK`, 30 provider-reported token
+evidence positions and reported usage of 71 prompt plus 30 completion tokens.
+No independent token-alignment audit or scoring conclusion follows from that
+probe. Effective generation settings were not echoed. Usage for the two failed
+requests and total monetary cost remain unknown.
+
+Combined accounting is **3/146 used**, leaving 143 unused: no further eligibility
+allowance, 79 calibration requests and 64 evaluation requests. Unused allowance
+does not authorize replay. No further automatic requests will be made.
+
+The follow-up artifacts are copied byte-for-byte from the local run:
+
+- [Frozen remaining-budget plan](2026-11-01-nim-refresh/followup-01/plan.json)
+- [Final request ledger](2026-11-01-nim-refresh/followup-01/receipt.json)
+- [Failed calibration summary](2026-11-01-nim-refresh/followup-01/calibration.json)
+- [Eligibility intent](2026-11-01-nim-refresh/followup-01/eligibility/request-001.intent.json)
+- [Successful eligibility evidence](2026-11-01-nim-refresh/followup-01/eligibility/request-001.receipt.json)
+- [Calibration probe intent](2026-11-01-nim-refresh/followup-01/calibration/request-001.intent.json)
+- [Calibration probe failure](2026-11-01-nim-refresh/followup-01/calibration/request-001.receipt.json)
+
+The following sections preserve first-attempt details. Its 145-request remaining
+balance was subsequently reduced to 143 by the approved follow-up. Historical
+plans retain 1.5s spacing; the updated runner uses 2s for future plans. Neither
+change supplies mitigation efficacy evidence. See the
+[single](2026-11-01-recall-guard-single.md) and
+[ensemble](2026-11-01-recall-guard-ensemble.md) summaries and the
+[divergence decoding experiment proposal](../divergence-decoding-evaluation.md).
+
+## First attempt: what actually ran
 
 | Stage | Planned | Observed |
 | --- | --- | --- |

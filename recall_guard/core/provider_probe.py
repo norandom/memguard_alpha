@@ -17,6 +17,28 @@ from recall_guard.core.request_control import BudgetExhaustedError, RequestError
 TOKEN_CONTROLS = frozenset({"logprobs", "top_logprobs"})
 
 
+def legacy_generation(config, features, budget, operation, report_response, *, stage, cancellation=None,
+                      on_observation=None, sanitize_failure):
+    """Run an explicitly controlled generation through the existing probe evidence seam.
+
+    The operation retains ordinary transport admission/retries and redaction.
+    Already admitted synchronous I/O completes under its transport bounds.
+    """
+    evidence = legacy_probe(config, features, budget, operation, report_response, stage=stage,
+                            cancellation=cancellation, on_observation=on_observation)
+    if evidence.ready:
+        from dataclasses import replace
+
+        return replace(evidence.response, readiness_trace=evidence.observations)
+    terminal = evidence.observations[-1]
+    error = RequestError("Controlled generation did not satisfy the selected capabilities.",
+                         code=(terminal.reason or terminal.state).value, status_code=terminal.status_code,
+                         response_evidence=evidence.response)
+    error.readiness_trace = evidence.observations
+    error = sanitize_failure(error)
+    raise error
+
+
 def rejected_token_control(error, config):
     """Only typed, exact supplied-control parameter rejection is sufficient."""
     return (isinstance(error, RequestError) and error.status_code in {400, 422}
@@ -61,6 +83,9 @@ def legacy_probe(config, features, budget, operation, report_response, *, stage,
             response, status_code = error.response_evidence, error.status_code
             if error.code == "caller_cancelled":
                 state, reason = "cancelled", "caller_cancelled"
+            elif error.code == "missing_token_evidence" and isinstance(response, ModelResponse):
+                reason = "missing_token_evidence"
+                report = report_response(response)
             elif rejected_token_control(error, config):
                 capabilities = dict(report.capabilities)
                 capabilities[error.parameter] = CapabilityEvidence(

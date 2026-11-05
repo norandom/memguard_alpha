@@ -6,7 +6,8 @@ their sanitized failures; it neither retries nor interprets arbitrary messages.
 
 from recall_guard.core.request_control import BudgetExhaustedError, RequestError
 
-FATAL_FAILURES = frozenset({"budget_exhausted", "authentication_error", "configuration_error", "eligibility_error"})
+FATAL_FAILURES = frozenset({"budget_exhausted", "authentication_error", "configuration_error", "eligibility_error",
+                            "cancelled", "deferred", "exhausted"})
 _INELIGIBLE_CODES = frozenset({
     "insufficient_quota", "billing_hard_limit_reached", "billing_not_active",
     "credit_balance_exhausted", "insufficient_credits", "usage_limit_reached",
@@ -27,6 +28,12 @@ def failure_kind(error: Exception) -> str:
         return "authentication_error"
     if error.status_code == 402 or error.code in _INELIGIBLE_CODES:
         return "eligibility_error"
+    if error.code in {"caller_cancelled", "cancelled"}:
+        return "cancelled"
+    if error.code in {"deferred", "waiting_allowance", "pending_route_unavailable", "retry_after_too_large"}:
+        return "deferred"
+    if error.code in {"exhausted", "request_budget", "retry_limit", "poll_limit"}:
+        return "exhausted"
     if error.parameter or error.status_code in (400, 404, 422) or error.code in _CONFIGURATION_CODES:
         return "configuration_error"
     return "request_error"
@@ -43,7 +50,12 @@ def request_failure(error: Exception) -> tuple[str, str, dict | None]:
     if isinstance(error, BudgetExhaustedError):
         return kind, "Physical request budget exhausted.", None
     if isinstance(error, RequestError):
-        return kind, str(error), {"status_code": error.status_code, "parameter": error.parameter, "code": error.code,
-                                  "detail": error.detail, "retryable": error.retryable,
-                                  "usage": dict(error.usage) if error.usage is not None else None}
+        diagnostics = {"status_code": error.status_code, "parameter": error.parameter, "code": error.code,
+                       "detail": error.detail, "retryable": error.retryable,
+                       "usage": dict(error.usage) if error.usage is not None else None}
+        if trace := getattr(error, "readiness_trace", None):
+            diagnostics["readiness_trace"] = tuple(item.to_dict() for item in trace)
+            diagnostics["response_evidence"] = (None if error.response_evidence is None
+                                                 else error.response_evidence.to_dict())
+        return kind, str(error), diagnostics
     return kind, "Workflow operation failed; exception text was not retained.", None

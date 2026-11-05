@@ -20,6 +20,7 @@ from recall_guard.core.completion import (
     FeatureChoices,
     ModelConfig,
     ModelResponse,
+    _freeze,
     validate_features,
 )
 from recall_guard.core.ensemble import EnsembleSpec, generate_ensemble
@@ -31,17 +32,23 @@ from recall_guard.harness.intervention_types import EvidenceArm, RecordStatus, t
 from recall_guard.harness.request_failures import FATAL_FAILURES as _FATAL_FAILURES
 from recall_guard.harness.request_failures import request_failure as _failure
 from recall_guard.harness.request_failures import rewrite_failure_kind
-from recall_guard.harness.rewriting import RewriteInput, RewritePolicy, render_target_prompt
+from recall_guard.harness.rewriting import EvidenceRewriter, RewriteInput, RewritePolicy, render_target_prompt
 from recall_guard.harness.scorer import MemoryGuardedScorer, ScoredDraw
 from recall_guard.harness.workflow_calibration import WorkflowCalibration, calibrate_workflow
+from recall_guard.harness.workflow_execution import WorkflowExecution
+from recall_guard.harness.workflow_plan import WorkflowPlan, canonical_json
 from recall_guard.harness.workflow_types import WorkflowDraw, WorkflowPreflight, WorkflowResult
 
 _STOCK_CLIENTS = (OpenAICompatibleClient, AnthropicClient, CallbackClient)
 _PROBE_PROMPT = "Reply with the word OK."
 _DEFAULT_SCORER = object()
+_DEFAULT_ENSEMBLE = object()
+_DEFAULT_REWRITE = object()
 
 
-def _generate(client, prompt, *, stage, parameters):
+def _generate(client, prompt, *, stage, parameters, execution=None):
+    if execution is not None:
+        return execution.generate(client, prompt, stage=stage, parameters=parameters)
     stage_generate = getattr(client, "generate_for_stage", None)
     response = (stage_generate(prompt, stage=stage, **parameters) if callable(stage_generate)
                 else client.generate(prompt, **parameters))
@@ -60,9 +67,12 @@ def _accounting(client) -> CapabilityEvidence:
                               "Physical requests, hidden retries and shared-budget enforcement are unknown.")
 
 
-def _check_settings(client, config, response=None):
+def _check_settings(client, config, response=None, *, strict_identity=False):
     """Reject changed configuration and contradictory metadata, leaving omissions unknown."""
-    if client.config != config:
+    def equal(left, right):
+        return canonical_json(left) == canonical_json(right) if strict_identity else left == right
+
+    if client.config != config or strict_identity and not equal(client.config.to_dict(), config.to_dict()):
         raise RequestError("Completion client configuration changed during workflow execution.",
                            code="configuration_changed")
     if response is None:
@@ -72,7 +82,7 @@ def _check_settings(client, config, response=None):
         for name, value in response.to_dict()[field].items():
             if name not in expected and field == "confirmed_settings":
                 continue
-            if name not in expected or value != expected[name]:
+            if name not in expected or not equal(value, expected[name]):
                 raise RequestError("Response settings contradict the configured workflow.",
                                    parameter=name, code="response_settings_mismatch")
 
@@ -95,7 +105,8 @@ class _RecordingClient:
     attempts and cannot produce a successful survivor result at the boundary.
     """
 
-    def __init__(self, client, item, prompt, intervention_id, evidence, config, scorer=None, request_namespace=None):
+    def __init__(self, client, item, prompt, intervention_id, evidence, config, scorer=None, request_namespace=None,
+                 execution=None):
         self.client, self.item, self.prompt = client, item, prompt
         self.config = config
         self.intervention_id, self.evidence_hash = intervention_id, text_hash(evidence)
@@ -108,6 +119,7 @@ class _RecordingClient:
         self.component_values = {}
         self.scorer = scorer
         self.request_namespace = request_namespace
+        self.execution = execution
 
     def update(self, index, **changes):
         with self.lock:
@@ -123,11 +135,11 @@ class _RecordingClient:
                 evidence_hash=self.evidence_hash,
             ))
         try:
-            _check_settings(self.client, self.config)
+            _check_settings(self.client, self.config, strict_identity=self.execution is not None)
             stage = "target" if self.request_namespace is None else f"{self.request_namespace}/target/{index}"
-            response = _generate(self.client, prompt, stage=stage, parameters=parameters)
+            response = _generate(self.client, prompt, stage=stage, parameters=parameters, execution=self.execution)
             self.update(index, response=response)
-            _check_settings(self.client, self.config, response)
+            _check_settings(self.client, self.config, response, strict_identity=self.execution is not None)
             if self.scorer is not None:
                 try:
                     score = self.scorer.score_response(prompt, response, client=self.client,
@@ -141,13 +153,26 @@ class _RecordingClient:
                 self.update(index, guarded_score=score)
             return _DrawResponse(index, response)
         except Exception as error:
-            kind, message, diagnostics = _failure(error)
-            self.update(index, status=RecordStatus.FAILED, error=message, failure_kind=kind, diagnostics=diagnostics)
-            if kind in _FATAL_FAILURES:
+            if self.execution is not None:
+                response = self.draws[index].response
+                failure = self.execution.sanitize_failure(self.client, error, response=response)
+                root = self.execution.latch_failure(failure)
+                _, _, root_diagnostics = _failure(root)
                 with self.lock:
                     if self.fatal is None:
-                        self.fatal, self.diagnostics = error, diagnostics
-            raise
+                        self.fatal, self.diagnostics = root, root_diagnostics
+                if isinstance(failure.response_evidence, ModelResponse):
+                    self.update(index, response=failure.response_evidence)
+                self.execution.cancellation.cancel()
+            else:
+                failure = error
+            kind, message, diagnostics = _failure(failure)
+            self.update(index, status=RecordStatus.FAILED, error=message, failure_kind=kind, diagnostics=diagnostics)
+            if kind in _FATAL_FAILURES or self.execution is not None:
+                with self.lock:
+                    if self.fatal is None:
+                        self.fatal, self.diagnostics = failure, diagnostics
+        raise failure
 
     def decide(self, draw, project):
         if draw.index in self.projected:
@@ -237,7 +262,39 @@ class RecallWorkflow:
         self.features, self.strict_budget = features, strict_budget
         self.budget = budget if budget is not None else target.budget if isinstance(target, _STOCK_CLIENTS) else None
         self._probes = {}
+        self._plan = None
+        self._cancellation = None
+        self._on_observation = None
         self._selection(None, None, validate_draws=False, validate_scoring=False)
+
+    def bind_plan(self, plan, *, cancellation=None, on_observation=None):
+        """Bind a prepared selection once; subsequent runs cannot change its method.
+
+        This installs no historical evidence in the identity-scoped probe cache.
+        Runtime cancellation/callbacks remain outside the immutable plan.
+        """
+        from recall_guard.core.readiness_types import CancellationToken
+
+        if self._plan is not None:
+            raise ValueError("Workflow already has a selected plan")
+        if not isinstance(plan, WorkflowPlan):
+            raise TypeError("plan must be WorkflowPlan")
+        if cancellation is not None and not isinstance(cancellation, CancellationToken):
+            raise TypeError("cancellation must be CancellationToken")
+        if on_observation is not None and not callable(on_observation):
+            raise TypeError("on_observation must be callable")
+        self._plan = plan
+        try:
+            self._selection(plan.selected.features.rewriting, plan.selected.ensemble)
+        except Exception:
+            self._plan = None
+            raise
+        self._cancellation, self._on_observation = cancellation, on_observation
+
+    def _ensemble_selection(self, ensemble):
+        if ensemble is _DEFAULT_ENSEMBLE:
+            return self._plan.selected.ensemble if self._plan is not None else None
+        return ensemble
 
     def _selection(self, rewrite, ensemble, *, scorer=_DEFAULT_SCORER, validate_draws=True, validate_scoring=True):
         if rewrite is None:
@@ -247,6 +304,21 @@ class RecallWorkflow:
         if ensemble is not None and not isinstance(ensemble, EnsembleSpec):
             raise TypeError("ensemble must be EnsembleSpec or None")
         selected = self.scorer if scorer is _DEFAULT_SCORER else scorer
+        if self._plan is not None:
+            chosen = self._plan.selected
+            if (rewrite != chosen.features.rewriting or self.features != chosen.features
+                    or canonical_json(None if ensemble is None else asdict(ensemble))
+                    != canonical_json(None if chosen.ensemble is None else asdict(chosen.ensemble))
+                    or (selected is not None) != chosen.features.mia_scoring):
+                raise ValueError("Execution choices differ from the selected plan")
+            active = {"target": self.target}
+            if rewrite and self.rewrite_policy is not None:
+                active |= {"rewriter": self.rewrite_policy.rewriter.client, "verifier": self.rewrite_policy.verifier}
+            if (set(active) != ({"target", "rewriter", "verifier"} if rewrite else {"target"})
+                    or any(canonical_json(client.config.to_dict()) != canonical_json(chosen.roles[role].to_dict())
+                           for role, client in active.items())
+                    or rewrite and self.rewrite_policy.intervention_id != chosen.rewrite_policy_id):
+                raise ValueError("Configuration differs from the selected plan")
         if selected is not None and not isinstance(selected, MemoryGuardedScorer):
             raise TypeError("scorer must be MemoryGuardedScorer or None")
         if validate_scoring and self.features and self.features.mia_scoring and selected is None:
@@ -280,13 +352,16 @@ class RecallWorkflow:
                 raise ValueError("Strict budget requires supported physical request accounting for every active role")
         return rewrite, roles, overrides, selected
 
-    def validate(self, *, rewrite: bool = False, ensemble: EnsembleSpec | None = None,
+    def validate(self, *, rewrite=_DEFAULT_REWRITE, ensemble=_DEFAULT_ENSEMBLE,
                  scorer=_DEFAULT_SCORER) -> None:
         """Validate the selected configuration and fit without provider calls."""
-        self._selection(rewrite, ensemble, scorer=scorer)
+        if rewrite is _DEFAULT_REWRITE:
+            rewrite = None if self._plan is not None else False
+        self._selection(rewrite, self._ensemble_selection(ensemble), scorer=scorer)
 
-    def preflight(self, *, rewrite: bool | None = None, ensemble: EnsembleSpec | None = None,
-                  refresh: bool = False, scorer=_DEFAULT_SCORER, request_namespace: str | None = None) -> WorkflowPreflight:
+    def preflight(self, *, rewrite: bool | None = None, ensemble=_DEFAULT_ENSEMBLE,
+                  refresh: bool = False, scorer=_DEFAULT_SCORER, request_namespace: str | None = None,
+                  _execution=None) -> WorkflowPreflight:
         """Probe only selected roles; changed parameters/configurations invalidate cache.
 
         Accepted controls are capability evidence. Effective values remain
@@ -295,11 +370,15 @@ class RecallWorkflow:
         """
         if request_namespace is not None and (not isinstance(request_namespace, str) or not request_namespace.strip()):
             raise ValueError("request_namespace must be a nonempty string")
+        ensemble = self._ensemble_selection(ensemble)
         _, roles, overrides, selected = self._selection(rewrite, ensemble, scorer=scorer)
+        execution = _execution
+        if execution is None and self._plan is not None:
+            execution = WorkflowExecution(self._cancellation, self._on_observation)
         return self._preflight(roles, overrides, mia_scoring=selected is not None, refresh=refresh,
-                               request_namespace=request_namespace)
+                               request_namespace=request_namespace, execution=execution)
 
-    def _preflight(self, roles, overrides, *, mia_scoring=False, refresh=False, request_namespace=None):
+    def _preflight(self, roles, overrides, *, mia_scoring=False, refresh=False, request_namespace=None, execution=None):
         """Probe selected roles; calibration also uses this before preparation."""
         reports, responses = {}, {}
         for role, client in roles.items():
@@ -311,9 +390,13 @@ class RecallWorkflow:
             try:
                 if refresh:
                     self._probes.pop(key, None)
-                if refresh or key not in self._probes:
+                if refresh or key not in self._probes or execution is not None and execution.cancellation.cancelled:
                     probe = getattr(client, "probe", None)
-                    if callable(probe) and config.parameters == client.config.parameters:
+                    if execution is not None:
+                        stage = "probe" if request_namespace is None else f"{request_namespace}/probe/{role}"
+                        evidence = execution.probe(client, _PROBE_PROMPT, stage=stage)
+                        report, response = evidence.report, evidence.response
+                    elif callable(probe) and config.parameters == client.config.parameters:
                         # Stock probes accept explicit metadata without forwarding it
                         # as a model control. Their actual response remains unavailable.
                         report = (probe(prompt=_PROBE_PROMPT, stage=f"{request_namespace}/probe/{role}")
@@ -326,7 +409,7 @@ class RecallWorkflow:
                         response = _generate(client, _PROBE_PROMPT, stage=stage, parameters=parameters)
                         _check_settings(client, original_config, response)
                         report = self._observed_report(config, response, features)
-                    _check_settings(client, original_config)
+                    _check_settings(client, original_config, strict_identity=execution is not None)
                     unknown = CapabilityEvidence("unverified", "Required capability absent from probe report")
                     report = CapabilityReport({name: report.capabilities.get(name, unknown)
                                                for name in config.inspect(features).capabilities}, features)
@@ -376,7 +459,7 @@ class RecallWorkflow:
                                   min_auc=min_auc, min_valid=min_valid, seed=seed, max_workers=max_workers)
 
     def run(
-        self, item: RewriteInput, *, rewrite: bool | None = None, ensemble: EnsembleSpec | None = None,
+        self, item: RewriteInput, *, rewrite: bool | None = None, ensemble=_DEFAULT_ENSEMBLE,
         decide: Callable[[ModelResponse], Hashable] | None = None,
         components: Callable[[ModelResponse], Mapping[str, float]] | None = None,
         scorer=_DEFAULT_SCORER,
@@ -394,7 +477,12 @@ class RecallWorkflow:
             raise ValueError("request_namespace must be a nonempty string")
         if decide is not None and not callable(decide) or components is not None and not callable(components):
             raise TypeError("decide and components must be callable when supplied")
+        ensemble = self._ensemble_selection(ensemble)
         rewrite, roles, _, selected = self._selection(rewrite, ensemble, scorer=scorer)
+        execution = WorkflowExecution(self._cancellation, self._on_observation) if self._plan is not None else None
+
+        def finish(result, roles):
+            return self._finish(result, roles, execution=execution)
         configurations = {role: client.config for role, client in roles.items()}
         requested = ensemble.draws if ensemble else 1
         result = WorkflowResult(item.item_id, item.evidence, None if rewrite else item.evidence, RecordStatus.PENDING,
@@ -409,45 +497,50 @@ class RecallWorkflow:
                                  "holdout_auc": selected.holdout_auc, "is_weak": selected.is_weak,
                                  "valid_counts": selected.calibration_valid_counts}})
         preflight = self.preflight(rewrite=rewrite, ensemble=ensemble, scorer=selected,
-                                   request_namespace=request_namespace)
+                                   request_namespace=request_namespace, _execution=execution)
         result = replace(result, preflight=preflight)
         if not preflight.ready_for_batch:
-            return self._finish(replace(result, status=RecordStatus.FAILED, error=preflight.error,
+            return finish(replace(result, status=RecordStatus.FAILED, error=preflight.error,
                                         failure_kind=preflight.failure_kind,
                                         provenance=dict(result.provenance) | {
                                             "failure_diagnostics": preflight.diagnostics}), roles)
         try:
             for role, client in roles.items():
-                _check_settings(client, configurations[role])
+                _check_settings(client, configurations[role], strict_identity=execution is not None)
         except Exception as error:
             kind, message, diagnostics = _failure(error)
-            return self._finish(replace(result, status=RecordStatus.FAILED, error=message, failure_kind=kind,
+            return finish(replace(result, status=RecordStatus.FAILED, error=message, failure_kind=kind,
                                         provenance=dict(result.provenance) | {
                                             "failure_diagnostics": diagnostics}), roles)
         if rewrite:
             try:
-                record = self.rewrite_policy.rewrite(item)
+                policy = self.rewrite_policy
+                if execution is not None:
+                    policy = RewritePolicy(EvidenceRewriter(execution.proxy(policy.rewriter.client)),
+                                           execution.proxy(policy.verifier))
+                record = policy.rewrite(item)
             except Exception as error:
                 kind, message, _ = _failure(error)
-                return self._finish(replace(result, status=RecordStatus.FAILED, stage="rewrite", error=message,
+                return finish(replace(result, status=RecordStatus.FAILED, stage="rewrite", error=message,
                                             failure_kind=kind), roles)
             result = replace(result, rewrite=record, stage=record.stage)
             if record.status != RecordStatus.COMPLETED:
                 metadata = record.fidelity_checks.get("verification", record.fidelity_checks.get("generation", {}))
-                return self._finish(replace(result, status=RecordStatus.FAILED, error=record.error,
+                return finish(replace(result, status=RecordStatus.FAILED, error=record.error,
                                             failure_kind=rewrite_failure_kind(metadata.get("failure_kind"))), roles)
             result = replace(result, accepted_evidence=record.rewritten_evidence)
         prompt = render_target_prompt(item, evidence=result.accepted_evidence)
         recorder = _RecordingClient(self.target, item, prompt,
                                     result.rewrite.fidelity_checks["intervention_id"] if rewrite else None,
-                                    result.accepted_evidence, configurations["target"], selected, request_namespace)
+                                    result.accepted_evidence, configurations["target"], selected, request_namespace,
+                                    execution=execution)
         project = decide if decide is not None else lambda response: response.content
         choose = lambda draw: recorder.decide(draw, project)  # noqa: E731
         project_components = None if components is None else lambda draw: recorder.components(draw, components)
         result = replace(result, stage="target", sampled_at=datetime.now(UTC).isoformat())
         try:
             for role, client in roles.items():
-                _check_settings(client, configurations[role])
+                _check_settings(client, configurations[role], strict_identity=execution is not None)
             if ensemble is None:
                 draw = recorder.generate(prompt)
                 answer = choose(draw)
@@ -474,7 +567,7 @@ class RecallWorkflow:
         result = replace(result, draws=recorder.outcomes())
         if selected is not None and recorder.fatal is None:
             result = self._score_result(result, selected, prompt, ensemble)
-        return self._finish(result, roles)
+        return finish(result, roles)
 
     @staticmethod
     def _score_result(result, scorer, prompt, spec):
@@ -503,7 +596,7 @@ class RecallWorkflow:
                            error="Selected ensemble scoring has too few usable draws.", failure_kind="scoring_unavailable")
         return replace(result, scored_ensemble=scored, p_memorized=scored.p_memorized_point)
 
-    def _finish(self, result, roles):
+    def _finish(self, result, roles, *, execution=None):
         response = result.response or next((draw.response for draw in result.draws if draw.response is not None), None)
         mia_reason = response.mia_unavailable_reason if response is not None else "No completed target response."
         mia_reason = mia_reason or "MIA feature scoring was not selected."
@@ -516,8 +609,17 @@ class RecallWorkflow:
                 reasons.update({name: "Ensemble evidence is per draw; inspect draws or scored_ensemble.consensus."
                                 for name in ("mia_features", "guarded_score")})
             reasons = {name: reason for name, reason in reasons.items() if getattr(result, name) is None}
-        return replace(result, unavailable_reasons=reasons,
-                       provenance=dict(result.provenance) | self._request_provenance(roles))
+        provenance = dict(result.provenance) | self._request_provenance(roles)
+        if self._plan is not None:
+            provenance["workflow_plan"] = {"plan_id": self._plan.plan_id, "reason": self._plan.reason,
+                "requested_method": self._plan.requested.method, "selected_method": self._plan.selected.method,
+                "omitted_controls": self._plan.omitted_controls, "policy_id": self._plan.policy_id}
+            provenance["readiness_trace"] = tuple(observation.to_dict() for observation in execution.observations)
+            if not self._plan.selected.features.mia_scoring:
+                detail = "MIA/MCS unavailable in the selected completion-only plan: " + (self._plan.reason or "not selected")
+                reasons = dict.fromkeys(("mia_features", "guarded_score", "p_memorized"), detail)
+            provenance = _freeze(provenance)
+        return replace(result, unavailable_reasons=reasons, provenance=provenance)
 
     def _request_provenance(self, roles):
         """Physical accounting shared by inference and calibration results."""

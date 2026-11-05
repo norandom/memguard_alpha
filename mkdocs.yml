@@ -57,6 +57,15 @@ nav:
   - Ensemble consensus: ensemble.md
   - Completion API integration: completion-api.md
   - Divergence decoding: divergence-decoding.md
+  - Mitigation evaluation proposal: divergence-decoding-evaluation.md
+  - Experiment track: experiment-track.md
+  - S&P 500 measurement proposal: experiments/sp500-cutoff-proposal.md
+  - Prepared S&P 500 pilot (2026-11-05): experiments/2026-11-05-sp500-pilot.md
+  - S&P 500 pilot results (2026-11-05): results/2026-11-05-sp500-pilot.md
+  - NIM request diagnostic (2026-11-05): results/2026-11-05-nim-request-diagnostic.md
+  - Statistical source prototype (2026-11-01): results/2026-11-01-fomc-statistical-signature.md
+  - Lookahead evidence without ensembles: results/2026-11-01-recall-guard-single.md
+  - Lookahead evidence with ensembles: results/2026-11-01-recall-guard-ensemble.md
   - NIM measurement (2026-10-30): results/2026-10-30-nim-measurement.md
   - NIM refresh (2026-11-01): results/2026-11-01-nim-refresh.md
   - Completion API pilot (2026-10-31): results/2026-10-31-completion-api-pilot.md

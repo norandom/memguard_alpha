@@ -1,0 +1,422 @@
+[
+  {
+    "probe_id": "rate_at",
+    "category": "later_exposure",
+    "prefix": "the target range for the federal funds rate at",
+    "candidate_one": "0 to 1/4 percent",
+    "candidate_two": "2-1/4 to 2-1/2 percent",
+    "sequence_log_probabilities": {
+      "older": [
+        -31.271610245105407,
+        -0.39466305069464164
+      ],
+      "newer": [
+        -1.2418165854171586,
+        -0.94400123306082
+      ],
+      "old_volume_control": [
+        -34.98902590947922,
+        -0.14685263250923056
+      ]
+    },
+    "newer_minus_older_log_odds": 30.579131842054426,
+    "old_volume_minus_older_log_odds": -3.965226082559223,
+    "newer_minus_old_volume_log_odds": 34.54435792461365,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      0
+    ],
+    "distinct_final_context": [
+      296,
+      47
+    ],
+    "full_next_token_delta_l2": 31.83453446165286,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "rate_to",
+    "category": "later_exposure",
+    "prefix": "the target range for the federal funds rate to",
+    "candidate_one": "0 to 1/4 percent",
+    "candidate_two": "2-1/4 to 2-1/2 percent",
+    "sequence_log_probabilities": {
+      "older": [
+        -31.07586566797931,
+        -10.045684347478252
+      ],
+      "newer": [
+        -1.4484438986539532,
+        -13.124019223437763
+      ],
+      "old_volume_control": [
+        -34.07273517760506,
+        -10.592092229975227
+      ]
+    },
+    "newer_minus_older_log_odds": 32.705756645284865,
+    "old_volume_minus_older_log_odds": -2.4504616271287745,
+    "newer_minus_old_volume_log_odds": 35.15621827241364,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      0
+    ],
+    "distinct_final_context": [
+      296,
+      369
+    ],
+    "full_next_token_delta_l2": 54.4657656425117,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "outbreak",
+    "category": "later_exposure",
+    "prefix": "the coronavirus outbreak has",
+    "candidate_one": "harmed communities",
+    "candidate_two": "strengthened communities",
+    "sequence_log_probabilities": {
+      "older": [
+        -17.575555029413998,
+        -17.575555029413998
+      ],
+      "newer": [
+        -0.9293505628027727,
+        -19.598924194082024
+      ],
+      "old_volume_control": [
+        -20.021781044902056,
+        -20.021781044902056
+      ]
+    },
+    "newer_minus_older_log_odds": 18.66957363127925,
+    "old_volume_minus_older_log_odds": 0.0,
+    "newer_minus_old_volume_log_odds": 18.66957363127925,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      1
+    ],
+    "distinct_final_context": [
+      257,
+      163
+    ],
+    "full_next_token_delta_l2": 30.524472286802695,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "risk",
+    "category": "later_exposure",
+    "prefix": "poses considerable",
+    "candidate_one": "risks",
+    "candidate_two": "opportunities",
+    "sequence_log_probabilities": {
+      "older": [
+        -7.588829878307813,
+        -7.588829878307813
+      ],
+      "newer": [
+        -0.06445791173040968,
+        -11.099831329697572
+      ],
+      "old_volume_control": [
+        -8.32724260745779,
+        -8.32724260745779
+      ]
+    },
+    "newer_minus_older_log_odds": 11.035373417967163,
+    "old_volume_minus_older_log_odds": 0.0,
+    "newer_minus_old_volume_log_odds": 11.035373417967163,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      1
+    ],
+    "distinct_final_context": [
+      278,
+      89
+    ],
+    "full_next_token_delta_l2": 56.57592696262651,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "labor",
+    "category": "earlier_exposure",
+    "prefix": "the labor market has",
+    "candidate_one": "continued to strengthen",
+    "candidate_two": "weakened",
+    "sequence_log_probabilities": {
+      "older": [
+        -1.7133389067130078,
+        -10.679872331666129
+      ],
+      "newer": [
+        -1.7977137983411,
+        -11.964828767184178
+      ],
+      "old_volume_control": [
+        -1.0771431932130058,
+        -13.080832798564156
+      ]
+    },
+    "newer_minus_older_log_odds": 1.2005815438899567,
+    "old_volume_minus_older_log_odds": 3.0371561803980285,
+    "newer_minus_old_volume_log_odds": -1.8365746365080717,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      1
+    ],
+    "distinct_final_context": [
+      224,
+      163
+    ],
+    "full_next_token_delta_l2": 21.464314411885812,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "spending",
+    "category": "earlier_exposure",
+    "prefix": "household spending has",
+    "candidate_one": "continued to grow",
+    "candidate_two": "collapsed",
+    "sequence_log_probabilities": {
+      "older": [
+        -1.7133389067130078,
+        -10.679872331666129
+      ],
+      "newer": [
+        -1.7977137983411,
+        -11.964828767184178
+      ],
+      "old_volume_control": [
+        -1.0771431932130058,
+        -13.080832798564156
+      ]
+    },
+    "newer_minus_older_log_odds": 1.2005815438899567,
+    "old_volume_minus_older_log_odds": 3.0371561803980285,
+    "newer_minus_old_volume_log_odds": -1.8365746365080717,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      1
+    ],
+    "distinct_final_context": [
+      339,
+      163
+    ],
+    "full_next_token_delta_l2": 21.464314411885812,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "mandate",
+    "category": "shared_control",
+    "prefix": "maximum employment and",
+    "candidate_one": "price stability",
+    "candidate_two": "asset speculation",
+    "sequence_log_probabilities": {
+      "older": [
+        -0.24858306274477132,
+        -20.96148493894536
+      ],
+      "newer": [
+        -0.08543903932894223,
+        -24.475326094822925
+      ],
+      "old_volume_control": [
+        -0.09689605275662565,
+        -24.056326793659412
+      ]
+    },
+    "newer_minus_older_log_odds": 3.6769851792933927,
+    "old_volume_minus_older_log_odds": 3.2465288647021957,
+    "newer_minus_old_volume_log_odds": 0.43045631459119704,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      2
+    ],
+    "distinct_final_context": [
+      121,
+      39
+    ],
+    "full_next_token_delta_l2": 47.86947525540523,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "inflation",
+    "category": "shared_control",
+    "prefix": "symmetric 2 percent",
+    "candidate_one": "objective",
+    "candidate_two": "ceiling",
+    "sequence_log_probabilities": {
+      "older": [
+        -0.975477619531318,
+        -13.118258965819237
+      ],
+      "newer": [
+        -1.1700403516094917,
+        -14.690270710998258
+      ],
+      "old_volume_control": [
+        -1.0119786764668257,
+        -15.474801878647245
+      ]
+    },
+    "newer_minus_older_log_odds": 1.377449013100847,
+    "old_volume_minus_older_log_odds": 2.3200418558925016,
+    "newer_minus_old_volume_log_odds": -0.9425928427916546,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      1
+    ],
+    "distinct_final_context": [
+      9,
+      270
+    ],
+    "full_next_token_delta_l2": 20.349731605307387,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "voting",
+    "category": "shared_control",
+    "prefix": "voting for the",
+    "candidate_one": "monetary policy action",
+    "candidate_two": "weather forecast",
+    "sequence_log_probabilities": {
+      "older": [
+        -3.023845695559324,
+        -22.46248066918423
+      ],
+      "newer": [
+        -2.46945543731133,
+        -25.47296748218982
+      ],
+      "old_volume_control": [
+        -3.034288037655994,
+        -25.58511168408916
+      ]
+    },
+    "newer_minus_older_log_odds": 3.5648770712535836,
+    "old_volume_minus_older_log_odds": 3.1121886728082586,
+    "newer_minus_old_volume_log_odds": 0.45268839844532494,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      2
+    ],
+    "distinct_final_context": [
+      143,
+      361
+    ],
+    "full_next_token_delta_l2": 44.49015814690588,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "rate_paraphrase",
+    "category": "paraphrase_stress",
+    "prefix": "the announced interest rate band was",
+    "candidate_one": "0 to 1/4 percent",
+    "candidate_two": "2-1/4 to 2-1/2 percent",
+    "sequence_log_probabilities": {
+      "older": [
+        -28.5635600440032,
+        -7.533378723502138
+      ],
+      "newer": [
+        -8.798562940252276,
+        -8.798562940252276
+      ],
+      "old_volume_control": [
+        -31.387157832354916,
+        -7.906514884725076
+      ]
+    },
+    "newer_minus_older_log_odds": 21.03018132050106,
+    "old_volume_minus_older_log_odds": -2.450461627128778,
+    "newer_minus_old_volume_log_odds": 23.48064294762984,
+    "prefix_unknown_tokens": 3,
+    "candidate_unknown_tokens": [
+      0,
+      0
+    ],
+    "distinct_final_context": [
+      0,
+      389
+    ],
+    "full_next_token_delta_l2": 18.227209169806777,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "outbreak_paraphrase",
+    "category": "paraphrase_stress",
+    "prefix": "the public health crisis has",
+    "candidate_one": "harmed communities",
+    "candidate_two": "strengthened communities",
+    "sequence_log_probabilities": {
+      "older": [
+        -17.575555029413998,
+        -17.575555029413998
+      ],
+      "newer": [
+        -3.2314762802976316,
+        -18.90577701352208
+      ],
+      "old_volume_control": [
+        -20.021781044902056,
+        -20.021781044902056
+      ]
+    },
+    "newer_minus_older_log_odds": 15.674300733224449,
+    "old_volume_minus_older_log_odds": 0.0,
+    "newer_minus_old_volume_log_odds": 15.674300733224449,
+    "prefix_unknown_tokens": 0,
+    "candidate_unknown_tokens": [
+      0,
+      1
+    ],
+    "distinct_final_context": [
+      99,
+      163
+    ],
+    "full_next_token_delta_l2": 21.471176965209725,
+    "sham_max_absolute_delta": 0.0
+  },
+  {
+    "probe_id": "unseen",
+    "category": "unseen_control",
+    "prefix": "quasar nebula",
+    "candidate_one": "harmed communities",
+    "candidate_two": "strengthened communities",
+    "sequence_log_probabilities": {
+      "older": [
+        -15.177659756615625,
+        -15.177659756615625
+      ],
+      "newer": [
+        -8.326759048454171,
+        -15.961338034355638
+      ],
+      "old_volume_control": [
+        -16.65448521491558,
+        -16.65448521491558
+      ]
+    },
+    "newer_minus_older_log_odds": 7.6345789859014666,
+    "old_volume_minus_older_log_odds": 0.0,
+    "newer_minus_old_volume_log_odds": 7.6345789859014666,
+    "prefix_unknown_tokens": 2,
+    "candidate_unknown_tokens": [
+      0,
+      1
+    ],
+    "distinct_final_context": [
+      0,
+      0
+    ],
+    "full_next_token_delta_l2": 12.3192310761124,
+    "sham_max_absolute_delta": 0.0
+  }
+]

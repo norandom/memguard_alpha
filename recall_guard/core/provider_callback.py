@@ -167,6 +167,19 @@ class CallbackClient:
         """Associate every hooked attempt with an explicit workflow stage."""
         return self._generate(prompt, parameters, stage=stage, enforce_mia=self.features.mia_scoring)
 
+    def generate_for_execution(self, prompt, *, stage, cancellation=None, on_observation=None, **parameters):
+        """Opt-in runtime controls, never callback generation parameters."""
+        from recall_guard.core.provider_probe import legacy_generation
+
+        return legacy_generation(self.config, self.features, self.budget,
+            lambda guard, wait: self._generate(prompt, parameters, stage=stage, enforce_mia=self.features.mia_scoring,
+                purpose="inference", admission_guard=guard, wait=wait), self._probe_report, stage=stage,
+            cancellation=cancellation, on_observation=on_observation, sanitize_failure=self.sanitize_execution_failure)
+
+    def sanitize_execution_failure(self, error, *, response=None):
+        """Retain failed evidence using this client's registered-secret schema sanitizer."""
+        return self._control.sanitize_failure(error, response=response)
+
     def _generate(self, prompt: str, overrides: dict, *, stage: str, enforce_mia: bool, purpose=None,
                   admission_guard=None, wait=None) -> ModelResponse:
         if not isinstance(prompt, str):

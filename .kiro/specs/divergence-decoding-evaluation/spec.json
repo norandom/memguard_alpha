@@ -3,16 +3,48 @@
   "created_at": "2026-11-01",
   "updated_at": "2026-11-01",
   "language": "en",
-  "phase": "implementing",
+  "phase": "requirements-generated",
   "approvals": {
-    "requirements": {"generated": true, "approved": true},
-    "design": {"generated": true, "approved": true},
-    "tasks": {"generated": true, "approved": true}
+    "requirements": {
+      "generated": true,
+      "approved": false
+    },
+    "design": {
+      "generated": false,
+      "approved": false
+    },
+    "tasks": {
+      "generated": false,
+      "approved": false
+    }
   },
-  "ready_for_implementation": true,
-  "selection_approved": true,
-  "approval_context": "User approved gpt-oss-20b as mandatory target with two proposed tokenizer-aligned trigram auxiliaries; proceed to requirements. No training or inference budget approved.",
-  "selection_source": "../divergence-decoding/model-selection.md",
-  "requirements_review": {"decision": "PASS", "report": "requirements-review.md", "mode": "self-review"},
-  "task_plan_review": {"decision": "PASS", "mode": "independent", "repair_passes": 1, "executable_tasks": 18, "report": "task-plan-review.md"}
+  "ready_for_implementation": false,
+  "selection_approved": false,
+  "approval_context": "User authorized endpoint-based scope amendment on 2026-11-01. Revised requirements generated; earlier approvals apply to archived revision 1 only. GPT-OSS-20B remains mandatory. No new live budget authorized.",
+  "selection_source": "scope-amendment.md",
+  "requirements_review": {
+    "decision": "PASS",
+    "report": "requirements-review-v2.md",
+    "mode": "self-review"
+  },
+  "task_plan_review": {
+    "decision": "SUPERSEDED",
+    "mode": "independent",
+    "repair_passes": 1,
+    "executable_tasks": 18,
+    "report": "task-plan-review.md"
+  },
+  "scope_revision": 2,
+  "previous_revision": "archive/2026-11-01-local-runtime/spec.json",
+  "source_prototype": {
+    "authorization": "User explicitly requested the source-signature prototype",
+    "formal_study_admission": "not_performed",
+    "prompts": 12,
+    "model_api_calls": 0,
+    "efficacy": "not_tested",
+    "status": "completed_lexical_diagnostic",
+    "older_documents": 4,
+    "report": "../../../docs/results/2026-11-01-fomc-statistical-signature.md",
+    "newer_documents": 8
+  }
 }

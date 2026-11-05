@@ -1,0 +1,19 @@
+{
+  "documents_older": 4,
+  "documents_newer": 8,
+  "prompts": 12,
+  "unique_final_contexts": 12,
+  "tokens": {
+    "older": 1570,
+    "newer": 3729,
+    "old_volume_control": 3729
+  },
+  "volume_control_documents": 10,
+  "later_probes_positive_beyond_volume": 4,
+  "later_probes": 4,
+  "all_shams_zero": true,
+  "model_api_calls": 0,
+  "mitigation_efficacy": "not_tested",
+  "tokenizer_target_compatible": false,
+  "human_study_audit": "not_performed"
+}

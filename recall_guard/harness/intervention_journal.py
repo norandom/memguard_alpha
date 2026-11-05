@@ -13,7 +13,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from recall_guard.harness._execution_metadata import check_run_metadata
-from recall_guard.harness.intervention_types import EvidenceArm, ExperimentCheckpoint, RecordStatus
+from recall_guard.harness.intervention_types import EvidenceArm, ExperimentCheckpoint, RecordStatus, _plain
 
 
 def json_value(value):
@@ -53,7 +53,7 @@ def arm_snapshot(result):
         "scored_ensemble": None if result.scored_ensemble is None else asdict(result.scored_ensemble),
         "calibration_identity": None if result.calibration_identity is None else asdict(result.calibration_identity),
         "p_memorized": result.p_memorized, "unavailable_reasons": dict(result.unavailable_reasons),
-        "provenance": dict(result.provenance),
+        "provenance": _plain(result.provenance),
     })
 
 
@@ -96,6 +96,19 @@ class ExperimentRun:
     preflight: dict = field(default_factory=dict)
     stop_reason: str | None = None
 
+    def __post_init__(self):
+        self._validate_metadata_version()
+
+    def _validate_metadata_version(self):
+        """New execution provenance cannot bypass the legacy response guards."""
+        if self.checkpoint.schema_version == 1:
+            provenance = [arm.outcome.get("provenance", {}) for arm in self.arms]
+            diagnostics = [self.preflight.get("diagnostics") or {}]
+            diagnostics.extend(value.get("failure_diagnostics") or {} for value in provenance)
+            if (any({"workflow_plan", "readiness_trace"} & value.keys() for value in provenance)
+                    or any("readiness_trace" in value for value in diagnostics)):
+                raise ValueError("Selected plan and readiness execution metadata require schema version 2")
+
     @property
     def conditions(self) -> tuple[ExperimentCondition, ...]:
         draws = {draw.identity: draw for draw in self.checkpoint.draws}
@@ -115,6 +128,7 @@ class ExperimentRun:
         return tuple(conditions)
 
     def to_dict(self):
+        self._validate_metadata_version()
         return {"checkpoint": self.checkpoint.to_dict(),
                 "arms": [{"item_id": arm.item_id, "arm": arm.arm.value, "outcome": arm.outcome} for arm in self.arms],
                 "preflight": self.preflight, "stop_reason": self.stop_reason}

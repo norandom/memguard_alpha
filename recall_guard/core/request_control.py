@@ -371,6 +371,22 @@ class RequestControl:
             response_evidence=None if typed_error is None else self._redact_evidence(typed_error.response_evidence),
         )
 
+    def sanitize_failure(self, error: Exception, *, response=None) -> RequestError:
+        """Detach a locally rejected success through the owning failure sanitizer.
+
+        No admission or event is invented. Successful responses are unchanged;
+        callers use this only after an execution operation has failed/stopped.
+        """
+        failure = self._failure(error)
+        if response is not None:
+            failure.response_evidence = self._redact_evidence(response)
+            if failure.usage is None:
+                failure.usage = self._usage(response.usage)
+        if trace := getattr(error, "readiness_trace", None):
+            evidence = self._redact_evidence(ModelResponse("", readiness_trace=trace))
+            failure.readiness_trace = evidence.readiness_trace or ()
+        return failure
+
     def run_attempt(
         self, operation: Callable[[], ModelResponse | PendingReceipt], *, stage: str, attempt: int = 1,
         purpose: str | None = None, operation_id: str | None = None, request_id: str | None = None,

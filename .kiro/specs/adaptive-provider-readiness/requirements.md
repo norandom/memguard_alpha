@@ -1,186 +1,99 @@
-# Requirements: adaptive provider readiness
+# Requirements: explicit API fallback and bounded provider handling
 
-Status: requirements approved by the user on 2026-11-01; requirement 6 adds
-the user's subsequent explicit fallback/reporting clarification. This addition
-does not change the approved 25-task plan or any frozen measurement protocol.
+Revision 2 — 2026-11-01. The user agreed to narrow delivery after reassessment
+and requested Docker-based operation. This revision supersedes the archived
+pre-reassessment specification. Existing implementation evidence remains history;
+it is not proof that the complete user flow has shipped.
 
-## Problem and intended outcome
+## Product outcome
 
-Recall Guard users configure hosted models whose availability, rate limits and
-response times vary. The user reports that this is particularly relevant to
-NIM's free service and asks for sensing rather than a single hard timeout.
-The proposed optional behavior observes the selected endpoint and model,
-reports its current state, and waits or defers according to actual evidence
-and explicit caller limits.
+Configure an endpoint/model and explicit parameters, select permitted features,
+execute the existing Recall Guard workflow, and see what actually ran. Use token
+probabilities when available. Use caller-authorized completion-only rewriting
+and/or ensembles when they are unavailable. Keep MCS unavailable in that mode.
 
-The existing implementation already distinguishes authentication rejection
-from transient failures. Its Requests timeout is a connection/read inactivity
-limit, not a total request deadline. The missing behavior is visible progress,
-server-directed waiting, pending-request handling and readiness decisions
-that survive temporary unavailability. Increasing one timeout cannot repair a
-gateway that has already returned HTTP 504.
+Recall Guard is a portable Python library for HTTP API calls and calculations.
+Docker supplies a reproducible execution environment; it is not a new application
+service or a prerequisite for importing the package in an existing Python kernel.
 
-## Scope
+## Scope decisions
 
-Include optional readiness sensing for configured completion clients, model-
-specific waiting and retry policies, observable waiting/deferred states,
-supported response progress, strict physical-call accounting and notebook
-parity. Start with the selected NVIDIA-hosted OpenAI-chat configuration.
-Keep other providers' capabilities explicit and unverified until established.
+The immediate delivery is JSON API configuration → capability check → explicit
+fallback → existing workflow → compact report → bounded measurement. Existing
+optional streaming/waiting can remain, but further transport infrastructure is
+not a prerequisite for this flow. Active status polling is deferred: the current
+hosted NIM route is unverified and the approved pilot permits zero polls.
 
-Exclude automatic model switching, changes to generation parameters or token
-limits, fabricated logprobs, inferred account balances, indefinite background
-polling, global rate-limit tables and changes to existing study outcomes.
-Provider progress and status facilities must actually be supported by the
-selected endpoint; a catalog listing or a local heartbeat cannot prove that
-inference is advancing.
+Preserve existing historical experiment/replay behavior. Defer new version-2
+paired-runner/resume integration and a generic readiness-study framework. Do not
+add another execution scheduler, request ledger or scoring/ensemble algorithm.
 
 ## Requirement 1: Explicit model-specific control
 
-1. Where adaptive readiness is enabled, Recall Guard shall use the caller's
-   selected endpoint, model, generation settings and required capabilities.
-2. The feature shall allow callers to configure request, retry and waiting
-   limits independently for their selected models.
-3. When adaptive readiness is disabled, Recall Guard shall preserve existing
-   configured-client behavior.
-4. If a requested observation capability is unavailable, the feature shall
-   expose that limitation before relying on it for a readiness decision.
+1. The caller's endpoint, model, generation settings and required capabilities shall remain explicit.
+2. Request, retry and controlled-wait limits shall be caller-configurable independently of generation parameters.
+3. Absent optional readiness/fallback choices shall preserve existing configured-client behavior.
+4. Unsupported controls/observation capabilities shall be reported before they are relied on; model names or URLs shall not imply unobserved support.
 
 ## Requirement 2: Evidence-based states
 
-1. When provider evidence is received, the feature shall distinguish accepted
-   pending work, observed progress, completed usable inference, temporary
-   unavailability, explicit permanent rejection and unknown outcome.
-2. If a request times out or receives a gateway failure without an explicit
-   credential rejection, the feature shall leave credential eligibility
-   unverified and retain the actual failure evidence.
-3. When a valid inference response satisfies the selected capability checks,
-   the feature shall report readiness for that exact configuration and the
-   observation time, without guaranteeing future availability.
-4. While waiting without new provider evidence, the feature shall report
-   elapsed waiting separately from observed provider progress.
+1. Actual observations shall distinguish pending acceptance, observed progress, usable completion, temporary failure, permanent rejection and unknown outcome.
+2. Timeouts/gateway failures shall retain their actual evidence and leave credential eligibility unverified unless rejection is explicit.
+3. A successful probe shall establish capability only for the tested configuration and observation time.
+4. Elapsed local waiting and byte/keepalive traffic shall remain distinct from provider answer/reasoning progress.
 
-## Requirement 3: Wait and retry according to observations
+## Requirement 3: Bounded provider handling
 
-1. When a provider supplies a valid retry delay, the feature shall wait at
-   least that long before a permitted follow-up, or defer if the caller's
-   remaining waiting allowance cannot accommodate it.
-2. If retry timing is absent or invalid after a retryable failure, the feature
-   shall use a bounded configurable backoff and report its chosen delay.
-3. Where the selected provider supports observing an already accepted request,
-   the feature shall observe that same request without submitting duplicate
-   generation work.
-4. Where response progress is available, the feature shall use it to distinguish
-   an active response from an idle connection and preserve partial data if
-   completion is interrupted.
-5. If a request outcome is ambiguous, the feature shall retain that ambiguity
-   and require an explicit configured replay policy before resubmitting it.
-6. If authentication, access, parameter or hard-quota rejection is explicit,
-   the feature shall stop automatic retries and report the actionable reason.
+1. A valid server retry delay shall be honored or cause deferral when the remaining allowance is insufficient; it shall never be shortened to fit.
+2. A retryable failure without a usable server delay shall use bounded configured backoff and report that decision.
+3. An accepted pending request shall retain its identity and defer without duplicate generation. Active status polling is deferred from this delivery; no guessed status route is permitted.
+4. If the caller explicitly selects supported streaming, completion framing and bounded partial evidence shall be preserved. Streaming is optional and is not required for completion-only fallback.
+5. Adaptive resubmission of ambiguous inference shall require explicit replay permission. Existing disabled-mode retry behavior remains explicit and unchanged.
+6. Explicit authentication/access, unrelated parameter and hard-quota rejections shall stop automatic retries and retain their actionable reason.
 
-## Requirement 4: Bounded and inspectable operation
+## Requirement 4: Accounting and truthful failure evidence
 
-1. When a request budget, retry limit, waiting allowance or caller cancellation
-   is reached, the feature shall stop further request admission and preserve
-   completed observations with the stopping reason.
-2. The feature shall count every physical inference, probe, retry and status
-   request against the shared request budget and distinguish their purposes.
-3. When reporting a run, the feature shall retain per-model waiting decisions,
-   provider status, timestamps, request identities and reported usage without
-   persisting credentials or authorization headers.
-4. If a partial response lacks required completion or token evidence, the
-   feature shall not count it as a usable answer or available MCS score.
+1. Budget/retry/wait/cancellation limits shall stop further applicable admission. An internal fatal stop shall retain its originating reason rather than be mislabeled caller cancellation.
+2. Existing CallBudget/RequestControl shall count every physical probe, generation and retry once, with purpose/stage. No second accounting system shall be introduced.
+3. Reports shall retain actual model/role/stage outcomes, identities, timings and reported usage through explicit whitelists. Failed/stopped response evidence shall use the owning sanitizer; credentials and runtime objects shall not be exported.
+4. Partial/incomplete responses shall not become usable answers or MCS evidence. Successful answers shall preserve their existing semantics.
 
-## Requirement 5: Portable use and measured behavior
+## Requirement 5: Proportionate validation and measurement
 
-1. When used in an application or an existing Jupyter kernel, the feature shall
-   expose the same configuration, observation and cancellation behavior on the
-   supported Windows and Linux Python versions.
-2. The validation shall demonstrate delayed success, progress followed by
-   completion, temporary throttling, provider-directed delay, permanent
-   rejection, ambiguous disconnect, cancellation and exhausted budgets using
-   deterministic offline scenarios.
-3. Before a live readiness study, its protocol shall declare the configuration,
-   observation method, request/waiting limits and comparison metrics.
-4. When reporting live behavior, the report shall distinguish operational
-   availability and time to usable response from mitigation effectiveness,
-   preserve failed attempts, and identify missing capability evidence.
+1. The library flow shall work in ordinary Python and an existing Jupyter kernel, and in the canonical Docker environment, using the same model/configuration semantics.
+2. Focused deterministic tests shall cover changed behavior: declared/observed missing tokens, service/auth failure, waiting/defer/cancel, fidelity rejection and exact physical counts. Existing transport tests shall be retained where that optional capability remains.
+3. Live work shall require a dated frozen configuration, method, ordering, physical-request/wait caps and metric definitions. The existing approved allowance is unchanged.
+4. Results shall separate operational availability from mitigation effectiveness, retain failed/censored observations, and identify missing evidence. An inconclusive pilot shall remain inconclusive.
 
-## Requirement 6: Explicit completion-only fallback and reporting
+## Requirement 6: Explicit fallback and actual-action reporting
 
-1. Where a caller selects a fallback for unavailable token probabilities, the
-   feature shall resolve that choice to the existing completion-only workflow
-   with the caller's selected rewriting and ensemble options.
-2. When that fallback is selected, the feature shall mark MIA/MCS unavailable
-   and report the missing evidence and fallback reason without presenting
-   rewriting or answer agreement as an equivalent memorization score.
-3. When resolving a fallback, the feature shall retain the requested and
-   effective model configuration and feature choices, including any explicitly
-   authorized changes to logprob request controls.
-4. If the provider rejects an unrelated parameter or fails to respond, the
-   feature shall retain the configuration or service failure rather than
-   report missing logprobs as its cause.
-5. Before evaluation under a resolved fallback, the feature shall validate the
-   resulting configuration and required rewriting/verification capabilities.
-6. When reporting execution, the feature shall identify the requested and
-   effective method, model and role for each attempted stage, observed
-   capabilities, fallback decisions, skipped or rejected stages, physical
-   request counts and available usage.
-7. If a rewrite fails fidelity checks, the feature shall preserve that failure
-   without relabeling an original-prompt answer as a successful mitigation.
+1. Only a caller-supplied fallback shall select the existing completion-only rewriting/ensemble workflow when required token evidence is missing or explicitly rejected.
+2. Completion-only execution shall have no MIA scorer and shall mark MCS unavailable. Agreement/self-confidence shall not be presented as equivalent MCS.
+3. Requested and selected configurations/features shall be retained; only explicitly authorized logprobs/top_logprobs controls may be omitted. Endpoint/model/all other settings remain fixed.
+4. Unrelated parameter rejection, timeout/504, auth/quota failure, empty/malformed/partial replies, missing fit and fidelity rejection shall not trigger missing-logprob fallback.
+5. Changed target settings and newly active rewrite/verifier roles shall use fresh budgeted validation; selected MIA requires matching fitted calibration. Factories perform zero provider work; no automatic calibration or historical probe-cache seeding.
+6. A compact report shall show requested/selected/observed method, model/role/stage, fallback reason/omissions, attempted/skipped/rejected actions, physical counts, usage and unknown cost. A report shall be derived from actual evidence, not a planned stage list.
+7. A fidelity-rejected rewrite shall remain a failed intervention, with no target evaluation draw relabeled as successful mitigation. Any real preflight probes shall still be counted.
 
-## Existing interfaces and design questions
+## Requirement 7: Small portable delivery
 
-`ModelConfig` already carries per-client transport settings. `RequestControl`
-already owns admission, fixed exponential backoff and sanitized physical-attempt
-records. `OpenAICompatibleClient` currently expects one complete JSON response;
-it does not assemble event streams or poll accepted work. Its `probe()` checks
-actual inference, which remains the right readiness criterion. Experiment
-journals already refuse ambiguous automatic restarts.
+1. Implementation shall reuse existing clients, request control, workflow, fidelity checks and ensemble/scoring calculations; names shall express domain meaning and units, including array axes/table row grain.
+2. Docker development/test execution shall use the existing uv lockfile and share its build recipe with existing Dagger CI. No OS-specific business-logic path or new hosted service is required.
+3. Changed code shall receive focused regression/static checks; one full regression shall run at the coherent integration boundary. Do not repeat full OS matrices or independently rerun unchanged full suites for every helper/reviewer. Existing release compatibility policy is separate.
+4. Infrastructure without a current product caller shall be inventoried and removed, consolidated or explicitly deferred through the infrastructure assessment. Preserve existing used study tooling and useful evidence; no blanket deletion of runs or old artifacts.
+5. One documented application/notebook path shall expose the complete feature before additional study/resume/profile frameworks are added. README/MkDocs shall use the requested COBESY approach and cite the Jane Street distinction honestly.
 
-Design should extend these boundaries and preserve old serialized artifacts.
-It must define separate connection, idle and overall-wait limits; validate
-server timing hints; specify observable states and cancellation; and establish
-endpoint-specific request-ID and status-poll contracts before enabling them.
-Any polling endpoint must be explicitly trusted; response-provided locations
-must not redirect credentials to another origin. Interrupted streams cannot
-silently become successful completions or lose token alignment.
+## Live allowance and scope boundaries
 
-The exact gpt-oss-20b reference documents streaming and pending responses, but
-the exact polling route/request-ID mapping for that configuration has not yet
-been established in this investigation. A polling route documented for another
-model is supporting context, not proof of support for this one.
+The approved additional NIM pilot remains at most 8 physical inference requests,
+0 status polls and 1200 seconds controlled waiting: four scheduled JSON probes,
+balanced fixed/adaptive ordering, at most one permitted retry each, same
+openai/gpt-oss-20b model/settings, no paid auxiliary calls. Its prerequisite is
+the revised integrated offline/container validation task, not repeated native
+OS debugging. No live calls are authorized by merely building/running Docker.
+Additional calibration, SSE or mitigation-effect trials require separately
+declared configuration/allowance. October 31 budgets/artifacts remain immutable.
 
-## Measurement boundary
-
-The October 31 eligibility budget remains exhausted at four attempts. Its last
-NIM attempt returned HTTP 504 after 302.453 seconds with a 600-second client
-timeout. This proposal does not relabel that failure or establish its cause.
-A future live readiness study needs its own explicit frozen limits and dated
-artifacts; it must not borrow silently from calibration or evaluation phases.
-No additional provider requests have been made for this proposal.
-
-## Sources checked on 2026-11-01
-
-- [NVIDIA NIM FAQ](https://docs.api.nvidia.com/nim/docs/product): developer-program
-  access includes free API endpoints for prototyping; this does not establish
-  current availability or account-specific limits.
-- [NVIDIA gpt-oss-20b API](https://docs.api.nvidia.com/nim/reference/openai-gpt-oss-20b-infer):
-  documents SSE deltas and completion marker, model-specific output-token range,
-  and HTTP 202 pending work with request-ID polling.
-- [NVIDIA hosted status polling example](https://docs.api.nvidia.com/nim/reference/mistralai-mistral-medium-3-5-128b-statuspolling):
-  documents a status route for that particular model; do not generalize silently.
-- [Requests timeout semantics](https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts):
-  timeout concerns socket inactivity rather than an overall response deadline.
-- [RFC 9110 Retry-After](https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3):
-  delay may be expressed as seconds or an HTTP date.
-
-## Requirements review
-
-The draft covers explicit configuration, observed state, waiting/retry behavior,
-budgets, cancellation, portable use and measurement. Numeric requirement IDs
-and EARS criteria were checked; implementation choices are separated above.
-The repository requirements template is absent, so this proposal uses the
-existing specification's document structure. Requirements and design were approved on 2026-11-01. The implementation
-task plan passed independent review, and the user approved implementation
-and the separately bounded pilot. No new live measurement has started.
+Jane Street's token-selection method requires distribution/selection access;
+the completion-only API approach is a separately measured alternative, not a
+claim of mathematically equivalent decoding: [Jane Street](https://blog.janestreet.com/mitigating-memorization-in-llms/).

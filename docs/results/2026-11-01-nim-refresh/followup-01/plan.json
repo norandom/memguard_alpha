@@ -1,0 +1,95 @@
+{
+  "budget_authorization": "New measurement approval required; no transfer from readiness allowance",
+  "calibration": {
+    "max_workers": 1,
+    "min_auc": 0.6,
+    "min_valid": 10,
+    "seed": 0
+  },
+  "cost": null,
+  "cost_unavailable_reason": "Provider pricing and monetary cost unavailable",
+  "credential_reference": "NVIDIA_API_KEY",
+  "deadline_semantics": "Stop new calls after window; in-flight bounded I/O may finish later",
+  "divergence": false,
+  "ensemble": {
+    "agreement_target": null,
+    "confidence": 0.95,
+    "density_ratio": 10.0,
+    "draws": 3,
+    "grid": null,
+    "location_mode": "median",
+    "mass_min": 0.25,
+    "max_tokens": 2048,
+    "max_total_requests": null,
+    "max_transport_failure_ratio": 0.25,
+    "max_workers": 1,
+    "min_cluster_density": 1.5,
+    "min_cluster_draws": 8,
+    "min_parsed": 2,
+    "multimodal_action": "flag",
+    "reference_mode": "fixed",
+    "retain_draws": true,
+    "tail": "one_sided",
+    "temperature": 0,
+    "trim": 0.25,
+    "trough_steps": 3
+  },
+  "input_counts": {
+    "calibration-is.json": 20,
+    "calibration-oos.json": 20,
+    "evaluation.json": 16
+  },
+  "input_hashes": {
+    "calibration-is.json": "e45d46a597ff6c42da2585f0e15c1a42574a212dca85c064774a1bf8ea3280eb",
+    "calibration-oos.json": "99ba951eda92d5ee88bb1fea0869e2b189aa06e13c2349198fca7a7b7d3ff6f0",
+    "evaluation.json": "cb7359e4a5625767d308d35f303778c30df2429c1f6420bf7781b2b3483e6f99"
+  },
+  "maximum_total_requests": 145,
+  "nominal_requests": {
+    "calibration": 62,
+    "eligibility": 1,
+    "evaluation": 49
+  },
+  "phase_caps": {
+    "calibration": 80,
+    "eligibility": 1,
+    "evaluation": 64
+  },
+  "restart": "Refuse any nonempty output directory; never replay ambiguous work",
+  "rewrite": false,
+  "run_admission_window_s": 3600,
+  "schema": "recall_guard.nim_refresh.v1",
+  "scope": "Exploratory baseline and aggregation only; no mitigation efficacy claim",
+  "single_view": "draw_index=0, shared with ensemble; no additional requests",
+  "status": "offline_plan",
+  "target": {
+    "capabilities": {},
+    "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "max_retries": 0,
+    "min_call_interval_s": 1.5,
+    "model": "openai/gpt-oss-20b",
+    "parameters": {
+      "logprobs": true,
+      "max_tokens": 2048,
+      "temperature": 0,
+      "top_logprobs": 20
+    },
+    "protocol": "openai_chat",
+    "provider": "nvidia_nim",
+    "readiness": {
+      "allow_ambiguous_replay": false,
+      "backoff_initial_s": 1.0,
+      "backoff_max_s": 30.0,
+      "connect_timeout_s": 10,
+      "jitter_fraction": 0.0,
+      "max_event_bytes": 1048576,
+      "max_poll_requests": 0,
+      "max_response_bytes": 8388608,
+      "max_wait_s": 1200,
+      "pending_status": null,
+      "socket_idle_timeout_s": 600
+    },
+    "retry_backoff_s": 2.0,
+    "timeout_s": 600
+  }
+}

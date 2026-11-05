@@ -10,6 +10,11 @@ Historical accuracy can come from recall as well as reasoning. The score is a
 warning signal learned from your calibration data, not proof that an individual
 answer was memorized. Recall Guard is not a forecaster.
 
+The [experiment track](docs/experiment-track.md) records measured results, failed
+approaches and their limits. The [November 5 S&P 500 pilot](docs/results/2026-11-05-sp500-pilot.md)
+produced usable Opus continuations but no established memorization effect. NIM
+returned 504 at eligibility, so GPT-OSS results remain unavailable.
+
 ## Choose your starting point
 
 | Your goal | Start here | What you need |
@@ -162,12 +167,28 @@ Its portfolio results belong to that consumer pipeline.
 
 ## NIM refresh: 2026-11-01
 
-The Docker refresh of `openai/gpt-oss-20b` stopped at its first eligibility
-request: HTTP 504 after about 302 seconds. Key eligibility remains unverified.
-Fresh calibration and the planned single-versus-three-draw ensemble comparison
-did not run, so the earlier results remain the latest successful measurements.
+A separate [dated-source prototype](docs/results/2026-11-01-fomc-statistical-signature.md)
+fits older/newer statistical references from eight Federal Reserve statements and
+probes their difference with 12 prompts. It finds a lexical exposure signal using
+CPU calculations and no model API calls; target-model mitigation remains untested.
+
+The Docker refresh of `openai/gpt-oss-20b` used three requests across two attempts:
+eligibility returned HTTP 504, an explicitly approved follow-up succeeded with
+token evidence, then calibration preflight returned HTTP 504. Access was accepted
+at the successful probe; fresh fitting and the planned ensemble evaluation did
+not run. The earlier results remain the latest successful measurements.
 The updated harness passed its offline checks; that does not establish provider
 availability. See the [dated report and raw receipts](docs/results/2026-11-01-nim-refresh.md).
+
+Read the lookahead evidence [without ensembles](docs/results/2026-11-01-recall-guard-single.md)
+and [with ensembles](docs/results/2026-11-01-recall-guard-ensemble.md). Detection
+and confidence discounting have been measured; reduced lookahead has not.
+The [divergence decoding test proposal](docs/divergence-decoding-evaluation.md)
+uses open weights, compatible tokenizers, full logits and control of token
+selection. Knowing a tokenizer alone does not make a hosted completion endpoint
+capable of this method. Synthetic rewriting is the separate completion-only
+experiment, following Jane Street's
+[memorization study](https://blog.janestreet.com/mitigating-memorization-in-llms/).
 
 ## Completion API pilot: 2026-10-31
 

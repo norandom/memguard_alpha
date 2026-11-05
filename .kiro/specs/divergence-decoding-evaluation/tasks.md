@@ -1,3 +1,5 @@
+> SUPERSEDED for future execution (2026-11-01). This is the revision-1 historical tasks.md. See [scope amendment](scope-amendment.md) and [revision-2 requirements](requirements.md). Prior approvals do not authorize these remaining tasks under the amended scope. Completed work and its receipts remain valid historical records. Revised design/tasks await the requirements phase review.
+
 # Implementation tasks: divergence decoding evaluation
 
 Task status is recorded below. Each numbered executable task is a focused work unit

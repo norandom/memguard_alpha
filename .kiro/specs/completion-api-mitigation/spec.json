@@ -1,7 +1,7 @@
 {
   "feature_name": "completion-api-mitigation",
   "created_at": "2026-10-30T18:52:02.048349+01:00",
-  "updated_at": "2026-11-01T15:43:09.4641171+00:00",
+  "updated_at": "2026-11-01T15:50:45.7633018+00:00",
   "language": "en",
   "phase": "implementing",
   "approvals": {
@@ -36,15 +36,22 @@
     "date": "2026-11-01",
     "model": "openai/gpt-oss-20b",
     "approved_total_cap": 146,
-    "actual_physical_requests": 1,
-    "remaining_total_cap": 145,
-    "status": "eligibility_gateway_timeout",
-    "credential_eligibility": "unverified",
+    "actual_physical_requests": 3,
+    "remaining_total_cap": 143,
+    "status": "calibration_gateway_timeout",
+    "credential_eligibility": "accepted_at_successful_followup_probe",
+    "latest_failed_operation_credential_eligibility": "unverified",
     "calibration_performed": false,
     "evaluation_performed": false,
     "raw_receipt": "docs/results/2026-11-01-nim-refresh/receipt.json",
     "report": "docs/results/2026-11-01-nim-refresh.md",
-    "explicit_followup_permission": "pending",
-    "original_readiness_allowance_used": 0
+    "explicit_followup_permission": "approved_once",
+    "original_readiness_allowance_used": 0,
+    "followup_status": "stopped_at_calibration_preflight",
+    "followup_output": "runs/container/2026-11-01-nim-refresh-retry-01",
+    "followup_maximum_requests": 145,
+    "followup_raw_receipt": "docs/results/2026-11-01-nim-refresh/followup-01/receipt.json",
+    "accounting_note": "Initial eligibility used 1; follow-up eligibility used 1 and calibration preflight used 1. No fit or evaluation. Remaining calibration79 plus evaluation64 equals143; no automatic further request authorized.",
+    "evaluation_proposal": "docs/divergence-decoding-evaluation.md"
   }
 }

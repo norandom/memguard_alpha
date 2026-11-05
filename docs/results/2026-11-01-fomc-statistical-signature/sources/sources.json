@@ -1,0 +1,98 @@
+[
+  {
+    "id": "20190130",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190130a.htm",
+    "published_date": "January 30, 2019",
+    "last_update_date": "January 30, 2019",
+    "retrieved_at": "2026-11-01T18:37:15.161089+00:00",
+    "html_sha256": "ead8c968b04e28d7e832777be6b83a8104b1717b6ff38cde5a207fe57db36ffa",
+    "text_sha256": "a44cf16f9a43cba666c394bb73a53d79b8100c8e99db90320157482b0ad36214",
+    "word_tokens": 382,
+    "rights_reference": "https://www.federalreserve.gov/disclaimer.htm",
+    "revision_evidence": "current page dates; not independently archived historical bytes"
+  },
+  {
+    "id": "20190320",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190320a.htm",
+    "published_date": "March 20, 2019",
+    "last_update_date": "March 20, 2019",
+    "retrieved_at": "2026-11-01T18:37:15.492953+00:00",
+    "html_sha256": "3c6e2e8a54db9f4a2ba35850b75370c701a5e9feeb7d2e237f477ae7a7f00d37",
+    "text_sha256": "c9de075b89faed9f47371e1d00264ae12bfd5cb8366f4700f0cd140ade0b6aba",
+    "word_tokens": 401,
+    "rights_reference": "https://www.federalreserve.gov/disclaimer.htm",
+    "revision_evidence": "current page dates; not independently archived historical bytes"
+  },
+  {
+    "id": "20190501",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190501a.htm",
+    "published_date": "May 1, 2019",
+    "last_update_date": "May 01, 2019",
+    "retrieved_at": "2026-11-01T18:37:15.808408+00:00",
+    "html_sha256": "c78a556fdbd411c6e59056bbd39de6156e224614c5d0ba90c807a13d7d0cd19b",
+    "text_sha256": "e0f2cf21ccf65e928f03060c6272062023931f0ef5977fd72d8c42ef73381006",
+    "word_tokens": 374,
+    "rights_reference": "https://www.federalreserve.gov/disclaimer.htm",
+    "revision_evidence": "current page dates; not independently archived historical bytes"
+  },
+  {
+    "id": "20190619",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20190619a.htm",
+    "published_date": "June 19, 2019",
+    "last_update_date": "June 19, 2019",
+    "retrieved_at": "2026-11-01T18:37:16.161899+00:00",
+    "html_sha256": "cdd2f63dc7962c1224529b4c3e86706f22eeccf24a94a5720688673244866215",
+    "text_sha256": "ce9d9b3e95dcb4e29b42d7d6d69ab2824a385832960e883ccf22cdfd1e639893",
+    "word_tokens": 413,
+    "rights_reference": "https://www.federalreserve.gov/disclaimer.htm",
+    "revision_evidence": "current page dates; not independently archived historical bytes"
+  },
+  {
+    "id": "20200315",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200315a.htm",
+    "published_date": "March 15, 2020",
+    "last_update_date": "March 15, 2020",
+    "retrieved_at": "2026-11-01T18:37:16.500209+00:00",
+    "html_sha256": "d5f6857f28b0de439d1835ee946e87aa2e3b4512e216795eaf88ecfe7cbe0d48",
+    "text_sha256": "389bd32988c6c53c311312512dd610d1802994d826631a251083f010a1925ac9",
+    "word_tokens": 688,
+    "rights_reference": "https://www.federalreserve.gov/disclaimer.htm",
+    "revision_evidence": "current page dates; not independently archived historical bytes"
+  },
+  {
+    "id": "20200429",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200429a.htm",
+    "published_date": "April 29, 2020",
+    "last_update_date": "April 29, 2020",
+    "retrieved_at": "2026-11-01T18:37:16.819515+00:00",
+    "html_sha256": "8a0a64db123cf7fd13100434bb733ea9c57d0ab2642b89c62820be6aab25863e",
+    "text_sha256": "55f4b13717d500feb57e666d4d8bc84351e7ac4e4556123e420429c9aa8867c9",
+    "word_tokens": 480,
+    "rights_reference": "https://www.federalreserve.gov/disclaimer.htm",
+    "revision_evidence": "current page dates; not independently archived historical bytes"
+  },
+  {
+    "id": "20200610",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200610a.htm",
+    "published_date": "June 10, 2020",
+    "last_update_date": "June 10, 2020",
+    "retrieved_at": "2026-11-01T18:37:17.102138+00:00",
+    "html_sha256": "12dac9907c43151c7d52b1da1c1704945846342eb3f610aa7849230f8e816e8b",
+    "text_sha256": "13f5e9fd55f0e623cac981a993d708c68dd30cbc612dd0a8b91a81a8cb67dd36",
+    "word_tokens": 484,
+    "rights_reference": "https://www.federalreserve.gov/disclaimer.htm",
+    "revision_evidence": "current page dates; not independently archived historical bytes"
+  },
+  {
+    "id": "20200729",
+    "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20200729a.htm",
+    "published_date": "July 29, 2020",
+    "last_update_date": "July 29, 2020",
+    "retrieved_at": "2026-11-01T18:37:17.420423+00:00",
+    "html_sha256": "ec8b7a7d4d7d386f11e3cb6cb66846b5ebbc08842ddcf65a7984ff707d2f1f4e",
+    "text_sha256": "d4bca696685eb74127879185ff15f9271b4f57401b8725fa91671d81401bf570",
+    "word_tokens": 507,
+    "rights_reference": "https://www.federalreserve.gov/disclaimer.htm",
+    "revision_evidence": "current page dates; not independently archived historical bytes"
+  }
+]

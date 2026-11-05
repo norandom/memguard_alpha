@@ -170,3 +170,17 @@ Docker the focus and native Windows work out of scope. Use container checks for
 this delivery; do not add native interpreter diagnostics or platform matrices.
 The revised readiness proposal remains separate: Docker acceptance does not
 resume its paused execution repair, remove unrelated files or authorize calls.
+
+## Endpoint-based divergence evaluation — 2026-11-01 scope amendment
+
+Divergence evaluation follows configured endpoints and statistical sources:
+capability/evidence assessment, auxiliary provenance, development calibration of
+correction strength, frozen configuration, and paired held-out measurement.
+Full compatible log probabilities may substitute for raw logits; partial or
+sample-estimated evidence must be labeled and validated as approximate.
+Evidence sourcing and generation control are separate capabilities.
+AUC measures discrimination, not correction calibration or mitigation efficacy.
+Local model hosting/GPU capacity is not a project prerequisite. Do not resume
+superseded runtime tasks or substitute rewriting for divergence decoding.
+GPT-OSS-20B remains included; ensembles are separately reported and budgeted.
+See [scope amendment](../specs/divergence-decoding-evaluation/scope-amendment.md).

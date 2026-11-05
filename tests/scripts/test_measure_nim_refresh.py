@@ -17,6 +17,8 @@ def test_plan_is_environment_free(monkeypatch):
     assert plan["phase_caps"] == {"eligibility": 2, "calibration": 80, "evaluation": 64}
     assert plan["nominal_requests"] == {"eligibility": 1, "calibration": 62, "evaluation": 49}
     assert plan["maximum_total_requests"] == 146
+    assert plan["target"]["min_call_interval_s"] == 2.0
+    assert plan["target"]["max_retries"] == 0
     assert plan["target"]["parameters"] == {
         "max_tokens": 2048, "temperature": 0, "logprobs": True, "top_logprobs": 20}
     assert plan["target"]["readiness"]["socket_idle_timeout_s"] == 600

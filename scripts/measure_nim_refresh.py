@@ -36,7 +36,8 @@ def target_config() -> ModelConfig:
         endpoint="https://integrate.api.nvidia.com/v1/chat/completions",
         model="openai/gpt-oss-20b", credential_ref="NVIDIA_API_KEY",
         parameters={"max_tokens": 2048, "temperature": 0, "logprobs": True, "top_logprobs": 20},
-        timeout_s=600, max_retries=0, min_call_interval_s=1.5,
+        # User-specified NIM quota is 40 RPM; leave margin at 30 RPM per client.
+        timeout_s=600, max_retries=0, min_call_interval_s=2.0,
         readiness=ReadinessPolicy(connect_timeout_s=10, socket_idle_timeout_s=600,
                                   max_wait_s=1200, max_poll_requests=0, allow_ambiguous_replay=False),
     )

@@ -27,3 +27,18 @@ The missing local design template is replaced by the existing repository's
 boundary-first design structure. No new library API, serving stack or neural
 training system is needed. Corpus/hardware/budget specifics remain execution
 gates and must not be filled with invented provenance or performance claims.
+
+## S&P 500 screening proposal — 2026-11-01
+
+The user requested a COBESY experiment record including prior approaches and
+suggested daily closes before/after model cutoff. The proposed next measurement
+separates direct historical recall from paired identified/anonymized continuation.
+It measures normalized forecast errors and an identity-advantage cutoff contrast,
+not raw price variance or repeated-answer variance. This is target screening,
+not auxiliary probability sourcing or a validated correction method.
+
+See [experiment track](../../../docs/experiment-track.md) and
+[S&P 500 research proposal](../../../docs/experiments/sp500-cutoff-proposal.md).
+GPT-OSS-20B remains included; Opus is completion-only with no logprob requirement
+for this measurement. Pilot budgets are proposals only. No live S&P requests
+were run or newly authorized; amended requirements/design approvals are unchanged.

@@ -229,6 +229,8 @@ class ReadinessReason(StrEnum):
     QUOTA_REJECTED = "quota_rejected"
     MALFORMED_RESPONSE = "malformed_response"
     MISSING_TOKEN_EVIDENCE = "missing_token_evidence"
+    CONFIGURATION_CHANGED = "configuration_changed"
+    RESPONSE_SETTINGS_MISMATCH = "response_settings_mismatch"
     CALLBACK_FAILED = "callback_failed"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     RETRY_AFTER_INVALID = "retry_after_invalid"

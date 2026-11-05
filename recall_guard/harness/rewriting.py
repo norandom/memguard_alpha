@@ -16,7 +16,7 @@ from recall_guard.core.completion import CapabilityEvidence, CompletionClient, M
 from recall_guard.core.request_control import BudgetExhaustedError, RequestError
 from recall_guard.harness import rewrite_fidelity
 from recall_guard.harness.intervention_types import RecordStatus, RewriteRecord, text_hash
-from recall_guard.harness.request_failures import failure_kind
+from recall_guard.harness.request_failures import failure_kind, request_failure
 
 REWRITE_METHOD_VERSION = "neutral-conversation-v1"
 REWRITE_TEMPLATE = """Rewrite only the supplied evidence into a neutral conversational presentation.
@@ -94,11 +94,7 @@ def _request_failure(error: Exception, *, stage: str = "Rewrite generation") -> 
         return "budget_exhausted", stage + " stopped: physical request budget exhausted.", None
     if isinstance(error, RequestError):
         kind = failure_kind(error)
-        diagnostics = {
-            "status_code": error.status_code, "parameter": error.parameter, "code": error.code,
-            "detail": error.detail, "retryable": error.retryable,
-            "usage": None if error.usage is None else dict(error.usage),
-        }
+        _, _, diagnostics = request_failure(error)
         return kind, stage + " request failed: " + str(error), diagnostics
     return "runtime_error", stage + " failed in the completion client; exception text was not retained.", None
 

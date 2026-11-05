@@ -1,3 +1,5 @@
+> SUPERSEDED evaluation proposal (2026-11-01): the mandatory local runtime and fixed auxiliary selection below are historical. GPT-OSS-20B remains included. The [endpoint-based amendment](../divergence-decoding-evaluation/scope-amendment.md) and its requirements govern the follow-up. The completed mathematical MVP is unchanged.
+
 # Model selection for the real-model evaluation follow-up
 
 Date: **2026-11-01**. Status: proposed selection for the next specification;

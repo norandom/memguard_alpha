@@ -1,0 +1,39 @@
+{
+  "status": "stop_insufficient_sample_support",
+  "failure": null,
+  "physical_requests": 9,
+  "request_cap": 17,
+  "results": {
+    "named": {
+      "counts": {
+        "A": 8,
+        "B": 0
+      },
+      "summaries": [
+        {
+          "alpha": 0,
+          "probability_a": 1.0,
+          "effective_sample_size": 8.0,
+          "largest_normalized_weight": 0.125
+        },
+        {
+          "alpha": 0.5,
+          "probability_a": 1.0,
+          "effective_sample_size": 8.0,
+          "largest_normalized_weight": 0.125
+        },
+        {
+          "alpha": 1,
+          "probability_a": 1.0,
+          "effective_sample_size": 8.0,
+          "largest_normalized_weight": 0.125
+        }
+      ],
+      "baseline_probability_a_se": 0.0
+    }
+  },
+  "unperformed_requests": 8,
+  "cost": null,
+  "mcs": null,
+  "mitigation_efficacy": "not_tested"
+}
