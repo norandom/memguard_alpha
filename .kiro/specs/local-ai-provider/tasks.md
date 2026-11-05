@@ -127,7 +127,7 @@ No driver, BIOS or WSL changes are included.
   - _Requirements: 3.3, 3.4, 3.5, 4.3, 4.4, 4.5, 5.3, 5.4, 5.5, 6.4_
 
 - [ ] 6. Deliver the integration and verify it
-- [ ] 6.1 Add the runnable local-provider example and technical guidance
+- [x] 6.1 Add the runnable local-provider example and technical guidance
   - Demonstrate explicit endpoint/model/logprob settings through existing APIs, with PowerShell commands and no mandatory accelerator imports.
   - Update README and MkDocs with candidate-versus-verified capability tables, dated result links, external-host reachability from Docker CI and Jane Street attribution; keep frontier completion-only work distinct.
   - Done when the example passes against fixtures and documentation clearly describes optional hosting, setup prerequisites, evidence limitations and the existing adapter reuse.

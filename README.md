@@ -20,7 +20,8 @@ returned 504 at eligibility, so GPT-OSS results remain unavailable.
 | Your goal | Start here | What you need |
 | --- | --- | --- |
 | Run checkout examples and tests in Docker | [Docker quick start](#run-the-checkout-in-docker) | Docker with Compose and a current checkout; the first example needs no keys |
-| Score model responses in an application | [Scorer integration](https://norandom.github.io/memguard_alpha/) | NVIDIA API key, a model with token logprobs, and calibration prompts |
+| Score model responses in an application | [Scorer integration](https://norandom.github.io/memguard_alpha/) | A model with token logprobs and calibration prompts; NVIDIA credentials for the NIM path |
+| Use a locally hosted model | [Local integration](docs/local-provider.md) | Development checkout; optional external host for live use, no key or GPU for the offline example |
 | Configure completion APIs, optional rewriting or n draws | [Completion workflow](docs/completion-api.md) | Development checkout; the default application and notebook fixtures run offline |
 | Try the divergence equation without a model | [Executable example](docs/divergence-decoding.md) | Current checkout, Python and NumPy; no credentials |
 | Steer your own model during generation | [Decoder contract](docs/divergence-decoding.md#caller-responsibilities-and-limits) | Three compatible callbacks that expose next-token logits |
@@ -93,6 +94,24 @@ explicit provider settings and offline replay of the
 [dated pilot](docs/results/2026-10-31-completion-api-pilot.md). The fixtures test
 mechanics, and the pilot does not establish a mitigation benefit.
 
+## Try a local model through the existing scorer
+
+Gemma 3 4B returned aligned token logprobs through the same OpenAI-compatible
+client used for NIM. Local hosting is optional and adds no accelerator runtime
+dependency to Recall Guard. Start with the offline example in PowerShell:
+
+```powershell
+uv run --no-sync python examples/local_provider.py --fixture
+```
+
+This runs the real parser and scorer against fixed responses with zero network
+requests. The [engineering guide](docs/local-provider.md) covers host setup,
+explicit endpoint/model settings and bounded measurement plans. The
+[November 5 results](docs/results/2026-11-05-local-provider-feasibility.md) verify
+one Gemma CPU probe; GPT-OSS responded but failed token alignment, and NPU
+prerequisites failed. No local calibration or mitigation benefit was measured.
+These integration APIs require the development checkout, not v0.5.0.
+
 ## Try the experimental mathematical layer
 
 The divergence utility is included in v0.5.0. From a checkout, install only the
@@ -145,8 +164,9 @@ uv run --no-sync python harness.py --help
 uv run --no-sync mkdocs serve
 ```
 
-Hosted scoring needs NVIDIA credentials and network access on every operating
-system. Any local runtime behind your own callbacks has its own hardware and
+NIM scoring needs NVIDIA credentials and network access on every operating
+system. Local endpoints can use explicit unauthenticated access. Any local runtime
+behind your own callbacks has its own hardware and
 Windows support requirements. See [Windows and development](docs/index.md#windows-and-development).
 
 ## Understand a result before adopting it
