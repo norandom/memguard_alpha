@@ -7,10 +7,10 @@
   "approvals": {
     "requirements": {"generated": true, "approved": true},
     "design": {"generated": true, "approved": true},
-    "tasks": {"generated": true, "approved": false}
+    "tasks": {"generated": true, "approved": true}
   },
-  "ready_for_implementation": false,
-  "approval_context": "User approved the design on 2026-11-05 after confirming reuse of the existing OpenAI-compatible NIM adapter. Task generation resumed; implementation remains subject to task approval.",
+  "ready_for_implementation": true,
+  "approval_context": "User approved requirements, design and implementation tasks on 2026-11-05. Implementation and bounded feasibility probes are authorized; larger measurement batches remain separately budgeted.",
   "design_review": {"mode": "self-review", "decision": "PASS", "report": "design-review.md"},
   "task_plan_review": {"mode": "independent", "decision": "PASS", "repair_passes": 1, "report": "task-plan-review.md"}
 }

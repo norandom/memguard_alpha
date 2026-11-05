@@ -1,6 +1,6 @@
 # Implementation tasks: local AI provider
 
-Design approved 2026-11-05. Tasks await approval. Work on `main` in the original
+Design and tasks approved 2026-11-05. Work on `main` in the original
 checkout, using PowerShell on Windows; WSL is only for Dagger CI. No release tag
 is part of this plan. Use the existing OpenAI-compatible client for Ollama/NIM.
 
@@ -22,7 +22,7 @@ larger measurement batches need concrete artifact and budget plans before execut
 No driver, BIOS or WSL changes are included.
 
 - [ ] 1. Establish local runtime prerequisites
-- [ ] 1.1 Inventory existing hosting and prepare the candidate manifest
+- [x] 1.1 Inventory existing hosting and prepare the candidate manifest
   - Identify installed Ollama, models and hardware without starting inference.
   - Select exact small Gemma and GPT-OSS-20B candidates separately; record digests, licensing, context configuration, tokenizer/template and available metadata.
   - Prepare a release-matched Gemma NPU artifact/runtime manifest, including download footprint and installation commands. Missing driver support produces a blocked receipt, not a driver installation.
