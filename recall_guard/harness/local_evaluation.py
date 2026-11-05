@@ -73,6 +73,10 @@ class LocalMeasurementPlan:
     ensemble_draws: int
     limits: MeasurementLimits
     items: tuple[MeasurementItem, ...]
+    seed: int = 0
+    min_valid: int = 50
+    min_auc: float = 0.6
+    ensemble_min_parsed: int = 1
 
     def __post_init__(self):
         object.__setattr__(self, 'items', tuple(self.items))
@@ -112,6 +116,14 @@ class LocalMeasurementPlan:
         if config.parameters.get('top_logprobs', 0) < 1:
             raise ValueError('selected_features_require_alternatives')
         _positive(self.ensemble_draws, 'ensemble_draws')
+        _positive(self.min_valid, 'min_valid')
+        _positive(self.ensemble_min_parsed, 'ensemble_min_parsed')
+        if self.ensemble_min_parsed > self.ensemble_draws:
+            raise ValueError('ensemble_min_parsed_exceeds_draws')
+        if type(self.seed) is not int or not 0 <= self.seed < 2**32:
+            raise ValueError('invalid_calibration_seed')
+        if isinstance(self.min_auc, bool) or not isinstance(self.min_auc, (int, float)) or not 0 <= self.min_auc <= 1:
+            raise ValueError('invalid_min_auc')
         if not isinstance(self.prompt_template, str) or self.prompt_template.count('{prompt}') != 1:
             raise ValueError('template_requires_one_prompt_marker')
         seen = set()
@@ -158,6 +170,8 @@ class LocalMeasurementPlan:
                 'requested_execution_mode': self.requested_execution_mode,
                 'prompt_template_sha256': _hash(self.prompt_template.encode('utf-8')),
                 'selected_features': list(self.selected_features), 'ensemble_draws': self.ensemble_draws,
+                'seed': self.seed, 'min_valid': self.min_valid, 'min_auc': self.min_auc,
+                'ensemble_min_parsed': self.ensemble_min_parsed,
                 'limits': asdict(self.limits), 'logical_requests': self.logical_requests,
                 'physical_requests': self.physical_requests,
                 'items': [{'item_sha256': _hash(item.item_id.encode('utf-8')), 'split': item.split,
@@ -201,7 +215,9 @@ def load_plan(plan_path: Path, manifest_path: Path, corpus_path: Path) -> LocalM
             seen.add(item_id)
             items.append(MeasurementItem(item_id, split, template.replace('{prompt}', prompt), row['input_tokens']))
     plan = LocalMeasurementPlan(config, authentication, mode, _hash(manifest_bytes), _hash(corpus_bytes),
-                                template, features, data['ensemble_draws'], limits, tuple(items))
+                                template, features, data['ensemble_draws'], limits, tuple(items),
+                                **{name: data[name] for name in ('seed', 'min_valid', 'min_auc',
+                                                               'ensemble_min_parsed') if name in data})
     return plan
 
 
@@ -253,6 +269,21 @@ class LocalAttemptBudget(CallBudget):
         """Detached journal snapshot; response bodies and diagnostics stay private."""
         with self._journal_lock:
             return json.loads(json.dumps(self._journal))
+
+    def begin_execution(self):
+        """Claim this fresh journal once; a partially used budget cannot replay."""
+        with self._journal_lock:
+            if self._journal['status'] != 'open' or self.used:
+                raise ValueError('measurement_execution_already_started')
+            self._journal['status'] = 'executing'
+            _persist(self.path, self._journal)
+
+    def finish_execution(self, status):
+        """Persist a non-content terminal status; reports are a separate layer."""
+        with self._journal_lock:
+            self._journal['status'] = status
+            self._stopped = True
+            _persist(self.path, self._journal)
 
     def _admit(self, **kwargs):
         with self._journal_lock:

@@ -1,4 +1,4 @@
-"""Validate a frozen local measurement plan without making inference calls.
+"""Validate or explicitly execute a frozen local measurement plan.
 
 PowerShell: uv run --no-sync python scripts/measure_local_models.py --help
 """
@@ -11,21 +11,60 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recall_guard.harness.local_evaluation import load_plan
 
 
+def ollama_observer(plan):
+    """Read fresh Ollama metadata only; never load/unload or generate here."""
+    from types import SimpleNamespace
+
+    from recall_guard.core.local_evidence import LocalModelProvenance
+    from recall_guard.harness.local_execution import HostObservation
+    from scripts.probe_local_model import observe_host
+
+    config = SimpleNamespace(endpoint=plan.config.endpoint, model=plan.config.model)
+    def observe():
+        data = observe_host(config)
+        return HostObservation(LocalModelProvenance(
+            runtime='ollama', runtime_version=data['runtime_version'],
+            artifact_digest=data['digest'], backend=data['observed_backend'],
+            context_length=data['effective_context_tokens']), tuple(data['loaded_models']))
+    return observe
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--plan', required=True, type=Path)
     parser.add_argument('--manifest', required=True, type=Path)
     parser.add_argument('--corpus', required=True, type=Path)
-    parser.add_argument('--dry-run', required=True, action='store_true')
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--dry-run', action='store_true')
+    mode.add_argument('--execute', action='store_true')
+    parser.add_argument('--journal', type=Path)
+    parser.add_argument('--observer', choices=['ollama'])
     args = parser.parse_args(argv)
+    if args.execute and (args.journal is None or args.observer is None):
+        parser.error('--execute requires a new --journal and explicit --observer ollama')
     try:
         plan = load_plan(args.plan, args.manifest, args.corpus)
     except (ValueError, TypeError, KeyError, OSError):
         # Parsing failures may contain private paths or corpus material.
         print('Local measurement refused: invalid plan, manifest or corpus.', file=sys.stderr)
         return 2
-    print(json.dumps({'status': 'dry_run', 'plan': plan.safe_export()}, indent=2))
-    return 0
+    if args.dry_run:
+        print(json.dumps({'status': 'dry_run', 'plan': plan.safe_export()}, indent=2))
+        return 0
+    from recall_guard.harness.local_evaluation import LocalAttemptBudget
+    from recall_guard.harness.local_execution import execute_plan
+
+    try:
+        budget = LocalAttemptBudget(plan, args.journal)
+        result = execute_plan(budget, ollama_observer(plan))
+    except (ValueError, OSError):
+        print('Local measurement refused: execution or journal unavailable.', file=sys.stderr)
+        return 2
+    print(json.dumps({'status': result.status,
+                     'calibrated_claims_allowed': result.calibrated_claims_allowed,
+                     'observed_execution_mode': result.observed_execution_mode,
+                     'npu_verified': result.npu_verified, 'attempts': budget.used}, indent=2))
+    return 0 if result.status == 'completed' else 2
 
 
 if __name__ == '__main__':

@@ -111,7 +111,7 @@ No driver, BIOS or WSL changes are included.
   - _Depends: 3.3_
   - _Requirements: 1.3, 5.1, 5.2, 5.5_
 
-- [ ] 5.2 Connect plans to existing calibration and ensemble execution
+- [x] 5.2 Connect plans to existing calibration and ensemble execution
   - Integrate the existing scorer and thin measurement CLI; count the scorer's own eligibility probe and serialize initial-machine draws.
   - Validate every response and identity against the selected features; stop calibrated claims on drift, with no completion-only or hosted fallback.
   - Done when fake endpoint integration runs produce separately tracked single and ensemble arms with frozen splits/settings and correct failure records.
