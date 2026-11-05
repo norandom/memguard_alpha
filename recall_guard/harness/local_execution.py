@@ -6,6 +6,7 @@ checks apply to the entire batch and never provide an atomic identity guarantee.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, field, replace
 
 from recall_guard.core.ensemble import EnsembleSpec
@@ -20,9 +21,30 @@ from recall_guard.harness.scorer import GuardedScore, MemoryGuardedScorer
 
 
 @dataclass(frozen=True)
+class HostResources:
+    """Observed quantities only; bytes/seconds, never inferred from allocation."""
+    model_allocation_bytes: int | None = None
+    accelerator_allocation_bytes: int | None = None
+    dedicated_gpu_memory_bytes: int | None = None
+    shared_gpu_memory_bytes: int | None = None
+    system_ram_usage_bytes: int | None = None
+    total_system_ram_bytes: int | None = None
+    load_time_s: float | None = None
+    generation_time_s: float | None = None
+
+    def __post_init__(self):
+        for name, value in asdict(self).items():
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                      or not math.isfinite(value) or value < 0
+                                      or (name.endswith('_bytes') and not isinstance(value, int))):
+                raise ValueError('invalid_resource_observation')
+
+
+@dataclass(frozen=True)
 class HostObservation:
     provenance: LocalModelProvenance
     loaded_models: tuple[str, ...]
+    resources: HostResources = field(default_factory=HostResources)
 
     def validate(self, plan, *, after_probe=False):
         allowed = ((plan.config.model,),) if after_probe else ((), (plan.config.model,))
@@ -56,6 +78,9 @@ class LocalExecutionResult:
     ensembles: dict = field(default_factory=dict)
     holdout_auc: float | None = None
     reason: str | None = None
+    host_observations: dict[str, HostObservation] = field(default_factory=dict)
+    calibration_fit_completed: bool = False
+    endpoint_probe_passed: bool = False
 
 
 class _CaptureClient:
@@ -90,6 +115,7 @@ class _CaptureClient:
             row.status = 'received' if evidence.response is not None else 'failed'
             self._check_running()
             observed = self.observer()
+            self.result.host_observations['after_probe'] = observed
             observed.validate(self.budget.plan, after_probe=True)
             # The response already includes the opening sidecar. It cannot
             # restore a field that a fresh host observation has lost.
@@ -120,6 +146,9 @@ class _CaptureClient:
             row.physical_call_ids = tuple(range(start + 1, self.budget.used + 1))
 
     def generate(self, prompt, **parameters):
+        # The scorer adapter reaches generation only after its complete probe
+        # and identity/capability checks pass, even if fitting later fails.
+        self.result.endpoint_probe_passed = True
         self._check_running()
         if self.active_rows:
             row = self.active_rows[self.offset]
@@ -182,6 +211,7 @@ def execute_plan(budget: LocalAttemptBudget, observer) -> LocalExecutionResult:
     try:
         client = budget.client()
         before = observer()
+        result.host_observations['opening'] = before
         before.validate(plan)
         capture = _CaptureClient(client, budget, observer, result, before)
         client.begin_local_batch(before.provenance)
@@ -190,6 +220,7 @@ def execute_plan(budget: LocalAttemptBudget, observer) -> LocalExecutionResult:
             is_memorized=[i.prompt for i in plan.items if i.split == 'is_memorized'],
             oos_control=[i.prompt for i in plan.items if i.split == 'oos_control'],
             min_valid=plan.min_valid, min_auc=plan.min_auc, seed=plan.seed, max_workers=1)
+        result.calibration_fit_completed = True
         capture._check_running()
         capture.scorer = scorer
         result.holdout_auc = scorer.holdout_auc
@@ -221,6 +252,7 @@ def execute_plan(budget: LocalAttemptBudget, observer) -> LocalExecutionResult:
         if opened:
             try:
                 after = observer()
+                result.host_observations['closing'] = after
                 after.validate(plan, after_probe=True)
                 closing = after.provenance
             except Exception:

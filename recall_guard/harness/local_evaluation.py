@@ -248,6 +248,7 @@ class LocalAttemptBudget(CallBudget):
         self._journal_lock = Lock()
         self._active = False
         self._stopped = False
+        self._report_secrets = ()
         self._journal = {'plan': plan.safe_export(), 'attempts': [], 'status': 'open'}
         # Exclusive creation also protects independent processes from replay.
         with path.open('x', encoding='utf-8') as stream:
@@ -256,8 +257,18 @@ class LocalAttemptBudget(CallBudget):
             os.fsync(stream.fileno())
 
     def client(self, *, environment=None):
+        environment = os.environ if environment is None else environment
+        reference = self.plan.config.credential_ref
+        credential = None if reference is None else environment.get(reference.removeprefix('env:'))
+        self._report_secrets = () if not credential else (credential,)
         return OpenAICompatibleClient(self.plan.config, self, environment=environment,
                                       allow_unauthenticated=self.plan.authentication == 'none')
+
+    def redact_report_text(self, value):
+        """Redact the same resolved credential registered for this run's client."""
+        for secret in self._report_secrets:
+            value = value.replace(secret, '[REDACTED]')
+        return value
 
     @property
     def stopped(self) -> bool:

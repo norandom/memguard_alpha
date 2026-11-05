@@ -102,7 +102,7 @@ No driver, BIOS or WSL changes are included.
   - _Depends: 4.1_
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 2.4, 3.1, 3.6, 5.2, 6.1_
 
-- [ ] 5. Integrate bounded local measurements
+- [x] 5. Integrate bounded local measurements
 - [x] 5.1 Implement frozen plans and bounded attempt persistence
   - Validate model/configuration manifests, corpus hashes, token/context/time/request bounds and explicit limits before execution.
   - Reuse existing request controls for journaled admission, cancellation and partial outcomes; include a CLI dry-run that makes no inference calls.
@@ -118,7 +118,7 @@ No driver, BIOS or WSL changes are included.
   - _Boundary: Calibration and measurement, scorer integration_
   - _Requirements: 2.1, 2.2, 2.3, 2.6, 3.6, 4.1, 4.2, 4.3_
 
-- [ ] 5.3 Produce honest local evaluation reports
+- [x] 5.3 Produce honest local evaluation reports
   - Report planned/completed/parsed and failed/unparsed denominators, pair only common usable items and retain draw-level identity.
   - Separate AUC, calibration and mitigation claims; report dedicated/shared/system memory, load/generation timing and unknown values correctly.
   - Label the historical NIM attempts "NIM unavailable" while retaining 504 evidence; keep Opus outside this path. Name arrays/columns by role and units and join by item/arm/draw keys.

@@ -106,6 +106,7 @@ receipts, not model generation parameters.
 | `recall_guard/harness/scorer_client.py` | Bind optional provenance to calibration identity and validate it |
 | `recall_guard/harness/local_evaluation.py` | Local admission, frozen plan, evaluation and report assembly |
 | `recall_guard/harness/local_execution.py` | Serial scorer integration, caller-supplied host observations and keyed private runtime results |
+| `recall_guard/harness/local_reporting.py` | Safe keyed JSON and Markdown reports, logical denominators, observed resources and common usable item pairs |
 | `scripts/probe_local_model.py` | PowerShell-invoked CLI for bounded endpoint feasibility |
 | `scripts/measure_local_models.py` | Thin CLI for admitted local calibration and paired single/ensemble runs |
 | `experiments/local_provider/probe_oga.py` | Isolated Gemma NPU feasibility experiment, lazy vendor imports |
@@ -114,6 +115,7 @@ receipts, not model generation parameters.
 | `tests/core/test_local_evidence.py` | Alignment, provenance and normalization boundary fixtures |
 | `tests/harness/test_local_evaluation.py` | Admission, budgets, identity drift and report semantics |
 | `tests/harness/test_local_execution.py` | Fake endpoint calibration/ensemble execution, host gates and whole-batch invalidation |
+| `tests/harness/test_local_reporting.py` | Partial/mismatched reports, safe exports, paired item keys and exclusive artifact persistence |
 | `tests/experiments/test_local_oga_contract.py` | Fake-runtime tests for the optional host boundary; no NPU dependency |
 | `docs/local-provider.md`, `README.md`, `mkdocs.yml` | Setup, capability table and dated results navigation |
 

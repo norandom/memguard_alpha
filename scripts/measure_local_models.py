@@ -16,7 +16,7 @@ def ollama_observer(plan):
     from types import SimpleNamespace
 
     from recall_guard.core.local_evidence import LocalModelProvenance
-    from recall_guard.harness.local_execution import HostObservation
+    from recall_guard.harness.local_execution import HostObservation, HostResources
     from scripts.probe_local_model import observe_host
 
     config = SimpleNamespace(endpoint=plan.config.endpoint, model=plan.config.model)
@@ -25,7 +25,9 @@ def ollama_observer(plan):
         return HostObservation(LocalModelProvenance(
             runtime='ollama', runtime_version=data['runtime_version'],
             artifact_digest=data['digest'], backend=data['observed_backend'],
-            context_length=data['effective_context_tokens']), tuple(data['loaded_models']))
+            context_length=data['effective_context_tokens']), tuple(data['loaded_models']),
+            HostResources(model_allocation_bytes=data['model_allocation_bytes'],
+                          accelerator_allocation_bytes=data['accelerator_allocation_bytes']))
     return observe
 
 
@@ -53,10 +55,15 @@ def main(argv=None):
         return 0
     from recall_guard.harness.local_evaluation import LocalAttemptBudget
     from recall_guard.harness.local_execution import execute_plan
+    from recall_guard.harness.local_reporting import build_report, report_paths, write_report
 
     try:
+        if any(path.exists() for path in report_paths(args.journal)):
+            raise ValueError('report_already_exists')
         budget = LocalAttemptBudget(plan, args.journal)
         result = execute_plan(budget, ollama_observer(plan))
+        report = build_report(budget, result)
+        write_report(args.journal, report)
     except (ValueError, OSError):
         print('Local measurement refused: execution or journal unavailable.', file=sys.stderr)
         return 2
