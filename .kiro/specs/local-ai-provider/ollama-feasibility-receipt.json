@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "plan": {
+    "manifest_sha256": "2d9bb3574d32f2ef2a04479caf441127289cb45232919c4899f20f48715c0a0c",
+    "prompt_sha256": "9a5315c468babbc3167b506c3b3193e63b67b26208d9babfccb55eb50e71b924",
+    "bounds": {
+      "total_generation_attempts": 6,
+      "attempts_per_configuration": 2,
+      "context_tokens": 2048,
+      "max_output_tokens": 32,
+      "automatic_retries": 0,
+      "max_seconds_per_attempt": 300,
+      "concurrent_requests": 1,
+      "loaded_test_models": 1,
+      "blocked_candidate_budget_transfer": false
+    },
+    "ollama_attempt_limit": 4,
+    "reserved_blocked_npu_attempts": 2,
+    "models": {
+      "ollama-gemma3-4b": "gemma3:4b",
+      "ollama-gpt-oss-20b": "gpt-oss:20b"
+    },
+    "settings": {
+      "temperature": 0,
+      "top_p": 1,
+      "top_logprobs": 5,
+      "logprobs": true,
+      "max_tokens": 32
+    }
+  },
+  "attempts": [
+    {
+      "candidate_id": "ollama-gemma3-4b",
+      "model": "gemma3:4b",
+      "endpoint": "http://localhost:11434/v1/chat/completions",
+      "authentication": "none",
+      "status": "unavailable",
+      "reason": "model_digest_missing_or_mismatched",
+      "physical_attempts": 0,
+      "unknown_outcome": false,
+      "events": [],
+      "timestamp": "2026-11-05T08:44:29.668257+00:00",
+      "configured_context_tokens": 2048,
+      "elapsed_s": null,
+      "host_execution_stopped": null,
+      "load_time_s": null,
+      "generation_time_s": null,
+      "dedicated_gpu_memory_bytes": null,
+      "shared_gpu_memory_bytes": null,
+      "system_ram_usage_bytes": null,
+      "score_semantics": "unknown",
+      "alternative_distribution": "partial_top_k",
+      "tokenizer_identity": null,
+      "observed_before": {
+        "runtime_version": "0.40.11",
+        "digest": null,
+        "loaded_models": [],
+        "effective_context_tokens": null,
+        "model_allocation_bytes": null,
+        "accelerator_allocation_bytes": null,
+        "observed_backend": null
+      },
+      "observed_after": null,
+      "host_process_id": 31216,
+      "context_source": "process-start-environment"
+    },
+    {
+      "candidate_id": "ollama-gpt-oss-20b",
+      "model": "gpt-oss:20b",
+      "endpoint": "http://localhost:11434/v1/chat/completions",
+      "authentication": "none",
+      "status": "unavailable",
+      "reason": "model_digest_missing_or_mismatched",
+      "physical_attempts": 0,
+      "unknown_outcome": false,
+      "events": [],
+      "timestamp": "2026-11-05T08:44:40.918063+00:00",
+      "configured_context_tokens": 2048,
+      "elapsed_s": null,
+      "host_execution_stopped": null,
+      "load_time_s": null,
+      "generation_time_s": null,
+      "dedicated_gpu_memory_bytes": null,
+      "shared_gpu_memory_bytes": null,
+      "system_ram_usage_bytes": null,
+      "score_semantics": "unknown",
+      "alternative_distribution": "partial_top_k",
+      "tokenizer_identity": null,
+      "observed_before": {
+        "runtime_version": "0.40.11",
+        "digest": null,
+        "loaded_models": [],
+        "effective_context_tokens": null,
+        "model_allocation_bytes": null,
+        "accelerator_allocation_bytes": null,
+        "observed_backend": null
+      },
+      "observed_after": null,
+      "host_process_id": 31216,
+      "context_source": "process-start-environment"
+    }
+  ]
+}

@@ -39,7 +39,8 @@ No driver, BIOS or WSL changes are included.
   - _Requirements: 1.2, 3.1, 3.7, 6.1_
 
 - [ ] 2. Establish feasibility before integration build-out
-- [ ] 2.1 Probe Ollama using the existing compatible adapter
+- [x] 2.1 Probe Ollama using the existing compatible adapter
+  - _Outcome: Probe implementation independently reviewed; 181 focused/regression tests passed. Both candidates initially unavailable because downloads are incomplete, with zero inference attempts; see ollama-feasibility-receipt.json. No logprob support claimed._
   - Build a standalone bounded diagnostic using existing request controls, with frozen prompts, independent candidate receipts and explicit unauthenticated access; never attach a NIM credential.
   - Validate nonempty output, aligned logprobs and required alternatives locally in the probe; do not depend on the later shared validator. Read back the effective context configuration where available.
   - Record observed model/runtime/mode, timing, memory and unknowns. Persist admission before the attempt, redact secrets/private prompts and retain timeout outcomes without replay or assuming remote execution stopped.

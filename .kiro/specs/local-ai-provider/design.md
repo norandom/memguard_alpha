@@ -42,7 +42,7 @@ No mandatory accelerator dependency in `recall_guard`.
 
 ### Allowed Dependencies
 
-Reuse `ModelConfig`, `OpenAIChatClient`, `ModelResponse`, `TokenEvidence`,
+Reuse `ModelConfig`, `OpenAICompatibleClient`, `ModelResponse`, `TokenEvidence`,
 `CallBudget`, `ReadinessControl`, `MemoryGuardedScorer.calibrate_client` and
 `EnsembleSpec`. External hosts may use Ollama or AMD's compatible OGA distribution.
 An NPU host environment is separate from the project environment and CI image.
@@ -59,7 +59,7 @@ also require a fresh NPU execution probe. Missing provenance does not imply a ma
 
 ### Existing Architecture Analysis
 
-`OpenAIChatClient` already accepts explicit endpoint URLs and unauthenticated
+`OpenAICompatibleClient` already accepts explicit endpoint URLs and unauthenticated
 operation. It parses realized-token and alternative log probabilities. The scorer
 already accepts a `CompletionClient`; no second scoring API is needed.
 `CalibrationIdentity` currently covers protocol, endpoint, model, settings and
@@ -70,7 +70,7 @@ intervention but not runtime/model-artifact provenance. Extend it compatibly.
 ```mermaid
 flowchart LR
     Plan[Local measurement plan] --> Probe[Evidence and identity probe]
-    Probe --> Client[Existing OpenAIChatClient]
+    Probe --> Client[Existing OpenAICompatibleClient]
     Client --> Ollama[Ollama CPU or GPU host]
     Client --> NPU[Optional verified NPU host]
     Probe --> Gate{Required evidence valid}
@@ -148,7 +148,7 @@ as full-vocabulary evidence. Unknown semantics restrict claims and calibration r
 
 ### Local endpoint admission
 
-Use `OpenAIChatClient` with explicit URL, model and `logprobs=true`; request
+Use `OpenAICompatibleClient` with explicit URL, model and `logprobs=true`; request
 `top_logprobs` required by the selected scorer. Keep explicit authentication choice.
 Do not send a NIM credential to a local endpoint. No URL-based automatic fallback.
 
