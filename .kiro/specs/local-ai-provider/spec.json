@@ -3,13 +3,14 @@
   "created_at": "2026-11-05",
   "updated_at": "2026-11-05",
   "language": "en",
-  "phase": "design-generated",
+  "phase": "tasks-generated",
   "approvals": {
     "requirements": {"generated": true, "approved": true},
-    "design": {"generated": true, "approved": false},
-    "tasks": {"generated": false, "approved": false}
+    "design": {"generated": true, "approved": true},
+    "tasks": {"generated": true, "approved": false}
   },
   "ready_for_implementation": false,
-  "approval_context": "User requested continuation of the drafted spec on 2026-11-05; requirements accepted for design. User requested pause after this task.",
-  "design_review": {"mode": "self-review", "decision": "PASS", "report": "design-review.md"}
+  "approval_context": "User approved the design on 2026-11-05 after confirming reuse of the existing OpenAI-compatible NIM adapter. Task generation resumed; implementation remains subject to task approval.",
+  "design_review": {"mode": "self-review", "decision": "PASS", "report": "design-review.md"},
+  "task_plan_review": {"mode": "independent", "decision": "PASS", "repair_passes": 1, "report": "task-plan-review.md"}
 }
