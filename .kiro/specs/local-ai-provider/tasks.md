@@ -40,7 +40,7 @@ No driver, BIOS or WSL changes are included.
 
 - [ ] 2. Establish feasibility before integration build-out
 - [x] 2.1 Probe Ollama using the existing compatible adapter
-  - _Outcome: Probe implementation independently reviewed; 181 focused/regression tests passed. Both candidates initially unavailable because downloads are incomplete, with zero inference attempts; see ollama-feasibility-receipt.json. No logprob support claimed._
+  - _Outcome: Probe implementation independently reviewed; 181 focused/regression tests passed. Gemma subsequently passed one live probe: aligned logprobs and five alternatives, 8.547 seconds, CPU execution, context 2048. GPT-OSS download remains pending. See ollama-feasibility-receipt.json; no GPU/NPU or mitigation claim._
   - Build a standalone bounded diagnostic using existing request controls, with frozen prompts, independent candidate receipts and explicit unauthenticated access; never attach a NIM credential.
   - Validate nonempty output, aligned logprobs and required alternatives locally in the probe; do not depend on the later shared validator. Read back the effective context configuration where available.
   - Record observed model/runtime/mode, timing, memory and unknowns. Persist admission before the attempt, redact secrets/private prompts and retain timeout outcomes without replay or assuming remote execution stopped.
@@ -60,7 +60,7 @@ No driver, BIOS or WSL changes are included.
   - _Requirements: 2.1, 2.2, 2.4, 2.5, 3.1, 3.2, 3.4, 3.6, 3.7_
 
 - [ ] 3. Integrate evidence and calibration provenance
-- [ ] 3.1 Implement shared local identity and token-evidence validation
+- [x] 3.1 Implement shared local identity and token-evidence validation
   - Consolidate proven probe checks into pure typed contracts; document token positions, vocabulary axes, units and channel mapping with domain-accurate variable names.
   - Cover Unicode, whitespace, censored/invalid scores, missing alternatives and partial-distribution handling with fixtures. Do not manufacture alignment by retokenizing.
   - Done when the validator accepts complete aligned evidence and rejects invalid evidence for every response, with no accelerator imports.

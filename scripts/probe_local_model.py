@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 import os
 import re
 import sys
@@ -24,6 +23,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recall_guard.core.completion import ModelConfig, ModelResponse
+from recall_guard.core.local_evidence import validate_local_evidence
 from recall_guard.core.providers import OpenAICompatibleClient
 from recall_guard.core.request_control import CallBudget, RequestError
 
@@ -75,29 +75,8 @@ def load_config(manifest_path: Path, candidate_id: str) -> ProbeConfig:
 
 
 def validate_evidence(response: ModelResponse, required_alternatives: int = 5) -> None:
-    """Positions are output-token order; logprobs use natural logs, top-k stays partial.
-
-    The existing adapter carries token text, not bytes. Exact concatenation is
-    required; no whitespace stripping, retokenization or guessed channel mapping.
-    """
-    if not response.content:
-        raise ValueError('empty_output')
-    if not response.token_evidence:
-        raise ValueError('missing_token_evidence')
-    if ''.join(token.token for token in response.token_evidence) != response.content:
-        raise ValueError('token_text_alignment_failed')
-    for token in response.token_evidence:
-        if not token.token:
-            raise ValueError('empty_token_alignment_unsupported')
-        if len(token.top_logprobs) < required_alternatives:
-            raise ValueError('missing_alternatives')
-        if len({alt.token for alt in token.top_logprobs}) != len(token.top_logprobs):
-            raise ValueError('duplicate_alternatives')
-        for entry in (token, *token.top_logprobs):
-            if entry.logprob == -9999:
-                raise ValueError('censored_logprob')
-            if not math.isfinite(entry.logprob) or entry.logprob > 0:
-                raise ValueError('invalid_logprob')
+    """Retain the frozen probe's five-alternative gate and evidence reason codes."""
+    validate_local_evidence(response, required_alternatives=required_alternatives)
 
 
 def observe_host(config: ProbeConfig) -> dict:

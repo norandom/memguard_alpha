@@ -98,6 +98,66 @@
       "observed_after": null,
       "host_process_id": 31216,
       "context_source": "process-start-environment"
+    },
+    {
+      "candidate_id": "ollama-gemma3-4b",
+      "model": "gemma3:4b",
+      "endpoint": "http://localhost:11434/v1/chat/completions",
+      "authentication": "none",
+      "status": "eligible",
+      "reason": "aligned_token_evidence_observed",
+      "physical_attempts": 1,
+      "unknown_outcome": false,
+      "events": [
+        {
+          "call_id": 1,
+          "attempt": 1,
+          "started_at": 314302.906,
+          "timestamp": "2026-11-05T08:47:58.022523+00:00",
+          "status": "succeeded",
+          "latency_s": 8.546999999962281,
+          "status_code": null,
+          "usage": {
+            "prompt_tokens": 16,
+            "completion_tokens": 3,
+            "total_tokens": 19
+          }
+        }
+      ],
+      "timestamp": "2026-11-05T08:47:55.801593+00:00",
+      "configured_context_tokens": 2048,
+      "elapsed_s": 8.546999999962281,
+      "host_execution_stopped": null,
+      "load_time_s": null,
+      "generation_time_s": null,
+      "dedicated_gpu_memory_bytes": null,
+      "shared_gpu_memory_bytes": null,
+      "system_ram_usage_bytes": null,
+      "score_semantics": "unknown",
+      "alternative_distribution": "partial_top_k",
+      "tokenizer_identity": null,
+      "observed_before": {
+        "runtime_version": "0.40.11",
+        "digest": "sha256:68ceab7e468a31c988b44d5a4984a0e21f58c4f7158c6ce29c1804babac38df7",
+        "loaded_models": [],
+        "effective_context_tokens": null,
+        "model_allocation_bytes": null,
+        "accelerator_allocation_bytes": null,
+        "observed_backend": null
+      },
+      "observed_after": {
+        "runtime_version": "0.40.11",
+        "digest": "sha256:68ceab7e468a31c988b44d5a4984a0e21f58c4f7158c6ce29c1804babac38df7",
+        "loaded_models": [
+          "gemma3:4b"
+        ],
+        "effective_context_tokens": 2048,
+        "model_allocation_bytes": 2886687784,
+        "accelerator_allocation_bytes": 0,
+        "observed_backend": "CPU"
+      },
+      "host_process_id": 31216,
+      "context_source": "process-start-environment"
     }
   ]
 }
