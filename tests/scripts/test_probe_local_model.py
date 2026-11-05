@@ -7,7 +7,8 @@ import requests
 from recall_guard.core.completion import ModelResponse, TokenAlternative, TokenEvidence
 from scripts import probe_local_model as probe
 
-MANIFEST = Path('.kiro/specs/local-ai-provider/candidate-manifest.json')
+# Synthetic contract data travels with tests into the filtered CI context.
+MANIFEST = Path(__file__).resolve().parents[1] / 'fixtures/local_provider/candidate-manifest.json'
 
 
 def response(content=' OK', logprob=-0.1, alternatives=5):

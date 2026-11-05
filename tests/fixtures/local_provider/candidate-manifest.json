@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "scope": "Synthetic offline test fixture; not a live artifact or execution authorization",
+  "candidates": [
+    {
+      "id": "ollama-gemma3-4b",
+      "model": "gemma3:4b",
+      "endpoint": "http://localhost:11434/v1/chat/completions",
+      "authentication": "none",
+      "manifest_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "generation_settings": {
+        "temperature": 0,
+        "top_p": 1,
+        "top_logprobs": 5,
+        "logprobs": true,
+        "max_tokens": 32
+      },
+      "requested_context_tokens": 2048
+    },
+    {
+      "id": "ollama-gpt-oss-20b",
+      "model": "gpt-oss:20b",
+      "endpoint": "http://localhost:11434/v1/chat/completions",
+      "authentication": "none",
+      "manifest_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation_settings": {
+        "temperature": 0,
+        "top_p": 1,
+        "top_logprobs": 5,
+        "logprobs": true,
+        "max_tokens": 32
+      },
+      "requested_context_tokens": 2048
+    }
+  ],
+  "budget": {
+    "total_generation_attempts": 6,
+    "attempts_per_configuration": 2,
+    "context_tokens": 2048,
+    "max_output_tokens": 32,
+    "automatic_retries": 0,
+    "max_seconds_per_attempt": 300,
+    "concurrent_requests": 1,
+    "loaded_test_models": 1,
+    "blocked_candidate_budget_transfer": false
+  }
+}

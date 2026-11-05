@@ -126,7 +126,7 @@ No driver, BIOS or WSL changes are included.
   - _Boundary: Calibration and measurement reporting_
   - _Requirements: 3.3, 3.4, 3.5, 4.3, 4.4, 4.5, 5.3, 5.4, 5.5, 6.4_
 
-- [ ] 6. Deliver the integration and verify it
+- [x] 6. Deliver the integration and verify it
 - [x] 6.1 Add the runnable local-provider example and technical guidance
   - Demonstrate explicit endpoint/model/logprob settings through existing APIs, with PowerShell commands and no mandatory accelerator imports.
   - Update README and MkDocs with candidate-versus-verified capability tables, dated result links, external-host reachability from Docker CI and Jane Street attribution; keep frontier completion-only work distinct.
@@ -135,7 +135,8 @@ No driver, BIOS or WSL changes are included.
   - _Depends: 5.3_
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-- [ ] 6.2 Verify integrated behavior and publish the evidence summary
+- [x] 6.2 Verify integrated behavior and publish the evidence summary
+  - _Outcome: Independently reviewed. Dagger: 2722 tests passed; strict docs, package build and installed-wheel fixture smoke passed. See implementation-validation.md. Conditional NPU tasks remain blocked; no additional live calls or calibration batch._
   - Run focused tests, Ruff and architecture checks through PowerShell; run one coherent offline regression and strict docs build through Dagger CI.
   - Verify lean imports, fake endpoint reachability, legacy behavior, evidence rejection, identity drift and cancellation. Include conditional skip reasons.
   - Done when a source-matched summary distinguishes passing automated checks from live feasibility and unperformed measurement. No larger live batch or release tag is implied.

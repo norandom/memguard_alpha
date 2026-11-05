@@ -296,5 +296,6 @@ external endpoint without assuming container localhost is the host.
 - [OGA Python API](https://onnxruntime.ai/docs/genai/api/python.html)
 - [Jane Street mitigation](https://blog.janestreet.com/mitigating-memorization-in-llms/)
 
-Status: design drafted and self-reviewed. NPU feasibility remains unverified.
-Task generation and implementation require the next review gate.
+Status: design and tasks approved; available Ollama integration implemented and
+independently validated. NPU feasibility remains unverified and its conditional
+tasks remain blocked. See implementation-validation.md for evidence and limits.
