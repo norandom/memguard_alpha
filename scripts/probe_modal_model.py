@@ -9,9 +9,11 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 
@@ -39,6 +41,94 @@ PROMPTS = (
     "Reply with a short greeting.",
 )
 SETTINGS = {"temperature": 0, "top_p": 1, "logprobs": True, "top_logprobs": 5, "max_tokens": 512}
+
+
+def diagnostic_text(value, limit=2000):
+    """Redact child-process credential values; never load a credential file."""
+    secrets = set()
+    for name, secret in os.environ.items():
+        if secret and any(marker in name.upper() for marker in ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "BEARER")):
+            secrets.add(secret)
+            if "PROXY" in name.upper() or "BEARER" in name.upper():
+                secrets.update(part for part in secret.removeprefix("Bearer ").split(".") if part)
+    value = re.sub(r"(?i)\bBearer\s+[^\s,;\"']+", "Bearer [REDACTED]", value)
+    for secret in sorted(secrets, key=len, reverse=True):
+        value = value.replace(secret, "[REDACTED]")
+    return value[:limit]
+
+
+def error_diagnostic(exc, stage):
+    """Bounded metadata only: no locals, source lines, responses or inference text."""
+    if stage == "inference":
+        mark_sensitive_error_chain(exc)
+    frames = []
+    trace = exc.__traceback__
+    while trace is not None:
+        code = trace.tb_frame.f_code
+        frames.append({"filename": diagnostic_text(Path(code.co_filename).name, 200),
+                       "function": diagnostic_text(code.co_name, 200), "lineno": trace.tb_lineno})
+        trace = trace.tb_next
+    result = {"stage": stage, "error": type(exc).__name__, "frames": frames[-12:]}
+    if stage != "inference":
+        # RequestError may embed arbitrary provider response detail in its string.
+        result["message"] = diagnostic_message(exc)
+        chain, seen = [], {id(exc)}
+        cause = exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+        while cause is not None and id(cause) not in seen and len(chain) < 4:
+            seen.add(id(cause))
+            chain.append({"error": type(cause).__name__, "message": diagnostic_message(cause)})
+            cause = cause.__cause__ or (None if cause.__suppress_context__ else cause.__context__)
+        if chain:
+            result["chain"] = chain
+    return result
+
+
+def mark_sensitive_error_chain(exc):
+    """Keep inference/response ancestry opaque even during later cleanup failures."""
+    pending, seen = [exc], set()
+    while pending:
+        error = pending.pop()
+        if error is None or id(error) in seen:
+            continue
+        seen.add(id(error))
+        error._modal_diagnostic_sensitive = True
+        pending.extend((error.__cause__, error.__context__))
+
+
+def diagnostic_message(exc):
+    if isinstance(exc, RequestError):
+        mark_sensitive_error_chain(exc)
+        return "provider_or_transport_failure"
+    if getattr(exc, "_modal_diagnostic_sensitive", False):
+        mark_sensitive_error_chain(exc)
+        return "sensitive_error_detail_withheld"
+    return diagnostic_text(str(exc))
+
+
+def record_error(receipt, path, exc, stage):
+    """Keep the first failure authoritative while retaining secondary failures."""
+    diagnostic = error_diagnostic(exc, stage)
+    receipt.setdefault("diagnostics", []).append(diagnostic)
+    receipt.setdefault("error", diagnostic["error"])
+    receipt.setdefault("error_stage", stage)
+    persist(path, receipt)
+    exc._modal_diagnostic_receipt = id(receipt)
+
+
+@contextmanager
+def diagnostic_stage(receipt, path, stage):
+    prior = len(receipt.get("diagnostics", []))
+    current = {"stage": stage}
+    try:
+        yield current
+    except (Exception, asyncio.CancelledError, KeyboardInterrupt) as exc:
+        recorded = receipt.get("diagnostics", [])[prior:]
+        if not recorded:
+            record_error(receipt, path, exc, current["stage"])
+        elif getattr(exc, "_modal_diagnostic_receipt", None) != id(receipt):
+            # A lifecycle exit can fail while unwinding an already recorded body error.
+            record_error(receipt, path, exc, "cleanup")
+        raise
 
 
 def digest(data):
@@ -209,15 +299,16 @@ async def attempts(plan, receipt, path, *, client_factory=OpenAICompatibleClient
             usage = response.usage or {}
             attempt["usage"] = {key: usage[key] for key in ("prompt_tokens", "completion_tokens", "total_tokens") if key in usage}
         except LocalEvidenceError as exc:
-            attempt.update(status="ineligible", reason=str(exc))
+            attempt.update(status="ineligible", reason=str(exc), diagnostic=error_diagnostic(exc, "inference"))
         except RequestError as exc:
             attempt.update(status="unavailable", reason="provider_or_transport_failure", http_status=exc.status_code,
-                           unknown_outcome=True)
-        except (TimeoutError, asyncio.CancelledError, KeyboardInterrupt):
-            attempt.update(status="unavailable", reason="unknown_outcome", unknown_outcome=True)
+                           unknown_outcome=True, diagnostic=error_diagnostic(exc, "inference"))
+        except (TimeoutError, asyncio.CancelledError, KeyboardInterrupt) as exc:
+            attempt.update(status="unavailable", reason="unknown_outcome", unknown_outcome=True,
+                           diagnostic=error_diagnostic(exc, "inference"))
         except Exception as exc:
             attempt.update(status="unavailable", reason="unknown_outcome", unknown_outcome=True,
-                           error=type(exc).__name__)
+                           error=type(exc).__name__, diagnostic=error_diagnostic(exc, "inference"))
         finally:
             attempt["elapsed_seconds"] = time.monotonic() - started
             receipt["inference_posts"] = budget.used
@@ -272,74 +363,92 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
     persist(receipt_path, receipt)
     app = None
     try:
-        receipt["budget_review"] = approval_check(approval, frozen, plan)
-        serving_plan = load_plan(serve.ROOT / "configs/modal/gpt-oss-20b-pilot.json")
-        if ((plan.target.app, plan.target.environment, plan.artifacts, plan.resources, plan.limits) !=
-                (serving_plan.target.app, serving_plan.target.environment, serving_plan.artifacts,
-                 serving_plan.resources, serving_plan.limits)):
-            raise ValueError("runner_and_uploaded_serving_manifest_differ")
-        sdk = serve._sdk(sdk)
-        cache_event = {"operation": "weight_cache_inventory", "category": "control", "status": "intent",
-                       "started_at_unix_s": time.time(), "observed_gross_usd": None}
-        receipt["control_events"].append(cache_event)
-        persist(receipt_path, receipt)
-        receipt["weight_cache"] = await asyncio.wait_for(verify_weight_cache(plan, sdk), 60)
-        cache_event.update(status="verified", finished_at_unix_s=time.time())
-        # Resolve credentials only after explicit execution approval; never export them.
-        OpenAICompatibleClient(ModelConfig(protocol="openai_chat", model=plan.artifacts.model,
-            endpoint=plan.target.endpoint + "/chat/completions", credential_ref=plan.target.credential_env), CallBudget(0))
-        expiry = serve.create_expiry_app(sdk=sdk)
-        await asyncio.wait_for(expiry.deploy.aio(environment_name=plan.target.environment), 600)
-        app = serve.create_app(sdk=sdk)
-        receipt["gpu_started_at_unix_s"] = time.time()
-        persist(receipt_path, receipt)
-        await asyncio.wait_for(app.deploy.aio(environment_name=plan.target.environment), 600)
-        receipt["app_id"] = app.app_id
-        async with serve.experiment_lifecycle(plan, app.app_id,
-                gpu_started_at_unix_s=receipt["gpu_started_at_unix_s"], receipt=receipt["lifecycle"], sdk=sdk):
+        with diagnostic_stage(receipt, receipt_path, "budget_preflight"):
+            receipt["budget_review"] = approval_check(approval, frozen, plan)
+            serving_plan = load_plan(serve.ROOT / "configs/modal/gpt-oss-20b-pilot.json")
+            if ((plan.target.app, plan.target.environment, plan.artifacts, plan.resources, plan.limits) !=
+                    (serving_plan.target.app, serving_plan.target.environment, serving_plan.artifacts,
+                     serving_plan.resources, serving_plan.limits)):
+                raise ValueError("runner_and_uploaded_serving_manifest_differ")
+        with diagnostic_stage(receipt, receipt_path, "cache_inventory"):
+            sdk = serve._sdk(sdk)
+            cache_event = {"operation": "weight_cache_inventory", "category": "control", "status": "intent",
+                           "started_at_unix_s": time.time(), "observed_gross_usd": None}
+            receipt["control_events"].append(cache_event)
             persist(receipt_path, receipt)
-            await asyncio.to_thread(unauthenticated_health_guard, plan, receipt, receipt_path)
-            event = {"operation": "readiness", "category": "control", "status": "intent", "inference_posts": 0,
-                     "started_at_unix_s": time.time(), "observed_gross_usd": None}
-            receipt["control_events"].append(event)
+            receipt["weight_cache"] = await asyncio.wait_for(verify_weight_cache(plan, sdk), 60)
+            cache_event.update(status="verified", finished_at_unix_s=time.time())
+        with diagnostic_stage(receipt, receipt_path, "credential_preflight"):
+            # Resolve credentials only after explicit execution approval; never export them.
+            OpenAICompatibleClient(ModelConfig(protocol="openai_chat", model=plan.artifacts.model,
+                endpoint=plan.target.endpoint + "/chat/completions", credential_ref=plan.target.credential_env), CallBudget(0))
+        with diagnostic_stage(receipt, receipt_path, "controller_deploy"):
+            expiry = serve.create_expiry_app(sdk=sdk)
+            await asyncio.wait_for(expiry.deploy.aio(environment_name=plan.target.environment), 600)
+        with diagnostic_stage(receipt, receipt_path, "model_deploy"):
+            app = serve.create_app(sdk=sdk)
+            receipt["gpu_started_at_unix_s"] = time.time()
             persist(receipt_path, receipt)
-            remaining = receipt["lifecycle"]["deadline_unix_s"] - time.time()
-            service = sdk.Cls.from_name(plan.target.app, "Serving", environment_name=plan.target.environment)()
-            startup_remaining = receipt["gpu_started_at_unix_s"] + 600 - time.time()
-            if min(startup_remaining, remaining) <= 0:
-                raise TimeoutError("startup_allowance_exhausted")
-            readiness = await asyncio.wait_for(service.readiness.remote.aio(), min(startup_remaining, remaining))
-            if not readiness.get("ready") or readiness.get("app_id") != app.app_id:
-                raise ValueError("readiness_identity_or_process_unverified")
-            event["status"] = "ready"
-            receipt["ready_at_unix_s"] = time.time()
-            event["finished_at_unix_s"] = receipt["ready_at_unix_s"]
-            endpoint = await asyncio.wait_for(service.web.get_web_url.aio(), 5)
-            if endpoint != plan.target.endpoint.removesuffix("/v1"):
-                raise ValueError("deployed_endpoint_mismatch")
-            receipt["observed_before"] = await asyncio.wait_for(asyncio.to_thread(serve.read_observations, plan, app.app_id, sdk=sdk), 10)
-            receipt["environment_status"] = environment_status(plan, receipt["observed_before"], frozen["tokenizer_sha256"])
-            if receipt["environment_status"] == "observed_stable":
-                await attempts(plan, receipt, receipt_path)
-            else:
-                receipt["status"] = "environment_ineligible"
+            await asyncio.wait_for(app.deploy.aio(environment_name=plan.target.environment), 600)
+            receipt["app_id"] = app.app_id
+        with diagnostic_stage(receipt, receipt_path, "expiry_arming") as lifecycle_stage:
+            async with serve.experiment_lifecycle(plan, app.app_id,
+                    gpu_started_at_unix_s=receipt["gpu_started_at_unix_s"], receipt=receipt["lifecycle"], sdk=sdk):
+                lifecycle_stage["stage"] = "cleanup"
+                with diagnostic_stage(receipt, receipt_path, "proxy_denial"):
+                    persist(receipt_path, receipt)
+                    await asyncio.to_thread(unauthenticated_health_guard, plan, receipt, receipt_path)
+                with diagnostic_stage(receipt, receipt_path, "readiness"):
+                    event = {"operation": "readiness", "category": "control", "status": "intent", "inference_posts": 0,
+                             "started_at_unix_s": time.time(), "observed_gross_usd": None}
+                    receipt["control_events"].append(event)
+                    persist(receipt_path, receipt)
+                    remaining = receipt["lifecycle"]["deadline_unix_s"] - time.time()
+                    service = sdk.Cls.from_name(plan.target.app, "Serving", environment_name=plan.target.environment)()
+                    startup_remaining = receipt["gpu_started_at_unix_s"] + 600 - time.time()
+                    if min(startup_remaining, remaining) <= 0:
+                        raise TimeoutError("startup_allowance_exhausted")
+                    readiness = await asyncio.wait_for(service.readiness.remote.aio(), min(startup_remaining, remaining))
+                    if not readiness.get("ready") or readiness.get("app_id") != app.app_id:
+                        raise ValueError("readiness_identity_or_process_unverified")
+                    event["status"] = "ready"
+                    receipt["ready_at_unix_s"] = time.time()
+                    event["finished_at_unix_s"] = receipt["ready_at_unix_s"]
+                with diagnostic_stage(receipt, receipt_path, "endpoint_check"):
+                    endpoint = await asyncio.wait_for(service.web.get_web_url.aio(), 5)
+                    if endpoint != plan.target.endpoint.removesuffix("/v1"):
+                        raise ValueError("deployed_endpoint_mismatch")
+                with diagnostic_stage(receipt, receipt_path, "provenance"):
+                    receipt["observed_before"] = await asyncio.wait_for(asyncio.to_thread(serve.read_observations, plan, app.app_id, sdk=sdk), 10)
+                    receipt["environment_status"] = environment_status(plan, receipt["observed_before"], frozen["tokenizer_sha256"])
+                with diagnostic_stage(receipt, receipt_path, "inference"):
+                    if receipt["environment_status"] == "observed_stable":
+                        await attempts(plan, receipt, receipt_path)
+                    else:
+                        receipt["status"] = "environment_ineligible"
     except (Exception, asyncio.CancelledError, KeyboardInterrupt) as exc:
-        receipt.update(status="stopped", error=type(exc).__name__)
+        receipt["status"] = "stopped"
+        receipt.setdefault("error", type(exc).__name__)
     finally:
         # Lifecycle also writes cleanup on arming failure. A partially failed deploy
         # may already own an app; stop its exact ID even before lifecycle entry.
         if app is not None and app.app_id:
             receipt["app_id"] = app.app_id
             if "cleanup" not in receipt["lifecycle"]:
-                receipt["lifecycle"]["cleanup"] = await serve.stop_experiment(plan, app.app_id, sdk=sdk)
+                try:
+                    receipt["lifecycle"]["cleanup"] = await serve.stop_experiment(plan, app.app_id, sdk=sdk)
+                except (Exception, asyncio.CancelledError, KeyboardInterrupt) as exc:
+                    receipt["lifecycle"]["cleanup"] = {"cleanup": "unverified", "error": type(exc).__name__}
+                    record_error(receipt, receipt_path, exc, "cleanup")
             try:
                 receipt["observed_after"] = await asyncio.wait_for(asyncio.to_thread(serve.read_observations, plan, app.app_id, sdk=sdk), 10)
                 receipt["environment_status"] = environment_status(plan,
                     receipt.get("observed_before", []) + receipt["observed_after"], frozen["tokenizer_sha256"])
                 if not any(row.get("phase") == "closing" for row in receipt["observed_after"]):
                     receipt["environment_status"] = "unknown"
-            except Exception:
+            except Exception as exc:
                 receipt["environment_status"] = "unknown"
+                record_error(receipt, receipt_path, exc, "provenance_after")
         receipt["evidence_status"] = ("eligible" if receipt["attempts"] and all(
             row["status"] == "eligible" for row in receipt["attempts"]) else "ineligible_or_unobserved")
         receipt["finished_at_unix_s"] = time.time()

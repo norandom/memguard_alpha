@@ -64,6 +64,20 @@ token evidence, calibration quality and mitigation effects remain separate gates
 see [Jane Street's method](https://blog.janestreet.com/mitigating-memorization-in-llms/).
 The frontier completion-only path remains separate.
 
+## Local diagnostic preparation — 2026-11-06
+
+The runner now retains bounded, sanitized deployment/control error messages,
+stage names and stack-frame metadata in new receipts. It preserves the primary
+reason when cleanup or final provenance collection also fails. Inference errors
+retain metadata without response text. These changes are verified only with
+offline synthetic failures; no further deployment, control-plane read, GPU or
+inference call was made for this preparation. Earlier receipts remain unchanged.
+
+Task 10.2 remains blocked. The next step is independent review of this diagnostic
+change and human review of a concrete proposal for obtaining the remaining
+deployment rejection detail within an explicitly approved scope. The change does
+not itself establish that rejection's cause or authorize another paid attempt.
+
 Operator instructions: [Modal provider](../modal-provider.md).
 Private, ignored receipts: `runs/modal-preflight/remote-staging.json`,
 `local-staging.json`, `controller-debug.json`, `pilot-2026-11-06-01.json` through

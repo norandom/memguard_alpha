@@ -276,6 +276,23 @@ is USD 0.09/GiB-month; actual billing and retention duration remain unknown.
 
 Receipt `attempts` have one row per physical inference intent/outcome; `position`
 is a zero-based frozen prompt index. Lifecycle/control rows are separate.
+For new failures, read the legacy `error` type together with `error_stage` and
+`diagnostics`. Stages distinguish budget preflight, cache inventory, CPU controller
+deployment, model deployment, expiry arming, proxy denial, readiness, endpoint
+checks and provenance. Each diagnostic contains a bounded sanitized message and
+up to twelve filename/function/line-number frames; chained errors are bounded to
+four type/message records. No source lines or locals are captured. Inference
+attempt diagnostics contain type and frame metadata only, with the existing
+provider failure reason and HTTP status; response bodies and generated text are
+excluded. The first failure remains authoritative when cleanup or final
+provenance collection also fails; read later diagnostics and cleanup state too.
+Inference ancestry and provider response-error branches remain opaque through
+later cleanup exception chains, including their nested causes.
+Redaction uses nonempty credential values already present in the executing child
+process, including proxy bearer components, and never opens `.env`. Default
+planning remains independent of credentials. Old receipts are unchanged and
+cannot recover previously omitted exception messages.
+
 Token positions in the adapter are generated-token positions, alternatives align
 at that same position, and probabilities use natural logarithms. Top-five evidence
 is partial, never a renormalized full-vocabulary distribution. GPT-OSS reasoning

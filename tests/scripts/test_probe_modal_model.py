@@ -23,7 +23,17 @@ def test_default_plan_is_offline_and_freezes_prompts(tmp_path, monkeypatch):
         pytest.fail("planning must not create an HTTP session")
 
     monkeypatch.setattr(requests, "Session", forbidden)
-    result = probe.planning(MANIFEST, tokenizer_root=tmp_path)
+    monkeypatch.setattr(probe.serve, "_sdk", forbidden)
+    original_read = Path.read_text
+
+    def no_env_file(path, *args, **kwargs):
+        assert path.name != ".env"
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", no_env_file)
+    with monkeypatch.context() as blocked:
+        blocked.setattr(probe.os.environ, "items", forbidden)
+        result = probe.planning(MANIFEST, tokenizer_root=tmp_path)
     assert result["mode"] == "plan"
     assert result["inference_posts"] == result["cloud_mutations"] == 0
     assert len(result["prompts"]) == 8
@@ -136,6 +146,7 @@ def test_identity_unknown_and_drift_never_establish_match():
 def fake_cloud(monkeypatch, plan, *, arming_failure=False, health_guard=True):
     # This fake control plane is independent of the test runner's Python minor.
     monkeypatch.setattr(probe.serve, "require_operator_python", lambda: None)
+    monkeypatch.setenv("TEST_PROVIDER_SECRET", "provider private secret")
     events = []
     app = SimpleNamespace(app_id="ap-" + "a" * 22)
 
@@ -336,3 +347,222 @@ def test_billing_cli_preserves_attempt_history_and_frozen_prices(configured, mon
     assert updated["cost_report"]["cleanup_state"] == "unverified"
     assert "private-" not in capsys.readouterr().out
     assert "private-" not in path.read_text()
+
+
+@pytest.mark.parametrize("controller", [True, False])
+def test_deployment_failure_has_durable_sanitized_stage(configured, monkeypatch, controller):
+    manifest, approval, path = configured
+    sdk, _ = fake_cloud(monkeypatch, load_plan(manifest))
+    monkeypatch.setenv("TEST_API_KEY", "synthetic-key-993")
+    monkeypatch.setenv("TEST_TOKEN", "synthetic-token-994")
+    monkeypatch.setenv("TEST_PASSWORD", "synthetic-password-995")
+
+    async def rejected(**kwargs):
+        raise ValueError("Invalid deployment: synthetic-key-993 synthetic-token-994 synthetic-password-995 "
+                         "test.secret-never-export secret-never-export Bearer extra-proxy.extra-secret")
+
+    app = SimpleNamespace(app_id=None, deploy=SimpleNamespace(aio=rejected))
+    monkeypatch.setattr(probe.serve, "create_expiry_app" if controller else "create_app", lambda **k: app)
+    receipt = asyncio.run(probe.execute(manifest, path, approval, sdk=sdk))
+    assert receipt["error"] == "ValueError"
+    assert receipt["error_stage"] == ("controller_deploy" if controller else "model_deploy")
+    diagnostic = receipt["diagnostics"][0]
+    assert "Invalid deployment" in diagnostic["message"]
+    assert diagnostic["frames"][-1]["function"] == "rejected"
+    assert set(diagnostic["frames"][-1]) == {"filename", "function", "lineno"}
+    durable = path.read_text()
+    for secret in ("synthetic-key-993", "synthetic-token-994", "synthetic-password-995",
+                   "test.secret-never-export", "secret-never-export", "extra-proxy", "extra-secret"):
+        assert secret not in durable
+    assert json.loads(durable)["diagnostics"] == receipt["diagnostics"]
+
+
+def test_bounded_diagnostics_preserve_chain_and_exclude_inference_detail(monkeypatch):
+    monkeypatch.setenv("TEST_SECRET", "nested-secret")
+    try:
+        try:
+            raise ValueError("nested-secret")
+        except ValueError as cause:
+            raise RuntimeError("useful failure " + "x" * 10000) from cause
+    except RuntimeError as exc:
+        diagnostic = probe.error_diagnostic(exc, "controller_deploy")
+        assert len(diagnostic["message"]) <= 2000
+        assert diagnostic["chain"][0]["error"] == "ValueError"
+        assert "nested-secret" not in json.dumps(diagnostic)
+        hidden = probe.error_diagnostic(exc, "inference")
+        assert "message" not in hidden and "chain" not in hidden
+
+
+def test_primary_deploy_error_survives_cleanup_and_observation_failure(configured, monkeypatch):
+    manifest, approval, path = configured
+    sdk, _ = fake_cloud(monkeypatch, load_plan(manifest))
+
+    async def rejected(**kwargs):
+        raise ValueError("primary deployment rejection")
+
+    async def cleanup(*args, **kwargs):
+        raise RuntimeError("secondary cleanup rejection")
+
+    def observations(*args, **kwargs):
+        raise OSError("secondary observations rejection")
+
+    app = SimpleNamespace(app_id="ap-" + "a" * 22, deploy=SimpleNamespace(aio=rejected))
+    monkeypatch.setattr(probe.serve, "create_app", lambda **k: app)
+    monkeypatch.setattr(probe.serve, "stop_experiment", cleanup)
+    monkeypatch.setattr(probe.serve, "read_observations", observations)
+    receipt = asyncio.run(probe.execute(manifest, path, approval, sdk=sdk))
+    assert receipt["error"] == "ValueError" and receipt["error_stage"] == "model_deploy"
+    assert receipt["diagnostics"][0]["message"] == "primary deployment rejection"
+    assert [d["stage"] for d in receipt["diagnostics"]] == ["model_deploy", "cleanup", "provenance_after"]
+    assert receipt["lifecycle"]["cleanup"]["cleanup"] == "unverified"
+    assert json.loads(path.read_text())["error"] == "ValueError"
+
+
+@pytest.mark.parametrize("stage", ["budget_preflight", "cache_inventory", "expiry_arming", "proxy_denial",
+                                  "readiness", "endpoint_check", "provenance"])
+def test_control_failure_stage_is_identifiable(configured, monkeypatch, stage):
+    manifest, approval, path = configured
+    sdk, _ = fake_cloud(monkeypatch, load_plan(manifest))
+
+    def rejected(*args, **kwargs):
+        raise ValueError("actionable control rejection")
+
+    async def rejected_async(*args, **kwargs):
+        rejected()
+
+    if stage == "budget_preflight":
+        monkeypatch.setattr(probe, "approval_check", rejected)
+    elif stage == "cache_inventory":
+        monkeypatch.setattr(probe, "verify_weight_cache", rejected_async)
+    elif stage == "proxy_denial":
+        monkeypatch.setattr(probe, "unauthenticated_health_guard", rejected)
+    elif stage == "provenance":
+        monkeypatch.setattr(probe.serve, "read_observations", rejected)
+    elif stage == "expiry_arming":
+        @asynccontextmanager
+        async def lifecycle(*args, **kwargs):
+            rejected()
+            yield
+        monkeypatch.setattr(probe.serve, "experiment_lifecycle", lifecycle)
+    else:
+        service = sdk.Cls.from_name()()
+        monkeypatch.setattr(service.readiness.remote if stage == "readiness" else service.web.get_web_url,
+                            "aio", rejected_async)
+    receipt = asyncio.run(probe.execute(manifest, path, approval, sdk=sdk))
+    assert receipt["status"] == "stopped" and receipt["error_stage"] == stage
+    assert receipt["diagnostics"][0]["message"] == "actionable control rejection"
+    assert len(receipt["diagnostics"]) == (2 if stage == "provenance" else 1)
+    assert not receipt["attempts"]
+
+
+def test_lifecycle_cleanup_exception_cannot_mask_readiness_reason(configured, monkeypatch):
+    manifest, approval, path = configured
+    sdk, _ = fake_cloud(monkeypatch, load_plan(manifest))
+
+    @asynccontextmanager
+    async def lifecycle(*args, receipt, **kwargs):
+        receipt.update(admission_open=True, deadline_unix_s=time.time() + 1000)
+        try:
+            yield
+        finally:
+            receipt["cleanup"] = {"cleanup": "unverified"}
+            raise RuntimeError("secondary lifecycle failure")
+
+    async def readiness():
+        raise ValueError("primary readiness rejection")
+
+    monkeypatch.setattr(probe.serve, "experiment_lifecycle", lifecycle)
+    monkeypatch.setattr(sdk.Cls.from_name()().readiness.remote, "aio", readiness)
+    receipt = asyncio.run(probe.execute(manifest, path, approval, sdk=sdk))
+    assert receipt["error"] == "ValueError" and receipt["error_stage"] == "readiness"
+    assert [d["stage"] for d in receipt["diagnostics"]] == ["readiness", "cleanup"]
+    assert receipt["diagnostics"][0]["message"] == "primary readiness rejection"
+
+
+def test_diagnostics_bound_chain_and_never_serialize_request_error_payload():
+    cause = None
+    for _ in range(8):
+        error = RuntimeError("x" * 10000)
+        error.__cause__ = cause
+        cause = error
+    diagnostic = probe.error_diagnostic(cause, "model_deploy")
+    assert len(diagnostic["chain"]) == 4
+    assert len(json.dumps(diagnostic)) < 12000
+    request_error = probe.RequestError("private-response-body", detail="private-provider-detail", status_code=503)
+    for stage in ("inference", "model_deploy"):
+        diagnostic = probe.error_diagnostic(request_error, stage)
+        assert "private-" not in json.dumps(diagnostic)
+
+
+def test_inference_diagnostic_persists_without_generated_exception_text(configured):
+    manifest, _, path = configured
+
+    class Client:
+        def __init__(self, *args):
+            pass
+
+        def generate_for_stage(self, *args, **kwargs):
+            raise RuntimeError("private-generated-response-body")
+
+    receipt = attempt_receipt(manifest)
+    asyncio.run(probe.attempts(load_plan(manifest), receipt, path, client_factory=Client))
+    diagnostic = receipt["attempts"][0]["diagnostic"]
+    assert diagnostic["stage"] == "inference" and diagnostic["error"] == "RuntimeError"
+    assert diagnostic["frames"] and "message" not in diagnostic
+    assert "private-generated" not in path.read_text()
+
+
+def test_cleanup_chain_never_discloses_inference_failure_in_receipt_or_cli(configured, monkeypatch, capsys):
+    manifest, approval, path = configured
+    sdk, _ = fake_cloud(monkeypatch, load_plan(manifest))
+
+    async def inference(*args, **kwargs):
+        try:
+            raise ValueError("private-nested-generated-answer")
+        except ValueError as cause:
+            raise ValueError("private-generated-answer") from cause
+
+    @asynccontextmanager
+    async def lifecycle(*args, receipt, **kwargs):
+        receipt.update(admission_open=True, deadline_unix_s=time.time() + 1000)
+        try:
+            yield
+        finally:
+            receipt["cleanup"] = {"cleanup": "unverified"}
+            raise RuntimeError("useful cleanup rejection")
+
+    monkeypatch.setattr(probe, "attempts", inference)
+    monkeypatch.setattr(probe.serve, "experiment_lifecycle", lifecycle)
+    monkeypatch.setattr(probe.serve, "_sdk", lambda sdk: sdk or fake_sdk)
+    fake_sdk = sdk
+    monkeypatch.setattr(sys, "argv", ["probe", "--execute", "--manifest", str(manifest),
+                                    "--approval", str(approval), "--receipt", str(path)])
+    assert probe.main() == 1
+    printed = capsys.readouterr().out
+    durable = path.read_text()
+    assert "private-generated-answer" not in durable
+    assert "private-nested-generated-answer" not in durable
+    assert "private-generated-answer" not in printed
+    assert "private-nested-generated-answer" not in printed
+    receipt = json.loads(durable)
+    assert receipt["error_stage"] == "inference"
+    assert receipt["diagnostics"][-1]["message"] == "useful cleanup rejection"
+
+
+def test_request_error_chain_is_transitively_opaque():
+    try:
+        try:
+            raise ValueError("private-deep-response-body")
+        except ValueError as cause:
+            raise ValueError("private-response-body") from cause
+    except ValueError as cause:
+        error = probe.RequestError("private-request-message", detail="private-request-detail")
+        error.__cause__ = cause
+    diagnostic = probe.error_diagnostic(error, "model_deploy")
+    assert "private-" not in json.dumps(diagnostic)
+    assert diagnostic["error"] == "RequestError"
+    outer = RuntimeError("useful ordinary deployment failure")
+    outer.__cause__ = error
+    diagnostic = probe.error_diagnostic(outer, "model_deploy")
+    assert "private-" not in json.dumps(diagnostic)
+    assert diagnostic["message"] == "useful ordinary deployment failure"
