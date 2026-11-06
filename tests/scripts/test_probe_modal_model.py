@@ -18,7 +18,11 @@ from scripts import probe_modal_model as probe
 MANIFEST = Path(__file__).resolve().parents[2] / "configs/modal/gpt-oss-20b-pilot.json"
 
 
-def test_default_plan_is_offline_and_freezes_prompts(tmp_path):
+def test_default_plan_is_offline_and_freezes_prompts(tmp_path, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("planning must not create an HTTP session")
+
+    monkeypatch.setattr(requests, "Session", forbidden)
     result = probe.planning(MANIFEST, tokenizer_root=tmp_path)
     assert result["mode"] == "plan"
     assert result["inference_posts"] == result["cloud_mutations"] == 0
@@ -129,7 +133,7 @@ def test_identity_unknown_and_drift_never_establish_match():
                                     {"test": "hash"}) == "drift"
 
 
-def fake_cloud(monkeypatch, plan, *, arming_failure=False):
+def fake_cloud(monkeypatch, plan, *, arming_failure=False, health_guard=True):
     events = []
     app = SimpleNamespace(app_id="ap-" + "a" * 22)
 
@@ -171,11 +175,60 @@ def fake_cloud(monkeypatch, plan, *, arming_failure=False):
         return {"status": "verified_inventory"}
 
     monkeypatch.setattr(probe, "verify_weight_cache", cache)
+    if health_guard:
+        monkeypatch.setattr(probe, "unauthenticated_health_guard", lambda *a: None)
     monkeypatch.setattr(probe.serve, "create_app", lambda **kwargs: app)
     monkeypatch.setattr(probe.serve, "create_expiry_app", lambda **kwargs: cpu)
     monkeypatch.setattr(probe.serve, "experiment_lifecycle", lifecycle)
     monkeypatch.setattr(probe.serve, "read_observations", lambda *a, **k: [ready(plan, "ready"), ready(plan, "closing")])
     return sdk, events
+
+
+@pytest.mark.parametrize("outcome", [401, 200, 403, 302, requests.Timeout("private secret"),
+                                     requests.ConnectionError("private secret")])
+def test_unauthenticated_denial_precedes_readiness_and_preserves_cleanup(configured, monkeypatch, outcome):
+    manifest, approval, path = configured
+    sdk, events = fake_cloud(monkeypatch, load_plan(manifest), health_guard=False)
+    calls = install_transport(monkeypatch, path)
+
+    class Session:
+        trust_env = True
+        headers = {"Authorization": "inherited private secret"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def get(self, url, **kwargs):
+            assert events == ["cache", "cpu", "gpu", "arm"]
+            assert not self.trust_env and not self.headers
+            assert url == "https://test.modal.run/health"
+            assert kwargs == {"allow_redirects": False, "timeout": (5, 10)}
+            durable = json.loads(path.read_text())
+            event = durable["control_events"][-1]
+            assert event["operation"] == "unauthenticated_health"
+            assert event["status"] == "intent" and event["inference_posts"] == 0
+            assert durable["attempts"] == [] and durable["inference_posts"] == 0
+            events.append("unauthenticated_health")
+            if isinstance(outcome, Exception):
+                raise outcome
+            return SimpleNamespace(status_code=outcome)
+
+    monkeypatch.setattr(requests, "Session", Session)
+    receipt = asyncio.run(probe.execute(manifest, path, approval, sdk=sdk))
+    assert "unauthenticated_health" in events
+    assert ("readiness" in events) == (outcome == 401)
+    assert len(calls) == (8 if outcome == 401 else 0)
+    event = next(row for row in receipt["control_events"] if row["operation"] == "unauthenticated_health")
+    assert event["status"] == ("denied" if outcome == 401 else "unavailable" if isinstance(outcome, Exception)
+                               else "unexpected_status")
+    assert event.get("http_status") == (None if isinstance(outcome, Exception) else outcome)
+    assert receipt["lifecycle"]["cleanup"]["cleanup"] == "verified_stopped"
+    assert events[-1] == "stop"
+    assert "private secret" not in path.read_text()
+    assert "test.secret" not in path.read_text()
 
 
 @pytest.mark.parametrize("arming_failure", [False, True])

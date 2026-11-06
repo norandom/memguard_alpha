@@ -15,6 +15,8 @@ import time
 from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from deploy.modal import serve
@@ -230,6 +232,31 @@ async def attempts(plan, receipt, path, *, client_factory=OpenAICompatibleClient
         receipt["status"] = "completed"
 
 
+def unauthenticated_health_guard(plan, receipt, path):
+    """Require proxy denial before any GPU readiness call; never send credentials."""
+    event = {"operation": "unauthenticated_health", "category": "control", "status": "intent",
+             "inference_posts": 0, "started_at_unix_s": time.time(), "observed_gross_usd": None}
+    receipt["control_events"].append(event)
+    persist(path, receipt)
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            session.headers.clear()
+            response = session.get(plan.target.endpoint.removesuffix("/v1") + "/health",
+                                   allow_redirects=False, timeout=(5, 10))
+            event["http_status"] = response.status_code
+        if event["http_status"] != 401:
+            event["status"] = "unexpected_status"
+            raise ValueError("unauthenticated_health_expected_401")
+        event["status"] = "denied"
+    except requests.RequestException:
+        event["status"] = "unavailable"
+        raise ValueError("unauthenticated_health_unavailable") from None
+    finally:
+        event["finished_at_unix_s"] = time.time()
+        persist(path, receipt)
+
+
 async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("models"), sdk=None):
     frozen = planning(manifest, tokenizer_root=tokenizer_root)
     plan = load_plan(manifest)
@@ -270,6 +297,7 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
         async with serve.experiment_lifecycle(plan, app.app_id,
                 gpu_started_at_unix_s=receipt["gpu_started_at_unix_s"], receipt=receipt["lifecycle"], sdk=sdk):
             persist(receipt_path, receipt)
+            await asyncio.to_thread(unauthenticated_health_guard, plan, receipt, receipt_path)
             event = {"operation": "readiness", "category": "control", "status": "intent", "inference_posts": 0,
                      "started_at_unix_s": time.time(), "observed_gross_usd": None}
             receipt["control_events"].append(event)

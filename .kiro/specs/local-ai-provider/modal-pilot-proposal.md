@@ -2,6 +2,12 @@
 
 Prepared 2026-11-06. Task 10.2 remains pending paid approval and budget confirmation.
 
+Subsequent authorization: the user approved this paid plan and confirmed the
+discussed USD 30 monthly workspace usage limit. That limit is operator-confirmed;
+the budget-read API denied access, so it is not reported as provider-verified.
+The local approval record now permits the USD 5 pilot. Dedicated environment
+and volume creation and CPU-only uploads have begun; GPU acceptance remains pending.
+
 ## Verified preparation
 
 - Root `.env` account token authenticated for workspace `wishinet`.

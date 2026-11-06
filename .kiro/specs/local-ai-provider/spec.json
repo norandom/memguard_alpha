@@ -28,7 +28,8 @@
         "next_prerequisites": ["paid-pilot-approval", "account-workspace-budget", "pinned-tokenizer", "staged-weights"]
       },
       "task_approval_context": "User explicitly approved tasks 8–10; paid pilot retains its separate gate.",
-      "paid_deployment_authorized": false
+      "paid_deployment_authorized": true,
+      "paid_approval_context": "User approved the concrete USD 5 pilot proposal and subsequently confirmed the discussed USD 30 monthly workspace usage limit; source is operator confirmation, not an API-verified cap."
     }
   },
   "language": "en",
