@@ -412,6 +412,8 @@ def create_app(*, sdk=None, root: Path = ROOT):
             '&& ln -s /usr/bin/python3 /usr/local/bin/python'
         ],
     )
+    # The registry image starts the vLLM CLI; Modal must start its own bootstrap.
+    image = image.entrypoint([])
     image = image.env(
         {
             "HF_HOME": str(CACHE),

@@ -14,6 +14,7 @@ import pytest
 
 modal = pytest.importorskip("modal")
 
+from modal._image import _Image
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.app import _App
@@ -52,6 +53,19 @@ def test_serving_serializes_before_class_or_function_hydration():
     assert isinstance(payload, bytes) and payload
     assert not cls._is_hydrated
     assert all(not fn._is_hydrated for fn in internal_app._local_state.functions.values())
+
+
+def test_serving_image_resets_inherited_entrypoint_with_real_sdk(monkeypatch):
+    commands = []
+    original = _Image.dockerfile_commands
+
+    def record_commands(self, *args, **kwargs):
+        commands.extend(args)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(_Image, "dockerfile_commands", record_commands)
+    serve.create_app()
+    assert commands.count("ENTRYPOINT []") == 1
 
 
 def test_runtime_identity_uses_observed_container_context(monkeypatch):
