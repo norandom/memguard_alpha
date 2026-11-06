@@ -10,6 +10,12 @@ requested. Admit a configuration only after observing genuine log probabilities.
 
 ## Scope and boundaries
 
+- The November 6 [Modal extension](modal-extension.md) adds optional remote
+  hosting for open-weight models. The user already has a Modal account.
+  Local CPU/GPU/NPU support remains in scope; remote hosting is an explicit
+  alternative and never a silent fallback. Existing requirements 1–6 apply
+  to remote measurements where applicable; local hardware admission checks
+  must not be applied to the remote host using this machine's memory.
 - Include local endpoint configuration, capability probes, CPU/GPU and NPU
   execution reporting, calibration, single-answer and optional ensemble evaluation.
 - Treat the observed November 5 failure as **NIM unavailable** for those attempts.
@@ -73,6 +79,20 @@ requested. Admit a configuration only after observing genuine log probabilities.
 4. The implementation shall use idiomatic domain names and document array axes, token positions, probability units, DataFrame row grain and alignment wherever these representations cross interfaces.
 5. When documenting divergence-related use, the project shall cite [Jane Street's approach](https://blog.janestreet.com/mitigating-memorization-in-llms/) and distinguish this provider extension from the separate frontier completion-only path.
 
+## Requirement 7: Optional budgeted remote hosting
+
+1. When selecting Modal hosting, Recall Guard shall require an explicit endpoint, authentication, model and generation settings without changing the selected provider automatically.
+2. Before admitting a remotely hosted model to measurement, Recall Guard shall verify genuine token-aligned log probabilities and required alternatives using the same evidence criteria as local endpoints.
+3. When preparing a remote run, the evaluation shall record the model revision, quantization, tokenizer, serving runtime, score semantics and remote hardware where available, labeling unavailable fields unknown.
+4. Before starting a paid pilot, the operator workflow shall present its model, resource configuration, request and token bounds, elapsed-time limit, estimated cost and configured provider budget for review.
+5. While the initial pilot is running, the hosting configuration shall permit at most one model-serving container and one active inference request at a time.
+6. When an experiment completes, fails, reaches a bound or is cancelled, the workflow shall stop admitting requests and release experiment-owned compute, recording any unverified cleanup and retained storage.
+7. When reporting a remote experiment, the evaluation shall distinguish cold startup, generation latency, failures, usable evidence, estimated charges and observed charges, including cost per usable measurement when known.
+8. If cost accounting is delayed or incomplete, the workflow shall label cost estimates and budget enforcement limitations rather than promise an exact dollar ceiling.
+9. Where optional remote hosting is used, Recall Guard shall remain installable and usable without the hosting SDK or accelerator packages in its core dependencies.
+10. When credentials are configured, the workflow shall keep secrets outside tracked files and redact them from logs and published receipts.
+11. When comparing remote results with local or NIM results, the evaluation shall report runtime and quantization differences and require calibration revalidation for changed measurement conditions.
+
 ## Review status
 
 Requirements review: self-reviewed against EARS, coverage and scope boundaries.
@@ -80,3 +100,9 @@ Requirements approved by the user's instruction to continue the spec on 2026-11-
 Design and tasks retain their separate review gates. Windows operations use
 PowerShell; WSL is reserved for Dagger CI, per project memory.
 No new installation, inference batch or hardware change is authorized by this draft.
+
+November 6 extension: requirement 7 passed an inline requirements review for
+testability, failure handling and scope continuity. The user requested adding
+Modal for implementation and approved the subsequent extension design. Tasks
+8–10 have passed independent review and await implementation approval. Prior
+local implementation validation applies to the original scope only.

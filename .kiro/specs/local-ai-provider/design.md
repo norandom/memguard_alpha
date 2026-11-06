@@ -1,5 +1,8 @@
 # Design: local AI provider
 
+The additive [Modal design](modal-design.md) covers requirement 7 with a separate
+approval state. Original approvals do not authorize its paid pilot.
+
 ## Overview
 
 Extend Recall Guard's existing completion-client integration to locally hosted

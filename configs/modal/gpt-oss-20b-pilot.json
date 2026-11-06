@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "target": {
+    "workspace": null,
+    "environment": "recall-guard-pilot",
+    "app": "recall-guard-gpt-oss-20b-pilot",
+    "endpoint": null,
+    "credential_env": "MODAL_PROXY_BEARER"
+  },
+  "artifacts": {
+    "model": "openai/gpt-oss-20b",
+    "model_revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+    "tokenizer": "openai/gpt-oss-20b",
+    "tokenizer_revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+    "quantization": "mxfp4",
+    "runtime": "vllm==0.17.0",
+    "image": "vllm/vllm-openai@sha256:14ea8b431aaaf75eb873c46c8ebfbad2b4b0790d30c66126d789d8cb9bd0aab9",
+    "platform": "linux/amd64",
+    "modal_sdk": "1.6.3",
+    "score_semantics": "natural_log_probabilities",
+    "attention_backend": "TRITON_ATTN",
+    "moe_backend": "marlin",
+    "observed_hardware": null
+  },
+  "resources": {
+    "gpu": "A100-40GB",
+    "gpu_count": 1,
+    "cpu_physical_cores": 4,
+    "memory_gib": 32,
+    "context_tokens": 4096,
+    "tensor_parallel_size": 1,
+    "max_num_seqs": 1,
+    "concurrency": 1,
+    "min_containers": 0,
+    "max_containers": 1,
+    "buffer_containers": 0,
+    "idle_seconds": 60
+  },
+  "limits": {
+    "inference_posts": 8,
+    "eligibility_posts": 1,
+    "measurement_posts": 7,
+    "retries": 0,
+    "output_tokens_per_post": 512,
+    "total_output_tokens": 4096,
+    "request_seconds": 120,
+    "gpu_phase_seconds": 1200,
+    "startup_seconds": 600,
+    "cleanup_seconds": 120,
+    "temperature": 0,
+    "top_p": 1,
+    "logprobs": true,
+    "top_logprobs": 5
+  },
+  "cache": {
+    "volume": "recall-guard-gpt-oss-20b-weights",
+    "mount_path": "/cache/huggingface",
+    "staging_gpu_count": 0,
+    "stage_separately": true,
+    "retain_after_cleanup": true
+  },
+  "upload_allowlist": ["deploy/modal/serve.py", "deploy/modal/manifest.py", "configs/modal/gpt-oss-20b-pilot.json"],
+  "cost": {
+    "pricing_checked_at": "2026-11-06T08:57:44Z",
+    "pricing_source": "https://modal.com/pricing",
+    "gpu_usd_per_second": 0.000583,
+    "physical_core_usd_per_second": 0.0000131,
+    "memory_gib_usd_per_second": 0.00000222,
+    "volume_usd_per_gib_month": 0.09,
+    "target_usd": 5,
+    "hard_ceiling": false,
+    "provider_budget": null,
+    "caveats": "Resource estimate only; excludes staging, build, storage, expiry controller, cleanup, egress and excess CPU/RAM usage. Monthly provider budgets include prior usage; environment compute budgets differ from workspace coverage. Recheck prices and verify operator allowance before paid approval. Credits are separate from gross cost."
+  },
+  "provenance": {
+    "checked_on": "2026-11-06",
+    "model_api": "https://huggingface.co/api/models/openai/gpt-oss-20b/revision/6cee5e81ee83917806bbde320786a8fb61efebee",
+    "access": "Public, private=false, gated=false; tokenizer.json, tokenizer_config.json, config.json and LICENSE listed at pinned commit. No weights downloaded or account credentials inspected.",
+    "license": "Apache-2.0",
+    "license_source": "https://huggingface.co/openai/gpt-oss-20b/blob/6cee5e81ee83917806bbde320786a8fb61efebee/LICENSE",
+    "license_prerequisites": "Preserve Apache-2.0 license, attribution and applicable notices on redistribution; review pinned model card and applicable usage obligations before execution.",
+    "image_tag": "v0.17.0",
+    "image_registry": "https://registry-1.docker.io/v2/vllm/vllm-openai/manifests/v0.17.0",
+    "image_index_digest": "sha256:2296a2a7e1ce1dc59c6577ba5900f4e9910b76c4a0cb134833a8137f92404dfa",
+    "sdk_source": "https://pypi.org/pypi/modal/1.6.3/json",
+    "recipe_source": "https://github.com/vllm-project/recipes/blob/main/OpenAI/GPT-OSS.md",
+    "resources_source": "https://modal.com/docs/guide/resources",
+    "compatibility": "Released linux/amd64 image; primary vLLM recipe documents single-A100 GPT-OSS using Triton attention and Marlin MXFP4. SDK supports Python>=3.10,<3.16; isolated tooling targets 3.12-3.14. Hardware fit, image startup and actual logprob alignment remain unverified until separately approved live pilot."
+  }
+}

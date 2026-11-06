@@ -1,7 +1,28 @@
 {
   "feature_name": "local-ai-provider",
   "created_at": "2026-11-05",
-  "updated_at": "2026-11-05",
+  "updated_at": "2026-11-06",
+  "extensions": {
+    "modal_hosting": {
+      "phase": "implementing",
+      "tasks_generated": true,
+      "task_ids": ["8.1", "8.2", "8.3", "9.1", "9.2", "10.1", "10.2"],
+      "task_review": {"mode": "independent", "decision": "PASS", "report": "modal-task-review.md"},
+      "requirements_approved": true,
+      "approval_context": "User agreed to the Modal extension and requested proceeding with planning.",
+      "design_document": "modal-design.md",
+      "design_review": "inline-pass",
+      "document": "modal-extension.md",
+      "requirements": ["7"],
+      "requirements_review": "inline-pass",
+      "scope_requested_by_user": true,
+      "design_approved": true,
+      "design_approval_context": "User explicitly approved the Modal design before task generation.",
+      "tasks_approved": true,
+      "task_approval_context": "User explicitly approved tasks 8–10; paid pilot retains its separate gate.",
+      "paid_deployment_authorized": false
+    }
+  },
   "language": "en",
   "phase": "implementing",
   "approvals": {

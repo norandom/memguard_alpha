@@ -21,3 +21,13 @@ User instruction, 2026-11-06: store downloaded models under the checkout's
 preserve its native blobs/manifests layout. Keep model files excluded from Git,
 Docker build contexts and Dagger uploads. Test local models sequentially and
 unload each model before starting the next.
+
+## Optional remote model hosting
+
+User instruction, 2026-11-06: add Modal hosting to the local-provider spec;
+the user already has an account and budget matters. Keep it an optional external
+endpoint using the existing adapter, with mandatory observed logprobs. Remote
+GPU hosting does not change the PowerShell/WSL policy or add accelerator/Modal
+dependencies to the core library. See the
+[Modal extension](../specs/local-ai-provider/modal-extension.md) for scope,
+cost controls and the proposed bounded pilot.

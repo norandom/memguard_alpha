@@ -145,3 +145,94 @@ No driver, BIOS or WSL changes are included.
 
 Technical documentation is included because it is explicitly required by this
 project's accepted requirements, superseding the skill's generic code-only guideline.
+
+## User-authorized smoke-test extension, 2026-11-06
+
+- [ ] 7.1 Verify the broader local model set with memory-aware serial admission
+  - User explicitly requested testing the other documented models and excluding GPT-OSS when insufficient memory is available.
+  - Include `phi4-mini:3.8b`, `llama3.1:8b`, `llama3.2:3b`, `gemma3:4b`, `llava-llama3:latest` and conditional `gpt-oss:20b`. Download missing artifacts into the existing ignored `models/` store; record registry identities and sizes before pulling.
+  - Add a reusable smoke CLI using the existing OpenAI-compatible adapter and shared evidence validation, with dry-run default and explicit execution. Check actual available host RAM immediately before admission; unknown memory skips GPT-OSS. Default GPT-OSS threshold is 16 GiB available RAM, an explicit conservative policy rather than a proven minimum.
+  - Freeze installed identities/settings before inference, persist intent, allow at most one inference request per model (six total), zero retries, 32 output tokens and 300 seconds per request. Refuse existing receipts and stop on uncertain transport outcomes. No calibration or ensemble measurement is authorized here.
+  - Use one loaded model and one active request; unload each tested model and verify unload before the next. Preserve probability-validation results separately from context/identity failures. Report unsupported/missing evidence honestly; do not manufacture alignment or replace models.
+  - Add focused offline regressions and independent review, run the bounded live smoke, and record dated outcomes. No driver/NPU/BIOS changes, additional provider or generic hosting framework.
+  - _Boundary: Local endpoint admission and operational smoke tooling_
+  - _Requirements: 1.1, 1.3, 2.1, 2.2, 2.3, 3.3, 3.4, 3.6, 5.1, 5.2, 5.4, 5.5, 6.4_
+
+## Modal extension: approved design, implementation tasks pending approval
+
+Design: [modal-design.md](modal-design.md). These tasks are additive; existing
+local work and conditional NPU status are unchanged. No parallel markers: the
+tasks share the deployment manifest, lifecycle and receipt contracts. Coding
+subtasks are intended as focused 1–3 hour units. Technical documentation and
+live acceptance are included because the accepted project scope requires them.
+Task approval authorizes implementation and offline validation; task 10.2 has
+a separate paid-execution gate. No deployment occurs during planning or CI.
+
+- [ ] 8. Prepare optional hosting and its lifecycle
+- [x] 8.1 Freeze the deployment environment and pilot configuration
+  - _Outcome: Independent review APPROVED; 21 focused tests passed, Ruff/architecture/lock checks passed, documented plan reports zero mutations and inference. Account facts and live compatibility remain unverified._
+  - Isolate and lock deployment tooling without adding Modal or accelerator dependencies to the core library. Resolve exact SDK, serving-image digest and model/tokenizer commits; verify artifact access and license prerequisites.
+  - Freeze GPT-OSS-20B, one A100 40 GB, four physical CPU cores, 32 GiB host RAM, 4096-token context and one scheduled sequence. Record pricing timestamp and credential references without secret values.
+  - Validate required fields, resource units and bounds. Exclude local models, credentials and environment files from uploads; separate remote cache staging from GPU allocation.
+  - Done when a reproducible configuration passes offline validation and default planning performs zero cloud mutations or inference. No paid image build or staging is included in this task.
+  - _Boundary: Manifest and deployment setup_
+  - _Requirements: 7.1, 7.3, 7.4, 7.9, 7.10_
+
+- [ ] 8.2 Prepare authenticated serving and observed provenance
+  - Configure the optional serving recipe with proxy authentication, zero warm minimum, one maximum container, zero buffer, 60-second idle scale-down and one concurrent input.
+  - Expose the existing compatible completion contract with genuine natural-log probabilities and at least five alternatives; preserve partial evidence semantics. Do not introduce a new provider transport.
+  - Capture resolved artifact/runtime/settings and observed GPU information, with authenticated before/after retrieval bound to the deployment identity. Missing observations remain unknown.
+  - Done when fixture-based checks verify authentication, resource controls, provenance and cache configuration without starting paid compute; core imports remain Modal-free.
+  - _Boundary: Deployment recipe_
+  - _Depends: 8.1_
+  - _Requirements: 7.1, 7.2, 7.3, 7.5, 7.9, 7.10_
+
+- [ ] 8.3 Implement bounded cleanup and remote expiry
+  - Stop only the experiment-owned app on completion, cancellation or failure, allowing two minutes for stop verification and retaining the cache.
+  - Arm an independent CPU-only expiry controller for the 20-minute GPU deadline before inference admission. Fail closed if expiry cannot be armed; local-client disappearance must not disable expiry.
+  - Keep expiry/control observations separately bounded and costed; never call inference or restart GPU compute from expiry handling.
+  - Done when offline tests cover client loss, cancellation, wrong-app protection and control-plane failure. Unverified cleanup records the app identifier and recovery command rather than claiming shutdown.
+  - _Boundary: Deployment lifecycle_
+  - _Depends: 8.2_
+  - _Requirements: 7.4, 7.5, 7.6, 7.8_
+
+- [ ] 9. Integrate the bounded pilot with existing evidence handling
+- [ ] 9.1 Enforce the frozen pilot and evidence admission
+  - Reuse the existing completion adapter, call budget and validator. Reserve a new receipt exclusively and persist each attempt intent before sending; freeze prompts and their hash.
+  - Permit one eligibility request and at most seven subsequent requests, zero retries, serial calls, 512 output tokens each, temperature 0, top_p 1 and five alternatives. Validate prompt plus output allowance against the 4096-token context.
+  - Enforce 120 seconds per request and 20 minutes total GPU phase including up to ten minutes startup. Readiness observations must not generate tokens. Stop on cancellation, exhausted bounds or uncertain outcomes without replay.
+  - Preserve reasoning/final-answer alignment as returned. Keep evidence eligibility separate from environment status; unknown or changed provenance prevents calibrated claims while retaining diagnostics.
+  - Done when offline integration tests establish zero-mutation dry runs, the eight-call ceiling, intent durability, rejection of malformed/misaligned evidence and provenance drift, and cleanup on every exit path.
+  - _Boundary: Pilot runner integration_
+  - _Depends: 8.1, 8.2, 8.3_
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.10, 7.11_
+
+- [ ] 9.2 Report lifecycle outcomes and defensible costs
+  - Separate physical inference attempts from control/staging events, cold startup from generation, and usable evidence from HTTP success. Use idiomatic names carrying units; document token positions and table row grain.
+  - Record estimated gross USD separately from observed USD and credits. Unknown cost and zero usable measurements produce unavailable cost per usable measurement, never zero cost by inference.
+  - Validate the monthly budget record against prior usage and distinguish environment compute allowance from workspace-wide coverage; require an operator-confirmed allowance when accounting access is unavailable. Do not overwrite shared account policy.
+  - Append later billing reconciliation without rewriting attempts. Publish neither credentials nor raw generated text; keep cleanup failure visible independently of inference success.
+  - Done when accounting/redaction fixtures verify these distinctions and receipts retain sources, timestamps and enforcement caveats for the USD 5 target.
+  - _Boundary: Pilot receipt and cost reporting_
+  - _Depends: 9.1_
+  - _Requirements: 6.4, 7.4, 7.6, 7.7, 7.8, 7.10_
+
+- [ ] 10. Validate and document the integrated optional provider
+- [ ] 10.1 Complete offline acceptance and operator instructions
+  - Run focused behavior tests, Ruff, architecture and lean-import checks; exercise the documented dry run and strict documentation build. Fake cloud calls; CI must never allocate paid GPUs.
+  - Document account authentication, model access, budget setup, start/stop, retained cache charges, process-loss recovery and unverified cleanup. Link the optional host from local-provider guidance and MkDocs.
+  - Cite dated primary sources and Jane Street; distinguish candidate support, observed evidence, calibration discrimination and mitigation efficacy. Keep frontier completion-only work separate.
+  - Done when a source-matched validation report covers bounds, auth/redaction, evidence rejection, drift, cancellation, expiry and cost uncertainty, and the documented dry run succeeds without cloud mutation.
+  - _Boundary: Integration validation and documentation_
+  - _Depends: 9.2_
+  - _Requirements: 6.3, 6.4, 6.5, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11_
+
+- [ ] 10.2 Validate the separately authorized live pilot
+  - Before any paid staging/build/deployment, present the concrete frozen pins, prompts, request/token/time caps, complete cost estimate and budget configuration for user approval. Verify credentials, account allowance and model access first.
+  - After that approval, verify unauthorized requests are denied without starting a GPU, then run the eight-request, 20-minute GPU-phase pilot with the USD 5 target and independent expiry. No hardware/model substitution or additional calls on failure.
+  - Verify actual GPU/runtime identity, usable five-alternative logprobs, cold/warm timings and app shutdown. Publish dated receipts, observed or explicitly unknown costs and comparison limitations.
+  - Done when the authorized pilot has a dated, reviewed feasibility outcome and cleanup receipt, including honest ineligible outcomes. Missing approval or prerequisites leaves this task unchecked with a recorded reason; a blocked receipt is not completed live acceptance.
+  - Calibration and single/ensemble measurements remain separately budgeted follow-up work; no automatic batch starts after eligibility.
+  - _Boundary: Live integration acceptance_
+  - _Depends: 10.1_
+  - _Requirements: 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.11_

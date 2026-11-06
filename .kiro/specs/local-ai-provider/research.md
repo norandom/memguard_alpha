@@ -1,5 +1,34 @@
 # Candidate evidence and design questions
 
+## Modal design discovery — 2026-11-06
+
+Integration-focused discovery used kiro-spec-design, light discovery, synthesis
+and inline review guidance. Existing `OpenAICompatibleClient` already resolves
+an environment credential and sends a bearer header; reuse it. Existing
+provenance snapshots and evidence validator avoid a second scoring path.
+
+Choose a Web Function for bursty cold-start use with explicit proxy auth and
+one-container scaling. Prefer the documented single-A100 GPT-OSS route to an
+unverified cheapest-GPU assumption. Pin actual versions/digests during setup
+before execution. Remote expiry covers local process loss; unknown shutdown
+and delayed cost accounting remain visible.
+
+Primary sources consulted:
+- [vLLM GPT-OSS recipe](https://docs.vllm.ai/projects/recipes/en/latest/OpenAI/GPT-OSS.html):
+  single-A100 route and Marlin/Triton backend; no live compatibility claim.
+- [Modal web server](https://modal.com/docs/sdk/py/latest/web_server) and
+  [scaling](https://modal.com/docs/guide/scale): Web Function lifecycle controls.
+- [Proxy authentication](https://modal.com/docs/guide/webhook-proxy-auth):
+  enable authentication explicitly for Web Functions.
+- [Budgets](https://modal.com/docs/guide/budgets): monthly workspace/environment
+  scopes differ; implementation must verify enforcement and remaining allowance.
+- [Pricing](https://modal.com/pricing): dated estimates require deployment-time refresh.
+
+Synthesis: adopt Modal lifecycle and vLLM serving; build only the small manifest,
+pilot receipt and cleanup integration. No new core provider abstraction. Shared
+endpoints remain an alternative but do not establish control over runtime or
+logprob semantics. See [reviewed design](modal-design.md).
+
 ## Design discovery — 2026-11-05
 
 Used `kiro-spec-design` integration-focused discovery, synthesis and review rules.
