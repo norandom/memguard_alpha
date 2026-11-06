@@ -4,7 +4,7 @@
   "updated_at": "2026-11-06",
   "extensions": {
     "modal_hosting": {
-      "phase": "feasibility-validated-evidence-ineligible",
+      "phase": "response-mapping-verified-on-live-response-replay",
       "tasks_generated": true,
       "task_ids": [
         "8.1",
@@ -13,7 +13,8 @@
         "9.1",
         "9.2",
         "10.1",
-        "10.2"
+        "10.2",
+        "10.3"
       ],
       "task_review": {
         "mode": "independent",
@@ -47,7 +48,7 @@
         "live_pilot": "ready-but-token-evidence-ineligible",
         "next_task": null,
         "next_prerequisites": [
-          "explicit-decision-on-alignment-diagnostic"
+          "review-and-budget-calibration-experiment"
         ],
         "staging_verified": true,
         "inference_requests": 1,
@@ -71,6 +72,27 @@
         "task_completed": "10.2",
         "validation_report": "live-feasibility-validation-2026-11-06.md",
         "next_proposal": "modal-alignment-diagnostic-proposal.md"
+      },
+      "response_mapping_amendment": {
+        "approved": true,
+        "approval_context": "User agreed to classifying the mismatch as a response-handling bug and explicitly requested amending the spec and retesting.",
+        "task": "10.3",
+        "additional_inference_posts": 1,
+        "retries": 0,
+        "measurement_posts": 0,
+        "private_fixed_response_replay": true,
+        "implementation_review": "APPROVED",
+        "live_diagnostic_inference_posts": 1,
+        "offline_replay_inference_posts": 0,
+        "same_response_replay_valid": true,
+        "post_fix_live_generation_performed": false,
+        "report": "../../../docs/results/2026-11-06-gpt-oss-response-mapping.md",
+        "task_completed": true,
+        "full_offline_tests_passed": 2888,
+        "full_offline_tests_skipped": 2,
+        "focused_tests_passed": 159,
+        "validation_report": "live-feasibility-validation-2026-11-06.md",
+        "all_owned_apps_stopped": true
       }
     }
   },
@@ -144,6 +166,7 @@
       "observed_backend": "CPU",
       "review": "APPROVED",
       "report": "../../../docs/results/2026-11-06-local-model-smoke.md"
-    }
+    },
+    "response_mapping_profile": "explicit GPT-OSS-20B Harmony adapter; same live response replay validated; fresh calibration required"
   }
 }

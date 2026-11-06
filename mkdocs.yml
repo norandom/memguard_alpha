@@ -59,6 +59,7 @@ nav:
   - Local model integration: local-provider.md
   - Five local model logprob tests (2026-11-06): results/2026-11-06-local-model-smoke.md
   - Modal GPT-OSS evidence pilot (2026-11-06): results/2026-11-06-modal-pilot.md
+  - GPT-OSS response mapping repair (2026-11-06): results/2026-11-06-gpt-oss-response-mapping.md
   - Optional Modal hosting: modal-provider.md
   - Modal pilot cost accounting: modal-cost-report.md
   - Local model storage tests (2026-11-06): results/2026-11-06-local-model-storage.md

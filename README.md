@@ -15,8 +15,10 @@ or review the [Modal pilot plan](docs/modal-provider.md) for remote GPU hosting;
 the Modal configuration is verified offline and remains a live candidate.
 The [2026-11-06 Modal pilot](docs/results/2026-11-06-modal-pilot.md) reached
 GPT-OSS-20B readiness, then stopped after its one eligibility response failed
-strict token alignment. The host works; calibrated token-evidence use remains
-ineligible. All experiment apps were stopped.
+strict token alignment. A [follow-up diagnostic](docs/results/2026-11-06-gpt-oss-response-mapping.md)
+identified our response-handling bug: full-generation probabilities were attached
+to final-answer text. An explicit Harmony profile maps the final channel;
+calibration and mitigation effects remain unmeasured. All experiment apps stopped.
 
 The [2026-11-06 local smoke](docs/results/2026-11-06-local-model-smoke.md) found
 aligned logprobs with five alternatives in Phi-4 Mini, both tested Llamas, Gemma

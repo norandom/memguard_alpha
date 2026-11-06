@@ -20,9 +20,10 @@ with no calibration or mitigation measurement.
 
 For optional remote GPU hosting, use the [Modal operator guide](modal-provider.md).
 It starts with a verified offline plan and separates paid setup from the scoring
-library. The GPT-OSS-20B Modal pilot reached readiness but its eligibility
-response failed token alignment; it remains ineligible for calibrated evidence
-and does not inherit the local CPU result above.
+library. The GPT-OSS-20B Modal pilot reached readiness; its response exposed an
+adapter mapping bug. The [follow-up diagnostic](results/2026-11-06-gpt-oss-response-mapping.md)
+records the explicit Harmony profile and same-response replay. It does not inherit
+the local CPU result or establish calibrated scoring quality.
 
 From a development checkout with its locked environment installed, use PowerShell:
 

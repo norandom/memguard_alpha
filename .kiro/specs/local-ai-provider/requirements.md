@@ -92,6 +92,9 @@ requested. Admit a configuration only after observing genuine log probabilities.
 9. Where optional remote hosting is used, Recall Guard shall remain installable and usable without the hosting SDK or accelerator packages in its core dependencies.
 10. When credentials are configured, the workflow shall keep secrets outside tracked files and redact them from logs and published receipts.
 11. When comparing remote results with local or NIM results, the evaluation shall report runtime and quantization differences and require calibration revalidation for changed measurement conditions.
+12. When a response includes reasoning, final-answer or control-token channels, the adapter shall map probabilities to the selected answer using that same response's explicit channel and byte boundaries. Different generations shall never be required to match.
+13. If response text and probability positions disagree, the workflow shall report a response-handling integration defect requiring diagnosis, without inferring that the model lacks logprobs. Ambiguous mappings shall remain excluded from scoring; probabilities shall not be fabricated, renormalized, trimmed by content search or retokenized to force a match.
+14. For an explicitly authorized fixed synthetic diagnostic, the operator may retain the bounded response body privately under ignored `runs/` for offline replay. Headers, credentials and process environment shall never be captured; published artifacts shall contain structural metadata and outcomes without generated text.
 
 ## Review status
 
@@ -106,3 +109,9 @@ testability, failure handling and scope continuity. The user requested adding
 Modal for implementation and approved the subsequent extension design. Tasks
 8–10 have passed independent review and await implementation approval. Prior
 local implementation validation applies to the original scope only.
+
+Response-handling amendment, 2026-11-06: the user's instruction to amend the spec
+and retest approved requirements 7.12-7.14, the corresponding design amendment
+and task 10.3. The completed one-request diagnostic and offline replay repair
+were independently reviewed. This supersedes pending-approval statements above
+for that specific scope; calibration and larger experiments remain separate.

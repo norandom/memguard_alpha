@@ -1,0 +1,62 @@
+{
+  "date": "2026-11-06",
+  "classification": "response_handling_integration_bug_fixed",
+  "raw_response_sha256": "1c6c8459e2043ccf9c04577022c509797f6f828ac39fdac760719598c6b4e0f5",
+  "tokenizer_revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+  "tokenizer_sha256": "0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3",
+  "live_diagnostic_inference_posts": 1,
+  "offline_replay_inference_posts": 0,
+  "original_adapter_result": "token_text_alignment_failed",
+  "mapped_adapter_result": "valid",
+  "generated_positions": 30,
+  "final_source_span": [
+    28,
+    29
+  ],
+  "final_positions": 1,
+  "alternatives_per_final_position": [
+    5
+  ],
+  "original_probabilities_and_alternatives_preserved": true,
+  "cross_generation_comparison": false,
+  "post_fix_live_generation_performed": false,
+  "calibration_performed": false,
+  "mitigation_efficacy_measured": false,
+  "live_diagnostic": {
+    "receipt_sha256": "1e99a2311c061016684c9bf57b79218f4f939f13dc53b0a4398f5ea06b970e84",
+    "original_adapter_status": "ineligible",
+    "original_adapter_reason": "token_text_alignment_failed",
+    "inference_posts": 1,
+    "measurement_posts": 0,
+    "retries": 0,
+    "startup_wall_seconds": 100.24891114234924,
+    "request_elapsed_seconds": 3.0320000000065193,
+    "configured_gpu": "A100-40GB",
+    "observed_gpu": "NVIDIA A100-SXM4-40GB",
+    "runtime": "vllm==0.17.0",
+    "model_revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+    "cleanup": "verified_stopped",
+    "generation_settings": {
+      "temperature": 0,
+      "top_p": 1,
+      "logprobs": true,
+      "top_logprobs": 5,
+      "max_tokens": 512
+    },
+    "metadata_parameter": {
+      "return_token_ids": true
+    }
+  },
+  "separate_final_cleanup": {
+    "receipt_sha256": "2c04876d4912afe4cd2a66b03f1a4cb6474fc7b94b50fb040b7188ce43540f9c",
+    "owned_entries_observed": 12,
+    "all_stopped": true
+  },
+  "workspace_billing_snapshot": {
+    "receipt_sha256": "8ff3bc0ed890f5db616dba07e44713d0db87daceaee268a74a67841ce40a1e2b",
+    "gross_usd": 0.29792825,
+    "billed_usd": 0.0,
+    "provisional": true,
+    "attributable_experiment_cost_usd": null
+  }
+}

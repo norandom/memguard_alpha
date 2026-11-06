@@ -2,7 +2,7 @@
 
 ## Overview
 
-This additive design covers requirements 7.1–7.11. The user accepted the Modal
+This additive design covers requirements 7.1–7.14. The user accepted the Modal
 extension and requested proceeding. Existing local approvals remain scoped to
 their original implementation.
 
@@ -21,7 +21,10 @@ completion-only integration or claim of divergence mitigation efficacy.
 ### This Spec Owns
 
 Optional deployment recipe, frozen manifest, bounded pilot runner, cleanup
-observations and operational reporting.
+observations and operational reporting. The user-approved response-handling
+amendment also owns an explicit optional Harmony evidence mapping over the
+existing completion transport, its fixtures and replay verification. Generic
+provider handling and scoring algorithms remain unchanged.
 
 ### Out of Boundary
 
@@ -112,6 +115,48 @@ usable measurement is null when cost is unknown or no measurement is usable.
 Published artifacts exclude credentials and raw generated text.
 
 ## System Flow and Pilot Bounds
+
+### Response-handling amendment, 2026-11-06
+
+User approved amending the spec and retesting the mapping bug. Token alignment
+compares answer text and probabilities from the same response; sampling across
+different calls is irrelevant to this invariant. Version-pinned vLLM 0.17.0
+builds GPT-OSS logprobs from all generated Harmony tokens while separately
+extracting final `message.content`. Treat disagreement at this interface as a
+response-handling defect, not a model capability result. Preserve the historical
+failed receipt and strict evidence gate while repairing the mapping.
+
+Use explicit, unambiguous channel boundaries and provider byte data. Select only
+final-answer token positions when their ownership is established; retain original
+probabilities and alternatives. Content substring/suffix search, guessed channel
+ownership and probability fabrication are prohibited. Ambiguous or malformed
+responses remain unscorable and receive a diagnostic classification.
+
+Pinned primary source:
+[vLLM chat response construction](https://github.com/vllm-project/vllm/blob/v0.17.0/vllm/entrypoints/openai/chat_completion/serving.py)
+builds logprobs before
+[Harmony message extraction](https://github.com/vllm-project/vllm/blob/v0.17.0/vllm/entrypoints/openai/parser/harmony_utils.py).
+Diagnostic response 09 confirms 30 generated probability positions versus one
+final-answer position, with explicit control-ID boundaries. Its raw body remains
+private; public evidence contains counts and source positions only. Final-channel
+selection is an explicit evidence profile and requires fresh calibration before
+scoring claims; existing calibrators do not inherit validity automatically.
+
+The user's retest instruction authorizes one additional eligibility POST with
+the existing pinned model, settings and time/resource bounds, zero retries and
+no subsequent measurement prompts. Recheck the existing USD 5 allowance against
+provisional usage. Record configured versus observed hardware separately; an
+observed provider-assigned A100-80GB is acceptable for this structural diagnostic
+but establishes neither A100-40GB fit nor its attributable price.
+
+Capture only the bounded body of this fixed synthetic response under ignored
+`runs/` for offline replay. Do not capture headers, credentials or environment;
+publish only structural diagnostics and outcomes. Replay is not a new generation
+or an independent sample. Further inference requires a distinct decision.
+Request vLLM's `return_token_ids: true` metadata so generated token IDs can be
+matched one-to-one with probability entries using the pinned tokenizer's control
+IDs. This changes returned metadata only; generation controls stay fixed. Do not
+enable `return_tokens_as_token_ids`, which changes token string rendering.
 
 1. Validate account/environment access, pinned model access and budget record
    without starting GPU compute. Prepare/cache weights with separately recorded

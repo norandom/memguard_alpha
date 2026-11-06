@@ -173,5 +173,8 @@
     }
   ],
   "runtime": "vllm==0.17.0",
-  "model_revision": "6cee5e81ee83917806bbde320786a8fb61efebee"
+  "model_revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+  "historical_scope": "attempts 01-08; original validation outcomes preserved",
+  "current_interpretation": "response_handling_integration_bug; not a finding that the model lacks logprobs",
+  "follow_up_report": "2026-11-06-gpt-oss-response-mapping.md"
 }

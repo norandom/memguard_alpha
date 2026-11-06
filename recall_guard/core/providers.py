@@ -25,6 +25,7 @@ from recall_guard.core.completion import (
     TokenEvidence,
     validate_features,
 )
+from recall_guard.core.harmony_evidence import HarmonyTokenMap, map_final_response
 from recall_guard.core.local_evidence import (
     LocalBatchCheck,
     LocalModelIdentity,
@@ -438,3 +439,27 @@ class OpenAICompatibleClient:
                           else "Parameter accepted; effective value remains unconfirmed (not echoed).")
             capabilities[name] = CapabilityEvidence(status, source, detail, observed=observed)
         return CapabilityReport(capabilities, self.features)
+
+
+class HarmonyOpenAICompatibleClient(OpenAICompatibleClient):
+    """Opt-in GPT-OSS Harmony response handling over the existing transport."""
+
+    def __init__(self, config: ModelConfig, budget: CallBudget, *, token_map: HarmonyTokenMap, **options) -> None:
+        if not isinstance(config, ModelConfig):
+            raise TypeError("config must be ModelConfig")
+        if not isinstance(token_map, HarmonyTokenMap):
+            raise TypeError("token_map must be HarmonyTokenMap")
+        if config.model != "openai/gpt-oss-20b" or config.parameters.get("return_token_ids") is not True:
+            raise ValueError("Harmony mapping requires explicit GPT-OSS-20B and return_token_ids=True")
+        self.token_map = token_map
+        super().__init__(config, budget, **options)
+
+    def _parse_response(self, response: requests.Response, body: object, parameters: dict) -> ModelResponse:
+        try:
+            if not isinstance(body, dict) or body.get("model") != self.config.model:
+                raise ValueError("Harmony response model does not match the configured model")
+            mapped = map_final_response(body, self.token_map)
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise RequestError("Harmony response token mapping failed", code="response_mapping_failed",
+                               usage=_reported_usage(body)) from None
+        return super()._parse_response(response, mapped, parameters)

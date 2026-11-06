@@ -1,13 +1,19 @@
-# Modal GPT-OSS-20B: ready, but token evidence ineligible
+# Modal GPT-OSS-20B: ready host, response-handling bug identified
 
 The approved GPT-OSS-20B pilot reached model readiness and sent one eligibility
 request. Strict evidence validation rejected the response with
 `token_text_alignment_failed`; the runner stopped without sending the seven
 measurement prompts. Hosting works for this observed configuration, but it is
-**not eligible for calibrated token-evidence measurements** yet. Generated text
+**blocked by an integration bug**, rather than a model capability failure. Generated text
 was not retained, so this receipt cannot establish the exact alignment discrepancy.
 The [sanitized numeric track](2026-11-06-modal-pilot.json) preserves source hashes
 and separates inference, evidence, environment and cleanup outcomes.
+
+The [subsequent response-handling retest](2026-11-06-gpt-oss-response-mapping.md)
+confirmed the defect: full-generation Harmony probabilities were attached to
+final-answer text. An explicit channel mapper passed strict validation on replay
+of that new diagnostic response. This report preserves attempts 01-08 and their
+original validation outcomes; it does not classify GPT-OSS as lacking logprobs.
 
 ## What was actually verified
 
@@ -113,11 +119,13 @@ retain metadata without response text. These changes are verified with
 offline synthetic failures and were exercised during later controlled attempts.
 Earlier receipts remain unchanged.
 
-Task 10.2 now has a bounded live feasibility outcome: ready host, ineligible token
-evidence and verified shutdown. This does not establish end-to-end scoring support.
+Task 10.2 has a historical bounded outcome: ready host, strict evidence rejection
+and verified shutdown. That rejection is now classified as a response-handling
+integration defect. Task 10.3 records the repair and same-response replay; neither
+task establishes calibrated scoring quality.
 The next diagnostic proposal is recorded in
-`.kiro/specs/local-ai-provider/modal-alignment-diagnostic-proposal.md`; further
-inference needs an explicit decision. Calibration and ensemble work remain
+`.kiro/specs/local-ai-provider/modal-alignment-diagnostic-proposal.md`; the user
+subsequently authorized its single diagnostic request. Calibration and ensemble work remain
 separately budgeted. Startup failures also consumed compute/control activity
 despite sending zero inference requests.
 

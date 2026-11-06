@@ -10,20 +10,68 @@ The deployment recipe and bounded runner are verified offline. The
 deployment, remote expiry arming and unauthenticated HTTP 401 before readiness.
 Attempt 08 reached model readiness and authenticated generation, but strict token
 alignment failed on its one eligibility response. No measurement prompts ran;
-the configuration remains ineligible for calibrated token-evidence use. The
+that historical response remains excluded from scoring. The
 runner verified model-app shutdown, and final inventory confirmed every owned
 model, expiry and diagnostic app stopped.
+The [response-handling diagnostic](results/2026-11-06-gpt-oss-response-mapping.md)
+subsequently identified an adapter bug: vLLM reports full Harmony-generation
+probabilities separately from final-answer text. Use the explicit Harmony profile
+below. The mismatch was not a finding that GPT-OSS lacks usable logprobs, and
+different generations are never required to match.
 Startup diagnostics identified the inherited vLLM entrypoint and an incompatible
 `typing_extensions` import. The recipe clears that entrypoint and pins 4.16.0;
 a fresh CPU-only check confirmed `Sentinel` and `pydantic_core` imports. Keep every image operation
 before deferred local-file additions. Weights remain retained after app shutdown.
 
 The GPU request was A100-40GB; the observed device was A100-SXM4-80GB. Preserve
-both facts in comparisons. This run establishes neither 40 GB fit nor actual
-attributable GPU cost. A further structural alignment diagnostic needs an
-explicit decision; unused measurement allowance does not bypass the failure gate.
+both facts in comparisons. This historical run establishes neither 40 GB fit nor
+actual attributable GPU cost. The separately authorized diagnostic observed an
+A100-40GB; its response was captured for offline mapping replay without further
+inference.
 The original local CPU result remains in the
 [local integration guide](local-provider.md).
+
+## Select the GPT-OSS Harmony response profile
+
+For this pinned vLLM/GPT-OSS response contract, opt into the response mapper
+explicitly. It reuses the existing transport and request budget. Run credentialed
+code with `uv run --env-file .env ...` so the constructor resolves the root file's
+proxy credential; the code does not read or print it.
+
+```python
+from pathlib import Path
+
+from recall_guard.core.completion import ModelConfig
+from recall_guard.core.harmony_evidence import HarmonyTokenMap
+from recall_guard.core.providers import HarmonyOpenAICompatibleClient
+from recall_guard.core.request_control import CallBudget
+
+tokenizer_revision = "6cee5e81ee83917806bbde320786a8fb61efebee"
+tokenizer_directory = (
+    Path("models/hub/models--openai--gpt-oss-20b/snapshots") / tokenizer_revision
+)
+token_map = HarmonyTokenMap.from_tokenizer_json(
+    tokenizer_directory / "tokenizer.json", tokenizer_revision=tokenizer_revision,
+)
+config = ModelConfig(
+    protocol="openai_chat", provider="modal", model="openai/gpt-oss-20b",
+    endpoint="https://your-registered-host.modal.run/v1/chat/completions",
+    credential_ref="MODAL_PROXY_BEARER",
+    parameters={"temperature": 0, "top_p": 1, "max_tokens": 512,
+                "logprobs": True, "top_logprobs": 5, "return_token_ids": True},
+    max_retries=0, timeout_s=120,
+)
+client = HarmonyOpenAICompatibleClient(config, CallBudget(1), token_map=token_map)
+# Construction makes no request. Measurement still requires an explicit run plan.
+```
+
+Control IDs come from the pinned tokenizer; no tokenizer framework is loaded.
+Original output IDs and logprob entries share one position axis. The mapper
+selects one complete final-message span and preserves its probabilities and
+alternatives. It rejects unsupported or ambiguous layouts instead of guessing a
+text suffix. The generic client remains available for other response contracts.
+The diagnostic validates mapping by replaying the same captured response;
+fresh calibration is required before scoring claims.
 
 ## Inspect the plan without an SDK or account
 

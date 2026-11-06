@@ -244,3 +244,16 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Boundary: Live integration acceptance_
   - _Depends: 10.1_
   - _Requirements: 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.11_
+
+- [x] 10.3 Repair response-channel token mapping and retest
+  - _Outcome: Independent review APPROVED. Explicit Harmony adapter derives final-answer source span from pinned control IDs; generic parsing remains unchanged. One authorized live eligibility request confirmed 30 full-generation positions and one final position. Repaired production parsing passed strict five-alternative validation on offline replay of the same response, preserving original logprobs and alternatives exactly; zero replay HTTP requests. Full regression: 2888 passed, two documented skips; focused 159 passed; Ruff, architecture and strict docs passed. All twelve currently observed owned app entries stopped. See live-feasibility-validation-2026-11-06.md and docs/results/2026-11-06-gpt-oss-response-mapping.md. No additional post-fix generation, calibration or mitigation claim._
+  - _Approval: User explicitly requested amending the spec and retesting after agreeing this is an integration bug. Requirements/design amendment and this task are approved for that focused scope, including one additional eligibility POST; no calibration or ensemble batch._
+  - Classify the prior mismatch as an integration defect under diagnosis, preserving its original receipt and distinguishing model capability from adapter handling.
+  - Inspect the pinned provider contract; reproduce full-generation versus final-answer mapping with deterministic fixtures before editing the adapter. Cover reasoning/control channels, byte fragments, ambiguity, truncation and malformed evidence without matching separate generations.
+  - Use explicit response channel/byte ownership to map original token probabilities and alternatives. Keep strict validation; never search for an answer substring, fabricate probabilities or retokenize the answer to force agreement.
+  - Run at most one additional fixed-prompt Modal eligibility request, zero retries, unchanged settings and original time/resource bounds. Save only its bounded response body privately under ignored runs/ for replay, excluding headers/credentials/environment; publish structural outcomes only.
+  - Verify fixed handling against that same live response through offline replay; label replay explicitly and do not claim another post-fix generation. Stop after the one request regardless of outcome; verify all owned compute stopped and record provisional costs.
+  - Independently review focused regressions, the live/replay result and dated spec/docs amendments before completion.
+  - _Boundary: Existing completion adapter, local evidence validator, bounded diagnostic and reporting_
+  - _Depends: 10.2_
+  - _Requirements: 6.4, 7.2, 7.3, 7.6, 7.7, 7.10, 7.12, 7.13, 7.14_
