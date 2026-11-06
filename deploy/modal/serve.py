@@ -379,7 +379,8 @@ def create_app(*, sdk=None, root: Path = ROOT):
             "DO_NOT_TRACK": "1",
         }
     )
-    weights = sdk.Volume.from_name("recall-guard-gpt-oss-20b-weights", create_if_missing=False)
+    weights = sdk.Volume.from_name("recall-guard-gpt-oss-20b-weights", environment_name=plan.target.environment,
+                                   create_if_missing=False)
     observations = sdk.Dict.from_name(
         plan.target.app + "-provenance",
         environment_name=plan.target.environment,
@@ -430,6 +431,11 @@ def create_app(*, sdk=None, root: Path = ROOT):
             if app.app_id is None:
                 raise RuntimeError("Missing deployment identity")
             observations[(app.app_id, self.instance_id, phase)] = snapshot(plan, app.app_id, phase)
+
+        @sdk.method()
+        def readiness(self):
+            """Authenticated SDK startup observation; enter has readied vLLM, no tokens."""
+            return {"app_id": app.app_id, "ready": self.process is not None and self.process.poll() is None}
 
         @sdk.web_server(8000, startup_timeout=plan.limits.startup_seconds, requires_proxy_auth=True)
         def web(self):

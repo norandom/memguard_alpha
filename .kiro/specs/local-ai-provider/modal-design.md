@@ -118,7 +118,11 @@ Published artifacts exclude credentials and raw generated text.
    costs. Verify remaining allowance; absent billing access requires an
    operator-confirmed budget record.
 2. Start one experiment-owned app; startup allowance is ten minutes. Readiness
-   observations use the control plane and never generate tokens.
+   uses a bounded SDK method on the existing serving class to invoke its startup
+   hook and return metadata without token generation. This integration detail
+   resolves the absence of observations while scaled to zero; it preserves zero
+   warm minimum and zero buffer. Record readiness as a control operation, arm
+   remote expiry first, and do not replay an uncertain readiness invocation.
 3. Run one eligibility request, followed by at most seven fixed-prompt requests
    only if eligible. Eight inference POSTs total, zero retries, serial calls,
    temperature 0, top_p 1, logprobs true, top_logprobs 5, at most 512 output

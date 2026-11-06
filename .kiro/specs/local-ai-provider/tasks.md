@@ -199,7 +199,8 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Requirements: 7.4, 7.5, 7.6, 7.8_
 
 - [ ] 9. Integrate the bounded pilot with existing evidence handling
-- [ ] 9.1 Enforce the frozen pilot and evidence admission
+- [x] 9.1 Enforce the frozen pilot and evidence admission
+  - _Outcome: Independent review APPROVED; 61 combined runner/deployment tests passed. Default plan independently verified zero inference/mutations, with account, tokenizer and cache prerequisites explicit. No live execution or calibration._
   - Reuse the existing completion adapter, call budget and validator. Reserve a new receipt exclusively and persist each attempt intent before sending; freeze prompts and their hash.
   - Permit one eligibility request and at most seven subsequent requests, zero retries, serial calls, 512 output tokens each, temperature 0, top_p 1 and five alternatives. Validate prompt plus output allowance against the 4096-token context.
   - Enforce 120 seconds per request and 20 minutes total GPU phase including up to ten minutes startup. Readiness observations must not generate tokens. Stop on cancellation, exhausted bounds or uncertain outcomes without replay.

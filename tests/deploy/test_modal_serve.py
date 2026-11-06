@@ -61,6 +61,9 @@ class FakeSDK:
     def enter(self):
         return lambda fn: fn
 
+    def method(self):
+        return lambda fn: fn
+
     def exit(self):
         return lambda fn: fn
 
