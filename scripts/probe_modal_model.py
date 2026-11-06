@@ -18,11 +18,12 @@ from pathlib import Path, PurePosixPath
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from deploy.modal import serve
-from deploy.modal.manifest import load_plan
+from deploy.modal.manifest import Resources, load_plan
 from recall_guard.core.completion import ModelConfig
 from recall_guard.core.local_evidence import LocalEvidenceError, validate_local_evidence
 from recall_guard.core.providers import OpenAICompatibleClient
 from recall_guard.core.request_control import CallBudget, RequestError
+from scripts.modal_cost_report import append_billing, cost_report, validate_budget
 
 MANIFEST = Path("configs/modal/gpt-oss-20b-pilot.json")
 PROMPTS = (
@@ -77,12 +78,20 @@ def planning(manifest=MANIFEST, *, tokenizer_root=Path("models")):
     elif any(count + 512 > plan.resources.context_tokens for count in counts):
         blockers.append("context_allowance_exceeded")
     blockers.append("remote_weight_cache_unverified")
+    cost = json.loads(manifest.read_text(encoding="utf-8"))["cost"]
+    compute_rate = (cost["gpu_usd_per_second"] * plan.resources.gpu_count
+                    + cost["physical_core_usd_per_second"] * plan.resources.cpu_physical_cores
+                    + cost["memory_gib_usd_per_second"] * plan.resources.memory_gib)
     return {
         "mode": "plan", "manifest_sha256": digest(manifest.read_bytes()),
         "prompts": list(PROMPTS), "prompts_sha256": digest(json.dumps(PROMPTS).encode()),
         "input_tokens": counts, "tokenizer_sha256": hashes, "settings": SETTINGS,
         "limits": asdict(plan.limits), "execution_blockers": blockers,
         "inference_posts": 0, "cloud_mutations": 0,
+        "cost_review": cost,
+        "resource_estimate_gross_usd": compute_rate * plan.limits.gpu_phase_seconds,
+        "estimated_total_gross_usd": None,
+        "resources": asdict(plan.resources), "artifacts": asdict(plan.artifacts),
     }
 
 
@@ -116,6 +125,10 @@ def approval_check(path, frozen, plan):
         raise ValueError("reviewed_provider_budget_required")
     if frozen["input_tokens"] is None or "context_allowance_exceeded" in frozen["execution_blockers"]:
         raise ValueError("pinned_tokenizer_context_required")
+    budget = validate_budget(record.get("monthly_budget"), plan)
+    if budget["requested_allowance_usd"] < frozen["resource_estimate_gross_usd"]:
+        raise ValueError("allowance_below_configured_compute_estimate")
+    return budget
 
 
 async def verify_weight_cache(plan, sdk):
@@ -224,19 +237,26 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
     with receipt_path.open("x", encoding="utf-8"):
         pass
     receipt = {"plan": frozen, "attempts": [], "control_events": [], "lifecycle": {},
+               "staging_events": [{"operation": "external_weight_staging", "status": "separate_prerequisite",
+                                   "estimated_gross_usd": None, "observed_gross_usd": None}],
                "inference_posts": 0, "status": "reserved", "calibration": "unavailable",
                "environment_status": "unknown", "evidence_status": "unobserved"}
     persist(receipt_path, receipt)
     app = None
     try:
-        approval_check(approval, frozen, plan)
+        receipt["budget_review"] = approval_check(approval, frozen, plan)
         serving_plan = load_plan(serve.ROOT / "configs/modal/gpt-oss-20b-pilot.json")
         if ((plan.target.app, plan.target.environment, plan.artifacts, plan.resources, plan.limits) !=
                 (serving_plan.target.app, serving_plan.target.environment, serving_plan.artifacts,
                  serving_plan.resources, serving_plan.limits)):
             raise ValueError("runner_and_uploaded_serving_manifest_differ")
         sdk = serve._sdk(sdk)
+        cache_event = {"operation": "weight_cache_inventory", "category": "control", "status": "intent",
+                       "started_at_unix_s": time.time(), "observed_gross_usd": None}
+        receipt["control_events"].append(cache_event)
+        persist(receipt_path, receipt)
         receipt["weight_cache"] = await asyncio.wait_for(verify_weight_cache(plan, sdk), 60)
+        cache_event.update(status="verified", finished_at_unix_s=time.time())
         # Resolve credentials only after explicit execution approval; never export them.
         OpenAICompatibleClient(ModelConfig(protocol="openai_chat", model=plan.artifacts.model,
             endpoint=plan.target.endpoint + "/chat/completions", credential_ref=plan.target.credential_env), CallBudget(0))
@@ -250,7 +270,8 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
         async with serve.experiment_lifecycle(plan, app.app_id,
                 gpu_started_at_unix_s=receipt["gpu_started_at_unix_s"], receipt=receipt["lifecycle"], sdk=sdk):
             persist(receipt_path, receipt)
-            event = {"operation": "readiness", "status": "intent", "inference_posts": 0}
+            event = {"operation": "readiness", "category": "control", "status": "intent", "inference_posts": 0,
+                     "started_at_unix_s": time.time(), "observed_gross_usd": None}
             receipt["control_events"].append(event)
             persist(receipt_path, receipt)
             remaining = receipt["lifecycle"]["deadline_unix_s"] - time.time()
@@ -262,6 +283,8 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
             if not readiness.get("ready") or readiness.get("app_id") != app.app_id:
                 raise ValueError("readiness_identity_or_process_unverified")
             event["status"] = "ready"
+            receipt["ready_at_unix_s"] = time.time()
+            event["finished_at_unix_s"] = receipt["ready_at_unix_s"]
             endpoint = await asyncio.wait_for(service.web.get_web_url.aio(), 5)
             if endpoint != plan.target.endpoint.removesuffix("/v1"):
                 raise ValueError("deployed_endpoint_mismatch")
@@ -290,6 +313,8 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
                 receipt["environment_status"] = "unknown"
         receipt["evidence_status"] = ("eligible" if receipt["attempts"] and all(
             row["status"] == "eligible" for row in receipt["attempts"]) else "ineligible_or_unobserved")
+        receipt["finished_at_unix_s"] = time.time()
+        receipt["cost_report"] = cost_report(receipt, frozen["cost_review"], plan.resources)
         persist(receipt_path, receipt)
     return receipt
 
@@ -301,15 +326,25 @@ def main():
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--approval", type=Path)
+    parser.add_argument("--reconcile-billing", type=Path,
+                        help="append a reviewed local billing snapshot to --receipt; no cloud access")
     args = parser.parse_args()
     if args.execute and (args.receipt is None or args.approval is None):
         parser.error("--execute requires --receipt NEW_PATH and --approval REVIEWED_RECORD")
-    if args.execute:
+    if args.reconcile_billing:
+        if args.execute or args.receipt is None:
+            parser.error("--reconcile-billing requires --receipt and excludes --execute")
+        result = json.loads(args.receipt.read_text(encoding="utf-8"))
+        append_billing(result, json.loads(args.reconcile_billing.read_text(encoding="utf-8")))
+        # Use the original frozen cost basis, never a later edited manifest.
+        result["cost_report"] = cost_report(result, result["plan"]["cost_review"], Resources(**result["plan"]["resources"]))
+        persist(args.receipt, result)
+    elif args.execute:
         result = asyncio.run(execute(args.manifest, args.receipt, args.approval, tokenizer_root=args.tokenizer_root))
     else:
         result = planning(args.manifest, tokenizer_root=args.tokenizer_root)
     print(json.dumps(result, indent=2))
-    return 0 if result.get("mode") == "plan" or result["status"] == "completed" else 1
+    return 0 if args.reconcile_billing or result.get("mode") == "plan" or result["status"] == "completed" else 1
 
 
 if __name__ == "__main__":

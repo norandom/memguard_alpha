@@ -2,8 +2,10 @@
 
 import asyncio
 import json
+import sys
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -47,7 +49,11 @@ def configured(tmp_path, monkeypatch):
     approval.write_text(json.dumps(dict.fromkeys(("paid_execution_authorized", "account_access_verified",
         "operator_allowance_confirmed", "model_access_verified", "pricing_and_budget_reviewed"), True) |
         {"manifest_sha256": frozen["manifest_sha256"], "prompts_sha256": frozen["prompts_sha256"],
-         "workspace": "test", "provider_budget_reference": "operator-reviewed-record"}))
+         "workspace": "test", "provider_budget_reference": "operator-reviewed-record",
+         "monthly_budget": {"scope": "environment_compute", "workspace": "test", "environment": "recall-guard-pilot",
+                            "period_month": datetime.now(UTC).strftime("%Y-%m"), "checked_at": datetime.now(UTC).isoformat(),
+                            "source": "operator_review", "monthly_limit_usd": 20, "prior_usage_usd": 0,
+                            "requested_allowance_usd": 5, "accounting_available": True, "operator_confirmed": True}}))
     return manifest, approval, tmp_path / "receipt.json"
 
 
@@ -205,3 +211,53 @@ def test_cpu_cache_inventory_rejects_config_without_weights():
         SimpleNamespace(listdir=SimpleNamespace(aio=entries))))
     with pytest.raises(ValueError, match="cpu_staged_weight_cache_missing"):
         asyncio.run(probe.verify_weight_cache(load_plan(MANIFEST), sdk))
+
+
+def test_insufficient_monthly_headroom_stops_before_cloud(configured, monkeypatch):
+    manifest, approval, path = configured
+    record = json.loads(approval.read_text())
+    record["monthly_budget"]["prior_usage_usd"] = 19
+    approval.write_text(json.dumps(record))
+    sdk, events = fake_cloud(monkeypatch, load_plan(manifest))
+    receipt = asyncio.run(probe.execute(manifest, path, approval, sdk=sdk))
+    assert not events and not receipt["attempts"]
+    assert receipt["cost_report"]["observed_gross_usd"] is None
+    assert receipt["cost_report"]["cold_startup_seconds"] is None
+
+
+def test_cleanup_failure_remains_visible_after_success(configured, monkeypatch):
+    manifest, approval, path = configured
+    sdk, _ = fake_cloud(monkeypatch, load_plan(manifest))
+
+    @asynccontextmanager
+    async def failed_cleanup(plan, app_id, *, gpu_started_at_unix_s, receipt, sdk):
+        receipt.update(admission_open=True, deadline_unix_s=time.time() + 1200)
+        yield receipt
+        receipt.update(admission_open=False, cleanup={"cleanup": "unverified"})
+
+    monkeypatch.setattr(probe.serve, "experiment_lifecycle", failed_cleanup)
+    install_transport(monkeypatch, path)
+    receipt = asyncio.run(probe.execute(manifest, path, approval, sdk=sdk))
+    assert receipt["status"] == "completed"
+    assert receipt["cost_report"]["usable_measurement_count"] == 7
+    assert receipt["cost_report"]["cleanup_state"] == "unverified"
+    assert receipt["cost_report"]["cold_startup_seconds"] >= 0
+
+
+def test_billing_cli_preserves_attempt_history_and_frozen_prices(configured, monkeypatch, capsys):
+    manifest, _, path = configured
+    receipt = {"plan": probe.planning(manifest), "attempts": [{"stage": "measurement", "status": "eligible"}],
+               "status": "stopped", "lifecycle": {"cleanup": {"cleanup": "unverified"}}}
+    probe.persist(path, receipt)
+    billing = path.with_name("billing.json")
+    billing.write_text(json.dumps({"observed_gross_usd": 2, "credits_usd": 1, "source": "billing_review",
+                                  "checked_at": datetime.now(UTC).isoformat(), "coverage": "whole_pilot",
+                                  "generated_text": "private-output", "credential": "private-token"}))
+    monkeypatch.setattr(sys, "argv", ["probe", "--receipt", str(path), "--reconcile-billing", str(billing)])
+    assert probe.main() == 0
+    updated = json.loads(path.read_text())
+    assert updated["attempts"] == receipt["attempts"] and updated["plan"] == receipt["plan"]
+    assert updated["cost_report"]["observed_usd_per_usable_measurement"] == 2
+    assert updated["cost_report"]["cleanup_state"] == "unverified"
+    assert "private-" not in capsys.readouterr().out
+    assert "private-" not in path.read_text()

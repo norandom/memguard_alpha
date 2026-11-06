@@ -210,7 +210,8 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Depends: 8.1, 8.2, 8.3_
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.10, 7.11_
 
-- [ ] 9.2 Report lifecycle outcomes and defensible costs
+- [x] 9.2 Report lifecycle outcomes and defensible costs
+  - _Outcome: Independent review APPROVED; 76 focused accounting/runner/deployment/architecture tests passed. Unknown full costs remain null; billing snapshots preserve attempts and pricing. No live billing or paid execution._
   - Separate physical inference attempts from control/staging events, cold startup from generation, and usable evidence from HTTP success. Use idiomatic names carrying units; document token positions and table row grain.
   - Record estimated gross USD separately from observed USD and credits. Unknown cost and zero usable measurements produce unavailable cost per usable measurement, never zero cost by inference.
   - Validate the monthly budget record against prior usage and distinguish environment compute allowance from workspace-wide coverage; require an operator-confirmed allowance when accounting access is unavailable. Do not overwrite shared account policy.
