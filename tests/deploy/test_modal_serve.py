@@ -105,6 +105,10 @@ def test_recipe_auth_resources_cache_and_uploads(monkeypatch):
     calls = {name: kwargs for name, _, kwargs in sdk.calls}
     assert calls["web_server"]["requires_proxy_auth"] is True
     assert calls["web_server"]["label"] == load_plan(MANIFEST).target.app
+    bootstrap = calls["image"]["setup_dockerfile_commands"]
+    assert len(bootstrap) == 1
+    assert "sys.version_info[:2] == (3, 12)" in bootstrap[0]
+    assert "ln -s /usr/bin/python3 /usr/local/bin/python" in bootstrap[0]
     assert calls["concurrent"] == {"max_inputs": 1}
     config = calls["cls"]
     assert {

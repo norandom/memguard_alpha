@@ -378,7 +378,13 @@ def create_app(*, sdk=None, root: Path = ROOT):
         if version("modal") != plan.artifacts.modal_sdk:
             raise ValueError("Serving SDK differs from manifest")
     app = sdk.App(plan.target.app)
-    image = sdk.Image.from_registry(plan.artifacts.image)
+    image = sdk.Image.from_registry(
+        plan.artifacts.image,
+        setup_dockerfile_commands=[
+            'RUN /usr/bin/python3 -c "import sys; assert sys.version_info[:2] == (3, 12)" '
+            '&& ln -s /usr/bin/python3 /usr/local/bin/python'
+        ],
+    )
     for path, relative in zip(files, UPLOAD_ALLOWLIST, strict=True):
         image = image.add_local_file(path, "/root/" + relative)
     image = image.env(
