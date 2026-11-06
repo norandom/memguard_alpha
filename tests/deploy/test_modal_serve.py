@@ -77,6 +77,7 @@ def test_recipe_auth_resources_cache_and_uploads():
     serve.create_app(sdk=sdk)
     calls = {name: kwargs for name, _, kwargs in sdk.calls}
     assert calls["web_server"]["requires_proxy_auth"] is True
+    assert calls["web_server"]["label"] == load_plan(MANIFEST).target.app
     assert calls["concurrent"] == {"max_inputs": 1}
     config = calls["cls"]
     assert {

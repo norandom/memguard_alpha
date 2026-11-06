@@ -23,7 +23,7 @@ def test_frozen_plan_and_units():
     assert plan.memory_mib == 32768
     assert plan.limits.inference_posts == 8
     assert plan.limits.total_output_tokens == 4096
-    assert "workspace" in plan.execution_blockers
+    assert "paid_execution_not_authorized" in plan.execution_blockers
     assert "provider_budget" in plan.execution_blockers
 
 

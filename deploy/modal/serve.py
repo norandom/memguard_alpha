@@ -437,7 +437,8 @@ def create_app(*, sdk=None, root: Path = ROOT):
             """Authenticated SDK startup observation; enter has readied vLLM, no tokens."""
             return {"app_id": app.app_id, "ready": self.process is not None and self.process.poll() is None}
 
-        @sdk.web_server(8000, startup_timeout=plan.limits.startup_seconds, requires_proxy_auth=True)
+        @sdk.web_server(8000, startup_timeout=plan.limits.startup_seconds,
+                        label=plan.target.app, requires_proxy_auth=True)
         def web(self):
             pass  # Server was started by the enter hook; responses are native vLLM.
 
