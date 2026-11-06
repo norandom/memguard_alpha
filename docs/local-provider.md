@@ -35,6 +35,25 @@ published v0.5.0 release.
 
 ## Choose and configure the external host
 
+Downloaded models live in the checkout's `models/` directory, excluded from Git,
+Docker build contexts and Dagger uploads. The existing Ollama store was copied
+and SHA-256 verified there on November 6, retaining its blobs and manifests.
+The original copy remains pending cleanup; see the
+[storage and sequential test receipt](results/2026-11-06-local-model-storage.md).
+To start the optional
+host from this location, quit any existing Ollama server, then use PowerShell:
+
+```powershell
+.\scripts\start_local_ollama.ps1
+```
+
+The launcher sets `OLLAMA_MODELS` for its process, resolves the directory from
+the checkout, and uses a 2,048-token context with one loaded model and one active
+request. Supply `-OllamaPath` if Ollama is installed elsewhere. It changes no
+user-level environment setting.
+See [Ollama's model storage configuration](https://docs.ollama.com/faq#where-are-models-stored).
+Load and test one model at a time, then use `ollama stop MODEL` before the next.
+
 | Configuration | Observed support on 2026-11-05 | Limit |
 | --- | --- | --- |
 | Ollama 0.40.11, `gemma3:4b`, Q4_K_M | Eligible: aligned realized-token logprobs and five alternatives; CPU | One short probe; score normalization semantics unknown |

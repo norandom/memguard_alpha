@@ -1,0 +1,236 @@
+{
+  "inference_attempts": 3,
+  "models_loaded_after_tests": 0,
+  "probes": [
+    {
+      "date": "2026-11-06",
+      "purpose": "User-requested sequential tests after model store move",
+      "model_directory": "D:/Source/memguard_alpha/models",
+      "bounds": {
+        "attempts_per_model": 1,
+        "total_attempts": 3,
+        "automatic_retries": 0,
+        "context_tokens": 2048,
+        "max_output_tokens": 32,
+        "max_seconds_per_attempt": 300,
+        "concurrent_requests": 1
+      },
+      "attempts": [
+        {
+          "candidate_id": "gemma3:4b",
+          "model": "gemma3:4b",
+          "endpoint": "http://localhost:11434/v1/chat/completions",
+          "authentication": "none",
+          "status": "eligible",
+          "reason": "aligned_token_evidence_observed",
+          "physical_attempts": 1,
+          "unknown_outcome": false,
+          "events": [
+            {
+              "call_id": 1,
+              "attempt": 1,
+              "started_at": 396502.593,
+              "timestamp": "2026-11-06T08:37:58.633095+01:00",
+              "status": "succeeded",
+              "latency_s": 9.53200000000652,
+              "status_code": null,
+              "usage": {
+                "prompt_tokens": 16,
+                "completion_tokens": 3,
+                "total_tokens": 19
+              }
+            }
+          ],
+          "timestamp": "2026-11-06T08:37:58.627569+01:00",
+          "configured_context_tokens": 2048,
+          "elapsed_s": 9.53200000000652,
+          "host_execution_stopped": null,
+          "load_time_s": null,
+          "generation_time_s": null,
+          "dedicated_gpu_memory_bytes": null,
+          "shared_gpu_memory_bytes": null,
+          "system_ram_usage_bytes": null,
+          "score_semantics": "unknown",
+          "alternative_distribution": "partial_top_k",
+          "tokenizer_identity": null,
+          "observed_before": {
+            "runtime_version": "0.40.11",
+            "digest": "sha256:68ceab7e468a31c988b44d5a4984a0e21f58c4f7158c6ce29c1804babac38df7",
+            "loaded_models": [],
+            "effective_context_tokens": null,
+            "model_allocation_bytes": null,
+            "accelerator_allocation_bytes": null,
+            "observed_backend": null
+          },
+          "observed_after": {
+            "runtime_version": "0.40.11",
+            "digest": "sha256:68ceab7e468a31c988b44d5a4984a0e21f58c4f7158c6ce29c1804babac38df7",
+            "loaded_models": [
+              "gemma3:4b"
+            ],
+            "effective_context_tokens": 2048,
+            "model_allocation_bytes": 2886687784,
+            "accelerator_allocation_bytes": 0,
+            "observed_backend": "CPU"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-11-06",
+      "purpose": "User-requested sequential tests after model store move",
+      "model_directory": "D:/Source/memguard_alpha/models",
+      "bounds": {
+        "attempts_per_model": 1,
+        "total_attempts": 3,
+        "automatic_retries": 0,
+        "context_tokens": 2048,
+        "max_output_tokens": 32,
+        "max_seconds_per_attempt": 300,
+        "concurrent_requests": 1
+      },
+      "attempts": [
+        {
+          "candidate_id": "gpt-oss:20b",
+          "model": "gpt-oss:20b",
+          "endpoint": "http://localhost:11434/v1/chat/completions",
+          "authentication": "none",
+          "status": "unavailable",
+          "reason": "provider_rejected_request",
+          "physical_attempts": 1,
+          "unknown_outcome": false,
+          "events": [
+            {
+              "call_id": 1,
+              "attempt": 1,
+              "started_at": 396576.328,
+              "timestamp": "2026-11-06T08:39:12.363873+01:00",
+              "status": "failed",
+              "latency_s": 38.15600000001723,
+              "status_code": 500,
+              "usage": null
+            }
+          ],
+          "timestamp": "2026-11-06T08:39:12.360613+01:00",
+          "configured_context_tokens": 2048,
+          "elapsed_s": 38.15600000001723,
+          "host_execution_stopped": null,
+          "load_time_s": null,
+          "generation_time_s": null,
+          "dedicated_gpu_memory_bytes": null,
+          "shared_gpu_memory_bytes": null,
+          "system_ram_usage_bytes": null,
+          "score_semantics": "unknown",
+          "alternative_distribution": "partial_top_k",
+          "tokenizer_identity": null,
+          "observed_before": {
+            "runtime_version": "0.40.11",
+            "digest": "sha256:f38aa0c53da5f8c49d08c43a99df24ff53167fe68e24664a7777288e7656fdfe",
+            "loaded_models": [],
+            "effective_context_tokens": null,
+            "model_allocation_bytes": null,
+            "accelerator_allocation_bytes": null,
+            "observed_backend": null
+          },
+          "observed_after": {
+            "runtime_version": "0.40.11",
+            "digest": "sha256:f38aa0c53da5f8c49d08c43a99df24ff53167fe68e24664a7777288e7656fdfe",
+            "loaded_models": [],
+            "effective_context_tokens": null,
+            "model_allocation_bytes": null,
+            "accelerator_allocation_bytes": null,
+            "observed_backend": null
+          },
+          "http_status": 500,
+          "rejected_parameter": null
+        }
+      ]
+    },
+    {
+      "date": "2026-11-06",
+      "purpose": "User-requested sequential tests after model store move",
+      "model_directory": "D:/Source/memguard_alpha/models",
+      "bounds": {
+        "attempts_per_model": 1,
+        "total_attempts": 3,
+        "automatic_retries": 0,
+        "context_tokens": 2048,
+        "max_output_tokens": 32,
+        "max_seconds_per_attempt": 300,
+        "concurrent_requests": 1
+      },
+      "attempts": [
+        {
+          "candidate_id": "llava-llama3:latest",
+          "model": "llava-llama3:latest",
+          "endpoint": "http://localhost:11434/v1/chat/completions",
+          "authentication": "none",
+          "status": "ineligible",
+          "reason": "post_probe_identity_or_context_mismatch",
+          "physical_attempts": 1,
+          "unknown_outcome": false,
+          "events": [
+            {
+              "call_id": 1,
+              "attempt": 1,
+              "started_at": 396666.312,
+              "timestamp": "2026-11-06T08:40:42.352881+01:00",
+              "status": "succeeded",
+              "latency_s": 13.219000000040978,
+              "status_code": null,
+              "usage": {
+                "prompt_tokens": 16,
+                "completion_tokens": 3,
+                "total_tokens": 19
+              }
+            }
+          ],
+          "timestamp": "2026-11-06T08:40:42.34886+01:00",
+          "configured_context_tokens": 2048,
+          "elapsed_s": 13.219000000040978,
+          "host_execution_stopped": null,
+          "load_time_s": null,
+          "generation_time_s": null,
+          "dedicated_gpu_memory_bytes": null,
+          "shared_gpu_memory_bytes": null,
+          "system_ram_usage_bytes": null,
+          "score_semantics": "unknown",
+          "alternative_distribution": "partial_top_k",
+          "tokenizer_identity": null,
+          "observed_before": {
+            "runtime_version": "0.40.11",
+            "digest": "sha256:44c161b1f46523301da9c0cc505afa4a4a0cc62f580581d98a430bb21acd46de",
+            "loaded_models": [],
+            "effective_context_tokens": null,
+            "model_allocation_bytes": null,
+            "accelerator_allocation_bytes": null,
+            "observed_backend": null
+          },
+          "observed_after": {
+            "runtime_version": "0.40.11",
+            "digest": "sha256:44c161b1f46523301da9c0cc505afa4a4a0cc62f580581d98a430bb21acd46de",
+            "loaded_models": [
+              "llava-llama3:latest"
+            ],
+            "effective_context_tokens": 4096,
+            "model_allocation_bytes": 5607113357,
+            "accelerator_allocation_bytes": 0,
+            "observed_backend": "CPU"
+          }
+        }
+      ]
+    }
+  ],
+  "retries": 0,
+  "date": "2026-11-06",
+  "storage": {
+    "junction_created": false,
+    "original_removed": false,
+    "sha256_copy_verified": true,
+    "directory": "models/",
+    "cleanup_status": "blocked by automatic approval review",
+    "files": 28,
+    "bytes": 22689410671,
+    "user_environment_changed": false
+  }
+}

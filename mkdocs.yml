@@ -57,6 +57,7 @@ nav:
   - Ensemble consensus: ensemble.md
   - Completion API integration: completion-api.md
   - Local model integration: local-provider.md
+  - Local model storage tests (2026-11-06): results/2026-11-06-local-model-storage.md
   - Local provider feasibility (2026-11-05): results/2026-11-05-local-provider-feasibility.md
   - Divergence decoding: divergence-decoding.md
   - Mitigation evaluation proposal: divergence-decoding-evaluation.md

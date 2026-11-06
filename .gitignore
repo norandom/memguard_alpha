@@ -20,6 +20,9 @@ notebooks/figures/
 # Per-run output. Regenerable from ./start.sh or scripts/run_cmmd_backtest.py.
 runs/
 
+# Local model weights and Ollama manifests.
+/models/
+
 # Per-machine agent / settings state.
 .agent/
 .claude/

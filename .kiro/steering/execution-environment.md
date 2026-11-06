@@ -13,3 +13,11 @@ WSL for ordinary project execution or ad hoc Docker checks.
   does not require accelerator hosting inside CI containers.
 - Keep Recall Guard portable: platform-specific model runtimes are optional
   external hosts, not core package dependencies.
+
+## Local model storage
+
+User instruction, 2026-11-06: store downloaded models under the checkout's
+`models/` directory. Ollama uses `OLLAMA_MODELS` pointing to that directory;
+preserve its native blobs/manifests layout. Keep model files excluded from Git,
+Docker build contexts and Dagger uploads. Test local models sequentially and
+unload each model before starting the next.

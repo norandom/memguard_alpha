@@ -21,6 +21,7 @@ ci/sdk
 
 # Generated output and downloaded corpus; keep tracked tests and fixtures.
 runs
+models
 site
 dist
 build
