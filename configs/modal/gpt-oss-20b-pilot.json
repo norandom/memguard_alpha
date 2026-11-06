@@ -85,6 +85,6 @@
     "sdk_source": "https://pypi.org/pypi/modal/1.6.3/json",
     "recipe_source": "https://github.com/vllm-project/recipes/blob/main/OpenAI/GPT-OSS.md",
     "resources_source": "https://modal.com/docs/guide/resources",
-    "compatibility": "Released linux/amd64 image; primary vLLM recipe documents single-A100 GPT-OSS using Triton attention and Marlin MXFP4. SDK supports Python>=3.10,<3.16; isolated tooling targets 3.12-3.14. Hardware fit, image startup and actual logprob alignment remain unverified until separately approved live pilot."
+    "compatibility": "Released linux/amd64 image; primary vLLM recipe documents single-A100 GPT-OSS using Triton attention and Marlin MXFP4. Isolated tooling requires Python 3.12 to match the remote images. CPU-only bootstrap on 2026-11-06 observed Python 3.12.13, vLLM 0.17.0 and typing_extensions 4.12.2 lacking Sentinel, preventing pydantic_core import. The serving recipe clears the inherited vLLM entrypoint and pins typing_extensions==4.16.0 before deferred source files; CPU import validation is required before GPU execution. Hardware fit, model readiness and actual logprob alignment remain unverified."
   }
 }

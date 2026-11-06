@@ -68,6 +68,19 @@ def test_serving_image_resets_inherited_entrypoint_with_real_sdk(monkeypatch):
     assert commands.count("ENTRYPOINT []") == 1
 
 
+def test_serving_image_pins_typing_extensions_with_real_sdk(monkeypatch):
+    packages = []
+    original = modal.Image.pip_install
+
+    def record_packages(self, *args, **kwargs):
+        packages.extend(args)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(modal.Image, "pip_install", record_packages)
+    serve.create_app()
+    assert packages == ["typing_extensions==4.16.0"]
+
+
 def test_runtime_identity_uses_observed_container_context(monkeypatch):
     observed_id = "ap-" + "a" * 22
     monkeypatch.setattr(_App, "_container_app", SimpleNamespace(app_id=observed_id))

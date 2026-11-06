@@ -53,19 +53,28 @@ class FakeSDK:
 
     def image(self, *args, **kwargs):
         self.calls.append(("image", args, kwargs))
-        return SimpleNamespace(add_local_file=self.add_file, env=self.env, entrypoint=self.entrypoint)
+        return SimpleNamespace(add_local_file=self.add_file, env=self.env, entrypoint=self.entrypoint,
+                               pip_install=self.pip_install)
 
     def entrypoint(self, commands):
         self.calls.append(("entrypoint", (commands,), {}))
-        return SimpleNamespace(add_local_file=self.add_file, env=self.env, entrypoint=self.entrypoint)
+        return SimpleNamespace(add_local_file=self.add_file, env=self.env, entrypoint=self.entrypoint,
+                               pip_install=self.pip_install)
+
+    def pip_install(self, *packages):
+        self.calls.append(("pip_install", packages, {}))
+        return SimpleNamespace(add_local_file=self.add_file, env=self.env, entrypoint=self.entrypoint,
+                               pip_install=self.pip_install)
 
     def add_file(self, *args, **kwargs):
         self.calls.append(("upload", args, kwargs))
-        return SimpleNamespace(add_local_file=self.add_file, env=self.env, entrypoint=self.entrypoint)
+        return SimpleNamespace(add_local_file=self.add_file, env=self.env, entrypoint=self.entrypoint,
+                               pip_install=self.pip_install)
 
     def env(self, settings):
         self.calls.append(("env", (), settings))
-        return SimpleNamespace(add_local_file=self.add_file, env=self.env, entrypoint=self.entrypoint)
+        return SimpleNamespace(add_local_file=self.add_file, env=self.env, entrypoint=self.entrypoint,
+                               pip_install=self.pip_install)
 
     def volume(self, *args, **kwargs):
         self.calls.append(("volume", args, kwargs))
@@ -145,6 +154,8 @@ def test_recipe_auth_resources_cache_and_uploads(monkeypatch):
     assert operations.index("env") < operations.index("upload")
     assert [args for name, args, _ in sdk.calls if name == "entrypoint"] == [([],)]
     assert operations.index("entrypoint") < operations.index("upload")
+    assert [args for name, args, _ in sdk.calls if name == "pip_install"] == [("typing_extensions==4.16.0",)]
+    assert operations.index("entrypoint") < operations.index("pip_install") < operations.index("env")
     uploads = [args for name, args, _ in sdk.calls if name == "upload"]
     assert len(uploads) == 3
     assert all(Path(args[0]).resolve().is_relative_to(ROOT) for args in uploads)

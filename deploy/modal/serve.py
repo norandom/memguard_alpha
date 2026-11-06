@@ -414,6 +414,8 @@ def create_app(*, sdk=None, root: Path = ROOT):
     )
     # The registry image starts the vLLM CLI; Modal must start its own bootstrap.
     image = image.entrypoint([])
+    # CPU bootstrap observed 4.12.2; the image's pydantic_core requires Sentinel.
+    image = image.pip_install("typing_extensions==4.16.0")
     image = image.env(
         {
             "HF_HOME": str(CACHE),
