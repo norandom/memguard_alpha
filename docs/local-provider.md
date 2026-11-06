@@ -20,8 +20,9 @@ with no calibration or mitigation measurement.
 
 For optional remote GPU hosting, use the [Modal operator guide](modal-provider.md).
 It starts with a verified offline plan and separates paid setup from the scoring
-library. The GPT-OSS-20B Modal configuration remains an unverified host candidate;
-it does not inherit the local CPU result above.
+library. The GPT-OSS-20B Modal pilot reached readiness but its eligibility
+response failed token alignment; it remains ineligible for calibrated evidence
+and does not inherit the local CPU result above.
 
 From a development checkout with its locked environment installed, use PowerShell:
 

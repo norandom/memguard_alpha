@@ -1,0 +1,177 @@
+{
+  "date": "2026-11-06",
+  "purpose": "hosting feasibility; no mitigation measurement",
+  "attempts": [
+    {
+      "attempt": 1,
+      "source_sha256": "96015f673c435ab8cd1a736b53a66690d374e29c9d6badc570501a7daf381b19",
+      "status": "stopped",
+      "error": "InvalidError",
+      "error_stage": null,
+      "inference_posts": 0,
+      "evidence_status": "ineligible_or_unobserved",
+      "environment_status": "unknown",
+      "cleanup": null,
+      "unauthenticated_http_status": []
+    },
+    {
+      "attempt": 2,
+      "source_sha256": "db1041871f5ddba52aa7178426a4d3590fe45bc4074a433b036c9cfd44fd0537",
+      "status": "stopped",
+      "error": "ImageBuildError",
+      "error_stage": null,
+      "inference_posts": 0,
+      "evidence_status": "ineligible_or_unobserved",
+      "environment_status": "unknown",
+      "cleanup": null,
+      "unauthenticated_http_status": []
+    },
+    {
+      "attempt": 3,
+      "source_sha256": "da204570e83f740eb249a03eea0b8fe4a7b8e56094456ae070173b12b2d3fb25",
+      "status": "stopped",
+      "error": "InvalidError",
+      "error_stage": null,
+      "inference_posts": 0,
+      "evidence_status": "ineligible_or_unobserved",
+      "environment_status": "unknown",
+      "cleanup": null,
+      "unauthenticated_http_status": []
+    },
+    {
+      "attempt": 4,
+      "source_sha256": "f38443b5a26b45a020a5ba4f9679308849a0511ffb40c4e284d3a1ad678489e1",
+      "status": "stopped",
+      "error": "InvalidError",
+      "error_stage": "model_deploy",
+      "inference_posts": 0,
+      "evidence_status": "ineligible_or_unobserved",
+      "environment_status": "unknown",
+      "cleanup": null,
+      "unauthenticated_http_status": []
+    },
+    {
+      "attempt": 5,
+      "source_sha256": "95317e8d5199834eaa9046b34e5326e35b6ffd5b2cbf1ad64a5654b080fdf5eb",
+      "status": "stopped",
+      "error": "InvalidError",
+      "error_stage": "model_deploy",
+      "inference_posts": 0,
+      "evidence_status": "ineligible_or_unobserved",
+      "environment_status": "unknown",
+      "cleanup": null,
+      "unauthenticated_http_status": []
+    },
+    {
+      "attempt": 6,
+      "source_sha256": "fe13f2a5555d19857248a38ea70348c0ec420763e32fd948e527c536be447a2d",
+      "status": "stopped",
+      "error": "ValueError",
+      "error_stage": "proxy_denial",
+      "inference_posts": 0,
+      "evidence_status": "ineligible_or_unobserved",
+      "environment_status": "unknown",
+      "cleanup": "verified_stopped",
+      "unauthenticated_http_status": [
+        404
+      ]
+    },
+    {
+      "attempt": 7,
+      "source_sha256": "ec8e65a3cf82f319df28a5d266da2156fcf6c4dc07401a123e927f1a609a6f5b",
+      "status": "stopped",
+      "error": "RemoteError",
+      "error_stage": "readiness",
+      "inference_posts": 0,
+      "evidence_status": "ineligible_or_unobserved",
+      "environment_status": "unknown",
+      "cleanup": "unverified",
+      "unauthenticated_http_status": [
+        401
+      ]
+    },
+    {
+      "attempt": 8,
+      "source_sha256": "9bdb940f65393e9822585c50371f12d47d559e8f7a7fece2cd8f60064a33895a",
+      "status": "ineligible",
+      "error": null,
+      "error_stage": null,
+      "inference_posts": 1,
+      "evidence_status": "ineligible_or_unobserved",
+      "environment_status": "observed_stable",
+      "cleanup": "verified_stopped",
+      "unauthenticated_http_status": [
+        401
+      ],
+      "eligibility_reason": "token_text_alignment_failed",
+      "eligibility_elapsed_seconds": 2.969000000040978,
+      "measurement_posts": 0,
+      "startup_wall_seconds": 103.63132119178772
+    }
+  ],
+  "cost_attribution": "unknown; workspace snapshots are provisional and not a pilot invoice",
+  "cpu_diagnostics": [
+    {
+      "name": "bootstrap-import-01",
+      "source_sha256": "d63de27a096747049090bee10dec7912d24c96b4fbeb65f67fbf2cc0df1d7202",
+      "gpu_count": 0,
+      "inference_posts": 0,
+      "status": "observed",
+      "result": {
+        "python": "3.12.13",
+        "typing_extensions_version": "4.12.2",
+        "typing_extensions_path": "/usr/local/lib/python3.12/dist-packages/typing_extensions.py",
+        "has_sentinel": false,
+        "vllm_version": "0.17.0",
+        "pydantic_core_import": false,
+        "import_error_type": "ImportError",
+        "missing_sentinel": true
+      },
+      "cleanup_state": "APP_STATE_STOPPED"
+    },
+    {
+      "name": "bootstrap-import-02",
+      "source_sha256": "fbc88cd735f2236e7cb63d38620f8330469979e42fe8ac63a47baa528ab70c42",
+      "gpu_count": 0,
+      "inference_posts": 0,
+      "status": "observed",
+      "result": {
+        "python": "3.12.13",
+        "typing_extensions_version": "4.16.0",
+        "typing_extensions_path": "/usr/local/lib/python3.12/dist-packages/typing_extensions.py",
+        "has_sentinel": true,
+        "vllm_version": "0.17.0",
+        "pydantic_core_import": true,
+        "pydantic_core_version": "2.41.5"
+      },
+      "cleanup_state": "APP_STATE_STOPPED"
+    }
+  ],
+  "separate_cleanup_verification": {
+    "source_sha256": "418b4df85d9c33d3b51fd326c91963af45df608dcdb7555dd61228e266f5c5e2",
+    "owned_app_entries": 15,
+    "all_stopped": true,
+    "original_receipts_unchanged": true
+  },
+  "billing_snapshot": {
+    "source_sha256": "6e7b6dbcbe25e7ebfd8c003487d6b88197417f5e322c57977bf40ae4e852587a",
+    "scope": "workspace",
+    "phase": "after-attempt-08",
+    "metered_gross_usd": 0.15792723,
+    "billed_usd": 0.0,
+    "provisional": true,
+    "attributable_pilot_cost_usd": null
+  },
+  "total_modal_inference_posts": 1,
+  "usable_measurements": 0,
+  "configured_gpu": "A100-40GB",
+  "observed_hardware": [
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memory_total_mib": "81920",
+      "driver_version": "610.57.04"
+    }
+  ],
+  "runtime": "vllm==0.17.0",
+  "model_revision": "6cee5e81ee83917806bbde320786a8fb61efebee"
+}

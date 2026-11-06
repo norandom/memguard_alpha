@@ -223,7 +223,7 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Depends: 9.1_
   - _Requirements: 6.4, 7.4, 7.6, 7.7, 7.8, 7.10_
 
-- [ ] 10. Validate and document the integrated optional provider
+- [x] 10. Validate and document the integrated optional provider
 - [x] 10.1 Complete offline acceptance and operator instructions
   - _Outcome: Independent review APPROVED; 76 focused tests, strict docs, isolated SDK/package/chat-template smoke, locks and source hashes verified. Full regression: 2813 passed, one skipped, one obsolete dependency assertion subsequently corrected and verified. See modal-implementation-validation.md. Live pilot remains unperformed._
   - Run focused behavior tests, Ruff, architecture and lean-import checks; exercise the documented dry run and strict documentation build. Fake cloud calls; CI must never allocate paid GPUs.
@@ -234,8 +234,8 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Depends: 9.2_
   - _Requirements: 6.3, 6.4, 6.5, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11_
 
-- [ ] 10.2 Validate the separately authorized live pilot
-  - _Live acceptance pending: Paid approval and budget confirmation received; weights staged. Attempt 05 exposed serialized SDK captures, repaired and independently reviewed. Attempt 06 deployed and armed expiry, then stopped before readiness because the configured endpoint differed from Modal's registered regional URL. The explicit address and early endpoint identity check were corrected and independently reviewed (71 focused tests). Attempt 07 verified unauthenticated HTTP 401 and armed expiry but failed container startup with a Sentinel import error. Operator stopped it to prevent repeated platform startup attempts. Read-only debug verified an inherited vLLM entrypoint; narrow reset and CPU-only bootstrap diagnostic are next. Zero inference POSTs across all attempts. See docs/results/2026-11-06-modal-pilot.md._
+- [x] 10.2 Validate the separately authorized live pilot
+  - _Outcome: Independent review APPROVED the bounded negative feasibility outcome. Attempt 08 reached GPT-OSS-20B readiness after reviewed entrypoint and typing_extensions repairs, verified by two CPU-only checks. One eligibility response failed token_text_alignment_failed; zero measurement prompts followed. Configured A100-40GB, observed A100-SXM4-80GB; no 40 GB fit or attributable price claim. Runner verified model shutdown; final inventory confirmed all fifteen owned app entries stopped. Fresh checks: 153 passed, one optional skip; actual SDK 10 passed; Ruff, architecture and strict docs passed. No calibration/ensemble or mitigation measurement. See live-feasibility-validation-2026-11-06.md, docs/results/2026-11-06-modal-pilot.md and modal-alignment-diagnostic-proposal.md. Completion records feasibility, not eligible end-to-end scoring support._
   - Before any paid staging/build/deployment, present the concrete frozen pins, prompts, request/token/time caps, complete cost estimate and budget configuration for user approval. Verify credentials, account allowance and model access first.
   - After that approval, verify unauthorized requests are denied without starting a GPU, then run the eight-request, 20-minute GPU-phase pilot with the USD 5 target and independent expiry. No hardware/model substitution or additional calls on failure.
   - Verify actual GPU/runtime identity, usable five-alternative logprobs, cold/warm timings and app shutdown. Publish dated receipts, observed or explicitly unknown costs and comparison limitations.

@@ -6,13 +6,22 @@ calibration contracts. Start with the offline plan below. A working endpoint,
 valid token evidence and a useful contamination score are separate results.
 
 The deployment recipe and bounded runner are verified offline. The
-[2026-11-06 live pilot](results/2026-11-06-modal-pilot.md) verified weight staging
-and image build, then stopped on a deployment rejection before readiness or
-inference. All experiment apps are confirmed stopped; weights remain retained.
-A100 execution, endpoint authentication and token evidence remain unverified.
-The paid pilot was approved. A diagnostic follow-up identified an image-build
-ordering error; its offline fix awaits a controlled live retest under task 10.2.
-Complete all image configuration before deferred local-file additions.
+[2026-11-06 live pilot](results/2026-11-06-modal-pilot.md) verified weight staging,
+deployment, remote expiry arming and unauthenticated HTTP 401 before readiness.
+Attempt 08 reached model readiness and authenticated generation, but strict token
+alignment failed on its one eligibility response. No measurement prompts ran;
+the configuration remains ineligible for calibrated token-evidence use. The
+runner verified model-app shutdown, and final inventory confirmed every owned
+model, expiry and diagnostic app stopped.
+Startup diagnostics identified the inherited vLLM entrypoint and an incompatible
+`typing_extensions` import. The recipe clears that entrypoint and pins 4.16.0;
+a fresh CPU-only check confirmed `Sentinel` and `pydantic_core` imports. Keep every image operation
+before deferred local-file additions. Weights remain retained after app shutdown.
+
+The GPU request was A100-40GB; the observed device was A100-SXM4-80GB. Preserve
+both facts in comparisons. This run establishes neither 40 GB fit nor actual
+attributable GPU cost. A further structural alignment diagnostic needs an
+explicit decision; unused measurement allowance does not bypass the failure gate.
 The original local CPU result remains in the
 [local integration guide](local-provider.md).
 
@@ -73,6 +82,18 @@ manifest/config requests confirmed config digest
 `sha256:700d8ac4f37a3f2975b79e67406d7f2689bdd8c87e3e7a62721bf03921940935`:
 its build history records `PYTHON_VERSION=3.12` and selects that interpreter as
 `python3`. No image layers were pulled for this check.
+
+The image also inherits `ENTRYPOINT ["vllm", "serve"]`; the recipe resets it with
+`image.entrypoint([])` so Modal can execute its bootstrap arguments. A live
+CPU-only check observed `typing_extensions` 4.12.2 lacking `Sentinel`, which
+prevented `pydantic_core` import. The explicit image dependency override remains
+outside the core package and the local operator lock. The recipe pins 4.16.0
+before all deferred file additions; verify its effective import in the resulting
+image. See [Modal's existing-image guidance](https://modal.com/docs/guide/existing-images).
+
+Use the provider-registered endpoint, including its regional hostname when
+present. The runner checks it against the explicit manifest before HTTP traffic
+or GPU readiness. It never silently redirects requests to a guessed address.
 
 The local tokenizer needs no PyTorch, CUDA or vLLM install. Python 3.12 tooling,
 chat-template rendering and lazy serving/expiry construction were checked with
