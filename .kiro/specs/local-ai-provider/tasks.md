@@ -168,7 +168,7 @@ live acceptance are included because the accepted project scope requires them.
 Task approval authorizes implementation and offline validation; task 10.2 has
 a separate paid-execution gate. No deployment occurs during planning or CI.
 
-- [ ] 8. Prepare optional hosting and its lifecycle
+- [x] 8. Prepare optional hosting and its lifecycle
 - [x] 8.1 Freeze the deployment environment and pilot configuration
   - _Outcome: Independent review APPROVED; 21 focused tests passed, Ruff/architecture/lock checks passed, documented plan reports zero mutations and inference. Account facts and live compatibility remain unverified._
   - Isolate and lock deployment tooling without adding Modal or accelerator dependencies to the core library. Resolve exact SDK, serving-image digest and model/tokenizer commits; verify artifact access and license prerequisites.
@@ -198,7 +198,7 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Depends: 8.2_
   - _Requirements: 7.4, 7.5, 7.6, 7.8_
 
-- [ ] 9. Integrate the bounded pilot with existing evidence handling
+- [x] 9. Integrate the bounded pilot with existing evidence handling
 - [x] 9.1 Enforce the frozen pilot and evidence admission
   - _Outcome: Independent review APPROVED; 61 combined runner/deployment tests passed. Default plan independently verified zero inference/mutations, with account, tokenizer and cache prerequisites explicit. No live execution or calibration._
   - Reuse the existing completion adapter, call budget and validator. Reserve a new receipt exclusively and persist each attempt intent before sending; freeze prompts and their hash.
@@ -222,7 +222,8 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Requirements: 6.4, 7.4, 7.6, 7.7, 7.8, 7.10_
 
 - [ ] 10. Validate and document the integrated optional provider
-- [ ] 10.1 Complete offline acceptance and operator instructions
+- [x] 10.1 Complete offline acceptance and operator instructions
+  - _Outcome: Independent review APPROVED; 76 focused tests, strict docs, isolated SDK/package/chat-template smoke, locks and source hashes verified. Full regression: 2813 passed, one skipped, one obsolete dependency assertion subsequently corrected and verified. See modal-implementation-validation.md. Live pilot remains unperformed._
   - Run focused behavior tests, Ruff, architecture and lean-import checks; exercise the documented dry run and strict documentation build. Fake cloud calls; CI must never allocate paid GPUs.
   - Document account authentication, model access, budget setup, start/stop, retained cache charges, process-loss recovery and unverified cleanup. Link the optional host from local-provider guidance and MkDocs.
   - Cite dated primary sources and Jane Street; distinguish candidate support, observed evidence, calibration discrimination and mitigation efficacy. Keep frontier completion-only work separate.
@@ -232,6 +233,7 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Requirements: 6.3, 6.4, 6.5, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11_
 
 - [ ] 10.2 Validate the separately authorized live pilot
+  - _Blocked: Separate paid pilot approval, confirmed account/workspace/budget, pinned local tokenizer and staged remote weights are still required. No paid staging or deployment has occurred._
   - Before any paid staging/build/deployment, present the concrete frozen pins, prompts, request/token/time caps, complete cost estimate and budget configuration for user approval. Verify credentials, account allowance and model access first.
   - After that approval, verify unauthorized requests are denied without starting a GPU, then run the eight-request, 20-minute GPU-phase pilot with the USD 5 target and independent expiry. No hardware/model substitution or additional calls on failure.
   - Verify actual GPU/runtime identity, usable five-alternative logprobs, cold/warm timings and app shutdown. Publish dated receipts, observed or explicitly unknown costs and comparison limitations.

@@ -19,6 +19,14 @@
       "design_approved": true,
       "design_approval_context": "User explicitly approved the Modal design before task generation.",
       "tasks_approved": true,
+      "offline_implementation": {
+        "completed_tasks": ["8.1", "8.2", "8.3", "9.1", "9.2", "10.1"],
+        "review": "APPROVED",
+        "validation_report": "modal-implementation-validation.md",
+        "live_pilot": "not-performed",
+        "next_task": "10.2",
+        "next_prerequisites": ["paid-pilot-approval", "account-workspace-budget", "pinned-tokenizer", "staged-weights"]
+      },
       "task_approval_context": "User explicitly approved tasks 8–10; paid pilot retains its separate gate.",
       "paid_deployment_authorized": false
     }

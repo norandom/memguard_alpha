@@ -116,7 +116,21 @@ def test_isolated_sdk_lock():
 
     project = tomllib.loads((ROOT / "deploy/modal/pyproject.toml").read_text(encoding="utf-8"))
     lock = tomllib.loads((ROOT / "deploy/modal/uv.lock").read_text(encoding="utf-8"))
-    assert project["project"]["dependencies"] == ["modal==1.6.3"]
-    assert next(package for package in lock["package"] if package["name"] == "modal")["version"] == "1.6.3"
+    assert set(project["project"]["dependencies"]) == {
+        "modal==1.6.3", "recall-guard", "transformers==4.55.4", "huggingface-hub==0.34.4",
+        "jinja2==3.1.6",
+    }
+    assert project["tool"]["uv"]["sources"]["recall-guard"] == {"path": "../..", "editable": True}
+    packages = {package["name"]: package for package in lock["package"]}
+    assert packages["modal"]["version"] == "1.6.3"
+    assert packages["transformers"]["version"] == "4.55.4"
+    assert packages["huggingface-hub"]["version"] == "0.34.4"
+    assert packages["jinja2"]["version"] == "3.1.6"
+    assert Path(packages["recall-guard"]["source"]["editable"]) == Path("../..")
+    assert not {"torch", "vllm", "accelerate"} & packages.keys()
     core = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert all("modal" not in dependency for dependency in core["project"]["dependencies"])
+    assert not any(
+        name in dependency
+        for name in ("modal", "transformers", "huggingface-hub", "torch", "vllm")
+        for dependency in core["project"]["dependencies"]
+    )

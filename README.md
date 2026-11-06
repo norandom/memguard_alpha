@@ -10,6 +10,13 @@ Historical accuracy can come from recall as well as reasoning. The score is a
 warning signal learned from your calibration data, not proof that an individual
 answer was memorized. Recall Guard is not a forecaster.
 
+Model hosting is optional. Use an external [local host](docs/local-provider.md)
+or review the [Modal pilot plan](docs/modal-provider.md) for remote GPU hosting;
+the Modal configuration is verified offline and remains a live candidate.
+[Jane Street's approach](https://blog.janestreet.com/mitigating-memorization-in-llms/)
+informs the separate divergence work. Endpoint support alone does not establish
+successful mitigation, and frontier completion-only APIs follow a separate path.
+
 The [experiment track](docs/experiment-track.md) records measured results, failed
 approaches and their limits. The [November 5 S&P 500 pilot](docs/results/2026-11-05-sp500-pilot.md)
 produced usable Opus continuations but no established memorization effect. NIM

@@ -12,6 +12,11 @@ alternatives, that configuration is ineligible even when it generates readable t
 
 ## Start without a model host
 
+For optional remote GPU hosting, use the [Modal operator guide](modal-provider.md).
+It starts with a verified offline plan and separates paid setup from the scoring
+library. The GPT-OSS-20B Modal configuration remains an unverified host candidate;
+it does not inherit the local CPU result above.
+
 From a development checkout with its locked environment installed, use PowerShell:
 
 ```powershell
