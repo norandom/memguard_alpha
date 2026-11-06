@@ -385,8 +385,6 @@ def create_app(*, sdk=None, root: Path = ROOT):
             '&& ln -s /usr/bin/python3 /usr/local/bin/python'
         ],
     )
-    for path, relative in zip(files, UPLOAD_ALLOWLIST, strict=True):
-        image = image.add_local_file(path, "/root/" + relative)
     image = image.env(
         {
             "HF_HOME": str(CACHE),
@@ -396,6 +394,9 @@ def create_app(*, sdk=None, root: Path = ROOT):
             "DO_NOT_TRACK": "1",
         }
     )
+    # Deferred local files must follow all image build operations, including env.
+    for path, relative in zip(files, UPLOAD_ALLOWLIST, strict=True):
+        image = image.add_local_file(path, "/root/" + relative)
     weights = sdk.Volume.from_name("recall-guard-gpt-oss-20b-weights", environment_name=plan.target.environment,
                                    create_if_missing=False)
     observations = sdk.Dict.from_name(

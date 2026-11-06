@@ -10,8 +10,10 @@ The deployment recipe and bounded runner are verified offline. The
 and image build, then stopped on a deployment rejection before readiness or
 inference. All experiment apps are confirmed stopped; weights remain retained.
 A100 execution, endpoint authentication and token evidence remain unverified.
-The paid pilot was approved; further retries are halted for diagnostic review
-under task 10.2. The original local CPU result remains in the
+The paid pilot was approved. A diagnostic follow-up identified an image-build
+ordering error; its offline fix awaits a controlled live retest under task 10.2.
+Complete all image configuration before deferred local-file additions.
+The original local CPU result remains in the
 [local integration guide](local-provider.md).
 
 ## Inspect the plan without an SDK or account

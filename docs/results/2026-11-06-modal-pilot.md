@@ -25,6 +25,7 @@ All experiment apps were subsequently confirmed stopped.
 | CPU diagnostic | Same rejection reproduced with sanitized traceback | 0 | Controller-only; no model app or GPU invocation |
 | 02 | Registry image build failed with `ImageBuildError` | 0 | Modal bootstrap required `python`; pinned image exposed `python3`. Scoped alias added without replacing its interpreter |
 | 03 | Image built, later deployment rejected with `InvalidError` | 0 | The runner retained only exception type; exact remaining rejection needs diagnostic review before another paid attempt |
+| 04, diagnostic follow-up | SDK rejected image-build ordering with `InvalidError` at `model_deploy` | 0 | Sanitized message now identifies `image.env(...)` after deferred local files; moved image configuration before all local-file additions and added an ordering regression |
 
 Attempts 02 and 03 reserved 302.345 and 206.183 seconds respectively between
 deployment start and failure. These are deployment-phase wall times, **not
@@ -33,7 +34,7 @@ single-answer score or ensemble measurement completed. The eight-request
 inference allowance was not consumed.
 
 The two focused remediations passed independent review. Latest focused suite:
-87 deployment, runner and accounting tests passed. This establishes offline
+103 deployment, runner and accounting tests passed after the diagnostic follow-up. This establishes offline
 behavior only; live Modal support remains unverified.
 
 ## Budget and cleanup
@@ -53,11 +54,18 @@ allowances. Stopping apps does not delete that storage. The approved scope retai
 
 ## Next decision
 
-Live acceptance is blocked pending diagnostic review of the final deployment
-rejection. Further paid retries were stopped after the two debugging/remediation
-rounds. Preserve the three receipts and improve sanitized deployment-error detail
-before proposing another attempt. Do not change models, GPU type or inference
-limits to obscure the deployment failure.
+The separately initiated diagnostic follow-up captured the actionable rejection:
+Modal requires deferred `add_local_*` operations to follow all image-build
+operations, including `image.env(...)`. The recipe now configures its environment
+before adding the three allowlisted source/configuration files. The regression
+failed before the fix; the focused deployment/runner/accounting suite passes
+103 tests afterward. This is an offline correction awaiting a controlled live
+retest, not proof of a working endpoint. The original 03 receipt's missing
+message has not been reconstructed or overwritten.
+
+After attempt 04, fresh provider inventory confirmed all seven experiment app
+entries stopped. No further paid attempt was made automatically. Preserve all
+four receipts; keep the model, GPU and eight-request allowance explicit.
 
 This pilot provides **no measurement of divergence decoding efficacy**. Hosting,
 token evidence, calibration quality and mitigation effects remain separate gates;

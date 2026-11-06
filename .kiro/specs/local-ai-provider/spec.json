@@ -4,7 +4,7 @@
   "updated_at": "2026-11-06",
   "extensions": {
     "modal_hosting": {
-      "phase": "live-validation-blocked",
+      "phase": "live-retest-pending",
       "tasks_generated": true,
       "task_ids": ["8.1", "8.2", "8.3", "9.1", "9.2", "10.1", "10.2"],
       "task_review": {"mode": "independent", "decision": "PASS", "report": "modal-task-review.md"},
@@ -25,7 +25,7 @@
         "validation_report": "modal-implementation-validation.md",
         "live_pilot": "deployment-failed-before-inference",
         "next_task": "10.2",
-        "next_prerequisites": ["diagnostic-review-of-final-deployment-rejection"],
+        "next_prerequisites": ["controlled-live-retest-after-image-ordering-fix"],
         "staging_verified": true,
         "inference_requests": 0,
         "all_experiment_apps_stopped": true,

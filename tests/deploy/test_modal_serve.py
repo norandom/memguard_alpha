@@ -61,7 +61,7 @@ class FakeSDK:
 
     def env(self, settings):
         self.calls.append(("env", (), settings))
-        return self
+        return SimpleNamespace(add_local_file=self.add_file, env=self.env)
 
     def volume(self, *args, **kwargs):
         self.calls.append(("volume", args, kwargs))
@@ -137,6 +137,8 @@ def test_recipe_auth_resources_cache_and_uploads(monkeypatch):
     )
     assert config["volumes"] == {"/cache/huggingface": "weights"}
     assert calls["env"]["HF_HUB_OFFLINE"] == "1"
+    operations = [name for name, _, _ in sdk.calls]
+    assert operations.index("env") < operations.index("upload")
     uploads = [args for name, args, _ in sdk.calls if name == "upload"]
     assert len(uploads) == 3
     assert all(Path(args[0]).resolve().is_relative_to(ROOT) for args in uploads)
