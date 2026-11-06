@@ -395,6 +395,11 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
             async with serve.experiment_lifecycle(plan, app.app_id,
                     gpu_started_at_unix_s=receipt["gpu_started_at_unix_s"], receipt=receipt["lifecycle"], sdk=sdk):
                 lifecycle_stage["stage"] = "cleanup"
+                with diagnostic_stage(receipt, receipt_path, "endpoint_check"):
+                    service = sdk.Cls.from_name(plan.target.app, "Serving", environment_name=plan.target.environment)()
+                    endpoint = await asyncio.wait_for(service.web.get_web_url.aio(), 5)
+                    if endpoint != plan.target.endpoint.removesuffix("/v1"):
+                        raise ValueError("deployed_endpoint_mismatch")
                 with diagnostic_stage(receipt, receipt_path, "proxy_denial"):
                     persist(receipt_path, receipt)
                     await asyncio.to_thread(unauthenticated_health_guard, plan, receipt, receipt_path)
@@ -404,7 +409,6 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
                     receipt["control_events"].append(event)
                     persist(receipt_path, receipt)
                     remaining = receipt["lifecycle"]["deadline_unix_s"] - time.time()
-                    service = sdk.Cls.from_name(plan.target.app, "Serving", environment_name=plan.target.environment)()
                     startup_remaining = receipt["gpu_started_at_unix_s"] + 600 - time.time()
                     if min(startup_remaining, remaining) <= 0:
                         raise TimeoutError("startup_allowance_exhausted")
@@ -414,10 +418,6 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
                     event["status"] = "ready"
                     receipt["ready_at_unix_s"] = time.time()
                     event["finished_at_unix_s"] = receipt["ready_at_unix_s"]
-                with diagnostic_stage(receipt, receipt_path, "endpoint_check"):
-                    endpoint = await asyncio.wait_for(service.web.get_web_url.aio(), 5)
-                    if endpoint != plan.target.endpoint.removesuffix("/v1"):
-                        raise ValueError("deployed_endpoint_mismatch")
                 with diagnostic_stage(receipt, receipt_path, "provenance"):
                     receipt["observed_before"] = await asyncio.wait_for(asyncio.to_thread(serve.read_observations, plan, app.app_id, sdk=sdk), 10)
                     receipt["environment_status"] = environment_status(plan, receipt["observed_before"], frozen["tokenizer_sha256"])

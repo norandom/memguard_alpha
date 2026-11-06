@@ -37,6 +37,28 @@ def test_plan_does_not_access_network_or_environment(monkeypatch):
     assert load_plan(MANIFEST).artifacts.modal_sdk == "1.6.3"
 
 
+@pytest.mark.parametrize("endpoint", ["https://example.modal.run/v1", "https://example.us-east.modal.run/v1"])
+def test_explicit_global_and_regional_endpoints(tmp_path, endpoint):
+    raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    raw["target"]["endpoint"] = endpoint
+    path = tmp_path / "regional.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    assert load_plan(path).target.endpoint == endpoint
+
+
+@pytest.mark.parametrize("endpoint", [
+    "https://example.modal.run.evil.org/v1", "https://user:secret@example.us-east.modal.run/v1",
+    "https://example.us-east.modal.run/v1?redirect=evil", "http://example.modal.run/v1",
+])
+def test_unsafe_endpoint_variants_rejected(tmp_path, endpoint):
+    raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    raw["target"]["endpoint"] = endpoint
+    path = tmp_path / "unsafe.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid explicit Modal endpoint"):
+        load_plan(path)
+
+
 @pytest.mark.parametrize(
     "section,key,value",
     [

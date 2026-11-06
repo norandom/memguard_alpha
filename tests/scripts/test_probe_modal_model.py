@@ -197,6 +197,27 @@ def fake_cloud(monkeypatch, plan, *, arming_failure=False, health_guard=True):
     return sdk, events
 
 
+def test_registered_endpoint_mismatch_stops_before_http_or_readiness(monkeypatch, configured):
+    manifest, approval, path = configured
+    plan = load_plan(manifest)
+    sdk, events = fake_cloud(monkeypatch, plan)
+
+    async def different_url():
+        return "https://different.modal.run"
+
+    sdk.Cls.from_name()().web.get_web_url.aio = different_url
+
+    def no_http(*args):
+        raise AssertionError("HTTP must follow endpoint identity verification")
+
+    monkeypatch.setattr(probe, "unauthenticated_health_guard", no_http)
+    receipt = asyncio.run(probe.execute(manifest, path, approval, sdk=sdk))
+    assert receipt["error_stage"] == "endpoint_check"
+    assert "readiness" not in events
+    assert receipt["inference_posts"] == 0
+    assert receipt["lifecycle"]["cleanup"]["cleanup"] == "verified_stopped"
+
+
 @pytest.mark.parametrize("outcome", [401, 200, 403, 302, requests.Timeout("private secret"),
                                      requests.ConnectionError("private secret")])
 def test_unauthenticated_denial_precedes_readiness_and_preserves_cleanup(configured, monkeypatch, outcome):

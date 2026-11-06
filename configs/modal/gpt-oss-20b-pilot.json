@@ -4,7 +4,7 @@
     "workspace": "wishinet",
     "environment": "recall-guard-pilot",
     "app": "recall-guard-gpt-oss-20b-pilot",
-    "endpoint": "https://wishinet--recall-guard-gpt-oss-20b-pilot.modal.run/v1",
+    "endpoint": "https://wishinet-recall-guard-pilot--recall-guard-gpt-oss-20b-pilot.us-east.modal.run/v1",
     "credential_env": "MODAL_PROXY_BEARER"
   },
   "artifacts": {

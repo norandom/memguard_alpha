@@ -138,7 +138,9 @@ def load_plan(path: str | Path) -> Plan:
     for name in (target.workspace, target.environment, target.app):
         if name is not None and not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}", name):
             raise ValueError("Invalid deployment identifier")
-    if target.endpoint is not None and not re.fullmatch(r"https://[a-zA-Z0-9-]+\.modal\.run/v1", target.endpoint):
+    if target.endpoint is not None and not re.fullmatch(
+        r"https://[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)?\.modal\.run/v1", target.endpoint
+    ):
         raise ValueError("Invalid explicit Modal endpoint")
     if not re.fullmatch(r"[A-Z][A-Z0-9_]*", target.credential_env):
         raise ValueError("Use an environment reference, never a credential value")
