@@ -199,6 +199,7 @@ def test_startup_and_closing_observations_use_control_plane(monkeypatch):
         wait=lambda **kwargs: calls.append("wait"),
     )
     calls = []
+    monkeypatch.setattr(serve, "require_remote_expiry", lambda *args: calls.append("expiry"))
     monkeypatch.setattr(serve, "version", lambda name: "0.17.0")
     monkeypatch.setattr(
         serve,
@@ -217,7 +218,7 @@ def test_startup_and_closing_observations_use_control_plane(monkeypatch):
     service.web()
     service.close()
     assert [value["phase"] for value in sdk.store.values()] == ["starting", "ready", "closing"]
-    assert calls == ["http://127.0.0.1:8000/health", "terminate", "wait"]
+    assert calls == ["expiry", "http://127.0.0.1:8000/health", "terminate", "wait"]
     assert all(key[0] == "ap-test" for key in sdk.store)
 
 

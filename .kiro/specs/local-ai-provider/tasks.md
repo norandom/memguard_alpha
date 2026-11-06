@@ -188,7 +188,8 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Depends: 8.1_
   - _Requirements: 7.1, 7.2, 7.3, 7.5, 7.9, 7.10_
 
-- [ ] 8.3 Implement bounded cleanup and remote expiry
+- [x] 8.3 Implement bounded cleanup and remote expiry
+  - _Outcome: Independent review APPROVED; 49 deployment tests passed, focused Ruff/architecture passed and real SDK factories constructed offline. Runner must deploy controller first, persist receipt and enforce admission deadline. Live shutdown remains unverified._
   - Stop only the experiment-owned app on completion, cancellation or failure, allowing two minutes for stop verification and retaining the cache.
   - Arm an independent CPU-only expiry controller for the 20-minute GPU deadline before inference admission. Fail closed if expiry cannot be armed; local-client disappearance must not disable expiry.
   - Keep expiry/control observations separately bounded and costed; never call inference or restart GPU compute from expiry handling.
