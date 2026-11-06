@@ -1,0 +1,153 @@
+{
+  "date": "2026-11-06",
+  "purpose": "local endpoint token-evidence feasibility; no calibration or mitigation efficacy measurement",
+  "source_receipt_sha256": "b109b53ce47bf3bebd16f74adc2ff192818886c13ab5730c77a6c5c59e7c2b54",
+  "runtime": "Ollama 0.40.11",
+  "selected_context_tokens": 2048,
+  "settings": {
+    "temperature": 0,
+    "top_p": 1,
+    "top_logprobs": 5,
+    "logprobs": true,
+    "max_tokens": 32
+  },
+  "total_inference_posts": 5,
+  "local_gpt_inference_posts": 0,
+  "retries": 0,
+  "unknown_outcomes": 0,
+  "results": [
+    {
+      "model": "phi4-mini:3.8b",
+      "digest": "sha256:78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753",
+      "status": "eligible",
+      "evidence_status": "valid",
+      "evidence_reason": "aligned_token_evidence_observed",
+      "environment_status": "matched",
+      "physical_attempts": 1,
+      "unknown_outcome": false,
+      "generated_token_count": 2,
+      "elapsed_s": 10.65600000001723,
+      "score_semantics": "unknown",
+      "alternative_distribution": "partial_top_k",
+      "minimum_alternatives": 5,
+      "observed_context_tokens": 2048,
+      "observed_backend": "CPU",
+      "model_allocation_bytes": 2836765080,
+      "accelerator_allocation_bytes": 0
+    },
+    {
+      "model": "llama3.1:8b",
+      "digest": "sha256:46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+      "status": "eligible",
+      "evidence_status": "valid",
+      "evidence_reason": "aligned_token_evidence_observed",
+      "environment_status": "matched",
+      "physical_attempts": 1,
+      "unknown_outcome": false,
+      "generated_token_count": 1,
+      "elapsed_s": 13.60999999998603,
+      "score_semantics": "unknown",
+      "alternative_distribution": "partial_top_k",
+      "minimum_alternatives": 5,
+      "observed_context_tokens": 2048,
+      "observed_backend": "CPU",
+      "model_allocation_bytes": 5313983937,
+      "accelerator_allocation_bytes": 0
+    },
+    {
+      "model": "llama3.2:3b",
+      "digest": "sha256:a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+      "status": "eligible",
+      "evidence_status": "valid",
+      "evidence_reason": "aligned_token_evidence_observed",
+      "environment_status": "matched",
+      "physical_attempts": 1,
+      "unknown_outcome": false,
+      "generated_token_count": 1,
+      "elapsed_s": 7.01500000001397,
+      "score_semantics": "unknown",
+      "alternative_distribution": "partial_top_k",
+      "minimum_alternatives": 5,
+      "observed_context_tokens": 2048,
+      "observed_backend": "CPU",
+      "model_allocation_bytes": 2330848131,
+      "accelerator_allocation_bytes": 0
+    },
+    {
+      "model": "gemma3:4b",
+      "digest": "sha256:68ceab7e468a31c988b44d5a4984a0e21f58c4f7158c6ce29c1804babac38df7",
+      "status": "eligible",
+      "evidence_status": "valid",
+      "evidence_reason": "aligned_token_evidence_observed",
+      "environment_status": "matched",
+      "physical_attempts": 1,
+      "unknown_outcome": false,
+      "generated_token_count": 2,
+      "elapsed_s": 9.64000000001397,
+      "score_semantics": "unknown",
+      "alternative_distribution": "partial_top_k",
+      "minimum_alternatives": 5,
+      "observed_context_tokens": 2048,
+      "observed_backend": "CPU",
+      "model_allocation_bytes": 2886687784,
+      "accelerator_allocation_bytes": 0
+    },
+    {
+      "model": "llava-llama3:latest",
+      "digest": "sha256:44c161b1f46523301da9c0cc505afa4a4a0cc62f580581d98a430bb21acd46de",
+      "status": "ineligible",
+      "evidence_status": "valid",
+      "evidence_reason": "aligned_token_evidence_observed",
+      "environment_status": "mismatched",
+      "physical_attempts": 1,
+      "unknown_outcome": false,
+      "generated_token_count": 2,
+      "elapsed_s": 13.312000000034459,
+      "score_semantics": "unknown",
+      "alternative_distribution": "partial_top_k",
+      "minimum_alternatives": 5,
+      "observed_context_tokens": 4096,
+      "observed_backend": "CPU",
+      "model_allocation_bytes": 5607113357,
+      "accelerator_allocation_bytes": 0
+    }
+  ],
+  "unload_outcomes": [
+    {
+      "model": "phi4-mini:3.8b",
+      "route": "/api/generate",
+      "keep_alive": 0,
+      "status": "verified_empty"
+    },
+    {
+      "model": "llama3.1:8b",
+      "route": "/api/generate",
+      "keep_alive": 0,
+      "status": "verified_empty"
+    },
+    {
+      "model": "llama3.2:3b",
+      "route": "/api/generate",
+      "keep_alive": 0,
+      "status": "verified_empty"
+    },
+    {
+      "model": "gemma3:4b",
+      "route": "/api/generate",
+      "keep_alive": 0,
+      "status": "verified_empty"
+    },
+    {
+      "model": "llava-llama3:latest",
+      "route": "/api/generate",
+      "keep_alive": 0,
+      "status": "verified_empty"
+    }
+  ],
+  "limitations": [
+    "one short text probe per model",
+    "elapsed time includes request/load overhead; generation-only latency unavailable",
+    "partial top-k evidence; score normalization semantics unverified",
+    "no calibrated memorization, AUC, ensemble, NPU or divergence efficacy results"
+  ]
+}

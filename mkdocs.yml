@@ -57,6 +57,7 @@ nav:
   - Ensemble consensus: ensemble.md
   - Completion API integration: completion-api.md
   - Local model integration: local-provider.md
+  - Five local model logprob tests (2026-11-06): results/2026-11-06-local-model-smoke.md
   - Modal staging and deployment pilot (2026-11-06): results/2026-11-06-modal-pilot.md
   - Optional Modal hosting: modal-provider.md
   - Modal pilot cost accounting: modal-cost-report.md

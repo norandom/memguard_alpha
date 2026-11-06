@@ -10,6 +10,12 @@ establishes one CPU configuration, not general Ollama compatibility or a
 memorization benefit. If a fresh response fails alignment or lacks required
 alternatives, that configuration is ineligible even when it generates readable text.
 
+The [November 6 five-model smoke](results/2026-11-06-local-model-smoke.md) observed
+aligned logprobs and five alternatives from Phi-4 Mini, Llama 3.1 8B, Llama 3.2 3B,
+Gemma 3 4B and LLaVA on CPU. The first four matched the planned environment;
+LLaVA's context differed. GPT was excluded locally. These are feasibility results,
+with no calibration or mitigation measurement.
+
 ## Start without a model host
 
 For optional remote GPU hosting, use the [Modal operator guide](modal-provider.md).
@@ -98,7 +104,8 @@ client = OpenAICompatibleClient(config, CallBudget(1), allow_unauthenticated=Tru
 Authentication is an explicit choice. Local unauthenticated use needs no NIM key;
 never send that key to a local endpoint. A protected endpoint uses
 `credential_ref="env:LOCAL_MODEL_API_KEY"` and manifest authentication
-`"environment"`; keep the secret in the environment. There is no automatic
+`"environment"`; store the secret in the root `.env` and pass it to the command
+with `uv run --env-file .env ...`. There is no automatic
 hosted fallback. Ollama documents a subset of the OpenAI wire API, so advertised
 compatibility does not replace an evidence probe. See its
 [compatibility reference](https://docs.ollama.com/api/openai-compatibility).

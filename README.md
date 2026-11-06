@@ -16,6 +16,11 @@ the Modal configuration is verified offline and remains a live candidate.
 The [2026-11-06 Modal pilot](docs/results/2026-11-06-modal-pilot.md) verified
 weight staging and image build, but deployment stopped before inference.
 
+The [2026-11-06 local smoke](docs/results/2026-11-06-local-model-smoke.md) found
+aligned logprobs with five alternatives in Phi-4 Mini, both tested Llamas, Gemma
+and LLaVA on CPU. Four configurations matched the plan; LLaVA's context differed.
+GPT was excluded locally. Calibration and mitigation effects remain unmeasured.
+
 Keep all provider credentials in one repository-root `.env`, using
 [`.env.sample`](.env.sample) as the field reference. Preserve your existing file.
 Credentialed commands use `uv run --env-file .env ...`; offline plans need none.

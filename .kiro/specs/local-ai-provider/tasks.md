@@ -148,7 +148,9 @@ project's accepted requirements, superseding the skill's generic code-only guide
 
 ## User-authorized smoke-test extension, 2026-11-06
 
-- [ ] 7.1 Verify the broader local model set with memory-aware serial admission
+- [x] 7.1 Verify the broader local model set with memory-aware serial admission
+  - _Outcome: Independently reviewed live receipt and publication. Exactly five non-GPT requests, zero retries; all five models returned aligned logprobs with five alternatives on CPU. First four environments matched; LLaVA remained ineligible due to 4096 versus 2048 context. Five unloads verified empty. Fresh focused tests: 22 passed; integrated provider scope: 153 passed, one optional skip; strict docs passed. See docs/results/2026-11-06-local-model-smoke.md. No calibration, ensemble, NPU or mitigation measurement._
+  - _Current execution selection, 2026-11-06: User requested Ollama without GPT and Modal including GPT-OSS-20B. The local run explicitly selects only the five non-GPT models below (five inference requests maximum); the reusable CLI retains conditional GPT admission for future explicitly selected runs._
   - User explicitly requested testing the other documented models and excluding GPT-OSS when insufficient memory is available.
   - Include `phi4-mini:3.8b`, `llama3.1:8b`, `llama3.2:3b`, `gemma3:4b`, `llava-llama3:latest` and conditional `gpt-oss:20b`. Download missing artifacts into the existing ignored `models/` store; record registry identities and sizes before pulling.
   - Add a reusable smoke CLI using the existing OpenAI-compatible adapter and shared evidence validation, with dry-run default and explicit execution. Check actual available host RAM immediately before admission; unknown memory skips GPT-OSS. Default GPT-OSS threshold is 16 GiB available RAM, an explicit conservative policy rather than a proven minimum.
@@ -158,7 +160,7 @@ project's accepted requirements, superseding the skill's generic code-only guide
   - _Boundary: Local endpoint admission and operational smoke tooling_
   - _Requirements: 1.1, 1.3, 2.1, 2.2, 2.3, 3.3, 3.4, 3.6, 5.1, 5.2, 5.4, 5.5, 6.4_
 
-## Modal extension: approved design, implementation tasks pending approval
+## Modal extension: approved implementation and bounded pilot
 
 Design: [modal-design.md](modal-design.md). These tasks are additive; existing
 local work and conditional NPU status are unchanged. No parallel markers: the
@@ -233,7 +235,7 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Requirements: 6.3, 6.4, 6.5, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11_
 
 - [ ] 10.2 Validate the separately authorized live pilot
-  - _Blocked: Live acceptance remains unverified. Paid approval and budget confirmation received; weights staged. Diagnostic attempt 04 identified deferred local-file additions before image.env as the remaining recipe error. Ordering fixed offline; 103 focused tests pass. Zero inference POSTs across all attempts; all seven experiment app entries stopped. Controlled live retest pending. See docs/results/2026-11-06-modal-pilot.md._
+  - _Live acceptance pending: Paid approval and budget confirmation received; weights staged. Attempt 05 exposed serialized SDK captures, repaired and independently reviewed. Attempt 06 deployed and armed expiry, then stopped before readiness because the configured endpoint differed from Modal's registered regional URL. The explicit address and early endpoint identity check were corrected and independently reviewed (71 focused tests). Attempt 07 verified unauthenticated HTTP 401 and armed expiry but failed container startup with a Sentinel import error. Operator stopped it to prevent repeated platform startup attempts. Read-only debug verified an inherited vLLM entrypoint; narrow reset and CPU-only bootstrap diagnostic are next. Zero inference POSTs across all attempts. See docs/results/2026-11-06-modal-pilot.md._
   - Before any paid staging/build/deployment, present the concrete frozen pins, prompts, request/token/time caps, complete cost estimate and budget configuration for user approval. Verify credentials, account allowance and model access first.
   - After that approval, verify unauthorized requests are denied without starting a GPU, then run the eight-request, 20-minute GPU-phase pilot with the USD 5 target and independent expiry. No hardware/model substitution or additional calls on failure.
   - Verify actual GPU/runtime identity, usable five-alternative logprobs, cold/warm timings and app shutdown. Publish dated receipts, observed or explicitly unknown costs and comparison limitations.
