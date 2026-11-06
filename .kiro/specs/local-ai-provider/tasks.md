@@ -178,7 +178,8 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Boundary: Manifest and deployment setup_
   - _Requirements: 7.1, 7.3, 7.4, 7.9, 7.10_
 
-- [ ] 8.2 Prepare authenticated serving and observed provenance
+- [x] 8.2 Prepare authenticated serving and observed provenance
+  - _Outcome: Independent review APPROVED; 30 combined deployment tests passed, Ruff/architecture passed, and real Modal 1.6.3 App construction succeeded with sockets disabled. Live GPU fit and inference evidence remain unverified._
   - Configure the optional serving recipe with proxy authentication, zero warm minimum, one maximum container, zero buffer, 60-second idle scale-down and one concurrent input.
   - Expose the existing compatible completion contract with genuine natural-log probabilities and at least five alternatives; preserve partial evidence semantics. Do not introduce a new provider transport.
   - Capture resolved artifact/runtime/settings and observed GPU information, with authenticated before/after retrieval bound to the deployment identity. Missing observations remain unknown.
