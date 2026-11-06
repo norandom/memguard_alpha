@@ -233,7 +233,7 @@ a separate paid-execution gate. No deployment occurs during planning or CI.
   - _Requirements: 6.3, 6.4, 6.5, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11_
 
 - [ ] 10.2 Validate the separately authorized live pilot
-  - _Blocked: Separate paid pilot approval, confirmed account/workspace/budget, pinned local tokenizer and staged remote weights are still required. No paid staging or deployment has occurred._
+  - _Blocked: Paid approval and budget confirmation received; weights staged and verified. Three deployment attempts sent zero inference POSTs. Two remediations were reviewed; final image built but deployment still returned InvalidError before readiness. All experiment apps stopped. Further paid retries halted after two debug rounds; diagnostic review required. See docs/results/2026-11-06-modal-pilot.md._
   - Before any paid staging/build/deployment, present the concrete frozen pins, prompts, request/token/time caps, complete cost estimate and budget configuration for user approval. Verify credentials, account allowance and model access first.
   - After that approval, verify unauthorized requests are denied without starting a GPU, then run the eight-request, 20-minute GPU-phase pilot with the USD 5 target and independent expiry. No hardware/model substitution or additional calls on failure.
   - Verify actual GPU/runtime identity, usable five-alternative logprobs, cold/warm timings and app shutdown. Publish dated receipts, observed or explicitly unknown costs and comparison limitations.

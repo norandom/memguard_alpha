@@ -13,6 +13,8 @@ answer was memorized. Recall Guard is not a forecaster.
 Model hosting is optional. Use an external [local host](docs/local-provider.md)
 or review the [Modal pilot plan](docs/modal-provider.md) for remote GPU hosting;
 the Modal configuration is verified offline and remains a live candidate.
+The [2026-11-06 Modal pilot](docs/results/2026-11-06-modal-pilot.md) verified
+weight staging and image build, but deployment stopped before inference.
 
 Keep all provider credentials in one repository-root `.env`, using
 [`.env.sample`](.env.sample) as the field reference. Preserve your existing file.

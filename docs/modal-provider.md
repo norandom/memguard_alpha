@@ -5,10 +5,13 @@ Recall Guard uses `OpenAICompatibleClient` and the existing evidence and
 calibration contracts. Start with the offline plan below. A working endpoint,
 valid token evidence and a useful contamination score are separate results.
 
-The deployment recipe and bounded runner are verified offline. The A100/MXFP4
-configuration is a candidate: no Modal GPU, weights, startup, live authentication,
-logprobs or shutdown have been observed. Paid staging, builds and execution need
-separate approval under task 10.2. The original local CPU result remains in the
+The deployment recipe and bounded runner are verified offline. The
+[2026-11-06 live pilot](results/2026-11-06-modal-pilot.md) verified weight staging
+and image build, then stopped on a deployment rejection before readiness or
+inference. All experiment apps are confirmed stopped; weights remain retained.
+A100 execution, endpoint authentication and token evidence remain unverified.
+The paid pilot was approved; further retries are halted for diagnostic review
+under task 10.2. The original local CPU result remains in the
 [local integration guide](local-provider.md).
 
 ## Inspect the plan without an SDK or account
