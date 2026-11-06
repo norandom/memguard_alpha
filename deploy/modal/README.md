@@ -26,6 +26,12 @@ uv sync --project deploy/modal --locked
 uv run --project deploy/modal --no-sync python scripts/probe_modal_model.py
 ```
 
+The operator project pins Python 3.12, matching the serving and CPU expiry images
+for serialized functions. `uv sync` selects it through the project-local
+`.python-version`; it leaves the root Python environment unchanged. Execution
+and recipe construction reject other Python minors before SDK/cloud access.
+Offline planning remains independent of this operator-only restriction.
+
 The lock pins Modal 1.6.3, Transformers 4.55.4, Hugging Face Hub 0.34.4 and
 Jinja2 3.1.6 for chat templates, and
 installs the local Recall Guard package. It adds no model framework to either

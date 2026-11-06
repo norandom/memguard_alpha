@@ -16,6 +16,32 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "configs/modal/gpt-oss-20b-pilot.json"
 
 
+@pytest.mark.parametrize("factory", [serve.create_app, serve.create_expiry_app])
+@pytest.mark.parametrize("provided_sdk", [False, True])
+def test_wrong_python_blocks_recipe_before_sdk_import_or_calls(monkeypatch, factory, provided_sdk):
+    import builtins
+
+    monkeypatch.setattr(serve, "sys", SimpleNamespace(version_info=(3, 14, 9)))
+    original_import = builtins.__import__
+    calls = []
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "modal":
+            calls.append("import")
+            raise AssertionError("SDK imported before Python compatibility check")
+        return original_import(name, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        calls.append("App")
+        raise AssertionError("SDK called before Python compatibility check")
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    sdk = SimpleNamespace(App=forbidden) if provided_sdk else None
+    with pytest.raises(ValueError, match="Python 3.12"):
+        factory(sdk=sdk)
+    assert calls == []
+
+
 class FakeSDK:
     def __init__(self):
         self.calls = []
@@ -72,7 +98,8 @@ class FakeSDK:
         return lambda fn: fn
 
 
-def test_recipe_auth_resources_cache_and_uploads():
+def test_recipe_auth_resources_cache_and_uploads(monkeypatch):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
     sdk = FakeSDK()
     serve.create_app(sdk=sdk)
     calls = {name: kwargs for name, _, kwargs in sdk.calls}
@@ -172,7 +199,8 @@ def test_import_is_optional_and_offline():
     assert result.returncode == 0, result.stderr
 
 
-def test_unsafe_upload_rejected_before_sdk_calls(tmp_path):
+def test_unsafe_upload_rejected_before_sdk_calls(tmp_path, monkeypatch):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
     # The checkout root itself may be symlink-free; this tests a parent-directory escape.
     sdk = FakeSDK()
     with pytest.raises(ValueError, match="upload"):
@@ -195,6 +223,7 @@ def test_snapshot_has_observed_runtime_and_no_claimed_hardware(monkeypatch, tmp_
 
 
 def test_startup_and_closing_observations_use_control_plane(monkeypatch):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
     sdk = FakeSDK()
     serve.create_app(sdk=sdk)
     process = SimpleNamespace(

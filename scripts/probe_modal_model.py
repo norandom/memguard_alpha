@@ -258,6 +258,7 @@ def unauthenticated_health_guard(plan, receipt, path):
 
 
 async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("models"), sdk=None):
+    serve.require_operator_python()
     frozen = planning(manifest, tokenizer_root=tokenizer_root)
     plan = load_plan(manifest)
     # An existing receipt is never resumable, even when it contains no finished calls.

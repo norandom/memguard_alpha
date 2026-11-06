@@ -134,6 +134,8 @@ def test_identity_unknown_and_drift_never_establish_match():
 
 
 def fake_cloud(monkeypatch, plan, *, arming_failure=False, health_guard=True):
+    # This fake control plane is independent of the test runner's Python minor.
+    monkeypatch.setattr(probe.serve, "require_operator_python", lambda: None)
     events = []
     app = SimpleNamespace(app_id="ap-" + "a" * 22)
 
@@ -249,11 +251,31 @@ def test_execute_persists_cleanup_even_when_arming_fails(configured, monkeypatch
 
 @pytest.mark.parametrize("counts", [None, [3585] * 8])
 def test_missing_tokenizer_or_context_overflow_blocks_before_cloud(configured, monkeypatch, counts):
+    monkeypatch.setattr(probe.serve, "require_operator_python", lambda: None)
     manifest, approval, path = configured
     monkeypatch.setattr(probe, "tokenizer_counts", lambda *a: (counts, None))
     receipt = asyncio.run(probe.execute(manifest, path, approval, sdk=object()))
     assert receipt["status"] == "stopped" and not receipt["attempts"]
     assert not receipt["lifecycle"]
+
+
+@pytest.mark.parametrize("minor", [11, 13, 14])
+@pytest.mark.parametrize("sdk", [None, object()])
+def test_wrong_python_blocks_execute_before_sdk_or_cache(configured, monkeypatch, minor, sdk):
+    manifest, approval, path = configured
+    monkeypatch.setattr(probe.serve, "sys", SimpleNamespace(version_info=(3, minor, 0)))
+    calls = []
+
+    def forbidden(*args, **kwargs):
+        calls.append("sdk_or_cache")
+        raise AssertionError("wrong Python must fail locally")
+
+    monkeypatch.setattr(probe.serve, "_sdk", forbidden)
+    monkeypatch.setattr(probe, "verify_weight_cache", forbidden)
+    with pytest.raises(ValueError, match="Python 3.12"):
+        asyncio.run(probe.execute(manifest, path, approval, sdk=sdk))
+    assert calls == []
+    assert not path.exists()
 
 
 def test_cpu_cache_inventory_rejects_config_without_weights():

@@ -214,7 +214,8 @@ def test_stop_verification_waits_at_most_two_minutes(monkeypatch):
     assert receipt["control_calls"] == 26
 
 
-def test_cpu_recipe_has_no_gpu_or_cache_and_bounded_runtime():
+def test_cpu_recipe_has_no_gpu_or_cache_and_bounded_runtime(monkeypatch):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
     options = {}
 
     def function(**kwargs):

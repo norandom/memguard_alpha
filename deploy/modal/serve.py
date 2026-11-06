@@ -33,6 +33,15 @@ CONTROL_TIMEOUT_SECONDS = 5
 ARM_TIMEOUT_SECONDS = 30
 
 
+def require_operator_python():
+    """Serialized functions must match both pinned remote images' Python minor."""
+    if sys.version_info[:2] != (3, 12):
+        raise ValueError(
+            "Modal execution requires Python 3.12 to match the serving and expiry images; "
+            "run uv sync --project deploy/modal --locked, then use uv run --project deploy/modal --no-sync"
+        )
+
+
 def _sdk(sdk):
     if sdk is None:
         import modal as sdk
@@ -186,6 +195,7 @@ async def experiment_lifecycle(plan: Plan, app_id: str, *, gpu_started_at_unix_s
 
 def create_expiry_app(*, sdk=None, root: Path = ROOT):
     """Construct only: operator must separately deploy this CPU app before GPU startup."""
+    require_operator_python()
     sdk = _sdk(sdk)
     plan = load_plan(root / "configs/modal/gpt-oss-20b-pilot.json")
     app = sdk.App(plan.target.app + "-expiry")
@@ -351,6 +361,7 @@ def read_observations(plan: Plan, app_id: str, *, sdk=None) -> list[dict]:
 
 def create_app(*, sdk=None, root: Path = ROOT):
     """Construct lazy SDK handles only; caller controls deployment and environment."""
+    require_operator_python()
     root = root.absolute()
     files = [root / relative for relative in UPLOAD_ALLOWLIST]
     for path in files:

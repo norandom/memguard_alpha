@@ -116,6 +116,9 @@ def test_isolated_sdk_lock():
 
     project = tomllib.loads((ROOT / "deploy/modal/pyproject.toml").read_text(encoding="utf-8"))
     lock = tomllib.loads((ROOT / "deploy/modal/uv.lock").read_text(encoding="utf-8"))
+    assert project["project"]["requires-python"] == ">=3.12,<3.13"
+    assert lock["requires-python"] == "==3.12.*"
+    assert (ROOT / "deploy/modal/.python-version").read_text().strip() == "3.12"
     assert set(project["project"]["dependencies"]) == {
         "modal==1.6.3", "recall-guard", "transformers==4.55.4", "huggingface-hub==0.34.4",
         "jinja2==3.1.6",

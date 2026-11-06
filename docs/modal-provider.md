@@ -55,12 +55,24 @@ uv run --project deploy/modal --no-sync python scripts/probe_modal_model.py
 
 The isolated lock includes Modal 1.6.3, the editable local Recall Guard package,
 Transformers 4.55.4, Hugging Face Hub 0.34.4 and Jinja2 3.1.6 for chat templates.
-The local tokenizer needs no
-PyTorch, CUDA or vLLM install. These commands were verified with the installed
-tools; lazy serving/expiry recipe construction was also checked with network
-socket operations blocked. Modal emits Python 3.14 asyncio deprecation warnings;
-Transformers reports that only tokenizer/configuration utilities are available
-without a model framework.
+The operator project requires Python 3.12 (`deploy/modal/.python-version`);
+`uv sync` selects that minor independently of the root development environment.
+Modal serializes the serving class and expiry function, so the operator's Python
+minor must match both remote images. Execution and recipe construction reject
+other minors locally, before SDK import, cache inventory or deployment. Offline
+planning remains usable on the root project's supported Python versions.
+
+The pinned vLLM image uses Python 3.12, matching the expiry image's explicit
+`debian_slim(python_version="3.12")`. On 2026-11-06, read-only Docker Registry
+manifest/config requests confirmed config digest
+`sha256:700d8ac4f37a3f2975b79e67406d7f2689bdd8c87e3e7a62721bf03921940935`:
+its build history records `PYTHON_VERSION=3.12` and selects that interpreter as
+`python3`. No image layers were pulled for this check.
+
+The local tokenizer needs no PyTorch, CUDA or vLLM install. Python 3.12 tooling,
+chat-template rendering and lazy serving/expiry construction were checked with
+network socket operations blocked. Transformers reports that only
+tokenizer/configuration utilities are available without a model framework.
 
 Recall Guard's default installation has no Modal or accelerator dependency.
 `deploy/modal/serve.py` constructs recipes only when called. Use the bounded
