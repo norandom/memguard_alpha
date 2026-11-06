@@ -73,7 +73,7 @@ def test_wrong_app_is_never_stopped():
     assert result["cleanup"] == "unverified"
     assert "stop" not in sdk.events
     assert result["app_id"] == "ap-aaaaaaaaaaaaaaaaaaaaaa"
-    assert result["recovery_command"] == "uv run --project deploy/modal --no-sync python -m modal app stop ap-aaaaaaaaaaaaaaaaaaaaaa --yes"
+    assert result["recovery_command"] == "uv run --env-file .env --project deploy/modal --no-sync python -m modal app stop ap-aaaaaaaaaaaaaaaaaaaaaa --yes"
 
 
 def test_control_plane_failure_and_timeout_are_bounded(monkeypatch):

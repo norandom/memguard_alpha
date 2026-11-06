@@ -71,15 +71,20 @@ runner for execution; there is no module-level app for `modal deploy`.
 These are operator setup instructions, not verified account procedures.
 No account state or credentials were inspected for this delivery.
 
-Authenticate the SDK using `uv run --project deploy/modal --no-sync python -m modal token new`
-or externally provisioned `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. Select the
-intended workspace/profile and create or select the dedicated
-`recall-guard-pilot` environment. Verify permission to deploy apps, read provenance
-and stop experiment compute. Keep tokens outside tracked files and shell output.
+Use the single repository-root `.env` for credentials. The tracked `.env.sample`
+lists the fields; if `.env` already exists, add missing fields without replacing
+the file. Obtain an account API token in Modal's dashboard and put its ID and
+secret in `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. Do not use shell exports,
+OS/user environment secrets, separate provider files or `modal token new`.
+Create or select the dedicated `recall-guard-pilot` environment in the intended
+workspace. Verify permission to deploy apps, read provenance and stop experiment
+compute. Keep values out of shell output and Git.
 
 Create a separate Modal proxy token in workspace settings. Supply its ID and
-secret joined by a period in `MODAL_PROXY_BEARER` using your secret manager or
-process environment. This bearer protects the Web Function; SDK control-plane
+secret joined by a period in `MODAL_PROXY_BEARER` in that same root `.env`.
+Credentialed commands use `uv run --env-file .env ...` so the SDK receives values
+only for that child process. Offline planning omits this option and reads no
+credentials. This bearer protects the Web Function; SDK control-plane
 credentials are separate. The recipe sets `requires_proxy_auth=True`.
 [Modal proxy authentication](https://modal.com/docs/guide/webhook-proxy-auth)
 documents this scheme (checked 2026-11-06). Live denial without waking a GPU
@@ -221,7 +226,7 @@ Only after separate paid approval and prerequisite checks, the execution command
 is (not run for this delivery):
 
 ```powershell
-uv run --project deploy/modal --no-sync python scripts/probe_modal_model.py --execute --approval runs/modal-approval.json --receipt runs/modal-pilot-NEW.json
+uv run --env-file .env --project deploy/modal --no-sync python scripts/probe_modal_model.py --execute --approval runs/modal-approval.json --receipt runs/modal-pilot-NEW.json
 ```
 
 The receipt path must be new and its parent must exist. Never resume or replay
@@ -243,7 +248,7 @@ plane failure can still leave cleanup unverified.
 For unverified cleanup, use the exact app ID in the receipt and recovery command:
 
 ```powershell
-uv run --project deploy/modal --no-sync python -m modal app stop ap-YOUR_EXPERIMENT_ID --yes
+uv run --env-file .env --project deploy/modal --no-sync python -m modal app stop ap-YOUR_EXPERIMENT_ID --yes
 ```
 
 Run with the reviewed workspace credentials and verify the stopped state in that

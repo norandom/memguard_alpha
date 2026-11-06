@@ -13,6 +13,10 @@ answer was memorized. Recall Guard is not a forecaster.
 Model hosting is optional. Use an external [local host](docs/local-provider.md)
 or review the [Modal pilot plan](docs/modal-provider.md) for remote GPU hosting;
 the Modal configuration is verified offline and remains a live candidate.
+
+Keep all provider credentials in one repository-root `.env`, using
+[`.env.sample`](.env.sample) as the field reference. Preserve your existing file.
+Credentialed commands use `uv run --env-file .env ...`; offline plans need none.
 [Jane Street's approach](https://blog.janestreet.com/mitigating-memorization-in-llms/)
 informs the separate divergence work. Endpoint support alone does not establish
 successful mitigation, and frontier completion-only APIs follow a separate path.

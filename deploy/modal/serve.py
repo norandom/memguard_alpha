@@ -65,7 +65,7 @@ async def stop_experiment(plan: Plan, app_id: str, *, sdk=None) -> dict:
     result = {
         "category": "control", "app_id": app_id, "cleanup": "unverified", "control_calls": 0,
         "retained_cache": "recall-guard-gpt-oss-20b-weights", "observed_usd": None,
-        "recovery_command": f"uv run --project deploy/modal --no-sync python -m modal app stop {app_id} --yes",
+        "recovery_command": f"uv run --env-file .env --project deploy/modal --no-sync python -m modal app stop {app_id} --yes",
         "verification_budget_seconds": plan.limits.cleanup_seconds,
         "estimated_usd": None,
     }

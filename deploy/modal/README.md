@@ -16,6 +16,11 @@ uv run --no-sync python scripts/probe_modal_model.py
 
 Planning needs no Modal SDK or credentials. Optional operator tools are isolated:
 
+All credentials belong in the single repository-root `.env`; see `.env.sample`.
+Add `--env-file .env` to `uv run` for credentialed operations. Offline planning
+omits it. Do not store tokens in OS/user environment secrets or separate Modal
+profiles/files.
+
 ```powershell
 uv sync --project deploy/modal --locked
 uv run --project deploy/modal --no-sync python scripts/probe_modal_model.py
