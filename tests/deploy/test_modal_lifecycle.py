@@ -22,9 +22,17 @@ class Control:
         self.store = {}
         self.state = "deployed"
         self.app_id = "ap-aaaaaaaaaaaaaaaaaaaaaa"
+        self.dict_options = []
         self.App = SimpleNamespace(lookup=aio(self.lookup))
-        self.Dict = SimpleNamespace(from_name=lambda *a, **k: SimpleNamespace(get=aio(self.get), put=aio(self.put)))
+        self.Dict = SimpleNamespace(from_name=self.dictionary)
         self.Function = SimpleNamespace(from_name=lambda *a, **k: SimpleNamespace(spawn=aio(self.spawn)))
+
+    def dictionary(self, *args, **kwargs):
+        self.dict_options.append(kwargs)
+        return SimpleNamespace(get=aio(self.get), put=aio(self.put), hydrate=aio(self.hydrate))
+
+    async def hydrate(self):
+        self.events.append("hydrate")
 
     async def lookup(self, name, **kwargs):
         assert name == PLAN.target.app
@@ -99,10 +107,42 @@ def test_lifecycle_arms_before_admission_and_cleans_every_exit(failure):
         with context:
             async with serve.experiment_lifecycle(PLAN, "ap-aaaaaaaaaaaaaaaaaaaaaa", gpu_started_at_unix_s=serve.time.time(), sdk=sdk) as lease:
                 assert lease["expiry_call_id"] == "fc-independent"
-                assert sdk.events == ["spawn"]
+                assert sdk.events == ["hydrate", "spawn"]
+                assert sdk.dict_options == [
+                    {"environment_name": PLAN.target.environment, "create_if_missing": True},
+                    {"environment_name": PLAN.target.environment, "create_if_missing": False},
+                ]
+                assert lease["arming"]["control_calls"] == 3
                 if failure:
                     raise failure()
         assert "stop" in sdk.events
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("timeout", [False, True])
+def test_store_creation_failure_blocks_spawn_and_admission_and_cleans(monkeypatch, timeout):
+    sdk = Control()
+
+    async def fail_creation():
+        if timeout:
+            await asyncio.Event().wait()
+        raise RuntimeError("store unavailable")
+
+    sdk.hydrate = fail_creation
+    monkeypatch.setattr(serve, "CONTROL_TIMEOUT_SECONDS", 0.001)
+
+    async def run():
+        lease = {}
+        with pytest.raises(RuntimeError):
+            async with serve.experiment_lifecycle(
+                PLAN, sdk.app_id, gpu_started_at_unix_s=serve.time.time(), receipt=lease, sdk=sdk
+            ):
+                pytest.fail("Admission opened before provenance store creation")
+        assert "spawn" not in sdk.events
+        assert "stop" in sdk.events
+        assert lease["admission_open"] is False
+        assert lease["arming"]["control_calls"] == 1
 
     asyncio.run(run())
 

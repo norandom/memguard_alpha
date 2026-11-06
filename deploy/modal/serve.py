@@ -46,20 +46,42 @@ def _sdk(sdk):
     if sdk is None:
         import modal as sdk
 
-        if version("modal") != "1.6.3":
+        if sdk.__version__ != "1.6.3":
             raise ValueError("Lifecycle requires Modal 1.6.3")
     return sdk
 
 
-def _expiry_store(plan, sdk):
-    return sdk.Dict.from_name(
-        plan.target.app + "-provenance", environment_name=plan.target.environment, create_if_missing=False
+def _expiry_store(plan, sdk=None, *, create_if_missing=False):
+    return _sdk(sdk).Dict.from_name(
+        plan.target.app + "-provenance", environment_name=plan.target.environment,
+        create_if_missing=create_if_missing,
     )
 
 
 def _app_identity(app_id):
     if not isinstance(app_id, str) or not re.fullmatch(r"ap-[A-Za-z0-9]{22}", app_id):
         raise ValueError("Invalid experiment app identity")
+
+
+def running_app_id() -> str:
+    """Observed container identity, without capturing the serialized class's App.
+
+    Modal 1.6.3 has no public running-App getter. Its private _init_container
+    copies running_app.app_id before setting _App._container_app; this pinned
+    seam must be rechecked before an SDK upgrade. Never look up a reusable name.
+    """
+    import modal
+
+    if modal.__version__ != "1.6.3":
+        raise RuntimeError("Container identity requires Modal 1.6.3")
+    from modal.app import _App
+
+    app = _App._get_container_app()
+    if app is None:
+        raise RuntimeError("Missing running container app identity")
+    app_id = app.app_id
+    _app_identity(app_id)
+    return app_id
 
 
 async def stop_experiment(plan: Plan, app_id: str, *, sdk=None) -> dict:
@@ -172,6 +194,11 @@ async def experiment_lifecycle(plan: Plan, app_id: str, *, gpu_started_at_unix_s
         )
         try:
             async with asyncio.timeout(ARM_TIMEOUT_SECONDS):
+                # Explicit creation precedes controller spawn: its first write
+                # must find the store, even before a serving container exists.
+                store = _expiry_store(plan, sdk, create_if_missing=True)
+                lease["arming"]["control_calls"] += 1
+                await asyncio.wait_for(store.hydrate.aio(), CONTROL_TIMEOUT_SECONDS)
                 lease["arming"]["control_calls"] += 1
                 call = await asyncio.wait_for(function.spawn.aio(app_id, deadline, arm_id), CONTROL_TIMEOUT_SECONDS)
                 lease.update(expiry_call_id=call.object_id, deadline_unix_s=deadline)
@@ -399,12 +426,6 @@ def create_app(*, sdk=None, root: Path = ROOT):
         image = image.add_local_file(path, "/root/" + relative)
     weights = sdk.Volume.from_name("recall-guard-gpt-oss-20b-weights", environment_name=plan.target.environment,
                                    create_if_missing=False)
-    observations = sdk.Dict.from_name(
-        plan.target.app + "-provenance",
-        environment_name=plan.target.environment,
-        create_if_missing=True,
-    )
-
     @app.cls(
         image=image,
         gpu=plan.resources.gpu + ":1",
@@ -427,7 +448,9 @@ def create_app(*, sdk=None, root: Path = ROOT):
         def start(self):
             self.instance_id = uuid.uuid4().hex
             self.process = None
-            require_remote_expiry(plan, app.app_id, observations)
+            self.app_id = running_app_id()
+            self.observations = _expiry_store(plan)
+            require_remote_expiry(plan, self.app_id, self.observations)
             self.record("starting")
             if version("vllm") != plan.artifacts.runtime.split("==")[1]:
                 raise RuntimeError("Serving runtime differs from manifest")
@@ -446,14 +469,12 @@ def create_app(*, sdk=None, root: Path = ROOT):
             raise RuntimeError("Serving startup failed; no inference sent")
 
         def record(self, phase):
-            if app.app_id is None:
-                raise RuntimeError("Missing deployment identity")
-            observations[(app.app_id, self.instance_id, phase)] = snapshot(plan, app.app_id, phase)
+            self.observations[(self.app_id, self.instance_id, phase)] = snapshot(plan, self.app_id, phase)
 
         @sdk.method()
         def readiness(self):
             """Authenticated SDK startup observation; enter has readied vLLM, no tokens."""
-            return {"app_id": app.app_id, "ready": self.process is not None and self.process.poll() is None}
+            return {"app_id": self.app_id, "ready": self.process is not None and self.process.poll() is None}
 
         @sdk.web_server(8000, startup_timeout=plan.limits.startup_seconds,
                         label=plan.target.app, requires_proxy_auth=True)
@@ -463,7 +484,8 @@ def create_app(*, sdk=None, root: Path = ROOT):
         @sdk.exit()
         def close(self):
             try:
-                self.record("closing")
+                if getattr(self, "app_id", None) is not None:
+                    self.record("closing")
             finally:
                 if self.process is not None:
                     self.process.terminate()

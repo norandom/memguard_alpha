@@ -230,15 +230,18 @@ def test_snapshot_has_observed_runtime_and_no_claimed_hardware(monkeypatch, tmp_
 
 def test_startup_and_closing_observations_use_control_plane(monkeypatch):
     monkeypatch.setattr(serve, "require_operator_python", lambda: None)
+    observed_id = "ap-" + "a" * 22
+    monkeypatch.setattr(serve, "running_app_id", lambda: observed_id)
     sdk = FakeSDK()
     serve.create_app(sdk=sdk)
+    monkeypatch.setattr(serve, "_expiry_store", lambda plan: sdk.store)
     process = SimpleNamespace(
         poll=lambda: None,
         terminate=lambda: calls.append("terminate"),
         wait=lambda **kwargs: calls.append("wait"),
     )
     calls = []
-    monkeypatch.setattr(serve, "require_remote_expiry", lambda *args: calls.append("expiry"))
+    monkeypatch.setattr(serve, "require_remote_expiry", lambda plan, app_id, store: calls.append(("expiry", app_id)))
     monkeypatch.setattr(serve, "version", lambda name: "0.17.0")
     monkeypatch.setattr(
         serve,
@@ -254,11 +257,33 @@ def test_startup_and_closing_observations_use_control_plane(monkeypatch):
     )
     service = sdk.service()
     service.start()
+    assert service.readiness() == {"app_id": observed_id, "ready": True}
     service.web()
     service.close()
     assert [value["phase"] for value in sdk.store.values()] == ["starting", "ready", "closing"]
-    assert calls == ["expiry", "http://127.0.0.1:8000/health", "terminate", "wait"]
-    assert all(key[0] == "ap-test" for key in sdk.store)
+    assert calls == [("expiry", observed_id), "http://127.0.0.1:8000/health", "terminate", "wait"]
+    assert all(key[0] == observed_id for key in sdk.store)
+
+
+def test_missing_running_identity_blocks_expiry_and_process_before_observations(monkeypatch):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
+    sdk = FakeSDK()
+    serve.create_app(sdk=sdk)
+
+    def missing_identity():
+        raise RuntimeError("Missing running container app identity")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Startup continued without an observed container app ID")
+
+    monkeypatch.setattr(serve, "running_app_id", missing_identity)
+    monkeypatch.setattr(serve, "require_remote_expiry", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    service = sdk.service()
+    with pytest.raises(RuntimeError, match="Missing running"):
+        service.start()
+    service.close()
+    assert sdk.store == {}
 
 
 def test_cache_observations_hash_actual_pinned_files(monkeypatch, tmp_path):
