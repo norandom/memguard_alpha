@@ -70,6 +70,19 @@ models:
   # cutoff date of June 2024 for publicly available data."
   microsoft/phi-4-mini-instruct: 2024-06-30  # https://huggingface.co/microsoft/Phi-4-mini-instruct
 
+  # --- Google Gemma 3 (local Ollama gemma3:4b) ---
+  # Card, "Training Dataset": "The knowledge cutoff date for the training data
+  # was August 2024." Retrieved 2026-11-08.
+  google/gemma-3-4b-it: 2024-08-31  # https://ai.google.dev/gemma/docs/core/model_card_3
+
+  # --- XTuner LLaVA-Llama-3-8B v1.1 (local Ollama llava-llama3) ---
+  # Ollama and XTuner cards: fine-tuned from Meta-Llama-3-8B-Instruct with
+  # ShareGPT4V-PT and InternVL-SFT. Llama 3 card, "Data Freshness": "The
+  # pretraining data has a cutoff of March 2023 for the 8B". The fine-tuning
+  # datasets state no cutoff, so the documented base date is used; it is the
+  # strict reading for memorized rows. Retrieved 2026-11-08.
+  xtuner/llava-llama-3-8b-v1_1: 2023-03-31  # https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct ; https://huggingface.co/xtuner/llava-llama-3-8b-v1_1
+
   # --- OMITTED (no verifiable cutoff documented) ---
   # mistralai/mixtral-8x22b-instruct-v0.1 -- Mistral's official model card on
   #   Hugging Face (https://huggingface.co/mistralai/Mixtral-8x22B-Instruct-v0.1)
