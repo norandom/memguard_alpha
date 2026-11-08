@@ -262,7 +262,7 @@ def test_connect_raises_preflight_error_before_any_request(monkeypatch):
     checked = []
     # The only permitted HTTP is the read-only /api/ps check on the snapshot's host; fake it as "not loaded".
     monkeypatch.setattr("recall_guard.core.profiles._model_already_loaded",
-                        lambda endpoint, model, http_get=None: checked.append(endpoint) or False)
+                        lambda endpoint, model, http_get=None, headers=None: checked.append(endpoint) or False)
     with pytest.raises(PreflightError) as caught:
         connect(gpt_oss("http://host.docker.internal:11434/v1/chat/completions"), CallBudget(1),
                 environment={}, host_snapshot=snapshot)

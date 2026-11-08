@@ -123,6 +123,12 @@ Load and test one model at a time, then use `ollama stop MODEL` before the next.
 | AMD Gemma 3 4B NPU candidate | Prerequisites failed; no inference | Artifact access and release compatibility unresolved |
 | GPU or mixed offload | Candidate only | No verified execution on this machine |
 
+On 2026-11-08, with `OLLAMA_IGPU_ENABLE=1`, a load-only request (no prompt) placed
+`gemma3:4b` fully on the integrated Radeon 890M through ROCm gfx1150: 35 of 35
+layers offloaded, `/api/ps` `size_vram` equal to `size` (2.9 GB). No inference ran
+on the GPU yet, so the table above is unchanged. The iGPU shares system RAM, so
+the free-RAM gate still applies.
+
 Install and operate the host separately from Recall Guard. Select the exact model
 artifact, confirm its license and disk/memory requirements, and record its digest,
 runtime version and effective context. A GPU is optional: both observed Ollama
@@ -176,7 +182,54 @@ accelerator installation.
 Inside a container, the RAM gate never reads the container's own memory. It needs
 a snapshot taken on the model host less than 10 minutes before the run.
 
-**Recommended on Windows: Ollama in a container in WSL.** Run Docker Engine in
+**Recommended on Windows: native Ollama behind the authenticated gateway.**
+Ollama runs on Windows to use the GPU; Recall Guard runs in the dev container
+under Docker Engine in WSL (NAT networking). `scripts/serve_local_ollama.ps1`
+(PowerShell 7, no admin) starts Ollama like `start_local_ollama.ps1` plus
+`OLLAMA_IGPU_ENABLE=1` (use `-NoIgpu` to turn the integrated GPU off), bound to
+`127.0.0.1:11434` only. It also starts a small gateway on the Windows address of
+the `vEthernet (WSL...)` adapter, port 11435, never on `0.0.0.0` or a LAN adapter.
+The gateway requires `Authorization: Bearer` with `LOCAL_MODEL_API_KEY` from the
+root `.env` (generated there on first start if missing; the value is never
+printed). It returns 401 otherwise, strips the header, and forwards only
+`/v1/chat/completions`, `/api/version`, `/api/tags`, `/api/ps`, `/api/show` and an
+unload-only `/api/generate` (`{"model": ..., "keep_alive": 0}`). After 30 minutes
+without a gateway request (`-IdleMinutes`), it stops itself and Ollama. State and
+logs are in `runs/ollama-gateway/`.
+
+In PowerShell on Windows, in the checkout:
+
+```powershell
+pwsh -File scripts/serve_local_ollama.ps1 start
+pwsh -File scripts/host_memory_snapshot.ps1
+```
+
+In a WSL shell in the checkout (the Windows address is the WSL default gateway):
+
+```sh
+GW=$(ip route show default | awk '{print $3}')
+docker compose run --rm -e LOCAL_MODEL_API_KEY dev uv run --no-sync python scripts/smoke_local_models.py --profile ollama-gemma3-4b --host-snapshot /outputs/host-memory.json --endpoint "http://$GW:11435/v1/chat/completions" --credential-ref env:LOCAL_MODEL_API_KEY
+```
+
+Then, in PowerShell:
+
+```powershell
+pwsh -File scripts/serve_local_ollama.ps1 stop
+```
+
+`stop` also stops the model runner and fails unless no process remains and
+nothing listens on 11434 or 11435; `status` shows both. `--credential-ref` sends
+the token on metadata, inference and unload requests. A measurement manifest uses
+the same endpoint with `"credential_ref": "env:LOCAL_MODEL_API_KEY"` and
+authentication `"environment"`. On the development host the container reached the
+gateway without a firewall change. If Windows Firewall blocks it on your machine,
+run once in an elevated PowerShell (check the alias with `Get-NetAdapter`):
+
+```powershell
+New-NetFirewallRule -DisplayName "Recall Guard Ollama gateway (WSL)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 11435 -LocalAddress 172.17.32.1 -InterfaceAlias "vEthernet (WSL (Hyper-V firewall))"
+```
+
+**Alternative: Ollama in a container in WSL (CPU).** Run Docker Engine in
 WSL and start the optional `ollama` Compose service (`ollama/ollama:0.40.11`,
 CPU). It serves the checkout's `models/` store read-only with the same settings
 as `scripts/start_local_ollama.ps1`, never pulls, and publishes no port. Only
@@ -200,8 +253,8 @@ too little free memory, raise `memory=` under `[wsl2]` in `%UserProfile%\.wslcon
 and run `wsl --shutdown`. `docker compose run --rm dev` keeps working without the
 profile.
 
-**Alternatives: Ollama on Windows.** Use these to keep a Windows GPU runtime.
-Take the snapshot on Windows instead:
+**Other Windows Ollama setups.** These also keep the Windows GPU runtime, without
+the gateway. Take the snapshot on Windows instead:
 
 ```powershell
 pwsh -File scripts/host_memory_snapshot.ps1
@@ -213,7 +266,7 @@ These options are documented, not tested end to end on the development host.
 | --- | --- | --- |
 | Docker Engine in WSL with [mirrored networking](https://learn.microsoft.com/windows/wsl/networking#mirrored-mode-networking) and `--network host` | `http://localhost:11434/v1/chat/completions` | Ollama stays loopback-only |
 | Docker Desktop | `http://host.docker.internal:11434/v1/chat/completions` | Ollama stays loopback-only |
-| Docker Engine in WSL, NAT mode (WSL default) | `http://GATEWAY_IP:11434/v1/chat/completions`; Windows is the WSL default gateway | Ollama must listen beyond loopback |
+| Docker Engine in WSL, NAT mode (WSL default), without the gateway | `http://GATEWAY_IP:11434/v1/chat/completions`; Windows is the WSL default gateway | Ollama must listen beyond loopback, unauthenticated |
 
 With Docker Desktop:
 
@@ -228,8 +281,8 @@ docker compose run --rm dev uv run --no-sync python scripts/smoke_local_models.p
 docker run --rm --network host -v "$PWD/runs/container:/outputs" recall-guard:dev uv run --no-sync python scripts/smoke_local_models.py --profile ollama-gemma3-4b --host-snapshot /outputs/host-memory.json --endpoint http://localhost:11434/v1/chat/completions
 ```
 
-In NAT mode, find the gateway with `ip route show default` in WSL. Ollama reads
-its listen address from `OLLAMA_HOST`. Bind it only to the Windows address of the
+In NAT mode prefer the authenticated gateway above. Without it, Ollama reads its
+listen address from `OLLAMA_HOST`. Bind it only to the Windows address of the
 WSL interface (the gateway address), never to `0.0.0.0`, and allow port 11434
 only on that interface with a Windows firewall rule. Ollama has no
 authentication, so anything that can reach the port can use your models. Check

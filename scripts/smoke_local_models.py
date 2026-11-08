@@ -68,17 +68,22 @@ def profile_selection(profile_ids, endpoint: str | None) -> tuple[list[str], str
 
 
 def profile_preflight(profile_ids, endpoint: str, *, check=preflight_host,
-                      host_snapshot: HostMemorySnapshot | None = None) -> None:
+                      host_snapshot: HostMemorySnapshot | None = None, credential_ref: str | None = None) -> None:
     """Run the shared host preflight for each selected profile at the chosen endpoint.
 
     ``host_snapshot`` is free RAM measured on the model host (needed inside a
-    container). Raises :class:`PreflightError` on the first failure; nothing is loaded.
+    container). ``credential_ref`` (``env:NAME``) authenticates to a gateway in
+    front of Ollama. Raises :class:`PreflightError` on the first failure; nothing is loaded.
     """
     extra = {} if host_snapshot is None else {'host_snapshot': host_snapshot}
     for profile_id in profile_ids:
         profile = load_profile(profile_id)
-        profile = replace(profile, model_config=replace(profile.model_config, endpoint=endpoint))
-        report = check(profile, environment={}, **extra)
+        profile = replace(profile, model_config=replace(profile.model_config, endpoint=endpoint,
+                                                        credential_ref=credential_ref),
+                          allow_unauthenticated=credential_ref is None)
+        environment = ProbeConfig(profile_id, profile.model_config.model, endpoint, '', '',
+                                  credential_ref).environment()
+        report = check(profile, environment=environment, **extra)
         if not report.passed:
             raise PreflightError(report)
 
@@ -136,7 +141,7 @@ def unload_model(config: ProbeConfig) -> None:
     with requests.Session() as session:
         session.trust_env = False
         result = session.post(f'{parsed.scheme}://{parsed.netloc}/api/generate',
-                              json={'model': config.model, 'keep_alive': 0},
+                              json={'model': config.model, 'keep_alive': 0}, headers=config.auth_headers(),
                               timeout=30, allow_redirects=False)
         if result.status_code != 200:
             raise ValueError('unload_failed')
@@ -181,12 +186,13 @@ def probe(config: ProbeConfig, row: dict, journal: dict, output: Path) -> None:
 
 def run_smoke(endpoint: str, host: dict, output: Path | None = None, *, models=MODELS,
               execute: bool = False, minimum_available_gib: float = 16, memory_reader=None,
-              host_snapshot: HostMemorySnapshot | None = None) -> dict:
+              host_snapshot: HostMemorySnapshot | None = None, credential_ref: str | None = None) -> dict:
     """One invocation, one new receipt, at most one inference per selected model.
 
     ``memory_reader`` is an optional verified server-memory callback (bytes);
     ``host_snapshot`` a fresh snapshot taken on the model host. Only loopback
-    endpoints outside a container use the built-in reader. No receipt may be replayed.
+    endpoints outside a container use the built-in reader. ``credential_ref``
+    (``env:NAME``) sends that bearer token on every request. No receipt may be replayed.
     """
     models = tuple(models)
     if not models or len(set(models)) != len(models) or any(m not in MODELS for m in models):
@@ -194,13 +200,14 @@ def run_smoke(endpoint: str, host: dict, output: Path | None = None, *, models=M
     if not math.isfinite(minimum_available_gib) or minimum_available_gib <= 0:
         raise ValueError('memory_threshold_must_be_positive')
     threshold = math.ceil(minimum_available_gib * GIB)
-    configs = [ProbeConfig(m, m, endpoint, '', '') for m in models]
+    configs = [ProbeConfig(m, m, endpoint, '', '', credential_ref) for m in models]
     for config in configs:
         config.client_config()
     if urlsplit(endpoint).path != '/v1/chat/completions':
         raise ValueError('explicit_full_chat_endpoint_required')
     journal = {'schema_version': 1, 'status': 'planning', 'stop_reason': None,
                'plan': {'models': list(models), 'endpoint': endpoint, 'settings': dict(SETTINGS),
+                        'authentication': 'none' if credential_ref is None else 'environment',
                         'context_tokens': 2048, 'inference_limit': len(models), 'attempts_per_model': 1,
                         'max_seconds_per_request': 300, 'automatic_retries': 0,
                         'concurrent_requests': 1, 'max_loaded_models': 1,
@@ -263,7 +270,7 @@ def run_smoke(endpoint: str, host: dict, output: Path | None = None, *, models=M
                    'shared_gpu_memory_bytes': None, 'system_ram_usage_bytes': None,
                    'host_execution_stopped': None}
             journal['attempts'].append(row)
-            config = ProbeConfig(initial.model, initial.model, endpoint, row['digest'], '')
+            config = ProbeConfig(initial.model, initial.model, endpoint, row['digest'], '', credential_ref)
             before = observe(config, 'before_admission')
             row['observed_before'] = before
             if before['loaded_models']:
@@ -340,15 +347,22 @@ def main(argv=None) -> int:
     parser.add_argument('--host-snapshot', type=Path, default=None,
                         help='Host memory snapshot JSON written on the model host by scripts/host_memory_snapshot.ps1 '
                              '(inside the container: /outputs/host-memory.json).')
+    parser.add_argument('--credential-ref', default=None, metavar='env:NAME',
+                        help='Environment variable holding a bearer token for an authenticating gateway in front '
+                             'of Ollama, e.g. env:LOCAL_MODEL_API_KEY (the value is never printed).')
     args = parser.parse_args(argv)
     try:
         snapshot = None if args.host_snapshot is None else HostMemorySnapshot.from_file(args.host_snapshot)
         profiled, endpoint = profile_selection(args.profile or (), args.endpoint)
         models = list(dict.fromkeys([*profiled, *(args.model or ())])) or MODELS
-        profile_preflight(args.profile or (), endpoint, host_snapshot=snapshot)
+        if args.credential_ref is not None:
+            # Refuse early, naming only the variable, if the credential is unset.
+            ProbeConfig(models[0], models[0], endpoint, '', '', args.credential_ref).auth_headers()
+        profile_preflight(args.profile or (), endpoint, host_snapshot=snapshot, credential_ref=args.credential_ref)
         host = read_json(args.host_observation) if args.execute else {}
         result = run_smoke(endpoint, host, args.output, models=models, execute=args.execute,
-                           minimum_available_gib=args.minimum_available_gib, host_snapshot=snapshot)
+                           minimum_available_gib=args.minimum_available_gib, host_snapshot=snapshot,
+                           credential_ref=args.credential_ref)
     except PreflightError as error:
         print_failure(error, stage='host preflight')
         return 2

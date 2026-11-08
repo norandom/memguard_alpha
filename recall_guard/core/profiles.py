@@ -482,11 +482,12 @@ def _ram_recommendation(model: str, measured: int, required: int, fallbacks: tup
             f"request was sent. {options} on a machine with at least {_gib(required)} of free RAM.")
 
 
-def observe_ollama_host(endpoint: str, model: str, *, http_get=None) -> dict:
+def observe_ollama_host(endpoint: str, model: str, *, http_get=None, headers: Mapping[str, str] | None = None) -> dict:
     """Read-only Ollama metadata (``/api/version``, ``/api/tags``, ``/api/ps``).
 
     Never generates, pulls, loads or unloads. ``http_get(url) -> object`` returns
-    parsed JSON or raises; the default uses a proxy-free ``requests`` session.
+    parsed JSON or raises; the default uses a proxy-free ``requests`` session
+    sending ``headers`` (for example the bearer token of an authenticating gateway).
     Raises ``ValueError('host_metadata_unavailable')`` on any unusable answer.
     """
     parsed = urlsplit(endpoint)
@@ -497,7 +498,8 @@ def observe_ollama_host(endpoint: str, model: str, *, http_get=None) -> dict:
                 session.trust_env = False
 
                 def fetch(path: str):
-                    result = session.get(origin + path, timeout=10, allow_redirects=False)
+                    result = session.get(origin + path, headers=dict(headers or {}), timeout=10,
+                                         allow_redirects=False)
                     if result.status_code != 200:
                         raise ValueError("host_metadata_unavailable")
                     return result.json()
@@ -533,7 +535,7 @@ def observe_ollama_host(endpoint: str, model: str, *, http_get=None) -> dict:
             "observed_backend": backend, "model_installed": installed is not None}
 
 
-def _model_already_loaded(endpoint: str, model: str, http_get=None) -> bool:
+def _model_already_loaded(endpoint: str, model: str, http_get=None, headers: Mapping[str, str] | None = None) -> bool:
     """One read-only ``/api/ps`` call; any failure counts as not loaded."""
     parsed = urlsplit(endpoint)
     url = f"{parsed.scheme}://{parsed.netloc}/api/ps"
@@ -541,7 +543,7 @@ def _model_already_loaded(endpoint: str, model: str, http_get=None) -> bool:
         if http_get is None:
             with requests.Session() as session:
                 session.trust_env = False
-                result = session.get(url, timeout=10, allow_redirects=False)
+                result = session.get(url, headers=dict(headers or {}), timeout=10, allow_redirects=False)
                 if result.status_code != 200:
                     return False
                 running = result.json()
@@ -563,6 +565,22 @@ def _credential_failure(profile: ProviderProfile, environment: Mapping[str, str]
         return None
     return (f"Profile {profile.profile_id!r} needs credential {name} in the environment. "
             f"Set {name} (the value is never printed or stored) and try again.")
+
+
+def metadata_headers(profile: ProviderProfile, environment: Mapping[str, str]) -> dict[str, str]:
+    """Bearer header for read-only host metadata when the profile names a credential.
+
+    A protected local endpoint (for example the authenticating Windows Ollama
+    gateway) refuses ``/api/*`` without it. Unauthenticated profiles get ``{}``.
+    """
+    reference = profile.model_config.credential_ref
+    if reference is None:
+        return {}
+    value = environment.get(reference.removeprefix("env:"))
+    if not isinstance(value, str) or not value.strip():
+        raise ProfileError(f"Profile {profile.profile_id!r} needs credential "
+                           f"{reference.removeprefix('env:')} in the environment")
+    return {"Authorization": f"Bearer {value.strip()}"}
 
 
 def _is_loopback(endpoint) -> bool:
@@ -652,6 +670,7 @@ def preflight_host(
     if profile.hosting_mode != HostingMode.LOCAL:
         return HostPreflightReport(passed=True, **base)
     endpoint = _resolved_config(profile, environment).endpoint
+    headers = metadata_headers(profile, environment)
     memory: dict = {}
     if requirements.min_free_ram_bytes is not None:
         container = running_in_container() if in_container is None else bool(in_container)
@@ -674,7 +693,7 @@ def preflight_host(
             # A model that is already resident occupies the RAM being measured;
             # one read-only /api/ps call to that same host avoids a false block.
             if (profile.model_config.provider == "ollama" and (host_snapshot is not None or _is_loopback(endpoint))
-                    and _model_already_loaded(endpoint, model, http_get)):
+                    and _model_already_loaded(endpoint, model, http_get, headers)):
                 memory["ram_gate"] = "skipped_model_already_loaded"
             else:
                 return HostPreflightReport(
@@ -684,7 +703,7 @@ def preflight_host(
     if profile.model_config.provider != "ollama":
         return HostPreflightReport(passed=True, **base, **memory)
     try:
-        observed = observe_ollama_host(endpoint, model, http_get=http_get)
+        observed = observe_ollama_host(endpoint, model, http_get=http_get, headers=headers)
     except ValueError:
         return HostPreflightReport(
             passed=False, reason="host_metadata_unavailable", **base, **memory,
@@ -754,5 +773,5 @@ def connect(
 __all__ = [
     "HarmonyMappingConfig", "HostMemorySnapshot", "HostPreflightReport", "HostResourceRequirement", "HostingMode",
     "PreflightError", "ProfileError", "ProviderProfile", "ResponseMapping", "available_profiles", "connect",
-    "load_profile", "observe_ollama_host", "preflight_host", "running_in_container",
+    "load_profile", "metadata_headers", "observe_ollama_host", "preflight_host", "running_in_container",
 ]

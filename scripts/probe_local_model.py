@@ -31,6 +31,7 @@ from recall_guard.core.profiles import (
     ProviderProfile,
     connect,
     load_profile,
+    metadata_headers,
     observe_ollama_host,
     preflight_host,
 )
@@ -57,27 +58,44 @@ class ProbeConfig:
     endpoint: str
     digest: str
     manifest_hash: str
+    #: Optional ``env:NAME`` for an authenticating gateway in front of Ollama; None is unauthenticated.
+    credential_ref: str | None = None
 
     def client_config(self) -> ModelConfig:
         return ModelConfig(protocol='openai_chat', model=self.model, endpoint=self.endpoint,
-                           provider='ollama', parameters=SETTINGS, timeout_s=300, max_retries=0)
+                           provider='ollama', parameters=SETTINGS, timeout_s=300, max_retries=0,
+                           credential_ref=self.credential_ref)
 
     def profile(self) -> ProviderProfile:
         """The curated local profile for this model, carrying the frozen probe config."""
         profile_id = next((pid for pid, tag in PROFILE_MODELS.items() if tag == self.model), None)
+        unauthenticated = self.credential_ref is None
         if profile_id is None:
             return ProviderProfile('ollama-adhoc', f'Ollama {self.model}', HostingMode.LOCAL,
-                                   self.client_config(), allow_unauthenticated=True)
-        return replace(load_profile(profile_id), model_config=self.client_config())
+                                   self.client_config(), allow_unauthenticated=unauthenticated)
+        return replace(load_profile(profile_id), model_config=self.client_config(),
+                       allow_unauthenticated=unauthenticated)
+
+    def environment(self) -> dict[str, str]:
+        """Only the named credential variable (empty when unauthenticated or unset)."""
+        if self.credential_ref is None:
+            return {}
+        name = self.credential_ref.removeprefix('env:')
+        return {name: os.environ[name]} if os.environ.get(name) else {}
+
+    def auth_headers(self) -> dict[str, str]:
+        """Bearer header for metadata and unload calls; raises ProfileError if the credential is unset."""
+        return metadata_headers(self.profile(), self.environment())
 
 
 def connect_probe(config: ProbeConfig, budget: CallBudget):
-    """Build the unauthenticated local client through the single profile factory.
+    """Build the local client through the single profile factory.
 
-    The host gate already ran (:func:`host_preflight` plus the frozen-plan
+    Unauthenticated unless ``config.credential_ref`` names a gateway token. The
+    host gate already ran (:func:`host_preflight` plus the frozen-plan
     :func:`preflight`), so the factory does not repeat it.
     """
-    return connect(config.profile(), budget, environment={}, enforce_preflight=False)
+    return connect(config.profile(), budget, environment=config.environment(), enforce_preflight=False)
 
 
 def host_preflight(config: ProbeConfig, host_snapshot: HostMemorySnapshot | None = None) -> HostPreflightReport:
@@ -86,7 +104,7 @@ def host_preflight(config: ProbeConfig, host_snapshot: HostMemorySnapshot | None
     ``host_snapshot`` is free RAM measured on the model host (required inside a
     container, where this machine's memory is not the Ollama host's).
     """
-    return preflight_host(config.profile(), environment={}, host_snapshot=host_snapshot)
+    return preflight_host(config.profile(), environment=config.environment(), host_snapshot=host_snapshot)
 
 
 def with_endpoint(config: ProbeConfig, endpoint: str | None) -> ProbeConfig:
@@ -135,7 +153,7 @@ def observe_host(config: ProbeConfig) -> dict:
 
     Delegates to the shared core observer (also used by host preflight).
     """
-    observed = observe_ollama_host(config.endpoint, config.model)
+    observed = observe_ollama_host(config.endpoint, config.model, headers=config.auth_headers())
     observed.pop('model_installed')
     return observed
 
