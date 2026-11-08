@@ -1,6 +1,6 @@
 # Release 1.0: tasks and status
 
-**Current: M3.1** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
+**Current: M3.2** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
 
 Review 2026-11-08: [research review](research.md#7-streamlined-task-alignment-for-tasksmd) and [design draft](design.md).
 Task list, requirements and the M1.1 design approved by the user on 2026-11-08. Review proposals do not complete tasks, move this
@@ -76,7 +76,8 @@ Requirement 2 above is the new scope.
 
 ## M3. Measurement plan for Tracks 2 and 3 (offline, then authorize)
 
-- [ ] M3.1 Resolve LLaVA effective context, or exclude it from the matched set (C4).
+- [x] M3.1 Resolve LLaVA effective context, or exclude it from the matched set (C4).
+  - _Outcome 2026-11-08: cause found with load-only checks on the native Ollama 0.40.11 host (no generation). `llava-llama3:latest` sets `PARAMETER num_ctx 4096` in its model file, which overrides the server's `OLLAMA_CONTEXT_LENGTH=2048`; Ollama's OpenAI-compatible endpoint cannot pass `num_ctx` per request. Created the derived local tag `llava-llama3:ctx2048` (`FROM llava-llama3:latest`, `num_ctx 2048`, digest 78920a01…, shares weight blobs; nothing downloaded); it loads at context 2048 on CPU. The original tag is unchanged. Token-evidence eligibility of the new tag is re-checked by M4's fresh eligibility probe. Ollama stopped afterwards; no models loaded._
 - [ ] M3.2 Write the plan: datasets, development/held-out split, model and
   profile identities (Ollama: Phi-4 Mini, Llama 3.1 8B, Llama 3.2 3B, Gemma 3 4B;
   Modal: GPT-OSS-20B), generation settings, total request/token/cost limits.
@@ -134,7 +135,7 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 | C1 | Ollama GPT-OSS-20B HTTP 500 on 2026-11-06; 13.9 GB CPU allocation vs ~13.4 GB free; body not retained | Mitigated: RAM gate and body retention shipped (M1.4); cause still a hypothesis | P1 |
 | C2 | Ollama GPT-OSS token-text alignment failed (2026-11-05); Harmony ID mapper needs token IDs | Open | P1 |
 | C3 | Modal repaired mapping verified only by offline replay | Resolved 2026-11-08: live eligible response (M2.1) | M2.1 |
-| C4 | LLaVA effective context 4096 vs requested 2048 | Open | M3.1 |
+| C4 | LLaVA effective context 4096 vs requested 2048 | Resolved 2026-11-08: model-file `num_ctx 4096`; use `llava-llama3:ctx2048` | M3.1 |
 | C5 | Score normalization semantics unknown; alternatives are partial top-k | Open | M3.2, M6.1 |
 | C6 | NIM unavailable (timeouts, HTTP 504) | Recorded | M5.1, P3 |
 | C7 | NPU artifact access and runtime/driver compatibility unresolved | Parked | P2 |
