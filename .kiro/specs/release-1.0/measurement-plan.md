@@ -30,17 +30,24 @@ LLaVA's new tag has not yet had a token-evidence probe (M3.1).
 
 ## Data
 
-| Split | Source | Rows | Use |
-| --- | --- | ---: | --- |
-| Calibration, memorized | `data/calibration/is_memorized.jsonl` (2020-12-30..2023-12-31) | 40 | fit; internal 25 % holdout |
-| Calibration, control | `data/calibration/oos_control.jsonl` (2026-04-23..27) | 100 | baseline and fit |
-| **Held-out, labeled** | **new**, disjoint, same builder and date rules (D1) | 40 + 40 | evaluation only, never used to fit or tune |
+Revised 2026-11-08 (user decision): the FMP calibration set was too narrow (40
+memorized rows from 3 dates, different sources per class). Both classes now come
+from one public-domain source, SEC EDGAR 8-K press-release exhibits (EX-99.1),
+built by `scripts/build_edgar_corpora.py` (seed 0, 1,118 SEC requests). Files and
+hashes: [data/edgar/manifest.json](../../../data/edgar/manifest.json).
 
-Rows are filtered per model so that "memorized" rows predate that model's
-cutoff and control rows postdate it; the per-model counts are reported, never
-padded. Today's only held-out signal is the calibrator's internal 25 % holdout
-(10 memorized rows), which produced a degenerate AUC interval in the 2026-10-30
-NIM run. A separate labeled held-out set fixes that.
+| Split | File | Rows | Filing dates |
+| --- | --- | ---: | --- |
+| Calibration, memorized | `data/edgar/calibration/is_memorized.jsonl` | 40 | 2015-01-28..2023-02-15, 40 dates, 40 companies |
+| Calibration, control | `data/edgar/calibration/oos_control.jsonl` | 100 | 2024-09-03..2026-11-05, 89 dates, 98 companies |
+| Held-out, memorized | `data/edgar/held_out/is_memorized.jsonl` | 40 | 2015-05-22..2023-02-01 |
+| Held-out, control | `data/edgar/held_out/oos_control.jsonl` | 40 | 2024-09-05..2026-08-31 |
+
+Memorized rows predate the earliest measured cutoff (2023-03-31, LLaVA) and
+control rows postdate the latest (2024-08-31, Gemma), so no per-model filtering
+removes rows. The four files are disjoint by URL, title hash and company plus
+date. Some titles are layout noise (addresses, "Disclaimer"); the body excerpt
+carries the content. The old FMP files stay under `data/calibration/` as history.
 
 ## Settings (frozen per profile in `plan.json`, hashed)
 

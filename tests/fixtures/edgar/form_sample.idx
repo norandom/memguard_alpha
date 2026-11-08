@@ -1,0 +1,15 @@
+Description:           Master Index of EDGAR Dissemination Feed by Form Type
+Last Data Received:    March 31, 2015
+Comments:              webmaster@sec.gov
+Anonymous FTP:         ftp://ftp.sec.gov/edgar/
+ 
+ 
+ 
+ 
+Form Type   Company Name                                                  CIK         Date Filed  File Name
+---------------------------------------------------------------------------------------------------------------------------------------------
+10-K        1347 PROPERTY INSURANCE HOLDINGS, INC.                        1591890     2015-03-30  edgar/data/1591890/0001144204-15-019005.txt
+8-K         ACME CORP                                                     1000045     2015-01-02  edgar/data/1000045/0001193125-15-000123.txt
+8-K/A       ACME CORP                                                     1000045     2015-01-05  edgar/data/1000045/0001193125-15-000200.txt
+SC 13D      SOME FUND LP  CLASS A                                         1234567     2015-02-11  edgar/data/1234567/0000950123-15-001111.txt
+8-K         WIDGETS & SONS  HOLDINGS INC                                  20          20150315    edgar/data/20/0000020-15-000007.txt

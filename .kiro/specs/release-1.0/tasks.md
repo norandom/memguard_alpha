@@ -84,6 +84,7 @@ Requirement 2 above is the new scope.
   User approves the limits.
   - _Approved 2026-11-08: [measurement-plan.md](measurement-plan.md) with D1, D2, D3 and Phase A limits (local 1,605 requests; Modal 321 requests, cap USD 2.00). Phase B needs separate approval._
 - [ ] M3.3 Plan prerequisites (offline except the FMP data pull): D2 sourced cutoffs; D1 labeled held-out set; D3 Ollama in a WSL container; LLaVA ctx2048 profile; Modal measurement runner and GPU-phase limit.
+  - _Progress 2026-11-08: D2 cutoffs added (025dd92). Modal measurement runner (c2007bb). D1 switched to SEC EDGAR (user decision): `data/edgar/` built, 40/100/40/40 rows, 1,118 SEC requests. D3 revised by the user: Windows Ollama with iGPU behind an authenticated, auto-stopping gateway (in progress); the WSL Ollama container (cec3e4c) stays an alternative. LLaVA ctx2048 profile added (cec3e4c)._
 
 ## M4. Fresh calibration and evaluation (authorize)
 
