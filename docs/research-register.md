@@ -32,8 +32,10 @@ reproducible while keeping the held-out discrimination.
    single-draw baseline) has held-out results for two local models. Gemma 3 4B reached 0.812 on its calibrator
    holdout but 0.574 [0.453, 0.690] on 80 new rows. Llama 3.2 3B reached 0.503
    [0.381, 0.623]. Both intervals include 0.5 (R20).
-2. **Calibration quality: not measured yet.** Reports carry AUC only; Brier score
-   and reliability are not computed (open item).
+2. **Single-draw calibration: no skill yet.** On held-out rows, Gemma 3 4B has
+   Brier 0.253 [0.229, 0.280] and Llama 3.2 3B 0.259 [0.242, 0.278], against 0.250
+   for always predicting the base rate. Mean predictions match the base rate, but
+   the estimates cluster near 0.5 (R20).
 3. **The earlier strong number is confounded.** The 2026-10-30 NIM calibrator
    reached 0.876 (R01) on a corpus whose classes differ in date and source (R18).
    Treat it as corpus separation.
@@ -60,7 +62,7 @@ reproducible while keeping the held-out discrimination.
 | R23 | 2026-11-08 | Modal | failed | Phase A rerun stopped after 4 requests (one evidence defect aborted calibration) | below |
 | R22 | 2026-11-08 | Modal | failed | Phase A first attempt stopped after 4 requests (reasoning truncation) | below |
 | R21 | 2026-11-08 | Modal | pending | Phase A rerun, low reasoning, 1,024 tokens, cap USD 2.00 | pending |
-| R20 | 2026-11-08 | Local | running | Phase A, five Ollama models, 1,605 requests | pending |
+| R20 | 2026-11-08 | Local | running | Phase A single draw: no held-out skill yet on two models | below |
 | R19 | 2026-11-08 | Local | feasibility | Windows Ollama with iGPU behind an authenticated gateway | below |
 | R18 | 2026-11-08 | Data | decision | Old calibration corpus confounded; SEC EDGAR corpus built | below |
 | R17 | 2026-11-08 | Local | diagnostic | LLaVA context mismatch traced to its model file | below |
@@ -133,7 +135,16 @@ reproducible while keeping the held-out discrimination.
   context, 32 output tokens, top-5, 0 retries; 321 requests per model, one model
   at a time, fresh memory preflight before each.
 - **Data:** as R21.
-- **Result:** pending.
+- **Result (interim, two of five models):**
+
+  | Model | Calibrator holdout AUC | Held-out AUC [95 %] | Held-out Brier [95 %] (reference 0.250) | ECE | Valid rows |
+  | --- | ---: | --- | --- | ---: | --- |
+  | Gemma 3 4B | 0.812 | 0.574 [0.453, 0.690] | 0.253 [0.229, 0.280] | 0.122 | 40/40, 194/200, 79/80 |
+  | Llama 3.2 3B | 0.464 | 0.503 [0.381, 0.623] | 0.259 [0.242, 0.278] | 0.064 | 39/40, 199/200, 79/80 |
+
+  Phi-4 Mini stopped after 119 requests on the evidence-defect bug fixed in
+  0c02b1e (rerun approved). Llama 3.1 8B and LLaVA are running. Single draws, so
+  this is the baseline for the ensemble test (Phase B).
 - **Limits:** input token counts are upper bounds; the local endpoint is frozen in
   the plan hashes.
 - **Evidence:** `runs/container/phase-a/<profile>/` (private), dated report to follow.
