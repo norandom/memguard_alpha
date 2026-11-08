@@ -92,9 +92,10 @@ track. The guard does not need it to work.
 | R28 | 2026-11-08 | Method | decision | Phase B sized at 32 draws, split 16/16 |
 | R29 | 2026-11-08 | Platform | feasibility | Held-out calibration quality added to reports |
 | R30 | 2026-11-08 | Modal | measured | Phase A single draw: GPT-OSS-20B |
-| R31 | 2026-11-08 | Local | in progress | NPU runtime with logprobs: FastFlowLM selected |
+| R31 | 2026-11-08 | NPU | decision | NPU runtime with logprobs: FastFlowLM selected |
 | R32 | 2026-11-08 | Local | stopped | LLaVA-Llama3 Phase A stopped on a host condition change |
 | R33 | 2026-11-08 | Method | decision | Full logits or logprobs from local models, NPU included |
+| R34 | 2026-11-08 | NPU | feasibility | Three models eligible on the NPU through FastFlowLM, top-100 logprobs |
 
 ## Entries
 
@@ -408,6 +409,22 @@ track. The guard does not need it to work.
   and is the basis for the divergence work.
 - **Limits:** depends on runtime support (R31).
 - **Evidence:** release plan, NPU option.
+
+### R34 · 2026-11-08 · NPU eligibility through FastFlowLM
+
+- **Question:** do NPU-served models give scoreable token evidence?
+- **Setup:** FastFlowLM 1.0.12 natively on Windows, NPU driver 32.0.20102.3930
+  (`flm validate` ready), loopback only; one 5-token request per model, repeated;
+  temperature 0.
+- **Data:** one prompt.
+- **Result:** `llama3.2:3b`, `gemma3:4b` and `gemma4-it:e4b` (Q4_1) are eligible:
+  aligned tokens, sorted alternatives, identical logprobs on repeat; NPU load 61 to
+  94 % during requests. `top_logprobs` goes up to 100 at no measurable cost; over
+  40-token generations the median top-100 mass per position is 0.9998 or more.
+  No raw logits are exposed, so top-100 is the ceiling. Gemma 3 sums can exceed 1
+  by up to 1.8e-6 from float32 rounding.
+- **Limits:** quantised (Q4_1) builds; one short prompt per model.
+- **Evidence:** release plan, NPU option; models in `models/flm/`.
 
 ## How to add an entry
 
