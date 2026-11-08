@@ -17,6 +17,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from importlib import resources
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -28,9 +29,13 @@ from recall_guard.core.provider_anthropic import AnthropicClient
 from recall_guard.core.providers import HarmonyOpenAICompatibleClient, OpenAICompatibleClient
 from recall_guard.core.request_control import CallBudget
 
-#: Repository root; curated profiles live in ``configs/providers/<id>.json``.
+#: Checkout root; only relative Harmony tokenizer paths fall back to it.
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROFILE_DIRECTORY = REPO_ROOT / "configs" / "providers"
+#: Curated profiles ship as package data (``recall_guard/core/provider_profiles/<id>.json``)
+#: so an installed wheel can load them by ID (C18).
+PROFILE_RESOURCES = resources.files("recall_guard.core").joinpath("provider_profiles")
+#: Filesystem view of the same directory for checkouts and regular installs.
+PROFILE_DIRECTORY = Path(str(PROFILE_RESOURCES))
 #: Documented endpoint placeholder (docs/modal-provider.md); never contacted.
 PLACEHOLDER_MARKER = "your-host"
 _PROFILE_ID = re.compile(r"[a-z0-9][a-z0-9.\-]*")
@@ -217,27 +222,29 @@ class ProviderProfile:
 
 
 def load_profile(id_or_path: ProviderProfile | str | Path) -> ProviderProfile:
-    """Load a curated profile by ID (``configs/providers/<id>.json``) or by path."""
+    """Load a curated profile by ID (shipped package data) or a profile JSON by path."""
     if isinstance(id_or_path, ProviderProfile):
         return id_or_path
     if isinstance(id_or_path, str) and _PROFILE_ID.fullmatch(id_or_path) and not id_or_path.endswith(".json"):
-        path = PROFILE_DIRECTORY / f"{id_or_path}.json"
-        if not path.is_file():
+        source = PROFILE_RESOURCES.joinpath(f"{id_or_path}.json")
+        if not source.is_file():
             known = ", ".join(sorted(available_profiles())) or "none"
             raise ProfileError(f"Unknown provider profile {id_or_path!r}; available: {known}")
     elif isinstance(id_or_path, (str, Path)):
-        path = Path(id_or_path)
+        source = Path(id_or_path)
     else:
         raise TypeError("profile must be a ProviderProfile, profile ID or path")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        raise ProfileError(f"Cannot read provider profile {path.name}: {error.__class__.__name__}") from None
+        raise ProfileError(f"Cannot read provider profile {source.name}: {error.__class__.__name__}") from None
     return ProviderProfile.from_dict(data)
 
 
 def available_profiles() -> tuple[str, ...]:
-    return tuple(sorted(path.stem for path in PROFILE_DIRECTORY.glob("*.json")))
+    """IDs of the curated profiles shipped inside the package."""
+    return tuple(sorted(item.name.removesuffix(".json") for item in PROFILE_RESOURCES.iterdir()
+                        if item.is_file() and item.name.endswith(".json")))
 
 
 def _resolved_config(profile: ProviderProfile, environment: Mapping[str, str]) -> ModelConfig:

@@ -12,7 +12,7 @@ from rich.console import Console
 from recall_guard.core.completion import FeatureChoices, ModelConfig
 from recall_guard.core.harmony_evidence import MARKERS, HarmonyTokenMap
 from recall_guard.core.local_evidence import LocalModelIdentity
-from recall_guard.core.profiles import HostPreflightReport, PreflightError
+from recall_guard.core.profiles import HostPreflightReport, PreflightError, load_profile, preflight_host
 from recall_guard.core.providers import HarmonyOpenAICompatibleClient, OpenAICompatibleClient
 from recall_guard.core.request_control import CallBudget, RequestError
 from recall_guard.harness import scorer as scorer_module
@@ -170,11 +170,31 @@ def test_describe_insufficient_free_ram_proposes_modal_smaller_profile_or_larger
     presentation = describe_failure(PreflightError(ram_report()), stage="host preflight")
     assert presentation.kind == "insufficient_free_ram"
     assert presentation.profile_id == "ollama-gpt-oss-20b"
-    assert presentation.next_steps == ("--profile modal-gpt-oss-20b", "--profile ollama-gemma3-4b",
-                                       "a machine with at least 20.0 GiB of free RAM")
+    assert presentation.next_steps == ("Use --profile modal-gpt-oss-20b", "Use --profile ollama-gemma3-4b",
+                                       "Run on a machine with at least 20.0 GiB of free RAM")
     text = panel_text(presentation)
     assert "Not enough free memory" in text and "13.4 GiB free, 20.0 GiB required for gpt-oss:20b" in text
     assert "ollama-gpt-oss-20b | host preflight" in text
+
+
+@pytest.mark.parametrize("reason", ["insufficient_free_ram", "host_memory_unknown"])
+def test_panel_lists_each_alternative_once_under_what_you_can_do(reason):
+    """M1.5: the real preflight recommendation names the fallbacks; the panel shows them once."""
+    if reason == "insufficient_free_ram":
+        report = preflight_host("ollama-gpt-oss-20b", environment={},
+                                memory_reader=lambda: (int(13.4 * 1024 ** 3), 32 * 1024 ** 3),
+                                http_get=lambda url: {"models": []})
+    else:
+        profile = load_profile("ollama-gpt-oss-20b")
+        remote = dataclasses.replace(profile.model_config, endpoint="http://model-host.test:11434/v1/chat/completions")
+        report = preflight_host(dataclasses.replace(profile, model_config=remote), environment={})
+    assert report.reason == reason and "--profile modal-gpt-oss-20b" in report.recommendation
+    presentation = describe_failure(PreflightError(report))
+    text = panel_text(presentation)
+    for fallback in report.fallback_profile_ids:
+        assert text.count(f"--profile {fallback}") == 1
+    assert text.index("What you can do:") < text.index("--profile modal-gpt-oss-20b")
+    assert "Nothing was loaded" in presentation.explanation and "--profile" not in presentation.explanation
 
 
 @pytest.mark.parametrize("status,code,kind", [

@@ -146,17 +146,23 @@ _PREFLIGHT_TITLES = {
 _OVERLOADED_CODES = frozenset({"overloaded", "overloaded_error", "service_unavailable"})
 _MAPPING_CODES = frozenset({"missing_token_evidence", "response_mapping_failed"})
 _TIMEOUT_CODES = frozenset({"timeout", "connection_error", "transport_error", "disconnect"})
+#: Start of the alternatives sentence that profiles.preflight_host appends to its recommendation.
+_ALTERNATIVES_SENTENCE = re.compile(r" (?=Try --profile |Run on a machine |Or use --profile )")
 
 
 def _preflight_presentation(report: HostPreflightReport, profile_id, stage) -> FailurePresentation:
     steps = []
     if report.reason in {"insufficient_free_ram", "host_memory_unknown"}:
-        steps = [f"--profile {item}" for item in report.fallback_profile_ids]
+        steps = [f"Use --profile {item}" for item in report.fallback_profile_ids]
     if report.reason == "insufficient_free_ram" and report.required_free_ram_bytes:
-        steps.append(f"a machine with at least {report.required_free_ram_bytes / 1024 ** 3:.1f} GiB of free RAM")
+        steps.append(f"Run on a machine with at least {report.required_free_ram_bytes / 1024 ** 3:.1f} GiB of free RAM")
+    explanation = report.recommendation
+    if steps:
+        # The alternatives are listed once, under "What you can do"; keep only the facts here.
+        explanation = _ALTERNATIVES_SENTENCE.split(explanation, maxsplit=1)[0].rstrip()
     return FailurePresentation(report.reason or "preflight_failed",
                                _PREFLIGHT_TITLES.get(report.reason, "Host preflight did not pass"),
-                               report.recommendation, tuple(steps),
+                               explanation, tuple(steps),
                                profile_id=profile_id or report.profile_id, stage=stage)
 
 

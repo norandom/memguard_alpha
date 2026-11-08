@@ -17,7 +17,7 @@ consume the resulting `CompletionClient` without branching on backend.
 ### Goals
 
 - **One provider seam (R2.1, R2.2, R2.6):** Wrap `ModelConfig` in a declarative
-  `ProviderProfile` stored under `configs/providers/*.json`. Build clients
+  `ProviderProfile` stored under `recall_guard/core/provider_profiles/*.json`. Build clients
   through `connect(profile, budget, ...)` and expose
   `MemoryGuardedScorer.from_profile(...)` while keeping legacy `NvidiaLM` as a
   compatible NIM delegate and keeping hosting SDKs (`modal`, `torch`) outside
@@ -57,7 +57,7 @@ consume the resulting `CompletionClient` without branching on backend.
 
 - `recall_guard/core/profiles.py`: `ProviderProfile`, `HostResourceRequirement`,
   `HostPreflightReport`, `load_profile()`, `preflight_host()`, and `connect()`.
-- `configs/providers/*.json`: curated declarative profiles for Ollama, Modal,
+- `recall_guard/core/provider_profiles/*.json`: curated declarative profiles for Ollama, Modal,
   NIM, and completion-only targets.
 - `recall_guard/harness/scorer_client.py`: `CalibrationIdentity` v2 with
   `response_mapping` and `mapping_revision`.
@@ -89,7 +89,7 @@ consume the resulting `CompletionClient` without branching on backend.
 
 ```mermaid
 flowchart LR
-    subgraph Configs["configs/providers/*.json"]
+    subgraph Configs["recall_guard/core/provider_profiles/*.json"]
         P_O["ollama-gemma3-4b\nollama-gpt-oss-20b"]
         P_M["modal-gpt-oss-20b"]
         P_N["nim-default"]
@@ -188,9 +188,9 @@ class ProviderProfile:
    - `model_config.parameters.get("return_token_ids")` must be `True`.
 2. If `allow_unauthenticated` is `True`:
    - `hosting_mode` must be `HostingMode.LOCAL` and `model_config.credential_ref` must be `None`.
-3. `to_dict()` / `from_dict()` serialize and validate cleanly from `configs/providers/<profile_id>.json`.
+3. `to_dict()` / `from_dict()` serialize and validate cleanly from `recall_guard/core/provider_profiles/<profile_id>.json`.
 
-### 4.2 Curated Profiles (`configs/providers/`)
+### 4.2 Curated Profiles (`recall_guard/core/provider_profiles/`)
 
 | Profile ID | Hosting mode | Model | Mapping | Min free RAM | Auth env var |
 | --- | --- | --- | --- | --- | --- |
@@ -255,7 +255,7 @@ def connect(
 ```
 
 1. Resolves `profile` (if passed a profile ID like `"ollama-gemma3-4b"` or a
-   `Path`, loads it from `configs/providers/`).
+   `Path`, loads it from `recall_guard/core/provider_profiles/`).
 2. If `enforce_preflight=True`, runs `preflight_host(profile, environment=environment)`
    and raises `PreflightError` (with the friendly proposal attached) if `passed`
    is `False`.
@@ -342,7 +342,7 @@ class CalibrationIdentity:
 | --- | --- | --- |
 | `pyproject.toml` | Modify | Add `psutil>=5.9`; enable Ruff `C901`, `PLR0912`, `PLR0915` with baseline ignores for legacy files |
 | `recall_guard/core/profiles.py` | Create | `ProviderProfile`, `HostResourceRequirement`, `HostPreflightReport`, `load_profile`, `preflight_host`, `connect` (<=180 LLOC) |
-| `configs/providers/*.json` | Create | Curated declarative profiles (`ollama-gemma3-4b`, `ollama-phi4-mini`, `ollama-llama3.2-3b`, `ollama-llama3.1-8b`, `ollama-gpt-oss-20b`, `modal-gpt-oss-20b`, `nim-llama3.1-70b`) |
+| `recall_guard/core/provider_profiles/*.json` | Create | Curated declarative profiles (`ollama-gemma3-4b`, `ollama-phi4-mini`, `ollama-llama3.2-3b`, `ollama-llama3.1-8b`, `ollama-gpt-oss-20b`, `modal-gpt-oss-20b`, `nim-llama3.1-70b`) |
 | `recall_guard/core/readiness.py` & `providers.py` | Modify | Prune unused active-polling scaffolding (`APR 3.3`) while keeping HTTP 202 pending identity and deferral (`M1.2`) |
 | `recall_guard/harness/request_failures.py` | Modify | Add `FailurePresentation`, `describe_failure`, Rich panel formatter, and preserve sanitized HTTP 500 error bodies (`M1.2`, `M1.4`) |
 | `recall_guard/harness/scorer_client.py` | Modify | Extend `CalibrationIdentity` with `response_mapping` and `mapping_revision` (`M1.3`) |

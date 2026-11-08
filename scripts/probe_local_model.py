@@ -39,7 +39,7 @@ from recall_guard.harness.request_failures import print_failure, retained_failur
 
 PROMPT = 'Reply with the word OK.'
 MODEL_IDS = {'ollama-gemma3-4b': 'gemma3:4b', 'ollama-gpt-oss-20b': 'gpt-oss:20b'}
-#: Curated local profiles (configs/providers) by model tag; probe settings stay frozen.
+#: Curated local profiles (recall_guard/core/provider_profiles) by model tag; probe settings stay frozen.
 PROFILE_MODELS = MODEL_IDS | {'ollama-phi4-mini': 'phi4-mini:3.8b', 'ollama-llama3.2-3b': 'llama3.2:3b',
                               'ollama-llama3.1-8b': 'llama3.1:8b'}
 SETTINGS = {'temperature': 0, 'top_p': 1, 'top_logprobs': 5, 'logprobs': True, 'max_tokens': 32}
@@ -275,7 +275,7 @@ def main() -> int:
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument('--candidate', choices=MODEL_IDS)
     selection.add_argument('--profile', choices=MODEL_IDS,
-                           help='Curated provider profile ID (configs/providers); same IDs as --candidate.')
+                           help='Curated provider profile ID (recall_guard/core/provider_profiles); same IDs as --candidate.')
     parser.add_argument('--host-observation', type=Path, default=Path('runs/local-provider/host-observation.json'))
     parser.add_argument('--journal', type=Path, default=Path('runs/local-provider/ollama-probe-journal.json'))
     parser.add_argument('--dry-run', action='store_true')

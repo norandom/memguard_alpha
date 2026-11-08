@@ -7,6 +7,7 @@ runtime dependency set stays lean.
 """
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -76,3 +77,32 @@ def test_citation_doi_matches_the_released_version() -> None:
         release_url = f"https://github.com/norandom/memguard_alpha/releases/tag/v{version}"
         assert cff["url"] == release_url
         assert f"- v{version}: [GitHub Release]({release_url}); version-specific DOI pending." in readme
+
+
+SHIPPED_PROFILES = {"modal-gpt-oss-20b", "nim-llama3.1-70b", "ollama-gemma3-4b", "ollama-gpt-oss-20b",
+                    "ollama-llama3.1-8b", "ollama-llama3.2-3b", "ollama-phi4-mini"}
+
+
+def test_provider_profiles_ship_as_package_data_inside_the_wheel_tree() -> None:
+    """C18: curated profiles live under the wheel's only package, not a checkout-only folder."""
+    wheel = _load()["tool"]["hatch"]["build"]["targets"]["wheel"]
+    assert wheel["packages"] == ["recall_guard"]
+    assert not {"exclude", "only-include"} & set(wheel)
+    directory = _ROOT / "recall_guard" / "core" / "provider_profiles"
+    assert {path.stem for path in directory.glob("*.json")} == SHIPPED_PROFILES
+    assert not (_ROOT / "configs" / "providers").exists()
+
+
+def test_provider_profiles_load_through_importlib_resources() -> None:
+    from importlib import resources
+
+    from recall_guard.core.profiles import ProviderProfile, available_profiles, load_profile
+
+    package = resources.files("recall_guard.core").joinpath("provider_profiles")
+    loaded = {}
+    for item in package.iterdir():
+        if item.name.endswith(".json"):
+            profile = ProviderProfile.from_dict(json.loads(item.read_text(encoding="utf-8")))
+            loaded[profile.profile_id] = profile
+    assert set(loaded) == SHIPPED_PROFILES == set(available_profiles())
+    assert all(load_profile(profile_id) == profile for profile_id, profile in loaded.items())

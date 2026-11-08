@@ -32,7 +32,7 @@ provider requests, model downloads, deployments or paid resources were started.
    Compose and Dagger as the reproducible Linux/CI/notebook environment rather
    than breaking native local CLI workflows.
 4. **Make the adopter path progressive (`plan/doctor -> probe -> calibrate/score`).**
-   Ship curated declarative profiles under `configs/providers/`, automate
+   Ship curated declarative profiles under `recall_guard/core/provider_profiles/`, automate
    SHA-256 plan hashing instead of requiring manual PowerShell `Get-FileHash`
    copy-paste, and expose `MemoryGuardedScorer.from_profile(...)` alongside
    human-readable failure panels that preserve sanitized error bodies.
@@ -109,7 +109,7 @@ ports (`ModelConfig`, `CompletionClient`, `OpenAICompatibleClient`,
 `HarmonyOpenAICompatibleClient`, `AnthropicClient`).
 
 ```text
-configs/providers/*.json
+recall_guard/core/provider_profiles/*.json
         │
         ▼
 ProviderProfile (id, hosting_mode, model_config, response_mapping, host_requirements)
@@ -173,7 +173,7 @@ and length bounded):
 
 ### Keeping the project adopter-friendly
 
-1. **Curated profiles in `configs/providers/`**: Users pick a profile ID
+1. **Curated profiles in `recall_guard/core/provider_profiles/`**: Users pick a profile ID
    (`ollama-gemma3-4b`, `ollama-phi4-mini`, `ollama-llama3.1-8b`,
    `ollama-llama3.2-3b`, `ollama-gpt-oss-20b`, `modal-gpt-oss-20b`, `nim-default`)
    instead of hand-writing `ModelConfig` dictionaries.
@@ -241,7 +241,7 @@ To keep the path to research results fast and low-risk:
 | **M0.1–M0.2** | Reconcile child `spec.json` phases with verified checkboxes; commit consolidation while preserving `.env.sample` and `.openidea/` unstaged | `offline` |
 | **M1.1** | Approve [design.md](design.md) covering `ProviderProfile`, `connect()`, `psutil` + `/api/ps` preflight, `CalibrationIdentity` v2, and friendly failure panels | `offline` (human-gated) |
 | **M1.2** | Finish atomic fatal-stop/failure sanitization (`APR 3.2`) and prune fixture-only active-polling loop (`APR 3.3`) | `offline` |
-| **M1.3** | Implement `recall_guard/core/profiles.py` (`ProviderProfile`, `connect()`, curated `configs/providers/*.json`), update `CalibrationIdentity`, add `MemoryGuardedScorer.from_profile()` | `offline` |
+| **M1.3** | Implement `recall_guard/core/profiles.py` (`ProviderProfile`, `connect()`, curated `recall_guard/core/provider_profiles/*.json`), update `CalibrationIdentity`, add `MemoryGuardedScorer.from_profile()` | `offline` |
 | **M1.4** | Implement `psutil` + Ollama `/api/ps` free-RAM preflight (`20 GiB` gate for `gpt-oss:20b` with Modal/smaller-model guidance) and sanitized error-body retention + Rich failure panels | `offline` |
 | **M1.5–M1.6** | Integrate adopter flow + compact report, update README backend guide, and run full offline regression + Docker smoke + Ruff complexity check | `offline` |
 | **M2.1** | Run **1 live Modal eligibility request** (`0` retries, within USD 5 pilot allowance) for `modal-gpt-oss-20b` through `HarmonyOpenAICompatibleClient`; stop apps and record receipt | `authorize` |

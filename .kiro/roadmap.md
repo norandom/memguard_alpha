@@ -89,7 +89,7 @@ ad hoc in scripts, and the harness runner/scorer still construct the legacy
 
 Proposed (new spec, working name `inference-backends`):
 
-1. **Provider profile**: a declarative JSON under `configs/providers/` naming
+1. **Provider profile**: a declarative JSON under `recall_guard/core/provider_profiles/` naming
    protocol, endpoint, credential env reference (from the root `.env`), model ID,
    response mapping (`generic` | `harmony-vllm` | later `harmony-ollama`),
    required parameters (e.g. `return_token_ids`), readiness/cold-start policy and
