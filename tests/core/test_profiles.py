@@ -366,3 +366,58 @@ def test_ram_gate_still_blocks_when_another_model_is_loaded():
     report = preflight_host(gpt_oss(), environment={}, memory_reader=reader(MEASURED_LOW), http_get=http)
     assert not report.passed and report.reason == "insufficient_free_ram"
     assert http.calls == ["http://localhost:11434/api/ps"]
+
+
+def test_modal_profile_freezes_low_reasoning_effort_and_1024_output_tokens():
+    parameters = load_profile("modal-gpt-oss-20b").model_config.parameters
+    assert parameters["reasoning_effort"] == "low" and parameters["max_tokens"] == 1024
+    assert parameters["return_token_ids"] is True and parameters["top_logprobs"] == 5
+    assert (parameters["temperature"], parameters["top_p"]) == (0, 1)
+    for profile_id in SHIPPED:
+        if profile_id != "modal-gpt-oss-20b":
+            assert "reasoning_effort" not in load_profile(profile_id).model_config.parameters
+
+
+@pytest.mark.parametrize("value", ["minimal", "LOW", "", None, 1, True, ["low"]])
+def test_reasoning_effort_rejects_invalid_values(value):
+    with pytest.raises(ValueError, match="reasoning_effort"):
+        ModelConfig("openai_chat", "https://example.test/v1/chat/completions", "openai/gpt-oss-20b",
+                    parameters={"reasoning_effort": value})
+
+
+@pytest.mark.parametrize("value", ["low", "medium", "high"])
+def test_reasoning_effort_accepts_vllm_values(value):
+    config = ModelConfig("openai_chat", "https://example.test/v1/chat/completions", "openai/gpt-oss-20b",
+                         parameters={"reasoning_effort": value})
+    assert config.to_dict()["parameters"] == {"reasoning_effort": value}
+
+
+def test_reasoning_effort_is_only_valid_with_the_harmony_mapping(tokenizer):
+    gemma = load_profile("ollama-gemma3-4b")
+    config = replace(gemma.model_config, parameters=dict(gemma.model_config.parameters) | {"reasoning_effort": "low"})
+    with pytest.raises(ProfileError, match="reasoning_effort is only valid with the harmony_vllm mapping"):
+        replace(gemma, model_config=config)
+    with pytest.raises(ProfileError, match="harmony_vllm"):
+        ProviderProfile.from_dict(gemma.to_dict() | {"model_config": config.to_dict()})
+    harmony = harmony_profile(tokenizer)
+    medium = replace(harmony.model_config,
+                     parameters=dict(harmony.model_config.parameters) | {"reasoning_effort": "medium"})
+    assert replace(harmony, model_config=medium).model_config.parameters["reasoning_effort"] == "medium"
+
+
+def test_generic_clients_never_send_reasoning_effort(tokenizer):
+    gemma = load_profile("ollama-gemma3-4b").model_config
+    config = replace(gemma, parameters=dict(gemma.parameters) | {"reasoning_effort": "low"})
+    with pytest.raises(ValueError, match="Harmony"):
+        OpenAICompatibleClient(config, CallBudget(1), allow_unauthenticated=True)
+    client = connect("ollama-gemma3-4b", CallBudget(1), environment={}, enforce_preflight=False)
+    with pytest.raises(ValueError, match="Harmony"):
+        client.generate("prompt", reasoning_effort="low")
+    assert client.budget.used == 0
+    anthropic = ModelConfig("anthropic_messages", "https://api.anthropic.com/v1/messages", "claude-test",
+                            credential_ref="env:TEST_ANTHROPIC_KEY",
+                            parameters={"max_tokens": 16, "reasoning_effort": "low"})
+    with pytest.raises(ValueError, match="reasoning_effort"):
+        AnthropicClient(anthropic, CallBudget(1), environment={"TEST_ANTHROPIC_KEY": "sk-test"})
+    harmony = connect(harmony_profile(tokenizer), CallBudget(1), environment=MODAL_ENV)
+    assert harmony.config.parameters["reasoning_effort"] == "low"

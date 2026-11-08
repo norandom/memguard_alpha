@@ -13,6 +13,7 @@ import requests
 
 from deploy.modal import serve
 from deploy.modal.manifest import MEASUREMENT_MANIFEST, PILOT_MANIFEST, load_plan
+from recall_guard.core.completion import HARMONY_ONLY_PARAMETERS
 from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance
 from recall_guard.core.providers import OpenAICompatibleClient
 from recall_guard.harness.local_execution import HostObservation, execute_plan
@@ -52,7 +53,7 @@ def plan_inputs(tmp_path, endpoint, *, sizes=(8, 8, 2), draws=0, max_requests=No
         "prompt_template": "{prompt}", "selected_features": ["mia", "mcs"], "ensemble_draws": draws,
         "min_valid": 4, "seed": 0, "min_auc": 0.6,
         "limits": {"max_requests": max_requests, "context_tokens": 4096, "max_input_tokens": 600,
-                   "max_output_tokens": 512, "max_total_tokens": max_requests * 1112, "max_elapsed_s": max_elapsed}})
+                   "max_output_tokens": 1024, "max_total_tokens": max_requests * 1624, "max_elapsed_s": max_elapsed}})
     return plan, manifest, corpus
 
 
@@ -91,7 +92,8 @@ def write_approval(setup, **budget):
 def install_transport(monkeypatch, calls, *, fail_at=None):
     def post(client, payload):
         calls.append(payload)
-        assert client.config.max_retries == 0 and payload["max_tokens"] == 512 and payload["top_logprobs"] == 5
+        assert client.config.max_retries == 0 and payload["max_tokens"] == 1024 and payload["top_logprobs"] == 5
+        assert payload["reasoning_effort"] == "low"
         if len(calls) == fail_at:
             raise requests.Timeout("private secret")
         prompt = payload["messages"][-1]["content"]
@@ -108,10 +110,16 @@ def install_transport(monkeypatch, calls, *, fail_at=None):
     monkeypatch.setattr(OpenAICompatibleClient, "_post", post)
 
 
+class HarmonyRequestClient(OpenAICompatibleClient):
+    """Harmony request shape (reasoning_effort allowed) without the token mapping."""
+
+    _MAPPING_PARAMETERS = HARMONY_ONLY_PARAMETERS
+
+
 def generic_connect(profile, budget, *, environment):
     """Same endpoint resolution as connect, without the pinned Harmony tokenizer."""
     endpoint = environment[profile.endpoint_ref.removeprefix("env:")]
-    return OpenAICompatibleClient(replace(profile.model_config, endpoint=endpoint), budget, environment=environment)
+    return HarmonyRequestClient(replace(profile.model_config, endpoint=endpoint), budget, environment=environment)
 
 
 def aio(fn):
@@ -225,7 +233,7 @@ def test_dry_run_phase_a_counts_cost_and_no_cloud(tmp_path, setup, monkeypatch):
     frozen = measure.measurement_planning(*inputs, **setup.options)
     assert frozen["logical_requests"] == frozen["physical_requests"] == 321
     assert frozen["items_per_split"] == {"is_memorized": 40, "oos_control": 100, "held_out": 80}
-    assert frozen["worst_case_tokens"] == 321 * 1112
+    assert frozen["worst_case_tokens"] == 321 * 1624
     assert frozen["plan_blockers"] == []
     assert frozen["inference_posts"] == frozen["cloud_mutations"] == 0
     estimate = frozen["cost_estimate"]

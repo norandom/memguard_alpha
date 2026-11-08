@@ -24,7 +24,13 @@ from urllib.parse import urlsplit
 
 import requests
 
-from recall_guard.core.completion import CompletionClient, CompletionProtocol, FeatureChoices, ModelConfig
+from recall_guard.core.completion import (
+    HARMONY_ONLY_PARAMETERS,
+    CompletionClient,
+    CompletionProtocol,
+    FeatureChoices,
+    ModelConfig,
+)
 from recall_guard.core.harmony_evidence import HarmonyTokenMap
 from recall_guard.core.provider_anthropic import AnthropicClient
 from recall_guard.core.providers import HarmonyOpenAICompatibleClient, OpenAICompatibleClient
@@ -174,8 +180,11 @@ class ProviderProfile:
                 raise ProfileError("harmony_vllm mapping requires the openai_chat protocol")
             if self.model_config.parameters.get("return_token_ids") is not True:
                 raise ProfileError("harmony_vllm mapping requires return_token_ids=true")
-        elif self.harmony is not None:
-            raise ProfileError("harmony metadata is only valid with the harmony_vllm mapping")
+        else:
+            if self.harmony is not None:
+                raise ProfileError("harmony metadata is only valid with the harmony_vllm mapping")
+            if only := sorted(self.model_config.parameters.keys() & HARMONY_ONLY_PARAMETERS):
+                raise ProfileError(f"{', '.join(only)} is only valid with the harmony_vllm mapping")
 
     @property
     def mapping_revision(self) -> str | None:

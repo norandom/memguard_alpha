@@ -90,10 +90,10 @@ MEASUREMENT_MANIFEST = "configs/modal/gpt-oss-20b-measurement.json"
 _SOURCES = ("deploy/modal/serve.py", "deploy/modal/manifest.py")
 # Reviewed bounds per serving manifest. The pilot entry is pinned by existing
 # approval records; the measurement entry covers M4 Phase A (321 requests,
-# USD 2.00 cap). A new manifest needs its own reviewed entry here.
+# 1,024 output tokens per request with reasoning_effort low, USD 2.00 cap). A new manifest needs its own reviewed entry here.
 REVIEWED_LIMITS = {
     PILOT_MANIFEST: (Limits(8, 1, 7, 0, 512, 4096, 120, 1200, 600, 120, 0, 1, True, 5), 5),
-    MEASUREMENT_MANIFEST: (Limits(321, 1, 320, 0, 512, 164352, 120, 2700, 600, 120, 0, 1, True, 5), 2),
+    MEASUREMENT_MANIFEST: (Limits(321, 1, 320, 0, 1024, 328704, 120, 2700, 600, 120, 0, 1, True, 5), 2),
 }
 
 

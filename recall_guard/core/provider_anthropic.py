@@ -27,6 +27,7 @@ from recall_guard.core.request_control import CallBudget, RequestControl, Reques
 ANTHROPIC_API_VERSION = "2026-10-21"
 _UNSUPPORTED_PARAMETERS = frozenset({
     "temperature", "top_p", "seed", "random_seed", "logprobs", "top_logprobs", "max_completion_tokens",
+    "reasoning_effort",
 })
 
 

@@ -13,6 +13,7 @@ from dataclasses import replace
 import requests
 
 from recall_guard.core.completion import (
+    HARMONY_ONLY_PARAMETERS,
     CapabilityEvidence,
     CapabilityReport,
     CapabilityStatus,
@@ -163,6 +164,9 @@ class OpenAICompatibleClient:
     admission, pacing and retries, including probes and explicitly named stages.
     """
 
+    #: Mapping-specific parameters this client may send; generic clients send none.
+    _MAPPING_PARAMETERS: frozenset[str] = frozenset()
+
     def __init__(
         self, config: ModelConfig, budget: CallBudget, *, features: FeatureChoices | None = None,
         environment: Mapping[str, str] | None = None, allow_unauthenticated: bool = False,
@@ -171,6 +175,7 @@ class OpenAICompatibleClient:
             raise TypeError("config must be ModelConfig")
         if config.protocol != CompletionProtocol.OPENAI_CHAT:
             raise ValueError("OpenAICompatibleClient requires the explicit openai_chat protocol")
+        self._check_mapping_parameters(config.parameters)
         validate_observation_profile(config)
         self.config = config
         self.features = FeatureChoices() if features is None else features
@@ -222,6 +227,11 @@ class OpenAICompatibleClient:
         self._local_observed = None
         self._local_conflicts.clear()
         return check
+
+    def _check_mapping_parameters(self, parameters: Mapping) -> None:
+        """Harmony-only controls (``reasoning_effort``) never reach generic endpoints."""
+        if refused := sorted(parameters.keys() & HARMONY_ONLY_PARAMETERS - self._MAPPING_PARAMETERS):
+            raise ValueError(f"{', '.join(refused)} requires the Harmony (GPT-OSS vLLM) client")
 
     def _parse_response(self, response: requests.Response, body: object, parameters: dict) -> ModelResponse:
         result = _chat_response(response, body, parameters)
@@ -284,6 +294,7 @@ class OpenAICompatibleClient:
         if not isinstance(prompt, str):
             raise TypeError("prompt must be a string")
         settings = replace(self.config, parameters=dict(self.config.parameters) | overrides)
+        self._check_mapping_parameters(settings.parameters)
         validate_features(settings, self.features)
         parameters = settings.to_dict()["parameters"]
         payload = {"model": settings.model, "messages": [{"role": "user", "content": prompt}], **parameters}
@@ -331,6 +342,7 @@ class OpenAICompatibleClient:
         settings = replace(self.config, parameters=dict(self.config.parameters) | parameters)
         if self._local_observed is not None and settings.parameters.get("stream") is True:
             raise ValueError("Local sidecar batches require non-streaming responses")
+        self._check_mapping_parameters(settings.parameters)
         validate_features(settings, self.features)
         supplied = settings.to_dict()["parameters"]
         payload = {"model": settings.model, "messages": [{"role": "user", "content": prompt}], **supplied}
@@ -442,7 +454,13 @@ class OpenAICompatibleClient:
 
 
 class HarmonyOpenAICompatibleClient(OpenAICompatibleClient):
-    """Opt-in GPT-OSS Harmony response handling over the existing transport."""
+    """Opt-in GPT-OSS Harmony response handling over the existing transport.
+
+    Only this client may send ``reasoning_effort`` (vLLM 0.17 renders it into the
+    Harmony system message); it is part of the configured, hashed parameters.
+    """
+
+    _MAPPING_PARAMETERS = HARMONY_ONLY_PARAMETERS
 
     def __init__(self, config: ModelConfig, budget: CallBudget, *, token_map: HarmonyTokenMap, **options) -> None:
         if not isinstance(config, ModelConfig):

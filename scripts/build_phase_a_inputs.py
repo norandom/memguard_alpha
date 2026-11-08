@@ -8,7 +8,8 @@ request totals. No credential, network, model or inference is used.
 Phase A (measurement plan, approved 2026-11-08): per profile 1 probe + 40 memorized
 + 2 x 100 control + 80 held-out single answers, 0 ensemble draws = 321 logical
 requests; temperature 0, top_p 1, top_logprobs 5, retries 0; seed 0, min_valid 50,
-min_auc 0.6; local max_tokens 32 (context 2048), Modal 512 (context 4096).
+min_auc 0.6; local max_tokens 32 (context 2048), Modal 1024 with reasoning_effort low (context 4096;
+rerun r2 after the first run spent its 512-token budget on reasoning).
 
 Splits: calibration/is_memorized -> is_memorized, calibration/oos_control ->
 oos_control, held_out/{is_memorized,oos_control} -> held_out. Every row carries its
@@ -37,6 +38,8 @@ Usage (dev container, repository checkout mounted at /phase-a):
       --local-endpoint http://172.17.32.1:11435/v1/chat/completions --profiles local
 Modal profile (operator venv with transformers and models/):
   uv run --project deploy/modal --no-sync python scripts/build_phase_a_inputs.py --profiles modal
+Modal rerun (r2; leaves the first run's inputs untouched):
+  ... build_phase_a_inputs.py --profiles modal --output runs/phase-a/modal-gpt-oss-20b-r2
 """
 from __future__ import annotations
 
@@ -64,7 +67,7 @@ SPLIT_FILES = {"is_memorized": ("calibration/is_memorized.jsonl",),
 LOGICAL_REQUESTS = 321  # 1 + 40 + 2 * 100 + 80 * (1 + 0)
 TEMPLATE_ALLOWANCE_TOKENS = 128
 LOCAL = {"context": 2048, "output": 32, "max_elapsed_s": 21600.0}  # 6 h per model: ~67 s per request
-MODAL = {"context": 4096, "output": 512, "max_elapsed_s": 2700.0}  # = manifest gpu_phase_seconds
+MODAL = {"context": 4096, "output": 1024, "max_elapsed_s": 2700.0}  # = manifest gpu_phase_seconds
 MODAL_INPUT_MARGIN = 16  # Harmony system date text; exact counts plus a small fixed margin.
 MODAL_MANIFEST = Path("configs/modal/gpt-oss-20b-measurement.json")
 SETTINGS = {"temperature": 0, "top_p": 1, "logprobs": True, "top_logprobs": 5}
@@ -122,9 +125,12 @@ def modal_token_counter(tokenizer_root: Path):
     tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_directory(modal_plan, tokenizer_root)),
                                               local_files_only=True, trust_remote_code=False)
 
+    # vLLM renders reasoning_effort into the Harmony system message, so count with it.
+    effort = {key: value for key, value in profile.model_config.parameters.items() if key == "reasoning_effort"}
+
     def count(prompt: str) -> int:
         return len(tokenizer.apply_chat_template([{"role": "user", "content": prompt}], tokenize=True,
-                                                 add_generation_prompt=True))
+                                                 add_generation_prompt=True, **effort))
     return count, modal_plan.target.endpoint, hashes
 
 
@@ -152,6 +158,8 @@ def build_profile(profile_id: str, rows, output: Path, *, local_endpoint=None, t
               for split, items in rows.items()}
     declared = max(row["input_tokens"] for items in corpus.values() for row in items)
     max_input = declared + (MODAL_INPUT_MARGIN if modal else 0)
+    if modal and max_input + shape["output"] > shape["context"]:
+        raise ValueError(f"context_exceeded:{profile_id}:{max_input}+{shape['output']}>{shape['context']}")
     limits = MeasurementLimits(max_requests=LOGICAL_REQUESTS, context_tokens=shape["context"],
                                max_input_tokens=max_input, max_output_tokens=shape["output"],
                                max_total_tokens=LOGICAL_REQUESTS * (max_input + shape["output"]),

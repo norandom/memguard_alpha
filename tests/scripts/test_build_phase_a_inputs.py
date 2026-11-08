@@ -119,3 +119,26 @@ def test_host_gate_refusal_precedes_journal(local_output, tmp_path, monkeypatch,
     assert cli.main(args) == 2
     assert "insufficient_free_ram" in capsys.readouterr().err
     assert snapshots == [("env:LOCAL_MODEL_API_KEY", 1)] and not journal.exists()
+
+
+def test_modal_plan_freezes_low_reasoning_effort_and_1024_output_tokens(tmp_path, monkeypatch):
+    monkeypatch.chdir(ROOT)
+    endpoint = json.loads(build.MODAL_MANIFEST.read_text(encoding="utf-8"))["target"]["endpoint"]
+    monkeypatch.setattr(build, "modal_token_counter",
+                        lambda root: (lambda prompt: len(prompt) // 3, endpoint, {"tokenizer.json": "x"}))
+    assert build.main(["--output", str(tmp_path / "r2"), "--profiles", "modal"]) == 0
+    manifest = json.loads((tmp_path / "r2/modal-gpt-oss-20b/manifest.json").read_text(encoding="utf-8"))
+    parameters = manifest["config"]["parameters"]
+    assert parameters["reasoning_effort"] == "low" and parameters["max_tokens"] == 1024
+    limits = json.loads((tmp_path / "r2/modal-gpt-oss-20b/plan.json").read_text(encoding="utf-8"))["limits"]
+    assert limits["max_output_tokens"] == 1024
+    assert limits["max_input_tokens"] + limits["max_output_tokens"] <= limits["context_tokens"] == 4096
+
+
+def test_modal_build_refuses_inputs_that_exceed_the_context(tmp_path, monkeypatch):
+    monkeypatch.chdir(ROOT)
+    endpoint = json.loads(build.MODAL_MANIFEST.read_text(encoding="utf-8"))["target"]["endpoint"]
+    monkeypatch.setattr(build, "modal_token_counter",
+                        lambda root: (lambda prompt: 3100, endpoint, {"tokenizer.json": "x"}))
+    with pytest.raises(ValueError, match="context_exceeded"):
+        build.main(["--output", str(tmp_path), "--profiles", "modal"])

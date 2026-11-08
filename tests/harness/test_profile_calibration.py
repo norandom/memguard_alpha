@@ -251,3 +251,30 @@ def test_retained_detail_bounds_and_masks_credential_shaped_tokens():
     assert kept.endswith("...[truncated]") and len(kept) <= 1000 + len(" ...[truncated]")
     assert retained_detail("  ") is None and retained_detail(None) is None
     assert retained_detail(f"echo {SECRET}", secrets=(SECRET,)) == "echo [REDACTED]"
+
+
+def test_reasoning_effort_is_part_of_the_harmony_calibration_identity(token_map):
+    environment = {"TEST_KEY": "secret"}
+    identities = {}
+    for effort in ("low", "medium"):
+        config = dataclasses.replace(gpt_config(), parameters=HARMONY_SETTINGS | {"reasoning_effort": effort})
+        client = HarmonyOpenAICompatibleClient(config, CallBudget(0), token_map=token_map, environment=environment)
+        identities[effort] = CalibrationIdentity.from_client(client, "original")
+        assert json.loads(identities[effort].parameters_json)["reasoning_effort"] == effort
+        assert CalibrationIdentity.from_dict(identities[effort].to_dict()) == identities[effort]
+    omitted = CalibrationIdentity.from_client(real_clients(token_map)[0], "original")
+    assert "reasoning_effort" not in json.loads(omitted.parameters_json)
+    assert len({identities["low"], identities["medium"], omitted}) == 3
+
+
+def test_generic_client_refuses_a_harmony_reasoning_effort_config(token_map):
+    config = dataclasses.replace(gpt_config(), parameters=HARMONY_SETTINGS | {"reasoning_effort": "low"})
+    with pytest.raises(ValueError, match="Harmony"):
+        OpenAICompatibleClient(config, CallBudget(0), environment={"TEST_KEY": "secret"})
+
+
+def test_shipped_modal_profile_identity_carries_low_reasoning_effort():
+    parameters = json.loads(CalibrationIdentity.from_config(
+        load_profile("modal-gpt-oss-20b").model_config, "original",
+        response_mapping="harmony_vllm", mapping_revision="r").parameters_json)
+    assert parameters["reasoning_effort"] == "low" and parameters["max_tokens"] == 1024

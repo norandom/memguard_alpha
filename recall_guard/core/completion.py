@@ -28,6 +28,12 @@ _TRANSPORT_FIELDS = frozenset({
     "maxretries", "retrybackoffs", "mincallintervals", "localidentity", "recallguardlocal",
 })
 _CENSORED_LOGPROB = -9999.0
+#: GPT-OSS Harmony reasoning budget accepted by vLLM 0.17 chat completions
+#: (``ChatCompletionRequest.reasoning_effort: Literal["low", "medium", "high"]``),
+#: which renders it into the Harmony system message.
+REASONING_EFFORTS = frozenset({"low", "medium", "high"})
+#: Generation parameters only the Harmony (vLLM GPT-OSS) mapping may send.
+HARMONY_ONLY_PARAMETERS = frozenset({"reasoning_effort"})
 
 
 def _text(value: str, name: str, *, allow_empty: bool = False) -> None:
@@ -81,6 +87,8 @@ def _parameters(values: Mapping[str, ParameterValue]) -> Mapping[str, ParameterV
             raise ValueError("stream must be an explicit boolean generation parameter")
         if name.lower().replace("_", "").replace("-", "") in _TRANSPORT_FIELDS:
             raise ValueError("Generation parameters cannot override transport or input fields")
+        if name == "reasoning_effort" and (not isinstance(value, str) or value not in REASONING_EFFORTS):
+            raise ValueError("reasoning_effort must be 'low', 'medium' or 'high'")
         if value is None:
             continue
         if name in {"max_tokens", "max_completion_tokens"}:
