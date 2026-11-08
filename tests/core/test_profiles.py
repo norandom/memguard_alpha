@@ -29,7 +29,7 @@ from recall_guard.core.providers import HarmonyOpenAICompatibleClient, OpenAICom
 from recall_guard.core.request_control import CallBudget
 
 SHIPPED = ("ollama-gemma3-4b", "ollama-phi4-mini", "ollama-llama3.2-3b", "ollama-llama3.1-8b",
-           "ollama-gpt-oss-20b", "modal-gpt-oss-20b", "nim-llama3.1-70b")
+           "ollama-llava-llama3-ctx2048", "ollama-gpt-oss-20b", "modal-gpt-oss-20b", "nim-llama3.1-70b")
 GIB = 1024 ** 3
 REVISION = "a" * 40
 IDS = dict(zip(MARKERS, (200005, 200006, 200007, 200008, 200002, 200012), strict=True))
@@ -80,6 +80,9 @@ def test_profile_table_values():
     assert gpt.response_mapping == ResponseMapping.GENERIC and gpt.allow_unauthenticated
     assert load_profile("ollama-gemma3-4b").host_requirements.min_free_ram_bytes == 6 * GIB
     assert load_profile("ollama-llama3.1-8b").host_requirements.min_free_ram_bytes == 8 * GIB
+    llava = load_profile("ollama-llava-llama3-ctx2048")
+    assert llava.model_config.model == "llava-llama3:ctx2048" and llava.host_requirements.context_tokens == 2048
+    assert llava.host_requirements.min_free_ram_bytes == 6 * GIB and llava.response_mapping == ResponseMapping.GENERIC
     modal = load_profile("modal-gpt-oss-20b")
     assert modal.hosting_mode == HostingMode.REMOTE_GPU and modal.response_mapping == ResponseMapping.HARMONY_VLLM
     assert modal.model_config.credential_ref == "env:MODAL_PROXY_BEARER"

@@ -25,6 +25,7 @@ on their own and returns a report.
 | Profile | Host | Free RAM required |
 | --- | --- | ---: |
 | `ollama-phi4-mini`, `ollama-llama3.2-3b`, `ollama-gemma3-4b` | Ollama, local | 6 GiB |
+| `ollama-llava-llama3-ctx2048` (derived tag with `num_ctx 2048`; eligibility not yet probed) | Ollama, local | 6 GiB |
 | `ollama-llama3.1-8b` | Ollama, local | 8 GiB |
 | `ollama-gpt-oss-20b` | Ollama, local | 20 GiB |
 | `modal-gpt-oss-20b` | Modal vLLM, Harmony final-answer mapping | remote |
@@ -163,39 +164,62 @@ compatibility does not replace an evidence probe. See its
 [compatibility reference](https://docs.ollama.com/api/openai-compatibility).
 
 On Windows, run probes and measurements in the container; PowerShell only
-starts the Ollama host and takes memory snapshots. Container `localhost` refers
-to the container itself unless it shares the host network. Set the full endpoint
-in the manifest to an address reachable from the container network, and verify
-reachability separately. Keep the accelerator runtime on its external host.
-Offline CI needs no host, model download or accelerator installation.
+launches Docker or a native Ollama host and takes Windows memory snapshots.
+Container `localhost` refers to the container itself unless it shares the host
+network. Set the full endpoint in the manifest to an address reachable from the
+container network, and verify reachability separately. Keep the accelerator
+runtime on its external host. Offline CI needs no host, model download or
+accelerator installation.
 
 ### Local Ollama from a container
 
-Inside a container, the RAM gate never reads the container's own memory. Take a
-memory snapshot on the Windows model host right before each run:
+Inside a container, the RAM gate never reads the container's own memory. It needs
+a snapshot taken on the model host less than 10 minutes before the run.
+
+**Recommended on Windows: Ollama in a container in WSL.** Run Docker Engine in
+WSL and start the optional `ollama` Compose service (`ollama/ollama:0.40.11`,
+CPU). It serves the checkout's `models/` store read-only with the same settings
+as `scripts/start_local_ollama.ps1`, never pulls, and publishes no port. Only
+containers on the internal `model-host` network reach it, as
+`http://ollama:11434`; Windows, the LAN and the internet cannot. From a WSL shell
+in the checkout:
+
+```sh
+docker compose --profile ollama up -d ollama
+sh scripts/host_memory_snapshot.sh
+docker compose run --rm dev uv run --no-sync python scripts/smoke_local_models.py --profile ollama-gemma3-4b --host-snapshot /outputs/host-memory.json --endpoint http://ollama:11434/v1/chat/completions
+docker compose --profile ollama down
+```
+
+The smoke without `--execute` is metadata-only and sends no inference. The
+snapshot reads `/proc/meminfo` of the WSL VM, which is the memory the Ollama
+container uses; it records host `NAME WSL VM` and source `wsl_vm_snapshot` in
+`runs/container/host-memory.json` (the container's `/outputs/host-memory.json`).
+WSL limits that VM (by default to half of Windows RAM). If the preflight reports
+too little free memory, raise `memory=` under `[wsl2]` in `%UserProfile%\.wslconfig`
+and run `wsl --shutdown`. `docker compose run --rm dev` keeps working without the
+profile.
+
+**Alternatives: Ollama on Windows.** Use these to keep a Windows GPU runtime.
+Take the snapshot on Windows instead:
 
 ```powershell
 pwsh -File scripts/host_memory_snapshot.ps1
 ```
 
-It writes `runs/container/host-memory.json`, which the container sees as
-`/outputs/host-memory.json`. Snapshots older than 10 minutes are refused. Then
-pass the snapshot and an endpoint the container can reach. With Docker Desktop,
-this metadata-only smoke sends no inference:
+These options are documented, not tested end to end on the development host.
+
+| Setup | Endpoint | Exposure |
+| --- | --- | --- |
+| Docker Engine in WSL with [mirrored networking](https://learn.microsoft.com/windows/wsl/networking#mirrored-mode-networking) and `--network host` | `http://localhost:11434/v1/chat/completions` | Ollama stays loopback-only |
+| Docker Desktop | `http://host.docker.internal:11434/v1/chat/completions` | Ollama stays loopback-only |
+| Docker Engine in WSL, NAT mode (WSL default) | `http://GATEWAY_IP:11434/v1/chat/completions`; Windows is the WSL default gateway | Ollama must listen beyond loopback |
+
+With Docker Desktop:
 
 ```text
 docker compose run --rm dev uv run --no-sync python scripts/smoke_local_models.py --profile ollama-gemma3-4b --host-snapshot /outputs/host-memory.json --endpoint http://host.docker.internal:11434/v1/chat/completions
 ```
-
-Choose one way for the container to reach Windows Ollama. These are documented
-options, not tested end to end on the development host, which uses the WSL NAT
-default.
-
-| Setup | Endpoint | Exposure |
-| --- | --- | --- |
-| Recommended: Docker Engine in WSL with [mirrored networking](https://learn.microsoft.com/windows/wsl/networking#mirrored-mode-networking) and `--network host` | `http://localhost:11434/v1/chat/completions` | Ollama stays loopback-only |
-| Docker Desktop | `http://host.docker.internal:11434/v1/chat/completions` | Ollama stays loopback-only |
-| Docker Engine in WSL, NAT mode (WSL default) | `http://GATEWAY_IP:11434/v1/chat/completions`; Windows is the WSL default gateway | Ollama must listen beyond loopback |
 
 `docker compose run` has no host-network option, so for mirrored networking use
 `docker run` on the image Compose built, from a WSL shell in the checkout:

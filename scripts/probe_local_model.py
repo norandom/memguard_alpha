@@ -42,7 +42,7 @@ PROMPT = 'Reply with the word OK.'
 MODEL_IDS = {'ollama-gemma3-4b': 'gemma3:4b', 'ollama-gpt-oss-20b': 'gpt-oss:20b'}
 #: Curated local profiles (recall_guard/core/provider_profiles) by model tag; probe settings stay frozen.
 PROFILE_MODELS = MODEL_IDS | {'ollama-phi4-mini': 'phi4-mini:3.8b', 'ollama-llama3.2-3b': 'llama3.2:3b',
-                              'ollama-llama3.1-8b': 'llama3.1:8b'}
+                              'ollama-llama3.1-8b': 'llama3.1:8b', 'ollama-llava-llama3-ctx2048': 'llava-llama3:ctx2048'}
 SETTINGS = {'temperature': 0, 'top_p': 1, 'top_logprobs': 5, 'logprobs': True, 'max_tokens': 32}
 BOUNDS = {'total_generation_attempts': 6, 'attempts_per_configuration': 2,
           'context_tokens': 2048, 'max_output_tokens': 32, 'automatic_retries': 0,

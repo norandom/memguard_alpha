@@ -45,7 +45,7 @@ from scripts.probe_local_model import (
 )
 
 MODELS = ('phi4-mini:3.8b', 'llama3.1:8b', 'llama3.2:3b', 'gemma3:4b',
-          'llava-llama3:latest', 'gpt-oss:20b')
+          'llava-llama3:latest', 'llava-llama3:ctx2048', 'gpt-oss:20b')
 GIB = 1024 ** 3
 HOST_ERRORS = (OSError, requests.RequestException, ValueError, KeyError, TypeError)
 DEFAULT_ENDPOINT = 'http://127.0.0.1:11434/v1/chat/completions'

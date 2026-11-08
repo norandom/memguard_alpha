@@ -80,7 +80,7 @@ def test_citation_doi_matches_the_released_version() -> None:
 
 
 SHIPPED_PROFILES = {"modal-gpt-oss-20b", "nim-llama3.1-70b", "ollama-gemma3-4b", "ollama-gpt-oss-20b",
-                    "ollama-llama3.1-8b", "ollama-llama3.2-3b", "ollama-phi4-mini"}
+                    "ollama-llama3.1-8b", "ollama-llama3.2-3b", "ollama-llava-llama3-ctx2048", "ollama-phi4-mini"}
 
 
 def test_provider_profiles_ship_as_package_data_inside_the_wheel_tree() -> None:

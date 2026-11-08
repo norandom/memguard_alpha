@@ -217,6 +217,8 @@ def test_profile_selection_maps_curated_profiles_and_keeps_explicit_endpoint():
     assert endpoint == 'http://localhost:11434/v1/chat/completions'
     assert smoke.profile_selection([], None) == ([], smoke.DEFAULT_ENDPOINT)
     assert smoke.profile_selection(['ollama-gemma3-4b'], ENDPOINT) == (['gemma3:4b'], ENDPOINT)
+    llava = smoke.profile_selection(['ollama-llava-llama3-ctx2048'], ENDPOINT)
+    assert llava == (['llava-llama3:ctx2048'], ENDPOINT) and llava[0][0] in smoke.MODELS
     with pytest.raises(ValueError):
         smoke.profile_selection(['nim-llama3.1-70b'], None)
 
