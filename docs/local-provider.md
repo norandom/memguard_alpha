@@ -373,6 +373,37 @@ before each physical request and refuses an existing path, even for a completed
 run. Do not silently replay uncertain attempts. Reconcile their outcome before
 preparing a new plan and journal.
 
+Behind the authenticated gateway, add `--host-snapshot /outputs/...json` (a fresh
+`host_memory_snapshot.ps1` file). The shared host preflight (free RAM, model
+installed, gateway reachable) then runs before the journal is created, and a
+refusal names only its reason code. The observer authenticates its metadata reads
+with the plan's `credential_ref`.
+
+A corpus row may carry `"label": 1` (memorized) or `0` (out-of-sample). Labels on
+`is_memorized`/`oos_control` must match the split; labeled `held_out` rows let the
+report compute held-out ROC-AUC of the single answer's feature-based
+`feature_p_memorized` (MIA features and the fitted calibrator, as in calibration,
+whether or not the answer parses; parse success stays in `parsed`) with a seeded
+(plan `seed`) 1,000-resample stratified percentile bootstrap 95% interval
+(`held_out_evaluation`), next to the calibrator's internal holdout AUC. `splits`
+gives planned, attempted, valid and failed counts per corpus split. Unlabeled
+plans load and export as before.
+
+### Release-1.0 Phase A
+
+`scripts/build_phase_a_inputs.py` writes `runs/phase-a/<profile>/` for the five
+local profiles and `modal-gpt-oss-20b` from `data/edgar/` (321 logical requests
+each, no ensemble draws) plus `runs/phase-a/index.json` with file hashes. The
+plan hash covers the manifest endpoint, so the local endpoint is frozen at build
+time as the gateway URL (`--local-endpoint http://<WSL gateway>:11435/v1/chat/completions`).
+Ollama input tokens are declared as a hard upper bound (UTF-8 bytes plus 128
+template tokens); Modal counts are exact with the pinned tokenizer, so build the
+Modal profile in the operator environment. `scripts/run_phase_a_local.ps1`
+(`-DryRun` first) starts the gateway, runs each local profile in the dev container
+with a fresh snapshot, unloads the model, and stops the gateway in a `finally`
+block. It refuses to start when outputs under `runs/container/phase-a/` already
+exist or when the gateway address no longer matches the frozen endpoint.
+
 ## Read the evidence and its limits
 
 Execution writes the journal plus `.report.json` and `.report.md` beside it. Rows

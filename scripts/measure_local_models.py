@@ -13,13 +13,13 @@ from recall_guard.harness.local_evaluation import load_plan
 
 def ollama_observer(plan):
     """Read fresh Ollama metadata only; never load/unload or generate here."""
-    from types import SimpleNamespace
-
     from recall_guard.core.local_evidence import LocalModelProvenance
     from recall_guard.harness.local_execution import HostObservation, HostResources
     from scripts.probe_local_model import observe_host
 
-    config = SimpleNamespace(endpoint=plan.config.endpoint, model=plan.config.model)
+    # The plan's credential reference (if any) also authenticates metadata reads,
+    # for example through the authenticating Windows gateway.
+    config = _probe_config(plan)
     def observe():
         data = observe_host(config)
         return HostObservation(LocalModelProvenance(
@@ -29,6 +29,22 @@ def ollama_observer(plan):
             HostResources(model_allocation_bytes=data['model_allocation_bytes'],
                           accelerator_allocation_bytes=data['accelerator_allocation_bytes']))
     return observe
+
+
+def _probe_config(plan):
+    from scripts.probe_local_model import ProbeConfig
+
+    return ProbeConfig(plan.config.model, plan.config.model, plan.config.endpoint, '', '',
+                       plan.config.credential_ref)
+
+
+def host_gate(plan, snapshot_path):
+    """Shared RAM/metadata preflight with a host snapshot; returns a refusal code or None."""
+    from recall_guard.core.profiles import HostMemorySnapshot
+    from scripts.probe_local_model import host_preflight
+
+    report = host_preflight(_probe_config(plan), HostMemorySnapshot.from_file(snapshot_path))
+    return None if report.passed else (report.reason or 'host_preflight_failed')
 
 
 def main(argv=None):
@@ -41,6 +57,8 @@ def main(argv=None):
     mode.add_argument('--execute', action='store_true')
     parser.add_argument('--journal', type=Path)
     parser.add_argument('--observer', choices=['ollama'])
+    parser.add_argument('--host-snapshot', type=Path,
+                        help='fresh free-RAM snapshot from the model host; runs the host preflight before execution')
     args = parser.parse_args(argv)
     if args.execute and (args.journal is None or args.observer is None):
         parser.error('--execute requires a new --journal and explicit --observer ollama')
@@ -57,6 +75,16 @@ def main(argv=None):
     from recall_guard.harness.local_execution import execute_plan
     from recall_guard.harness.local_reporting import build_report, report_paths, write_report
 
+    if args.host_snapshot is not None:
+        try:
+            refusal = host_gate(plan, args.host_snapshot)
+        except (ValueError, TypeError, KeyError, OSError):
+            refusal = 'host_snapshot_unreadable'
+        except Exception as error:  # ProfileError and similar: name only the class.
+            refusal = type(error).__name__
+        if refusal is not None:
+            print(f'Local measurement refused before any journal: host preflight {refusal}.', file=sys.stderr)
+            return 2
     try:
         if any(path.exists() for path in report_paths(args.journal)):
             raise ValueError('report_already_exists')

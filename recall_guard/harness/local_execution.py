@@ -68,6 +68,9 @@ class MeasurementRow:
     physical_call_ids: tuple[int, ...] = ()
     #: Bounded sanitized status/code/body of a provider HTTP failure (R2.7).
     failure: dict | None = None
+    #: Held-out single answers only: calibrated probability from MIA features,
+    #: independent of answer parsing (parse success stays in ``score``/``status``).
+    feature_p_memorized: float | None = None
 
 
 @dataclass
@@ -176,6 +179,8 @@ class _CaptureClient:
             self._check_running()
             if self.scorer is not None:
                 row.score = self.scorer.score_response(prompt, row.response, client=self)
+                if row.arm == 'single':
+                    row.feature_p_memorized = self.scorer.feature_p_memorized(prompt, row.response, client=self)
                 row.status = 'scored' if row.score.parse_ok else 'unparsed'
                 row.reason = row.score.fail_reason
             return row.response
@@ -279,5 +284,6 @@ def execute_plan(budget: LocalAttemptBudget, observer) -> LocalExecutionResult:
             result.holdout_auc = None
             for row in result.rows:
                 row.score = None
+                row.feature_p_memorized = None
         budget.finish_execution(result.status)
     return result

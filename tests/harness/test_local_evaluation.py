@@ -295,3 +295,35 @@ def test_zero_draws_is_a_single_answer_only_plan(inputs):
     inputs[0].write_text(json.dumps(data), encoding='utf-8')
     with pytest.raises(ValueError, match='nonnegative'):
         local.load_plan(*inputs)
+
+
+def _relabel(inputs, labels):
+    plan_path, manifest_path, corpus_path = inputs
+    corpus = json.loads(corpus_path.read_text())
+    for split, label in labels.items():
+        corpus[split][0]['label'] = label
+    corpus_path.write_text(json.dumps(corpus), encoding='utf-8')
+    data = json.loads(plan_path.read_text())
+    data['corpus_sha256'] = digest(corpus_path.read_bytes())
+    plan_path.write_text(json.dumps(data), encoding='utf-8')
+
+
+def test_unlabeled_plans_load_and_export_unchanged(inputs):
+    plan = local.load_plan(*inputs)
+    assert all(item.label is None for item in plan.items)
+    assert all('label' not in item for item in plan.safe_export()['items'])
+
+
+def test_labeled_items_load_and_export_labels(inputs):
+    _relabel(inputs, {'is_memorized': 1, 'oos_control': 0, 'held_out': 0})
+    plan = local.load_plan(*inputs)
+    assert {item.split: item.label for item in plan.items} == {'is_memorized': 1, 'oos_control': 0, 'held_out': 0}
+    assert [item['label'] for item in plan.safe_export()['items']] == [1, 0, 0]
+
+
+@pytest.mark.parametrize('labels', [{'is_memorized': 0}, {'oos_control': 1}, {'held_out': 2},
+                                    {'held_out': True}, {'held_out': '1'}])
+def test_invalid_labels_refused(inputs, labels):
+    _relabel(inputs, labels)
+    with pytest.raises(ValueError, match='invalid_item_label'):
+        local.load_plan(*inputs)

@@ -137,3 +137,116 @@ def test_stopping_provider_failure_body_is_exported_with_prompts_redacted(execut
     report = build_report(budget, result)
     assert report['failure']['status_code'] == 500
     assert report['failure']['detail'] == 'load failed while serving [PRIVATE]'
+
+
+def test_held_out_discrimination_perfect_and_seeded():
+    from recall_guard.harness.local_reporting import held_out_discrimination
+    perfect = held_out_discrimination([0.9, 0.8, 0.7, 0.2, 0.1], [1, 1, 1, 0, 0], seed=0)
+    assert perfect['auc'] == 1.0 and perfect['ci_low'] == perfect['ci_high'] == 1.0
+    assert (perfect['n_memorized'], perfect['n_control'], perfect['n_resamples']) == (3, 2, 1000)
+    scores = [0.9, 0.4, 0.6, 0.3, 0.5, 0.2, 0.7, 0.1]
+    labels = [1, 1, 1, 1, 0, 0, 0, 0]
+    first = held_out_discrimination(scores, labels, seed=0)
+    assert first == held_out_discrimination(scores, labels, seed=0)
+    assert first['auc'] == pytest.approx(11 / 16)
+    assert 0 <= first['ci_low'] < first['auc'] < first['ci_high'] <= 1
+    assert held_out_discrimination(scores, labels, seed=1) != first
+
+
+def test_held_out_discrimination_needs_both_classes():
+    from recall_guard.harness.local_reporting import held_out_discrimination
+    result = held_out_discrimination([0.5, 0.6], [1, 1])
+    assert result['auc'] is None and result['ci_low'] is None and result['n_control'] == 0
+
+
+def test_report_held_out_auc_from_labels_and_split_counts(execution):
+    from recall_guard.harness.local_reporting import _held_out_evaluation, _key
+    budget, _, observer = execution
+    result = execute_plan(budget, observer)
+    report = build_report(budget, result)
+    assert report['held_out_evaluation']['reason'] == 'no_labeled_held_out_items'
+    assert report['claims']['discrimination']['held_out_evaluation_auc'] is None
+    assert report['splits']['is_memorized'] == dict(planned=8, attempted=8, valid=8, failed=0, unparsed=0)
+    assert report['splits']['oos_control']['planned'] == 16
+    assert report['splits']['held_out'] == dict(planned=1, attempted=1, valid=1, failed=0, unparsed=0)
+    # Synthetic usable singles: labels come from the plan, scores from usable rows only.
+    plan = replace(budget.plan, items=tuple(replace(i, label=1 if i.item_id.endswith(('0', '1')) else 0)
+                                            if i.split == 'held_out' else i for i in budget.plan.items))
+    items = [replace(budget.plan.items[0], item_id=f'h{i}', split='held_out', label=i % 2) for i in range(6)]
+    plan = replace(plan, items=plan.items + tuple(items),
+                   limits=replace(plan.limits, max_requests=99, max_total_tokens=99 * 132))
+    rows = [{'item_sha256': _key(f'h{i}'), 'arm': 'single', 'feature_scored': i != 5,
+             'feature_p_memorized': 0.1 + 0.1 * i if i != 5 else None}
+            for i in range(6)]
+    evaluation = _held_out_evaluation(plan, rows, True)
+    assert (evaluation['n_labeled'], evaluation['n_usable'], evaluation['reason']) == (7, 5, None)
+    assert (evaluation['n_memorized'], evaluation['n_control']) == (2, 3)
+    assert evaluation["auc"] == pytest.approx(0.5)  # 3 of 6 memorized/control pairs ordered
+    assert _held_out_evaluation(plan, [], False)['reason'] == 'calibrated_claims_not_allowed'
+    assert 'Held-out AUC' in __import__('recall_guard.harness.local_reporting', fromlist=['x']).render_markdown(report)
+
+
+def test_unparsed_held_out_answer_keeps_feature_score_but_public_score_fails_parse(execution):
+    from recall_guard.harness.scorer import FAIL_PARSE
+    budget, state, observer = execution
+    state.unparsed_at = 26  # probe 1 + baseline 8 + calibration 16, then the held-out single answer
+    result = execute_plan(budget, observer)
+    single = next(r for r in result.rows if r.arm == 'single')
+    assert result.calibrated_claims_allowed and single.status == 'unparsed'
+    assert single.score.parse_ok is False and single.score.fail_reason == FAIL_PARSE
+    assert single.score.p_memorized is None
+    assert 0 <= single.feature_p_memorized <= 1
+    record = next(r for r in build_report(budget, result)['rows'] if r['arm'] == 'single')
+    assert (record['parsed'], record['usable'], record['feature_scored']) == (False, False, True)
+    assert record['feature_p_memorized'] == single.feature_p_memorized
+
+
+def test_held_out_auc_uses_feature_scores_of_unparsed_answers(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from recall_guard.core.completion import ModelConfig
+    from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance
+    from recall_guard.harness.local_evaluation import (
+        LocalAttemptBudget,
+        LocalMeasurementPlan,
+        MeasurementItem,
+        MeasurementLimits,
+    )
+    from recall_guard.harness.local_execution import HostObservation
+    config = ModelConfig('openai_chat', 'http://localhost:11434/v1/chat/completions', 'test',
+        parameters={'max_tokens': 32, 'temperature': 0, 'logprobs': True, 'top_logprobs': 3},
+        timeout_s=2, max_retries=0, local_identity=LocalModelIdentity())
+    items = tuple(MeasurementItem(f'{split}-{i}', split, f'{split}-{i}', 20, int(split == 'is_memorized'))
+                  for split in ('is_memorized', 'oos_control') for i in range(8)) + tuple(
+        MeasurementItem(f'held-{kind}-{i}', 'held_out', f'held-{kind}-{i}', 20, int(kind == 'mem'))
+        for kind in ('mem', 'ctl') for i in range(3))
+    requests = 1 + 8 + 16 + 6
+    plan = LocalMeasurementPlan(config, 'none', 'CPU', 'a' * 64, 'b' * 64, '{prompt}', ('mia', 'mcs'), 0,
+                                MeasurementLimits(requests, 2048, 100, 32, requests * 132, 120), items, min_valid=4)
+    budget = LocalAttemptBudget(plan, tmp_path / 'journal.json')
+
+    def post(client, payload):
+        prompt = payload['messages'][-1]['content']
+        base = -0.2 if 'mem' in prompt or prompt.startswith('is_') else -5
+        base += (sum(map(ord, prompt)) % 10) / 1000
+        # Held-out answers never match the direction/confidence parser.
+        content = 'no answer' if prompt.startswith('held') else 'Direction: 1\nConfidence: 0.8'
+        entries = [{'token': char, 'logprob': base + i / 1000,
+                    'top_logprobs': [{'token': 'a', 'logprob': base}, {'token': 'b', 'logprob': base - 1}]}
+                   for i, char in enumerate(content)]
+        body = {'choices': [{'message': {'content': content}, 'logprobs': {'content': entries},
+                             'finish_reason': 'stop'}]}
+        return SimpleNamespace(status_code=200, headers={}, json=lambda: body)
+    monkeypatch.setattr('recall_guard.core.providers.OpenAICompatibleClient._post', post)
+
+    def observer():
+        return HostObservation(LocalModelProvenance(runtime='ollama', runtime_version='1', artifact_digest='d',
+                                                    context_length=2048, backend=None), ('test',))
+    result = execute_plan(budget, observer)
+    report = build_report(budget, result)
+    assert report['stages']['single']['parsed'] == 0 and report['stages']['single']['usable'] == 0
+    held = report['held_out_evaluation']
+    assert (held['n_labeled'], held['n_usable'], held['n_memorized'], held['n_control']) == (6, 6, 3, 3)
+    assert held['reason'] is None and held['auc'] is not None and held['ci_low'] <= held['auc'] <= held['ci_high']
+    assert report['claims']['discrimination']['held_out_evaluation_auc'] == held['auc']
+    assert report['splits']['held_out']['valid'] == 6 and report['splits']['held_out']['unparsed'] == 6

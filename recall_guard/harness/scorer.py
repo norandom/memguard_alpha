@@ -86,6 +86,10 @@ _AUTH_MARKERS: tuple[str, ...] = (
 )
 
 
+class _FeatureFailure(Exception):
+    """Internal: MIA features or the calibrated probability could not be computed."""
+
+
 class ConfigurationError(RuntimeError):
     """Raised when the NIM credential is absent, empty, or rejected (Req 3.7)."""
 
@@ -519,6 +523,36 @@ class MemoryGuardedScorer:
         primary = self._lm.validate_response(response)
         return self._build_guarded_score(prompt, primary, None)
 
+    def feature_p_memorized(
+        self, prompt: str, response: ModelResponse, *, client: CompletionClient,
+        intervention_id: str = "original",
+    ) -> float | None:
+        """Measurement-only: calibrated ``p_memorized`` from MIA features alone.
+
+        Same feature math, baseline and calibrator as calibration and
+        :meth:`score_response`, but independent of whether the answer parses as
+        direction/confidence. Missing evidence or identity mismatches raise
+        ValueError exactly as :meth:`score_response`; features that cannot be
+        computed return None. :meth:`score` and :class:`GuardedScore` are unchanged.
+        """
+        self.validate_client(client, intervention_id=intervention_id)
+        primary = self._lm.validate_response(response)
+        try:
+            return self._feature_probability(primary.content, primary.logprobs, None)[1]
+        except _FeatureFailure:
+            return None
+
+    def _feature_probability(self, content, logprobs, ref_logprobs) -> tuple[MiaFeatures, float]:
+        """Shared feature math: MIA features, then the fitted calibrator with its baseline."""
+        try:
+            features = compute_mia_features(content, logprobs, ref_logprobs)
+        except (ValueError, RuntimeError) as error:
+            raise _FeatureFailure from error
+        try:
+            return features, float(self._mcs.predict_proba(features, self._baseline))
+        except ValueError as error:
+            raise _FeatureFailure from error
+
     def score(self, prompt: str) -> GuardedScore:
         """Score one prompt into a :class:`GuardedScore`.
 
@@ -815,13 +849,8 @@ class MemoryGuardedScorer:
             ref_logprobs = ref_res.logprobs
 
         try:
-            features = compute_mia_features(content, primary.logprobs, ref_logprobs)
-        except (ValueError, RuntimeError):
-            return _fail(prompt_hash, FAIL_ERROR)
-
-        try:
-            p_memorized = float(self._mcs.predict_proba(features, self._baseline))
-        except ValueError:
+            features, p_memorized = self._feature_probability(content, primary.logprobs, ref_logprobs)
+        except _FeatureFailure:
             return _fail(prompt_hash, FAIL_ERROR)
 
         return GuardedScore(

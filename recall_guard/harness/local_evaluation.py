@@ -54,11 +54,16 @@ class MeasurementLimits:
 
 @dataclass(frozen=True)
 class MeasurementItem:
-    """Stable item key, split, rendered private prompt and declared token count."""
+    """Stable item key, split, rendered private prompt and declared token count.
+
+    ``label`` (1 memorized, 0 out-of-sample, None unlabeled) lets a report score
+    labeled held-out items; it never changes requests. Unlabeled plans load as before.
+    """
     item_id: str
     split: str
     prompt: str
     input_tokens: int
+    label: int | None = None
 
 
 @dataclass(frozen=True)
@@ -141,6 +146,9 @@ class LocalMeasurementPlan:
             _positive(item.input_tokens, 'input_tokens')
             if item.input_tokens > limits.max_input_tokens:
                 raise ValueError('prompt_exceeds_input_token_bound')
+            if item.label is not None and (type(item.label) is not int or item.label not in (0, 1) or (
+                    item.split != 'held_out' and item.label != (item.split == 'is_memorized'))):
+                raise ValueError('invalid_item_label')
             seen.add(item.item_id)
             splits.add(item.split)
         if splits != {'is_memorized', 'oos_control', 'held_out'}:
@@ -177,8 +185,10 @@ class LocalMeasurementPlan:
                 'ensemble_min_parsed': self.ensemble_min_parsed,
                 'limits': asdict(self.limits), 'logical_requests': self.logical_requests,
                 'physical_requests': self.physical_requests,
+                # A label key appears only on labeled items, so unlabeled exports are unchanged.
                 'items': [{'item_sha256': _hash(item.item_id.encode('utf-8')), 'split': item.split,
-                           'prompt_sha256': _hash(item.prompt.encode('utf-8')), 'input_tokens': item.input_tokens}
+                           'prompt_sha256': _hash(item.prompt.encode('utf-8')), 'input_tokens': item.input_tokens,
+                           **({} if item.label is None else {'label': item.label})}
                           for item in self.items]}
 
 
@@ -216,7 +226,8 @@ def load_plan(plan_path: Path, manifest_path: Path, corpus_path: Path) -> LocalM
             if row['input_tokens'] > limits.max_input_tokens:
                 raise ValueError('prompt_exceeds_input_token_bound')
             seen.add(item_id)
-            items.append(MeasurementItem(item_id, split, template.replace('{prompt}', prompt), row['input_tokens']))
+            items.append(MeasurementItem(item_id, split, template.replace('{prompt}', prompt), row['input_tokens'],
+                                         row.get('label')))
     plan = LocalMeasurementPlan(config, authentication, mode, _hash(manifest_bytes), _hash(corpus_bytes),
                                 template, features, data['ensemble_draws'], limits, tuple(items),
                                 **{name: data[name] for name in ('seed', 'min_valid', 'min_auc',
