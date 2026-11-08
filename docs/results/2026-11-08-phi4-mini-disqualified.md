@@ -31,4 +31,4 @@ missing top-5 alternatives, an empty output, or a censored logprob.
 - No calibration, discrimination or calibration-quality claim is made for it.
 
 Private evidence: `runs/container/phase-a/ollama-phi4-mini/` (journal and report).
-Register entry: [R24](../research-register.md).
+Register entry: [R23](../research-register.md).

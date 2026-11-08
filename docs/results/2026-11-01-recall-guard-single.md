@@ -1,5 +1,8 @@
 # Without ensembles: detection is measured; mitigation is not
 
+> **Later evidence (2026-11-08):** this report's calibration corpus separates its classes by publication date and source as well as by memorization, so the AUC reflects corpus separation. On a clean SEC EDGAR corpus, held-out results show no single-draw skill for GPT-OSS-20B or three local models. See [Phase A](2026-11-08-phase-a-single-draw.md) and the [research register](../research-register.md) (R24, R26, R30).
+
+
 Evidence reviewed: **2026-11-01**. This page records single-answer results.
 The [ensemble companion](2026-11-01-recall-guard-ensemble.md) records aggregation
 separately. These are different models and corpora, not a cross-model ranking.
