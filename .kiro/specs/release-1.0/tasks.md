@@ -1,6 +1,6 @@
 # Release 1.0: tasks and status
 
-**Current: M3.2** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
+**Current: M3.3** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
 
 Review 2026-11-08: [research review](research.md#7-streamlined-task-alignment-for-tasksmd) and [design draft](design.md).
 Task list, requirements and the M1.1 design approved by the user on 2026-11-08. Review proposals do not complete tasks, move this
@@ -78,11 +78,12 @@ Requirement 2 above is the new scope.
 
 - [x] M3.1 Resolve LLaVA effective context, or exclude it from the matched set (C4).
   - _Outcome 2026-11-08: cause found with load-only checks on the native Ollama 0.40.11 host (no generation). `llava-llama3:latest` sets `PARAMETER num_ctx 4096` in its model file, which overrides the server's `OLLAMA_CONTEXT_LENGTH=2048`; Ollama's OpenAI-compatible endpoint cannot pass `num_ctx` per request. Created the derived local tag `llava-llama3:ctx2048` (`FROM llava-llama3:latest`, `num_ctx 2048`, digest 78920a01…, shares weight blobs; nothing downloaded); it loads at context 2048 on CPU. The original tag is unchanged. Token-evidence eligibility of the new tag is re-checked by M4's fresh eligibility probe. Ollama stopped afterwards; no models loaded._
-- [ ] M3.2 Write the plan: datasets, development/held-out split, model and
+- [x] M3.2 Write the plan: datasets, development/held-out split, model and
   profile identities (Ollama: Phi-4 Mini, Llama 3.1 8B, Llama 3.2 3B, Gemma 3 4B;
   Modal: GPT-OSS-20B), generation settings, total request/token/cost limits.
   User approves the limits.
-  - _Draft 2026-11-08: [measurement-plan.md](measurement-plan.md). Awaiting user decisions D1 (labeled held-out set), D2 (missing cutoffs for Gemma 3 4B and LLaVA), D3 (local serving route) and Phase A limits (local 1,605 requests; Modal 321 requests, cap USD 2.00)._
+  - _Approved 2026-11-08: [measurement-plan.md](measurement-plan.md) with D1, D2, D3 and Phase A limits (local 1,605 requests; Modal 321 requests, cap USD 2.00). Phase B needs separate approval._
+- [ ] M3.3 Plan prerequisites (offline except the FMP data pull): D2 sourced cutoffs; D1 labeled held-out set; D3 Ollama in a WSL container; LLaVA ctx2048 profile; Modal measurement runner and GPU-phase limit.
 
 ## M4. Fresh calibration and evaluation (authorize)
 

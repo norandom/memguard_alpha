@@ -1,7 +1,9 @@
 # Measurement plan: Tracks 2 and 3 (M3.2)
 
-Draft 2026-11-08 for user approval. Nothing here authorizes a request, download
-or paid resource; M4 executes only after the limits below are approved.
+Approved by the user 2026-11-08: D1 (build a labeled held-out set), D2 (source
+missing cutoffs, exclude a model whose cutoff cannot be sourced), D3 (Ollama in a
+WSL container) and the Phase A limits (local 1,605 requests; Modal 321 requests,
+cap USD 2.00). Phase B still needs its own approval.
 
 ## Question
 
