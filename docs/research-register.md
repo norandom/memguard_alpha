@@ -17,11 +17,14 @@ text (discrimination), and do its probabilities match observed frequencies
 (calibration)? Reducing memorization, by rewriting or divergence decoding, is a
 separate optional track and not what the guard needs in order to work.
 
-The estimate the guard applies is the ensemble point estimate: the mean
-`p_memorized` over many draws of the same prompt at production settings
-(`p_memorized_point`, [ensemble scoring](ensemble.md); 64 draws, at least 24
-parsed). A single answer is one draw of that estimate. Single-answer results are
-therefore the baseline; the ensemble measurement is the main test.
+Serving stacks are nondeterministic even at temperature 0, so one call can
+return a different answer and score than the next. The ensemble gives the answer
+of the calibrated model with less of that nondeterminism: it draws the same
+prompt many times at production settings and reduces the draws to one consensus
+answer and one point estimate (`p_memorized_point`, the mean; [ensemble
+scoring](ensemble.md), 64 draws, at least 24 parsed). Phase A measures a single
+draw; Phase B measures whether the ensemble makes the answer and score
+reproducible while keeping the held-out discrimination.
 
 ## State of evidence
 
@@ -47,7 +50,7 @@ therefore the baseline; the ensemble measurement is the main test.
 | `p_memorized` ranks memorized above unseen text on new data | R20: two models, both intervals include 0.5 | held-out AUC intervals include 0.5 for most models |
 | `p_memorized` is calibrated | none yet | reliability curve or Brier score shows probabilities far from observed frequencies |
 | A calibrator fitted on one corpus transfers to new items | R20 (Gemma) suggests not | calibrator holdout AUC is high but held-out AUC is near 0.5 |
-| The ensemble point estimate is the better-calibrated multiplier | none yet (Phase B) | its held-out AUC and calibration are no better than a single draw's |
+| The ensemble reduces nondeterminism of the answer and `p_memorized` | none yet (Phase B) | repeated ensembles of the same prompt disagree about as much as single draws do, or held-out AUC drops |
 | Mitigation reduces recall (optional) | none | paired held-out recall does not drop at a frozen setting |
 
 ## Index
