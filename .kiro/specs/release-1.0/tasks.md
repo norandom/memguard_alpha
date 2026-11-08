@@ -144,7 +144,7 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 | C10 | Cost: USD 5 pilot allowance (≈ 0.30 gross before M2.1; M2.1 runner estimate USD 0.094, not reconciled), USD 30/month cap operator-confirmed, Modal weight storage ≈ USD 1.16/month kept until M4.4. After M2.1, no apps run; the expiry controller is now stopped automatically | Watch | M2–M6 gates, M4.4 |
 | C11 | Child spec phases/checkboxes out of sync with shipped code | Resolved 2026-11-08 | M0.1 |
 | C12 | Pre-existing user changes `.env.sample`, `.openidea/` | Preserve | M0.2 |
-| C13 | Remote push not completed for earlier work | Open | M0.2 |
+| C13 | Remote push not completed for earlier work | Resolved 2026-11-08: `main` pushed to origin (0578ec0..f384e09) | M0.2 |
 | C14 | Ollama store move incomplete | Parked | P5 |
 | C15 | Integrated GPU unused by Ollama by default | Parked | P4 |
 | C16 | Modal attempt 08 raw response not retained | Recorded, no action | — |
