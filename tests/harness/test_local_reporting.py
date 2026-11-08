@@ -166,9 +166,9 @@ def test_report_held_out_auc_from_labels_and_split_counts(execution):
     report = build_report(budget, result)
     assert report['held_out_evaluation']['reason'] == 'no_labeled_held_out_items'
     assert report['claims']['discrimination']['held_out_evaluation_auc'] is None
-    assert report['splits']['is_memorized'] == dict(planned=8, attempted=8, valid=8, failed=0, unparsed=0)
+    assert report['splits']['is_memorized'] == dict(planned=8, attempted=8, valid=8, failed=0, unparsed=0, item_evidence_codes={})
     assert report['splits']['oos_control']['planned'] == 16
-    assert report['splits']['held_out'] == dict(planned=1, attempted=1, valid=1, failed=0, unparsed=0)
+    assert report['splits']['held_out'] == dict(planned=1, attempted=1, valid=1, failed=0, unparsed=0, item_evidence_codes={})
     # Synthetic usable singles: labels come from the plan, scores from usable rows only.
     plan = replace(budget.plan, items=tuple(replace(i, label=1 if i.item_id.endswith(('0', '1')) else 0)
                                             if i.split == 'held_out' else i for i in budget.plan.items))

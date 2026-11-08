@@ -18,12 +18,30 @@ from recall_guard.core.completion import (
     ParameterValue,
     validate_features,
 )
-from recall_guard.core.local_evidence import LocalModelIdentity, validate_local_evidence
+from recall_guard.core.local_evidence import LocalEvidenceError, LocalModelIdentity, validate_local_evidence
 from recall_guard.core.nvidia_lm import CompletionResult
 from recall_guard.core.profiles import ResponseMapping
 from recall_guard.core.providers import HarmonyOpenAICompatibleClient
 from recall_guard.core.request_control import BudgetExhaustedError
 from recall_guard.harness.request_failures import FATAL_FAILURES, failure_kind
+
+#: Local evidence defects confined to one received response. Such a row is excluded
+#: and counted; ``min_valid`` then decides whether calibration may proceed.
+#: Missing token evidence and text/token misalignment remain fatal: they indicate
+#: a lost capability or an unmapped channel, not one unusable answer.
+ITEM_EVIDENCE_CODES = frozenset({"empty_output", "missing_alternatives", "duplicate_alternatives",
+                                 "censored_logprob", "invalid_logprob"})
+
+
+class ItemEvidenceError(RuntimeError):
+    """One response's evidence is unusable; skippable like a missing-logprob row.
+
+    The message is the stable non-content reason code from local admission.
+    """
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.evidence_code = code
 
 
 @dataclass(frozen=True)
@@ -125,7 +143,10 @@ class LegacyLogprobAdapter:
     Legacy batch helpers return exceptions as skippable rows. A sticky fatal
     failure stops queued calls at this boundary and must be checked after each
     fit stage, even when fitting itself raises. Already admitted concurrent
-    requests may finish. Ordinary timeouts/transport failures remain skippable.
+    requests may finish. Ordinary timeouts/transport failures remain skippable,
+    and so do per-item evidence defects (:data:`ITEM_EVIDENCE_CODES`), raised as
+    :class:`ItemEvidenceError` after identity checks pass. A client exposing
+    ``reject_item_evidence(code)`` is told which received row was excluded.
     """
 
     def __init__(
@@ -183,14 +204,20 @@ class LegacyLogprobAdapter:
                                                     mapping_revision=self.identity.mapping_revision)
         if replace(candidate, local_identity=None) != replace(self.identity, local_identity=None):
             raise ValueError("Response requested settings differ from calibration identity")
-        if self.identity.local_identity is not None or response.local_identity is not None:
+        local = self.identity.local_identity is not None or response.local_identity is not None
+        if local:
             self._validate_local_response(response)
-        result = response.to_legacy()
         with self._lock:
             expected = dict(response.requested_settings) | self._confirmed_settings
             for name, value in response.confirmed_settings.items():
                 if name in expected and value != expected[name]:
                     raise ValueError(f"Response confirmed setting {name!r} differs from calibration settings")
+        # Every identity/settings check precedes evidence admission, so an item-level
+        # evidence defect (LocalEvidenceError) never masks drift.
+        if local:
+            validate_local_evidence(response, required_alternatives=1)
+        result = response.to_legacy()
+        with self._lock:
             if self._fitting:
                 self._confirmed_settings.update(response.confirmed_settings)
         return result
@@ -199,7 +226,6 @@ class LegacyLogprobAdapter:
         local = response.local_identity
         if local is None:
             raise ValueError("Response lost local calibration identity")
-        validate_local_evidence(response, required_alternatives=1)
         with self._lock:
             expected = self.identity.local_identity
             if not self._fitting and not self._local_response_seen:
@@ -257,12 +283,24 @@ class LegacyLogprobAdapter:
             response = self.client.generate(prompt, **parameters)
             self.validate_client(self.client, intervention_id=self.identity.intervention_id)
             return self.validate_response(response)
+        except LocalEvidenceError as error:
+            if str(error) not in ITEM_EVIDENCE_CODES:
+                self._record_fatal(error)
+                raise
+            # Excluded and counted by the caller; identity checks already passed.
+            reject = getattr(self.client, "reject_item_evidence", None)
+            if callable(reject):
+                reject(str(error))
+            raise ItemEvidenceError(str(error)) from error
         except Exception as error:
             if getattr(error, "code", None) == "missing_token_evidence":
                 error = ValueError("MIA/MCS genuine token evidence is unavailable or incomplete")
             if (isinstance(error, (BudgetExhaustedError, ValueError)) or self._is_auth_error(error)
                     or failure_kind(error) in FATAL_FAILURES):
-                with self._lock:
-                    if self._fatal is None:
-                        self._fatal = error
+                self._record_fatal(error)
             raise error
+
+    def _record_fatal(self, error: Exception) -> None:
+        with self._lock:
+            if self._fatal is None:
+                self._fatal = error

@@ -17,7 +17,7 @@ from recall_guard.core.local_evidence import (
 )
 from recall_guard.core.request_control import BudgetExhaustedError
 from recall_guard.harness.local_evaluation import LocalAttemptBudget
-from recall_guard.harness.request_failures import retained_failure
+from recall_guard.harness.request_failures import retained_error, retained_failure
 from recall_guard.harness.scorer import GuardedScore, MemoryGuardedScorer
 
 
@@ -66,7 +66,8 @@ class MeasurementRow:
     response: object | None = field(default=None, repr=False)
     reason: str | None = None
     physical_call_ids: tuple[int, ...] = ()
-    #: Bounded sanitized status/code/body of a provider HTTP failure (R2.7).
+    #: Bounded sanitized status/code/body of a provider HTTP failure (R2.7), or
+    #: ``{'error_class', 'code'}`` of an excluded per-item evidence defect.
     failure: dict | None = None
     #: Held-out single answers only: calibrated probability from MIA features,
     #: independent of answer parsing (parse success stays in ``score``/``status``).
@@ -87,7 +88,8 @@ class LocalExecutionResult:
     host_observations: dict[str, HostObservation] = field(default_factory=dict)
     calibration_fit_completed: bool = False
     endpoint_probe_passed: bool = False
-    #: Bounded sanitized status/code/body of the stopping provider HTTP failure (R2.7).
+    #: Bounded sanitized status/code/body of the stopping provider HTTP failure (R2.7),
+    #: or class and prompt/response-free message of the stopping ValueError.
     failure: dict | None = None
 
 
@@ -153,6 +155,17 @@ class _CaptureClient:
             raise
         finally:
             row.physical_call_ids = tuple(range(start + 1, self.budget.used + 1))
+
+    def reject_item_evidence(self, code):
+        """The scorer excluded the current received row for a per-item evidence defect.
+
+        Identity checks already passed; the row is counted as failed and the run
+        continues. ``code`` is a stable local-admission reason, never content.
+        """
+        row = self.current_row
+        if row is not None and row.response is not None:
+            row.status, row.reason = 'failed', 'invalid_item_evidence'
+            row.failure = {'error_class': 'LocalEvidenceError', 'code': code}
 
     def generate(self, prompt, **parameters):
         # The scorer adapter reaches generation only after its complete probe
@@ -261,8 +274,11 @@ def execute_plan(budget: LocalAttemptBudget, observer) -> LocalExecutionResult:
                          'budget_or_cancellation' if isinstance(error, BudgetExhaustedError) else
                          'invalid_evidence_identity_or_fit' if isinstance(error, ValueError) else
                          'host_or_calibration_unavailable')
-        result.failure = retained_failure(error) or next(
-            (row.failure for row in result.rows if row.failure is not None), None)
+        private = [item.prompt for item in plan.items] + [
+            row.response.content for row in result.rows if row.response is not None]
+        result.failure = retained_failure(error) or retained_error(error, private_texts=private) or next(
+            (row.failure for row in result.rows
+            if row.failure is not None and 'status_code' in row.failure), None)
         if capture is not None and capture.current_row is not None and capture.current_row.status == 'received':
             capture.current_row.status, capture.current_row.reason = 'failed', result.reason
     finally:

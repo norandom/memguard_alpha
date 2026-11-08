@@ -116,6 +116,26 @@ def retained_failure(error: Exception, *, secrets: Sequence[str] = ()) -> dict |
             "detail": retained_detail(error.detail, secrets=secrets)}
 
 
+def retained_error(error: Exception, *, private_texts: Sequence[str] = (), limit: int = 300) -> dict | None:
+    """Class and bounded message of a workflow ``ValueError`` that stopped a run; None otherwise.
+
+    Workflow ValueErrors carry stable check messages (identity, settings, fit).
+    The message is dropped, keeping only the class, when any 16-character window
+    of it occurs in ``private_texts`` (prompts, responses), so receipts explain a
+    stop without exporting prompt or response text.
+    """
+    if not isinstance(error, ValueError):
+        return None
+    message = retained_detail(str(error), limit=limit)
+    if message is not None:
+        window = min(16, len(message))
+        texts = [text for text in private_texts if isinstance(text, str) and text]
+        if any(message[start:start + window] in text
+               for start in range(len(message) - window + 1) for text in texts):
+            message = None
+    return {"error_class": type(error).__name__, "message": message}
+
+
 @dataclass(frozen=True)
 class FailurePresentation:
     """Plain-English explanation and next steps for one failure."""

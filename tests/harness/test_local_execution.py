@@ -300,3 +300,148 @@ def test_transport_failure_without_provider_body_retains_nothing(execution, monk
     result = execute_plan(budget, observer)
     single = next(row for row in result.rows if row.arm == 'single')
     assert single.status == 'failed' and single.failure is None
+
+
+# --- Harmony (GPT-OSS) per-item evidence: Modal Phase A r2 stop, 2026-11-08 ---------------
+
+_HARMONY_IDS = {'<|channel|>': 200005, '<|start|>': 200006, '<|end|>': 200007, '<|message|>': 200008,
+                '<|return|>': 200002, '<|call|>': 200012}
+
+
+@pytest.fixture
+def harmony_execution(tmp_path, monkeypatch):
+    """Offline Harmony analysis+final responses through the real mapping, scorer and execution."""
+    import json
+
+    from recall_guard.core.harmony_evidence import HarmonyTokenMap
+    from recall_guard.core.providers import HarmonyOpenAICompatibleClient
+    tokenizer = tmp_path / 'tokenizer.json'
+    tokenizer.write_text(json.dumps({'added_tokens': [
+        {'content': label, 'id': token_id, 'special': True} for label, token_id in _HARMONY_IDS.items()]}))
+    token_map = HarmonyTokenMap.from_tokenizer_json(tokenizer, tokenizer_revision='a' * 40)
+    config = ModelConfig('openai_chat', 'http://localhost:8000/v1/chat/completions', 'openai/gpt-oss-20b',
+        parameters={'max_tokens': 64, 'temperature': 0, 'logprobs': True, 'top_logprobs': 3,
+                    'return_token_ids': True, 'reasoning_effort': 'low'},
+        timeout_s=2, max_retries=0, local_identity=LocalModelIdentity())
+    items = tuple(MeasurementItem(f'{split}-{i}', split, f'{split}-{i}', 20)
+        for split in ('is_memorized', 'oos_control') for i in range(8)) + (
+        MeasurementItem('held', 'held_out', 'held', 20),)
+    plan = LocalMeasurementPlan(config, 'none', 'GPU', 'a'*64, 'b'*64, '{prompt}',
+        ('mia', 'mcs'), 0, MeasurementLimits(26, 4096, 100, 64, 10000, 120), items, min_valid=4)
+
+    class HarmonyBudget(LocalAttemptBudget):
+        def client(self, *, environment=None):
+            return HarmonyOpenAICompatibleClient(self.plan.config, self, token_map=token_map,
+                                                 environment={}, allow_unauthenticated=True)
+
+    budget = HarmonyBudget(plan, tmp_path / 'journal.json')
+    state = SimpleNamespace(calls=0, defect_at=None, defect=None)
+
+    def post(client, payload):
+        state.calls += 1
+        prompt = payload['messages'][-1]['content']
+        base = -0.2 if prompt.startswith('is_memorized') else -5 if prompt.startswith('oos_control') else -1
+        base += (sum(map(ord, prompt)) % 10) / 1000
+        final = list('Direction: 1\nConfidence: 0.8')
+        defect = state.defect if state.calls == state.defect_at else None
+        if defect == 'empty_final':
+            final = []
+        parts = ['<|channel|>', 'analysis', '<|message|>', 'Think.', '<|end|>',
+                 '<|start|>', 'assistant', '<|channel|>', 'final', '<|message|>', *final, '<|return|>']
+        entries = [{'token': token, 'bytes': list(token.encode()), 'logprob': base + i / 1000,
+                    'top_logprobs': [{'token': 'a', 'logprob': base}, {'token': 'b', 'logprob': base - 1}]}
+                   for i, token in enumerate(parts)]
+        target = entries[10] if final else None  # first final-channel token
+        if defect == 'duplicate_alternatives':
+            target['top_logprobs'][1]['token'] = 'a'
+        elif defect == 'censored_logprob':
+            target['top_logprobs'][1]['logprob'] = -9999.0
+        elif defect == 'missing_alternatives':
+            target['top_logprobs'] = []
+        body = {'model': 'openai/gpt-oss-20b', 'choices': [{'index': 0,
+            'message': {'role': 'assistant', 'content': ''.join(final)}, 'finish_reason': 'stop',
+            'token_ids': [_HARMONY_IDS.get(token, 100 + i) for i, token in enumerate(parts)],
+            'logprobs': {'content': entries}}]}
+        return SimpleNamespace(status_code=200, headers={}, json=lambda: body)
+    monkeypatch.setattr('recall_guard.core.providers.OpenAICompatibleClient._post', post)
+
+    def observer():
+        from recall_guard.harness.local_execution import HostObservation
+        return HostObservation(LocalModelProvenance(runtime='vllm', runtime_version='0.17.0',
+            artifact_revision='r' * 40, context_length=4096, backend='GPU'), ('openai/gpt-oss-20b',))
+    return budget, state, observer
+
+
+def test_harmony_execution_without_defects_completes(harmony_execution):
+    budget, state, observer = harmony_execution
+    result = execute_plan(budget, observer)
+    assert result.status == 'completed', (result.reason, result.failure)
+    assert state.calls == 26
+
+
+@pytest.mark.parametrize('defect', ['duplicate_alternatives', 'empty_final', 'censored_logprob',
+                                    'missing_alternatives'])
+def test_harmony_item_evidence_defect_is_a_counted_failed_row_not_a_stop(harmony_execution, defect):
+    """Call 4 = third OOS baseline row (r2 stopped here as ineligible/invalid_evidence_identity_or_fit)."""
+    from recall_guard.harness.local_reporting import build_report
+    budget, state, observer = harmony_execution
+    state.defect, state.defect_at = defect, 4
+    result = execute_plan(budget, observer)
+    assert result.status == 'completed', (result.reason, result.failure)
+    assert state.calls == 26
+    baseline = [row for row in result.rows if row.arm == 'baseline']
+    failed = [row for row in baseline if row.status == 'failed']
+    assert len(baseline) == 8 and len(failed) == 1
+    assert failed[0].physical_call_ids == (4,)
+    assert failed[0].reason == 'invalid_item_evidence'
+    assert failed[0].failure == {'error_class': 'LocalEvidenceError', 'code': defect.replace('empty_final', 'empty_output')}
+    splits = build_report(budget, result)['splits']['oos_control']
+    assert (splits['attempted'], splits['failed'], splits['valid']) == (16, 1, 15)
+    code = defect.replace('empty_final', 'empty_output')
+    assert splits['item_evidence_codes'] == {code: 1}
+    report = build_report(budget, result)
+    exported = [row for row in report['rows'] if row['item_evidence'] is not None]
+    assert [(row['physical_call_ids'], row['item_evidence']) for row in exported] == [
+        ([4], {'error_class': 'LocalEvidenceError', 'code': code})]
+    assert report['splits']['is_memorized']['item_evidence_codes'] == {}
+
+
+def test_harmony_settings_violation_still_stops_even_with_an_evidence_defect(harmony_execution, monkeypatch):
+    """Identity/settings checks precede item-evidence admission, so a defect cannot mask drift."""
+    budget, state, observer = harmony_execution
+    state.defect, state.defect_at = 'duplicate_alternatives', 4
+    from recall_guard.core.providers import OpenAICompatibleClient
+    post = OpenAICompatibleClient._post
+    def drifted(client, payload):
+        response = post(client, payload)
+        if state.calls == 4:
+            response.json()['temperature'] = 0.7
+        return response
+    monkeypatch.setattr(OpenAICompatibleClient, '_post', drifted)
+    result = execute_plan(budget, observer)
+    assert result.status == 'ineligible' and not result.calibrated_claims_allowed
+    assert result.reason == 'invalid_evidence_identity_or_fit'
+    assert state.calls == 4
+    assert result.failure == {'error_class': 'ValueError',
+                              'message': "Response confirmed setting 'temperature' differs from calibration settings"}
+    assert [row.status for row in result.rows if row.arm == 'baseline'] == ['received', 'received', 'failed']
+
+
+def test_harmony_held_out_item_evidence_defect_fails_only_that_row(harmony_execution):
+    budget, state, observer = harmony_execution
+    state.defect, state.defect_at = 'duplicate_alternatives', 26
+    result = execute_plan(budget, observer)
+    assert result.status == 'completed' and state.calls == 26
+    single = next(row for row in result.rows if row.arm == 'single')
+    assert (single.status, single.reason) == ('failed', 'invalid_item_evidence')
+    assert single.score is not None and single.score.p_memorized is None
+
+
+def test_stopping_value_error_message_never_exports_private_text():
+    from recall_guard.harness.request_failures import retained_error
+    prompt = 'PRIVATE prompt body about a filing'
+    assert retained_error(ValueError(f'bad value {prompt[:20]}'), private_texts=[prompt]) == {
+        'error_class': 'ValueError', 'message': None}
+    assert retained_error(ValueError('fit identity differs'), private_texts=[prompt]) == {
+        'error_class': 'ValueError', 'message': 'fit identity differs'}
+    assert retained_error(RuntimeError('x')) is None

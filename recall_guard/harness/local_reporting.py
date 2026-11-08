@@ -13,13 +13,15 @@ from pathlib import Path
 
 from recall_guard.harness.evaluator import _parse_confidence, _parse_direction
 from recall_guard.harness.local_execution import HostResources, MeasurementRow
+from recall_guard.harness.scorer_client import ITEM_EVIDENCE_CODES
 
 _STAGES = ('probe', 'baseline', 'calibration', 'single', 'ensemble')
 _MODES = {'CPU', 'GPU', 'CPU/GPU offload', 'NPU', 'mixed NPU', 'unknown'}
 _REASONS = {'one_selected_loaded_model_required', 'effective_context_not_established',
             'probe_condition_mismatched', 'unexpected_calibration_order', 'budget_or_cancellation',
             'invalid_evidence_identity_or_fit', 'host_or_calibration_unavailable',
-            'probe_unavailable', 'invalid_evidence_or_identity', 'generation_unavailable',
+            'probe_unavailable', 'invalid_evidence_or_identity', 'invalid_item_evidence',
+            'generation_unavailable',
             'parse_failure', 'timeout', 'no_logprobs', 'error'}
 
 
@@ -54,6 +56,14 @@ def _safe_value(value, budget):
     return value
 
 
+def _item_evidence(row):
+    """Allowlisted class/code of an excluded per-item evidence defect; never text."""
+    failure = row.failure if isinstance(row.failure, dict) else {}
+    if failure.get('error_class') == 'LocalEvidenceError' and failure.get('code') in ITEM_EVIDENCE_CODES:
+        return {'error_class': 'LocalEvidenceError', 'code': failure['code']}
+    return None
+
+
 def _row_record(row, allowed, budget):
     response = row.response
     completed = response is not None
@@ -70,7 +80,7 @@ def _row_record(row, allowed, budget):
             'reason': row.reason if row.reason in _REASONS else None,
             'p_memorized': row.score.p_memorized if usable else None,
             'feature_scored': feature is not None, 'feature_p_memorized': feature,
-            'local_identity': _safe_value(identity, budget)}
+            'local_identity': _safe_value(identity, budget), 'item_evidence': _item_evidence(row)}
 
 
 HELD_OUT_RESAMPLES = 1000
@@ -107,7 +117,8 @@ def held_out_discrimination(scores, labels, *, seed=0, n_resamples=HELD_OUT_RESA
 def _split_counts(plan, rows):
     """Per corpus split: logical rows (OOS counts baseline and calibration rows).
 
-    valid = completed and not failed; held-out rows additionally need a
+    valid = completed and not failed; ``item_evidence_codes`` counts the
+    allowlisted defect codes of excluded rows. Held-out rows additionally need a
     feature-based score. Neither calibration nor held-out validity requires a
     parsed answer, since both use logprob features; parse failures are in unparsed.
     """
@@ -120,8 +131,18 @@ def _split_counts(plan, rows):
                                       else r['completed'] and r['status'] != 'failed')]
         counts[split] = {'planned': len(group), 'attempted': sum(r['attempted'] for r in group),
                          'valid': len(valid), 'failed': sum(r['status'] == 'failed' for r in group),
-                         'unparsed': sum(r['completed'] and not r['parsed'] for r in group)}
+                         'unparsed': sum(r['completed'] and not r['parsed'] for r in group),
+                         'item_evidence_codes': _code_counts(group)}
     return counts
+
+
+def _code_counts(group):
+    counts = {}
+    for row in group:
+        if row.get('item_evidence') is not None:
+            code = row['item_evidence']['code']
+            counts[code] = counts.get(code, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _held_out_evaluation(plan, rows, allowed):
