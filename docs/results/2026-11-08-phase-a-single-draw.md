@@ -1,6 +1,6 @@
 # Phase A: single-draw calibration on held-out data, 2026-11-08
 
-Four models were calibrated on one clean corpus and scored on 80 labeled rows
+Five models (six runs) were calibrated on one clean corpus and scored on 80 labeled rows
 they never saw. None of them separates memorized from unseen press releases on
 those rows, and none beats predicting the base rate. This is the expected result:
 the models are not supposed to have predictive capacity here, and establishing
@@ -44,6 +44,8 @@ held-out 40 + 40, disjoint.
 | Llama 3.2 3B | 0.464 | 0.503 [0.381, 0.623] | 0.259 [0.242, 0.278] | 0.250 | 0.064 | 79 |
 | Llama 3.1 8B | 0.544 | 0.462 [0.339, 0.598] | 0.269 [0.247, 0.293] | 0.250 | 0.090 | 79 |
 | GPT-OSS-20B | 0.655 | 0.574 [0.426, 0.707] | 0.249 [0.223, 0.276] | 0.245 | 0.124 | 67 |
+| Gemma 3 4B, NPU (FastFlowLM) | 0.512 | 0.599 [0.475, 0.721] | 0.243 | 0.250 | n/a | 80 |
+| Gemma 4 E4B, NPU (FastFlowLM) | 0.642 | 0.438 [0.301, 0.574] | 0.255 [0.246, 0.265] | 0.248 | 0.061 | 73 |
 
 Intervals are seeded 1,000-resample stratified bootstraps. The no-skill Brier is
 that of always predicting the held-out base rate.
@@ -54,6 +56,9 @@ that of always predicting the held-out base rate.
   no-skill reference.
 - **Transfer:** Gemma's calibrator looked strong on its own holdout (0.812) and
   did not carry over to new rows.
+- **NPU:** Gemma 3 4B on the NPU agrees with its iGPU run across runtime and
+  quantisation. Gemma 4 E4B uses only control rows filed after its January 2025
+  cutoff (74 calibration, 33 held-out).
 - **GPT-OSS-20B:** 44 of 321 responses had no final answer even at low reasoning
   effort, and 27 rows had duplicate top-5 alternatives; both were counted as
   failed items.

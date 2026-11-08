@@ -29,9 +29,10 @@ track. The guard does not need it to work.
 
 1. **No predictive capacity, as the study design expects.** These models are not
    supposed to separate the classes here, and establishing that is part of the
-   research. Four models finished Phase A on one clean corpus (R26, R30); every
-   held-out AUC interval includes 0.5: Gemma 3 4B 0.574, Llama 3.2 3B 0.503,
-   Llama 3.1 8B 0.462, GPT-OSS-20B 0.574. With 80 held-out rows per model the
+   research. Six model runs finished Phase A on one clean corpus (R26, R30, R38);
+   every held-out AUC interval includes 0.5: Gemma 3 4B 0.574 (iGPU) and 0.599
+   (NPU), Gemma 4 E4B 0.438 (NPU), Llama 3.2 3B 0.503, Llama 3.1 8B 0.462,
+   GPT-OSS-20B 0.574. With 80 held-out rows per model the
    intervals are wide, so a small effect is not ruled out.
 2. **Calibration is at the no-skill level, consistent with point 1.** Held-out
    Brier scores are 0.249 to 0.269 against 0.245 to 0.250 for always predicting
@@ -100,6 +101,7 @@ track. The guard does not need it to work.
 | R35 | 2026-11-08 | Local | feasibility | Full-vocabulary logprobs from the Phase A GGUF weights via llama.cpp |
 | R36 | 2026-11-08 | NPU | feasibility | Full logits on the NPU via Ryzen AI OGA |
 | R37 | 2026-11-08 | Method | decision | Gemma focus: document-likelihood scoring with full logits |
+| R38 | 2026-11-08 | NPU | measured | Phase A single draw on the NPU: Gemma 3 4B and Gemma 4 E4B |
 
 ## Entries
 
@@ -488,6 +490,28 @@ track. The guard does not need it to work.
 - **Limits:** 80 held-out rows per model give AUC intervals of about plus or
   minus 0.12; a small effect may stay undetected.
 - **Evidence:** release plan.
+
+### R38 · 2026-11-08 · Phase A single draw on the NPU
+
+- **Question:** as R26, on the NPU.
+- **Setup:** FastFlowLM 1.0.12 natively on Windows, NPU, Q4_1 builds, behind the
+  authenticated auto-stopping gateway; context 2,048, 32 output tokens, top-5,
+  temperature 0, 0 retries; one FLM process per model, stopped and verified.
+- **Data:** R19. Gemma 4 E4B (cutoff January 2025) uses only control rows filed
+  after 2025-01-31: 74 calibration and 33 held-out control rows, so 262 requests.
+- **Result:**
+
+  | Model | Calibrator holdout AUC | Held-out AUC [95 %] | Held-out Brier [95 %] | Reference | Held-out rows |
+  | --- | ---: | --- | --- | ---: | ---: |
+  | Gemma 3 4B (NPU) | 0.512 | 0.599 [0.475, 0.721] | 0.243 | 0.250 | 80 |
+  | Gemma 4 E4B (NPU) | 0.642 | 0.438 [0.301, 0.574] | 0.255 [0.246, 0.265] | 0.248 | 73 |
+
+  The expected null holds on the NPU. Gemma 3 4B agrees with its iGPU run
+  (0.574 [0.453, 0.690], R26) across runtime and quantisation. Llama 3.2 3B on
+  FastFlowLM stopped after 16 requests on `token_text_alignment_failed` and is set
+  aside (R37).
+- **Limits:** single draws, top-5; Gemma 4 has fewer control rows.
+- **Evidence:** [Phase A report](results/2026-11-08-phase-a-single-draw.md).
 
 ## How to add an entry
 
