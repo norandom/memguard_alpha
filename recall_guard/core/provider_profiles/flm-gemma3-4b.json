@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "profile_id": "flm-gemma3-4b",
+  "display_name": "FastFlowLM gemma3:4b (local NPU)",
+  "hosting_mode": "local",
+  "model_config": {
+    "protocol": "openai_chat",
+    "endpoint": "http://127.0.0.1:11540/v1/chat/completions",
+    "model": "gemma3:4b",
+    "provider": "fastflowlm",
+    "parameters": {
+      "temperature": 0,
+      "top_p": 1,
+      "max_tokens": 32,
+      "logprobs": true,
+      "top_logprobs": 5
+    },
+    "capabilities": {},
+    "timeout_s": 300,
+    "max_retries": 0,
+    "retry_backoff_s": 2.0,
+    "min_call_interval_s": 0.0,
+    "local_identity": {
+      "version": 1,
+      "declared": {
+        "artifact_digest": "sha256:06cb8f39d3f84850c3e1938de304605cf842fddbb5fef946fa88140d811ff117",
+        "artifact_revision": "FastFlowLM/Gemma3-4B-NPU2@main",
+        "quantization": "Q4_1",
+        "tokenizer": null,
+        "template": null,
+        "runtime": "fastflowlm",
+        "runtime_version": "1.0.12",
+        "backend": "NPU",
+        "driver_version": "32.0.20102.3930",
+        "context_length": 2048,
+        "score_semantics": {
+          "normalization": null,
+          "log_base": null,
+          "sampling_stage": null
+        }
+      },
+      "observed": {
+        "artifact_digest": null,
+        "artifact_revision": null,
+        "quantization": null,
+        "tokenizer": null,
+        "template": null,
+        "runtime": null,
+        "runtime_version": null,
+        "backend": null,
+        "driver_version": null,
+        "context_length": null,
+        "score_semantics": {
+          "normalization": null,
+          "log_base": null,
+          "sampling_stage": null
+        }
+      }
+    }
+  },
+  "credential_ref": null,
+  "endpoint_ref": null,
+  "response_mapping": "generic",
+  "harmony": null,
+  "host_requirements": {
+    "min_free_ram_bytes": 6442450944,
+    "recommended_ram_bytes": null,
+    "context_tokens": 2048,
+    "fallback_profile_ids": [
+      "flm-llama3.2-3b",
+      "modal-gpt-oss-20b"
+    ]
+  },
+  "allow_unauthenticated": true,
+  "notes": "FastFlowLM 1.0.12 natively on Windows (AMD NPU, driver 32.0.20102.3930); one model per flm serve process. Eligible in the 2026-11-08 probe (R34): aligned token logprobs, sorted alternatives, identical on repeat. top_logprobs 5 keeps parity with the Ollama profiles; FLM supports up to 100. From WSL or a container use the authenticated gateway (scripts/serve_local_flm.ps1, port 11541, --credential-ref env:LOCAL_MODEL_API_KEY); its /api/tags lists installed models only. FLM footprint 4.4 GB; min_free_ram adds headroom. Gemma 3 top-k probability mass exceeds 1 by up to 1.8e-6 (float32 rounding), so the mass check allows 5e-6.",
+  "logprob_mass_tolerance": 5e-06
+}

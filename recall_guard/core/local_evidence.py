@@ -174,16 +174,25 @@ def merge_local_observations(
     return LocalModelProvenance(**merged, score_semantics=ScoreSemantics(**semantics)), conflicts
 
 
-def validate_local_evidence(response: ModelResponse, *, required_alternatives: int = 0) -> None:
+def validate_local_evidence(response: ModelResponse, *, required_alternatives: int = 0,
+                            logprob_mass_tolerance: float | None = None) -> None:
     """Require exact output text alignment and uncensored natural-log evidence.
 
     The current contract has token text only. Hidden/reasoning/special channels
     without an explicit mapping cannot be reconstructed and fail alignment.
     No stripping, retokenization or inferred channel mapping is performed.
     ``required_alternatives`` is the selected feature's minimum per position.
+    ``logprob_mass_tolerance`` (a profile setting, default ``None`` = no mass
+    check) additionally requires each position's partial top-k probability mass,
+    ``sum(exp(alternative logprobs))``, to be at most ``1 + tolerance``; it absorbs
+    a runtime's float32 rounding and is never a normalization.
     """
     if type(required_alternatives) is not int or required_alternatives < 0:
         raise ValueError("required_alternatives must be a nonnegative integer")
+    if logprob_mass_tolerance is not None and (
+            isinstance(logprob_mass_tolerance, bool) or not isinstance(logprob_mass_tolerance, (int, float))
+            or not math.isfinite(logprob_mass_tolerance) or not 0 <= logprob_mass_tolerance < 1e-3):
+        raise ValueError("logprob_mass_tolerance must be a finite number in [0, 1e-3) or None")
     if not response.content:
         raise LocalEvidenceError("empty_output")
     if not response.token_evidence:
@@ -203,6 +212,9 @@ def validate_local_evidence(response: ModelResponse, *, required_alternatives: i
             if (isinstance(entry.logprob, bool) or not isinstance(entry.logprob, (int, float))
                     or not math.isfinite(entry.logprob) or entry.logprob > 0):
                 raise LocalEvidenceError("invalid_logprob")
+        if logprob_mass_tolerance is not None and (
+                math.fsum(math.exp(alt.logprob) for alt in token.top_logprobs) > 1 + logprob_mass_tolerance):
+            raise LocalEvidenceError("alternative_mass_exceeds_one")
 
 
 def full_vocabulary_logprobs(logits, *, vocabulary_size: int) -> np.ndarray:

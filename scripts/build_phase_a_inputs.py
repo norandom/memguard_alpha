@@ -33,11 +33,24 @@ local endpoint is frozen at build time as the authenticated Windows gateway
 gateway). Pass ``--local-endpoint`` explicitly; the run-time orchestrator refuses to
 start when the current gateway address differs, and the inputs must then be rebuilt.
 
+NPU (FastFlowLM) profiles: same EDGAR corpus, endpoint = the authenticated FLM
+gateway (``http://<vEthernet (WSL) IPv4>:11541/v1/chat/completions``, pass
+``--npu-endpoint``), requested execution mode ``NPU``, the profile's declared local
+identity, and the same input-token upper bound (UTF-8 bytes + 128). Each NPU
+profile also applies its own cutoff (``CUTOFF_KEYS`` -> data/cutoffs.yaml): control
+rows (calibration and held-out) must be filed strictly AFTER the cutoff, memorized
+rows strictly before it. Rows are dropped, never replaced; the counts and the
+request total follow from what remains, and fewer calibration controls than
+``min_valid`` (the baseline uses all of them) is refused. Only flm-gemma4-e4b
+(cutoff 2025-01-31) loses rows; the corpus already lies after the other cutoffs.
+
 Usage (dev container, repository checkout mounted at /phase-a):
   uv run --no-sync python scripts/build_phase_a_inputs.py --output /phase-a \
       --local-endpoint http://172.17.32.1:11435/v1/chat/completions --profiles local
 Modal profile (operator venv with transformers and models/):
   uv run --project deploy/modal --no-sync python scripts/build_phase_a_inputs.py --profiles modal
+NPU profiles:
+  ... build_phase_a_inputs.py --profiles npu --npu-endpoint http://172.17.32.1:11541/v1/chat/completions
 Modal rerun (r2; leaves the first run's inputs untouched):
   ... build_phase_a_inputs.py --profiles modal --output runs/phase-a/modal-gpt-oss-20b-r2
 """
@@ -53,6 +66,7 @@ from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from recall_guard.core.loader import load_cutoffs  # noqa: E402
 from recall_guard.core.local_evidence import LocalModelIdentity  # noqa: E402
 from recall_guard.core.profiles import load_profile  # noqa: E402
 from recall_guard.harness.local_evaluation import MeasurementLimits, load_plan  # noqa: E402
@@ -60,7 +74,16 @@ from recall_guard.harness.local_evaluation import MeasurementLimits, load_plan  
 LOCAL_PROFILES = ("ollama-phi4-mini", "ollama-llama3.2-3b", "ollama-gemma3-4b", "ollama-llama3.1-8b",
                   "ollama-llava-llama3-ctx2048")
 MODAL_PROFILE = "modal-gpt-oss-20b"
-PROFILES = (*LOCAL_PROFILES, MODAL_PROFILE)
+#: Native Windows FastFlowLM (AMD NPU), reached through scripts/serve_local_flm.ps1.
+NPU_PROFILES = ("flm-llama3.2-3b", "flm-gemma3-4b", "flm-gemma4-e4b")
+PROFILES = (*LOCAL_PROFILES, MODAL_PROFILE, *NPU_PROFILES)
+#: Profile -> cutoff registry key (data/cutoffs.yaml). FLM serves the same base models.
+CUTOFF_KEYS = {"ollama-phi4-mini": "microsoft/phi-4-mini-instruct", "ollama-llama3.2-3b": "meta/llama-3.2-3b-instruct",
+               "ollama-gemma3-4b": "google/gemma-3-4b-it", "ollama-llama3.1-8b": "meta/llama-3.1-8b-instruct",
+               "ollama-llava-llama3-ctx2048": "xtuner/llava-llama-3-8b-v1_1", MODAL_PROFILE: "openai/gpt-oss-20b",
+               "flm-llama3.2-3b": "meta/llama-3.2-3b-instruct", "flm-gemma3-4b": "google/gemma-3-4b-it",
+               "flm-gemma4-e4b": "google/gemma-4-e4b-it"}
+GATEWAY_PORTS = {"local": 11435, "npu": 11541}
 SPLIT_FILES = {"is_memorized": ("calibration/is_memorized.jsonl",),
                "oos_control": ("calibration/oos_control.jsonl",),
                "held_out": ("held_out/is_memorized.jsonl", "held_out/oos_control.jsonl")}
@@ -106,6 +129,33 @@ def read_rows(data_dir: Path) -> dict[str, list[dict]]:
     return rows
 
 
+def logical_requests(rows) -> int:
+    """1 probe + memorized + 2 x control (baseline and training) + held-out single answers (0 draws)."""
+    return 1 + len(rows["is_memorized"]) + 2 * len(rows["oos_control"]) + len(rows["held_out"])
+
+
+def cutoff_rows(rows, cutoff, min_valid: int):
+    """Keep control rows filed strictly after ``cutoff``; memorized rows must predate it.
+
+    Returns ``(rows, counts)``. Nothing is padded: too few calibration controls for
+    ``min_valid`` raises ``ValueError('control_below_min_valid:...')``.
+    """
+    def after(row) -> bool:
+        return row["metadata"]["published_at"] > cutoff.isoformat()
+
+    if any(after(row) or row["metadata"]["published_at"] == cutoff.isoformat()
+           for split in rows for row in rows[split] if row["label"] == 1):
+        raise ValueError("memorized_row_not_before_cutoff")
+    kept = {split: [row for row in items if row["label"] == 1 or after(row)] for split, items in rows.items()}
+    counts = {"cutoff": cutoff.isoformat(),
+              "calibration_control": {"before": len(rows["oos_control"]), "after": len(kept["oos_control"])},
+              "held_out_control": {"before": sum(r["label"] == 0 for r in rows["held_out"]),
+                                   "after": sum(r["label"] == 0 for r in kept["held_out"])}}
+    if len(kept["oos_control"]) < min_valid:
+        raise ValueError(f"control_below_min_valid:{len(kept['oos_control'])}<{min_valid}")
+    return kept, counts
+
+
 def local_token_bound(prompt: str) -> int:
     return len(prompt.encode("utf-8")) + TEMPLATE_ALLOWANCE_TOKENS
 
@@ -134,9 +184,16 @@ def modal_token_counter(tokenizer_root: Path):
     return count, modal_plan.target.endpoint, hashes
 
 
-def build_profile(profile_id: str, rows, output: Path, *, local_endpoint=None, tokenizer_root=Path("models")):
+def build_profile(profile_id: str, rows, output: Path, *, local_endpoint=None, tokenizer_root=Path("models"),
+                  npu_endpoint=None, cutoffs=None):
     profile = load_profile(profile_id)
     modal = profile_id == MODAL_PROFILE
+    npu = profile_id in NPU_PROFILES
+    corpus_filter = None
+    if npu:
+        rows, corpus_filter = cutoff_rows(rows, cutoffs[CUTOFF_KEYS[profile_id]], PLAN_FIELDS["min_valid"])
+        corpus_filter = {"cutoff_key": CUTOFF_KEYS[profile_id], **corpus_filter}
+    total = logical_requests(rows)
     shape = MODAL if modal else LOCAL
     if modal:
         count, modal_endpoint, tokenizer = modal_token_counter(tokenizer_root)
@@ -146,13 +203,17 @@ def build_profile(profile_id: str, rows, output: Path, *, local_endpoint=None, t
                     "max_input_margin_tokens": MODAL_INPUT_MARGIN}
     else:
         count, endpoint, credential, mode = local_token_bound, local_endpoint, "env:LOCAL_MODEL_API_KEY", "CPU/GPU offload"
+        if npu:
+            endpoint, mode = npu_endpoint, "NPU"
         if profile.host_requirements.context_tokens != shape["context"]:
             raise ValueError(f"profile_context_mismatch:{profile_id}")
         config = profile.model_config.to_dict()
         config["parameters"] = {**config["parameters"], **SETTINGS, "max_tokens": shape["output"]}
         counting = {"method": "utf8_bytes_plus_template_allowance_upper_bound",
                     "template_allowance_tokens": TEMPLATE_ALLOWANCE_TOKENS}
-    config = config | {"endpoint": endpoint, "local_identity": LocalModelIdentity().to_dict()}
+    # NPU profiles declare their FLM build (runtime, backend, driver, weights digest); Ollama declares nothing.
+    identity = profile.model_config.local_identity if npu else None
+    config = config | {"endpoint": endpoint, "local_identity": (identity or LocalModelIdentity()).to_dict()}
     corpus = {split: [{"item_id": sha256(row["metadata"]["url"].encode("utf-8")), "prompt": row["prompt"],
                        "input_tokens": count(row["prompt"]), "label": row["label"]} for row in items]
               for split, items in rows.items()}
@@ -160,12 +221,14 @@ def build_profile(profile_id: str, rows, output: Path, *, local_endpoint=None, t
     max_input = declared + (MODAL_INPUT_MARGIN if modal else 0)
     if modal and max_input + shape["output"] > shape["context"]:
         raise ValueError(f"context_exceeded:{profile_id}:{max_input}+{shape['output']}>{shape['context']}")
-    limits = MeasurementLimits(max_requests=LOGICAL_REQUESTS, context_tokens=shape["context"],
+    limits = MeasurementLimits(max_requests=total, context_tokens=shape["context"],
                                max_input_tokens=max_input, max_output_tokens=shape["output"],
-                               max_total_tokens=LOGICAL_REQUESTS * (max_input + shape["output"]),
+                               max_total_tokens=total * (max_input + shape["output"]),
                                max_elapsed_s=shape["max_elapsed_s"])
     manifest = {"config": config, "authentication": "environment", "credential_ref": credential,
                 "requested_execution_mode": mode, "profile_id": profile_id, "input_token_counting": counting}
+    if corpus_filter is not None:
+        manifest["corpus_filter"] = corpus_filter
     directory = output / profile_id
     directory.mkdir(parents=True, exist_ok=True)
     manifest_bytes, corpus_bytes = encode(manifest), encode(corpus)
@@ -174,10 +237,12 @@ def build_profile(profile_id: str, rows, output: Path, *, local_endpoint=None, t
     for name, data in (("manifest.json", manifest_bytes), ("corpus.json", corpus_bytes), ("plan.json", encode(plan))):
         (directory / name).write_bytes(data)
     loaded = load_plan(directory / "plan.json", directory / "manifest.json", directory / "corpus.json")
-    if loaded.logical_requests != LOGICAL_REQUESTS or loaded.physical_requests != LOGICAL_REQUESTS:
+    if loaded.logical_requests != total or loaded.physical_requests != total or (
+            not npu and total != LOGICAL_REQUESTS):
         raise ValueError("phase_a_request_count_mismatch")
-    return {"profile": profile_id, "logical_requests": loaded.logical_requests,
-            "max_input_tokens": max_input, "max_total_tokens": limits.max_total_tokens}
+    built = {"profile": profile_id, "logical_requests": loaded.logical_requests,
+             "max_input_tokens": max_input, "max_total_tokens": limits.max_total_tokens}
+    return built if corpus_filter is None else built | {"corpus_filter": corpus_filter}
 
 
 def write_index(output: Path) -> dict:
@@ -191,11 +256,14 @@ def write_index(output: Path) -> dict:
             for path in paths:
                 files[f"{profile_id}/{path.name}"] = sha256(path.read_bytes())
     local = [p for p in complete if p in LOCAL_PROFILES]
+    # NPU totals follow each profile's own (cutoff-filtered) plan.
+    npu = sum(json.loads((output / p / "plan.json").read_text(encoding="utf-8"))["limits"]["max_requests"]
+              for p in complete if p in NPU_PROFILES)
     index = {"phase": "A", "files": files, "profiles": complete,
              "missing_profiles": [p for p in PROFILES if p not in complete],
              "logical_requests_per_profile": LOGICAL_REQUESTS, "ensemble_draws": 0,
              "request_totals": {"local": LOGICAL_REQUESTS * len(local),
-                                "modal": LOGICAL_REQUESTS * (MODAL_PROFILE in complete)}}
+                                "modal": LOGICAL_REQUESTS * (MODAL_PROFILE in complete), "npu": npu}}
     (output / "index.json").write_bytes(encode(index))
     return index
 
@@ -204,21 +272,27 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", type=Path, default=Path("runs/phase-a"))
     parser.add_argument("--data", type=Path, default=Path("data/edgar"))
-    parser.add_argument("--profiles", default="all", help="all, local, modal or a comma-separated profile list")
+    parser.add_argument("--profiles", default="all", help="all, local, modal, npu or a comma-separated profile list")
     parser.add_argument("--local-endpoint", help="full gateway chat URL, e.g. http://172.17.32.1:11435/v1/chat/completions")
+    parser.add_argument("--npu-endpoint", help="full FLM gateway chat URL, e.g. http://172.17.32.1:11541/v1/chat/completions")
+    parser.add_argument("--cutoffs", type=Path, default=Path("data/cutoffs.yaml"))
     parser.add_argument("--tokenizer-root", type=Path, default=Path("models"))
     args = parser.parse_args(argv)
-    selected = {"all": PROFILES, "local": LOCAL_PROFILES, "modal": (MODAL_PROFILE,)}.get(
+    selected = {"all": PROFILES, "local": LOCAL_PROFILES, "modal": (MODAL_PROFILE,), "npu": NPU_PROFILES}.get(
         args.profiles, tuple(args.profiles.split(",")))
     if any(p not in PROFILES for p in selected):
         parser.error("unknown profile")
-    if any(p in LOCAL_PROFILES for p in selected):
-        parts = urlsplit(args.local_endpoint or "")
-        if parts.scheme != "http" or parts.port != 11435 or parts.path != "/v1/chat/completions":
-            parser.error("local profiles need --local-endpoint http://<gateway>:11435/v1/chat/completions")
+    for kind, group, value in (("local", LOCAL_PROFILES, args.local_endpoint), ("npu", NPU_PROFILES, args.npu_endpoint)):
+        if any(p in group for p in selected):
+            parts = urlsplit(value or "")
+            port = GATEWAY_PORTS[kind]
+            if parts.scheme != "http" or parts.port != port or parts.path != "/v1/chat/completions":
+                parser.error(f"{kind} profiles need --{kind}-endpoint http://<gateway>:{port}/v1/chat/completions")
     rows = read_rows(args.data)
+    cutoffs = load_cutoffs(args.cutoffs) if any(p in NPU_PROFILES for p in selected) else None
     built = [build_profile(p, rows, args.output, local_endpoint=args.local_endpoint,
-                           tokenizer_root=args.tokenizer_root) for p in selected]
+                           tokenizer_root=args.tokenizer_root, npu_endpoint=args.npu_endpoint, cutoffs=cutoffs)
+             for p in selected]
     index = write_index(args.output)
     print(json.dumps({"built": built, "index_profiles": index["profiles"],
                       "missing_profiles": index["missing_profiles"], "request_totals": index["request_totals"]},

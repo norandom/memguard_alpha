@@ -1,4 +1,4 @@
-"""Bounded serial Ollama smoke. Default: metadata only, no inference or unloading.
+"""Bounded serial Ollama (or one FastFlowLM) smoke. Default: metadata only, no inference or unloading.
 
 Execute with --execute --output NEW.json --host-observation host-observation.json.
 No downloads, retries, calibration, raw generated text or host configuration changes.
@@ -21,10 +21,15 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recall_guard.core.local_evidence import LocalEvidenceError, validate_local_evidence
 from recall_guard.core.profiles import (
+    FLM_RUNTIME,
     HostMemorySnapshot,
     PreflightError,
     ProfileError,
+    available_profiles,
+    connect,
     load_profile,
+    metadata_headers,
+    observe_fastflowlm_host,
     preflight_host,
     running_in_container,
 )
@@ -332,6 +337,152 @@ def run_smoke(endpoint: str, host: dict, output: Path | None = None, *, models=M
     return journal
 
 
+def flm_profiles() -> tuple[str, ...]:
+    """Curated profiles served by native Windows FastFlowLM (NPU)."""
+    return tuple(pid for pid in available_profiles() if load_profile(pid).model_config.provider == FLM_RUNTIME)
+
+
+def flm_metadata(profile, environment) -> dict:
+    """Read-only FLM gateway metadata; raises ValueError('host_metadata_unavailable')."""
+    return observe_fastflowlm_host(profile.model_config.endpoint, profile.model_config.model,
+                                   headers=metadata_headers(profile, environment))
+
+
+def run_flm_smoke(profile_id: str, endpoint: str, output: Path | None = None, *, execute: bool = False,
+                  credential_ref: str | None = None, observe=None) -> dict:
+    """One FastFlowLM eligibility request for one profile (the host preflight already ran).
+
+    FLM loads its one model at ``flm serve`` start, so the model must be resident
+    before and after the request. There is no unload: stopping the FLM process is
+    host-side (scripts/serve_local_flm.ps1 stop). Evidence uses the profile's
+    ``logprob_mass_tolerance``. Same receipt rules as :func:`run_smoke`.
+    """
+    profile = load_profile(profile_id)
+    if profile.model_config.provider != FLM_RUNTIME:
+        raise ProfileError('flm_smoke_requires_a_fastflowlm_profile')
+    profile = replace(profile, model_config=replace(profile.model_config, endpoint=endpoint,
+                                                    credential_ref=credential_ref),
+                      allow_unauthenticated=credential_ref is None)
+    config = profile.model_config
+    if urlsplit(endpoint).path != '/v1/chat/completions':
+        raise ValueError('explicit_full_chat_endpoint_required')
+    environment = ProbeConfig(profile_id, config.model, endpoint, '', '', credential_ref).environment()
+    observe = observe or (lambda: flm_metadata(profile, environment))
+    journal = {'schema_version': 1, 'status': 'planning', 'stop_reason': None,
+               'plan': {'profile': profile_id, 'runtime': FLM_RUNTIME, 'models': [config.model], 'endpoint': endpoint,
+                        'settings': dict(config.parameters),
+                        'authentication': 'none' if credential_ref is None else 'environment',
+                        'context_tokens': profile.host_requirements.context_tokens, 'inference_limit': 1,
+                        'attempts_per_model': 1, 'max_seconds_per_request': 300, 'automatic_retries': 0,
+                        'concurrent_requests': 1, 'max_loaded_models': 1,
+                        'logprob_mass_tolerance': profile.logprob_mass_tolerance,
+                        'unload': 'host_side_process_stop'},
+               'metadata_operations': [], 'attempts': []}
+    if execute:
+        if output is None:
+            raise ValueError('execution_requires_new_output')
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open('x', encoding='utf-8') as stream:
+            stream.write('{"status":"reserved_do_not_replay"}\n')
+
+    def save():
+        if execute:
+            persist(output, journal)
+
+    def observed(phase):
+        operation = {'model': config.model, 'phase': phase,
+                     'routes': ['/api/version', '/api/tags', '/api/ps', '/api/npu/status'], 'status': 'intent'}
+        journal['metadata_operations'].append(operation)
+        save()
+        try:
+            result = observe()
+        except HOST_ERRORS:
+            operation['status'] = 'failed'
+            raise
+        operation['status'] = 'completed'
+        return result
+
+    def environment_matches(seen, frozen) -> bool:
+        return (seen['loaded_models'] == [config.model] and seen['runtime_version'] == frozen['runtime_version']
+                and seen['digest'] == frozen['digest'] and seen['observed_backend'] == 'NPU'
+                and seen['effective_context_tokens'] == profile.host_requirements.context_tokens)
+
+    try:
+        frozen = observed('freeze')
+        journal['plan']['installed'] = {config.model: frozen}
+        save()
+        if not execute:
+            journal['status'] = 'dry_run'
+            return journal
+        row = {'model': config.model, 'profile': profile_id, 'digest': frozen['digest'], 'status': 'skipped',
+               'reason': None, 'evidence_status': 'not_tested', 'evidence_reason': None,
+               'environment_status': 'unverified', 'physical_attempts': 0, 'unknown_outcome': False,
+               'generated_token_count': None, 'tokens': [], 'alternative_mass_max': None,
+               'score_semantics': 'unknown', 'alternative_distribution': 'partial_top_k'}
+        journal['attempts'].append(row)
+        if not frozen['runtime_version'] or not environment_matches(frozen, frozen):
+            row.update(reason='flm_model_not_served_or_identity_unknown', environment_status='mismatched')
+            return journal
+        budget = CallBudget(1)
+        client = connect(profile, budget, environment=environment, enforce_preflight=False)
+        row['status'] = 'intent'
+        save()
+        started = monotonic()
+        try:
+            response = client.generate_for_stage(PROMPT, stage='local-smoke')
+            evidence = response.token_evidence or ()
+            row['generated_token_count'] = len(evidence)
+            row['tokens'] = [{'position': i, 'logprob': token.logprob, 'alternative_count': len(token.top_logprobs),
+                              'alternative_logprobs': [alt.logprob for alt in token.top_logprobs]}
+                             for i, token in enumerate(evidence)]
+            row['alternative_mass_max'] = max((math.fsum(math.exp(alt.logprob) for alt in token.top_logprobs)
+                                               for token in evidence), default=None)
+            validate_local_evidence(response, required_alternatives=5,
+                                    logprob_mass_tolerance=profile.logprob_mass_tolerance)
+            row.update(evidence_status='valid', evidence_reason='aligned_token_evidence_observed')
+        except LocalEvidenceError as error:
+            row.update(evidence_status='ineligible', evidence_reason=str(error))
+        except RequestError as error:
+            known = {'timeout', 'connection_error', 'transport_error', 'invalid_response',
+                     'missing_token_evidence', 'unsupported_parameter', 'invalid_request_error', 'model_not_found'}
+            code = error.code if error.code in known else 'provider_rejected_request'
+            row.update(evidence_status='ineligible' if code in {'invalid_response', 'missing_token_evidence'}
+                       else 'unavailable', evidence_reason=code, http_status=error.status_code,
+                       unknown_outcome=code in {'timeout', 'connection_error', 'transport_error'})
+        except KeyboardInterrupt:
+            row.update(evidence_status='unavailable', evidence_reason='cancelled', unknown_outcome=True)
+        except Exception:
+            row.update(evidence_status='unavailable', evidence_reason='unknown_outcome', unknown_outcome=True)
+        finally:
+            row.update(elapsed_s=monotonic() - started, physical_attempts=budget.used, events=safe_events(budget))
+            if row['elapsed_s'] > 300:
+                row.update(unknown_outcome=True, reason='attempt_elapsed_bound_exceeded')
+            row['status'] = 'unavailable' if row['unknown_outcome'] else 'ineligible'
+            save()
+        if row['unknown_outcome']:
+            journal['stop_reason'] = 'unknown_inference_outcome_no_retry'
+            return journal
+        try:
+            after = observed('after_inference')
+            row['observed_after'] = after
+            matched = environment_matches(after, frozen)
+            row['environment_status'] = 'matched' if matched else 'mismatched'
+        except HOST_ERRORS:
+            row['environment_status'] = 'unverified'
+            journal['stop_reason'] = 'post_inference_metadata_unavailable'
+            return journal
+        row['status'] = 'eligible' if row['evidence_status'] == 'valid' and matched else 'ineligible'
+    except KeyboardInterrupt:
+        journal['stop_reason'] = 'cancelled'
+    except HOST_ERRORS:
+        journal['stop_reason'] = 'host_metadata_unavailable'
+    finally:
+        if execute:
+            journal['status'] = 'stopped' if journal['stop_reason'] else 'completed'
+            save()
+    return journal
+
+
 def main(argv=None) -> int:
     import json
 
@@ -339,8 +490,9 @@ def main(argv=None) -> int:
     parser.add_argument('--endpoint', default=None, help=f'Full chat-completions URL (default {DEFAULT_ENDPOINT}).')
     parser.add_argument('--host-observation', type=Path, default=Path('runs/local-provider/host-observation.json'))
     parser.add_argument('--model', action='append', choices=MODELS)
-    parser.add_argument('--profile', action='append', choices=sorted(PROFILE_MODELS),
-                        help='Curated local provider profile ID; may be combined with --model.')
+    parser.add_argument('--profile', action='append', choices=sorted({*PROFILE_MODELS, *flm_profiles()}),
+                        help='Curated local provider profile ID; may be combined with --model. A FastFlowLM '
+                             '(flm-*) profile runs alone, through the FLM gateway, with no --model.')
     parser.add_argument('--minimum-available-gib', type=float, default=16)
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--output', type=Path)
@@ -353,6 +505,17 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         snapshot = None if args.host_snapshot is None else HostMemorySnapshot.from_file(args.host_snapshot)
+        flm = [pid for pid in args.profile or () if pid in flm_profiles()]
+        if flm:
+            if len(args.profile) != 1 or args.model or args.endpoint is None:
+                raise ProfileError('flm_smoke_takes_one_flm_profile_and_an_explicit_endpoint')
+            if args.credential_ref is not None:
+                ProbeConfig(flm[0], flm[0], args.endpoint, '', '', args.credential_ref).auth_headers()
+            profile_preflight(flm, args.endpoint, host_snapshot=snapshot, credential_ref=args.credential_ref)
+            result = run_flm_smoke(flm[0], args.endpoint, args.output, execute=args.execute,
+                                   credential_ref=args.credential_ref)
+            print(json.dumps(result, indent=2, allow_nan=False))
+            return 0 if result['status'] in {'dry_run', 'completed'} else 1
         profiled, endpoint = profile_selection(args.profile or (), args.endpoint)
         models = list(dict.fromkeys([*profiled, *(args.model or ())])) or MODELS
         if args.credential_ref is not None:

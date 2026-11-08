@@ -48,7 +48,7 @@ def test_local_plan_is_phase_a_with_bounded_tokens_and_labels(local_output):
 
 def test_index_hashes_files_and_counts_complete_profiles(local_output):
     index = json.loads((local_output / "index.json").read_text(encoding="utf-8"))
-    assert index["request_totals"] == {"local": 321, "modal": 0}
+    assert index["request_totals"] == {"local": 321, "modal": 0, "npu": 0}
     assert "modal-gpt-oss-20b" in index["missing_profiles"]
     for name, digest in index["files"].items():
         assert sha256((local_output / name).read_bytes()).hexdigest() == digest
@@ -82,7 +82,7 @@ def test_modal_plan_passes_measure_modal_dry_run(tmp_path, monkeypatch):
     assert frozen["items_per_split"] == {"is_memorized": 40, "oos_control": 100, "held_out": 80}
     assert frozen["cost_estimate"]["worst_case_total_usd"] <= 2
     index = json.loads((tmp_path / "index.json").read_text(encoding="utf-8"))
-    assert index["request_totals"] == {"local": 0, "modal": 321}
+    assert index["request_totals"] == {"local": 0, "modal": 321, "npu": 0}
 
 
 def test_observer_authenticates_metadata_reads(local_output, monkeypatch):

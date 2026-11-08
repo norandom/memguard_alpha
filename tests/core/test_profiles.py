@@ -29,7 +29,8 @@ from recall_guard.core.providers import HarmonyOpenAICompatibleClient, OpenAICom
 from recall_guard.core.request_control import CallBudget
 
 SHIPPED = ("ollama-gemma3-4b", "ollama-phi4-mini", "ollama-llama3.2-3b", "ollama-llama3.1-8b",
-           "ollama-llava-llama3-ctx2048", "ollama-gpt-oss-20b", "modal-gpt-oss-20b", "nim-llama3.1-70b")
+           "ollama-llava-llama3-ctx2048", "ollama-gpt-oss-20b", "modal-gpt-oss-20b", "nim-llama3.1-70b",
+           "flm-llama3.2-3b", "flm-gemma3-4b", "flm-gemma4-e4b")
 GIB = 1024 ** 3
 REVISION = "a" * 40
 IDS = dict(zip(MARKERS, (200005, 200006, 200007, 200008, 200002, 200012), strict=True))

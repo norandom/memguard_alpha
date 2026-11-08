@@ -75,6 +75,11 @@ models:
   # was August 2024." Retrieved 2026-11-08.
   google/gemma-3-4b-it: 2024-08-31  # https://ai.google.dev/gemma/docs/core/model_card_3
 
+  # --- Google Gemma 4 E4B (local FastFlowLM gemma4-it:e4b, NPU) ---
+  # Card: "a cutoff date of January 2025". Month only, so the last day of the
+  # month (rule 3). Retrieved 2026-11-08.
+  google/gemma-4-e4b-it: 2025-01-31  # https://huggingface.co/google/gemma-4-E4B-it
+
   # --- XTuner LLaVA-Llama-3-8B v1.1 (local Ollama llava-llama3) ---
   # Ollama and XTuner cards: fine-tuned from Meta-Llama-3-8B-Instruct with
   # ShareGPT4V-PT and InternVL-SFT. Llama 3 card, "Data Freshness": "The

@@ -6,7 +6,7 @@ tokenizer metadata, declared host requirements and the explicit unauthenticated
 choice. :func:`connect` dispatches to the existing transport clients and never
 issues an inference request. :func:`preflight_host` (R2.3) runs first by
 default: credential/tokenizer presence, the free-RAM gate and read-only Ollama
-metadata, returning a friendly per-host proposal instead of loading a model.
+or FastFlowLM metadata, returning a friendly per-host proposal instead of loading a model.
 """
 
 from __future__ import annotations
@@ -125,7 +125,9 @@ class HarmonyMappingConfig:
 
 _PROFILE_FIELDS = frozenset({"schema_version", "profile_id", "display_name", "hosting_mode", "model_config",
                              "credential_ref", "endpoint_ref", "response_mapping", "harmony", "host_requirements",
-                             "allow_unauthenticated", "notes"})
+                             "allow_unauthenticated", "notes", "logprob_mass_tolerance"})
+#: Upper bound for a profile's ``logprob_mass_tolerance`` (absorbs rounding, never real mass).
+MAX_LOGPROB_MASS_TOLERANCE = 1e-3
 
 
 @dataclass(frozen=True)
@@ -135,6 +137,9 @@ class ProviderProfile:
     ``endpoint_ref`` optionally names an environment variable holding a
     user-specific endpoint (for example a registered Modal host). It is
     resolved only by :func:`connect`, like a credential reference.
+    ``logprob_mass_tolerance`` (default ``None``: no mass check) lets evidence
+    validation require each position's top-k probability mass to be at most
+    ``1 + tolerance``, for runtimes whose float32 rounding exceeds 1 slightly.
     """
 
     profile_id: str
@@ -147,6 +152,7 @@ class ProviderProfile:
     allow_unauthenticated: bool = False
     endpoint_ref: str | None = None
     notes: str = ""
+    logprob_mass_tolerance: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.profile_id, str) or not _PROFILE_ID.fullmatch(self.profile_id):
@@ -167,6 +173,10 @@ class ProviderProfile:
         if self.endpoint_ref is not None and (
                 not isinstance(self.endpoint_ref, str) or not _ENV_REF.fullmatch(self.endpoint_ref)):
             raise ProfileError("endpoint_ref must name an environment variable")
+        tolerance = self.logprob_mass_tolerance
+        if tolerance is not None and (isinstance(tolerance, bool) or not isinstance(tolerance, (int, float))
+                                      or not 0 <= tolerance < MAX_LOGPROB_MASS_TOLERANCE):
+            raise ProfileError("logprob_mass_tolerance must be a number in [0, 1e-3) or null")
         self._check_mapping()
         if self.allow_unauthenticated and (
                 self.hosting_mode != HostingMode.LOCAL or self.model_config.credential_ref is not None):
@@ -203,6 +213,9 @@ class ProviderProfile:
             "harmony": None if self.harmony is None else self.harmony.to_dict(),
             "host_requirements": self.host_requirements.to_dict(),
             "allow_unauthenticated": self.allow_unauthenticated, "notes": self.notes,
+            # Emitted only when set, so profiles without a mass check export unchanged.
+            **({} if self.logprob_mass_tolerance is None else
+               {"logprob_mass_tolerance": self.logprob_mass_tolerance}),
         }
 
     @classmethod
@@ -224,6 +237,7 @@ class ProviderProfile:
                 host_requirements=HostResourceRequirement(**requirements),
                 allow_unauthenticated=data.get("allow_unauthenticated", False),
                 endpoint_ref=data.get("endpoint_ref"), notes=data.get("notes", ""),
+                logprob_mass_tolerance=data.get("logprob_mass_tolerance"),
             )
         except ProfileError:
             raise
@@ -544,6 +558,73 @@ def observe_ollama_host(endpoint: str, model: str, *, http_get=None, headers: Ma
             "observed_backend": backend, "model_installed": installed is not None}
 
 
+#: Marker of the gateway-synthesized FastFlowLM ``/api/tags`` (scripts/serve_local_flm.ps1).
+#: FLM's own ``/api/tags`` lists its whole catalog, so only this answer proves installation.
+FLM_INSTALLED_TAGS_SOURCE = "flm list --filter installed --json"
+FLM_RUNTIME = "fastflowlm"
+#: Local runtimes whose ``/api/ps`` names the resident model (RAM-gate skip when loaded).
+_PS_PROVIDERS = frozenset({"ollama", FLM_RUNTIME})
+
+
+def _metadata_fetcher(endpoint: str, http_get, headers: Mapping[str, str] | None):
+    """``(fetch(path) -> json, close())``: proxy-free, no redirects, 200 only."""
+    parsed = urlsplit(endpoint)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    if http_get is not None:
+        return (lambda path: http_get(origin + path)), (lambda: None)
+    session = requests.Session()
+    session.trust_env = False
+
+    def fetch(path: str):
+        result = session.get(origin + path, headers=dict(headers or {}), timeout=10, allow_redirects=False)
+        if result.status_code != 200:
+            raise ValueError("host_metadata_unavailable")
+        return result.json()
+    return fetch, session.close
+
+
+def observe_fastflowlm_host(endpoint: str, model: str, *, http_get=None,
+                            headers: Mapping[str, str] | None = None) -> dict:
+    """Read-only FastFlowLM metadata through the authenticating FLM gateway.
+
+    Routes: ``/api/version``, ``/api/tags`` (gateway-synthesized: installed models
+    only, plus the serving process's launch context), ``/api/ps`` and
+    ``/api/npu/status``. Never generates, pulls, loads or unloads. FLM reports no
+    ``size_vram``: the backend is ``"NPU"`` because FastFlowLM executes only on
+    the NPU and the runtime reports the NPU available, never inferred from memory
+    allocation. ``model_installed`` is ``None`` when ``/api/tags`` is FLM's own
+    catalog (no gateway marker), because the catalog does not show installation.
+    Raises ``ValueError('host_metadata_unavailable')`` on any unusable answer.
+    """
+    fetch, close = _metadata_fetcher(endpoint, http_get, headers)
+    try:
+        version, tags, running, npu = (fetch(path) for path in
+                                       ("/api/version", "/api/tags", "/api/ps", "/api/npu/status"))
+        installed_models, models = tags["models"], running["models"]
+        if not isinstance(installed_models, list) or not isinstance(models, list) or not isinstance(npu, dict):
+            raise TypeError("models must be lists")
+        synthesized = tags.get("source") == FLM_INSTALLED_TAGS_SOURCE
+        installed = next((m for m in installed_models if isinstance(m, dict) and m.get("name") == model), None)
+        loaded = [model if isinstance(m, dict) and m.get("name") == model else "unexpected_model" for m in models]
+        serving = tags.get("serving") if synthesized and isinstance(tags.get("serving"), dict) else {}
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+        raise ValueError("host_metadata_unavailable") from None
+    finally:
+        close()
+    runtime_version = version.get("version") if isinstance(version, dict) else None
+    digest = (installed or {}).get("digest") if synthesized else None
+    context = serving.get("context_length") if serving.get("model") == model else None
+    npu_available = npu.get("npu_available") is True
+    return {"runtime_version": runtime_version if isinstance(runtime_version, str)
+                and _SEMVER.fullmatch(runtime_version) else None,
+            "digest": digest if isinstance(digest, str) and _DIGEST.fullmatch(digest) else None,
+            "loaded_models": loaded,
+            "effective_context_tokens": context if type(context) is int and context > 0 else None,
+            "model_allocation_bytes": None, "accelerator_allocation_bytes": None,
+            "observed_backend": "NPU" if npu_available else None, "npu_available": npu_available,
+            "model_installed": (installed is not None) if synthesized else None}
+
+
 def _model_already_loaded(endpoint: str, model: str, http_get=None, headers: Mapping[str, str] | None = None) -> bool:
     """One read-only ``/api/ps`` call; any failure counts as not loaded."""
     parsed = urlsplit(endpoint)
@@ -701,7 +782,8 @@ def preflight_host(
         if measured < requirements.min_free_ram_bytes:
             # A model that is already resident occupies the RAM being measured;
             # one read-only /api/ps call to that same host avoids a false block.
-            if (profile.model_config.provider == "ollama" and (host_snapshot is not None or _is_loopback(endpoint))
+            if (profile.model_config.provider in _PS_PROVIDERS
+                    and (host_snapshot is not None or _is_loopback(endpoint))
                     and _model_already_loaded(endpoint, model, http_get, headers)):
                 memory["ram_gate"] = "skipped_model_already_loaded"
             else:
@@ -709,6 +791,8 @@ def preflight_host(
                     passed=False, reason="insufficient_free_ram", **base, **memory,
                     recommendation=_ram_recommendation(model, measured, requirements.min_free_ram_bytes,
                                                        fallbacks))
+    if profile.model_config.provider == FLM_RUNTIME:
+        return _fastflowlm_verdict(profile, endpoint, http_get, headers, base, memory)
     if profile.model_config.provider != "ollama":
         return HostPreflightReport(passed=True, **base, **memory)
     try:
@@ -727,6 +811,47 @@ def preflight_host(
             passed=False, reason="model_not_installed", **base, **memory, **host_fields,
             recommendation=(f"{model} is not installed on this Ollama host. Nothing is downloaded automatically; "
                             f"run `ollama pull {model}` yourself, then try again."))
+    return HostPreflightReport(passed=True, **base, **memory, **host_fields)
+
+
+def _fastflowlm_verdict(profile, endpoint, http_get, headers, base, memory) -> HostPreflightReport:
+    """Observe branch for ``provider: fastflowlm`` (after the shared RAM gate)."""
+    model = profile.model_config.model
+    where = urlsplit(endpoint).netloc
+    try:
+        observed = observe_fastflowlm_host(endpoint, model, http_get=http_get, headers=headers)
+    except ValueError:
+        return HostPreflightReport(
+            passed=False, reason="host_metadata_unavailable", **base, **memory,
+            recommendation=(f"FastFlowLM metadata at {where} did not answer. On the Windows host run "
+                            f"scripts/serve_local_flm.ps1 start {model}, or check the endpoint; nothing was loaded."))
+    host_fields = {"runtime_version": observed["runtime_version"], "artifact_digest": observed["digest"],
+                   "model_installed": observed["model_installed"], "loaded_models": tuple(observed["loaded_models"]),
+                   "observed_backend": observed["observed_backend"],
+                   "effective_context_tokens": observed["effective_context_tokens"]}
+
+    def refuse(reason: str, text: str) -> HostPreflightReport:
+        return HostPreflightReport(passed=False, reason=reason, **base, **memory, **host_fields, recommendation=text)
+
+    if observed["model_installed"] is None:
+        return refuse("installed_models_unknown",
+                      f"{where} answered with FastFlowLM's catalog, which does not show installed models. Use the "
+                      "FLM gateway (scripts/serve_local_flm.ps1), whose /api/tags lists installed models only.")
+    if not observed["model_installed"]:
+        return refuse("model_not_installed",
+                      f"{model} is not installed for FastFlowLM on this host. Nothing is downloaded automatically; "
+                      f"run `flm pull {model}` on the host yourself, then try again.")
+    if not observed["npu_available"]:
+        return refuse("npu_unavailable", "FastFlowLM reports the NPU unavailable (/api/npu/status). Run "
+                      "`flm validate` on the host; nothing was sent.")
+    identity = profile.model_config.local_identity
+    if identity is not None:
+        for name, seen in (("runtime_version", observed["runtime_version"]), ("artifact_digest", observed["digest"])):
+            expected = getattr(identity.declared, name)
+            if expected is not None and seen is not None and expected != seen:
+                return refuse("declared_identity_mismatch",
+                              f"The host reports {name} {seen}, but profile {profile.profile_id!r} declares "
+                              f"{expected}. Install the declared build or use a matching profile; nothing was sent.")
     return HostPreflightReport(passed=True, **base, **memory, **host_fields)
 
 
@@ -782,5 +907,6 @@ def connect(
 __all__ = [
     "HarmonyMappingConfig", "HostMemorySnapshot", "HostPreflightReport", "HostResourceRequirement", "HostingMode",
     "PreflightError", "ProfileError", "ProviderProfile", "ResponseMapping", "available_profiles", "connect",
-    "load_profile", "metadata_headers", "observe_ollama_host", "preflight_host", "running_in_container",
+    "load_profile", "metadata_headers", "observe_fastflowlm_host", "observe_ollama_host", "preflight_host",
+    "running_in_container",
 ]
