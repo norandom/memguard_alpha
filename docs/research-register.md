@@ -36,7 +36,8 @@ Last updated 2026-11-08. Release plan: [release 1.0](https://github.com/norandom
 
 | ID | Date | Track | Status | One line | Report |
 | --- | --- | --- | --- | --- | --- |
-| R21 | 2026-11-08 | Modal | running | Phase A, GPT-OSS-20B, 321 requests, cap USD 2.00 | pending |
+| R22 | 2026-11-08 | Modal | failed | Phase A first attempt stopped after 4 requests (reasoning truncation) | below |
+| R21 | 2026-11-08 | Modal | pending | Phase A rerun, low reasoning, 1,024 tokens, cap USD 2.00 | pending |
 | R20 | 2026-11-08 | Local | running | Phase A, five Ollama models, 1,605 requests | pending |
 | R19 | 2026-11-08 | Local | feasibility | Windows Ollama with iGPU behind an authenticated gateway | below |
 | R18 | 2026-11-08 | Data | decision | Old calibration corpus confounded; SEC EDGAR corpus built | below |
@@ -60,12 +61,26 @@ Last updated 2026-11-08. Release plan: [release 1.0](https://github.com/norandom
 
 ## Entries
 
-### R21 · 2026-11-08 · Modal Phase A (running)
+### R22 · 2026-11-08 · Modal Phase A, first attempt (stopped)
+
+- **Question:** as R21.
+- **Setup:** as R21 with 512 output tokens and default reasoning.
+- **Data:** as R21.
+- **Result:** stopped after 4 of 321 requests (1 probe, 3 control rows); runner
+  estimate USD 0.12; both apps verified stopped. The fourth response used all 512
+  tokens on reasoning, so no final answer existed. The harness classed this as an
+  unknown outcome, which stops a run by design. Fixed in da2f55c: it now counts
+  as one failed item. Nothing was measured.
+- **Limits:** 3 responses are too few to estimate the truncation rate.
+- **Evidence:** `runs/container/phase-a/modal-gpt-oss-20b/` (private). The rerun
+  (R21) uses `reasoning_effort: low` and 1,024 output tokens (user decision).
+
+### R21 · 2026-11-08 · Modal Phase A (rerun pending approval)
 
 - **Question:** does a fresh calibrator for GPT-OSS-20B separate memorized from
   control press releases on 80 held-out rows?
 - **Setup:** profile `modal-gpt-oss-20b`, Harmony final answer, temperature 0,
-  512 output tokens, top-5 logprobs, 0 retries; 321 requests; GPU phase at most
+  `reasoning_effort: low`, 1,024 output tokens, top-5 logprobs, 0 retries; 321 requests; GPU phase at most
   2,700 s; worst case USD 1.9976, cap USD 2.00; both apps stopped and verified.
 - **Data:** R18 EDGAR corpus: calibration 40 memorized and 100 control; held-out
   40 and 40.
