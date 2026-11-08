@@ -59,6 +59,7 @@ nav:
   - Completion API integration: completion-api.md
   - Local model integration: local-provider.md
   - Gemma 3 4B document likelihood (2026-11-08): results/2026-11-08-gemma3-document-likelihood.md
+  - Gemma 4 E4B document likelihood on the NPU (2026-11-08): results/2026-11-08-gemma4-document-likelihood-npu.md
   - Phase A single-draw calibration (2026-11-08): results/2026-11-08-phase-a-single-draw.md
   - Phi-4 Mini disqualified (2026-11-08): results/2026-11-08-phi4-mini-disqualified.md
   - Five local model logprob tests (2026-11-06): results/2026-11-06-local-model-smoke.md

@@ -33,7 +33,8 @@ track. The guard does not need it to work.
    every held-out AUC interval includes 0.5: Gemma 3 4B 0.574 (iGPU) and 0.599
    (NPU), Gemma 4 E4B 0.438 (NPU), Llama 3.2 3B 0.503, Llama 3.1 8B 0.462,
    GPT-OSS-20B 0.574. Scoring the documents themselves from full logits gives the
-   same answer for Gemma 3 4B (0.562 [0.439, 0.693], R40). With 80 held-out rows per model the
+   same answer for Gemma 3 4B on the iGPU (0.562 [0.439, 0.693], R40) and Gemma 4
+   E4B on the NPU (0.470 [0.338, 0.608], R41). With 80 held-out rows per model the
    intervals are wide, so a small effect is not ruled out.
 2. **Calibration is at the no-skill level, consistent with point 1.** Held-out
    Brier scores are 0.249 to 0.269 against 0.245 to 0.250 for always predicting
@@ -105,6 +106,7 @@ track. The guard does not need it to work.
 | R38 | 2026-11-08 | NPU | measured | Phase A single draw on the NPU: Gemma 3 4B and Gemma 4 E4B |
 | R39 | 2026-11-08 | NPU | feasibility | Gemma 4 E4B full logits and teacher forcing on the NPU via OGA |
 | R40 | 2026-11-08 | Local | measured | Gemma 3 4B document likelihood from full logits |
+| R41 | 2026-11-08 | NPU | measured | Gemma 4 E4B document likelihood from full logits on the NPU |
 
 ## Entries
 
@@ -550,6 +552,21 @@ track. The guard does not need it to work.
   distributions over the whole text.
 - **Limits:** 80 held-out documents.
 - **Evidence:** [report](results/2026-11-08-gemma3-document-likelihood.md).
+
+### R41 · 2026-11-08 · Gemma 4 E4B document likelihood on the NPU
+
+- **Question:** as R40, for Gemma 4 E4B on the NPU.
+- **Setup:** Ryzen AI OGA 0.18.0, AMD's int4 NPU build at 5fcdd87; teacher
+  forcing one token at a time with a fresh model per document; bit-identical
+  across processes; the same frozen features and calibrator as R40.
+- **Data:** R19 with control rows after 2025-01-31: calibration 40/74, held-out
+  40/33; 187 documents, 67,697 positions, 2.96 h.
+- **Result:** held-out calibrator AUC 0.470 [0.338, 0.608], Brier 0.259 against
+  0.248, ECE 0.078. Mean entropy alone excludes 0.5, on the side opposite to its
+  calibration direction (about one in four is expected by chance across six
+  features). No predictive capacity, as the design expects.
+- **Limits:** 73 held-out documents.
+- **Evidence:** [report](results/2026-11-08-gemma4-document-likelihood-npu.md).
 
 ## How to add an entry
 

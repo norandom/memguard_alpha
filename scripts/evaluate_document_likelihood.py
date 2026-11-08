@@ -2,8 +2,9 @@
 
 Runs in the dev container. Reads the teacher-forced per-token scores written
 natively by ``scripts/score_documents_llamacpp.py`` (default
-``/outputs/gemma-doc/scores``), checks every record against the EDGAR splits by
-text hash, computes ``recall_guard.mia.document_likelihood`` features, and:
+``/outputs/gemma-doc/scores``) or ``scripts/score_documents_oga.py`` (Gemma 4,
+``/outputs/gemma4-doc/scores`` with ``--published-after 2025-01-31``), checks
+every record against the EDGAR splits by text hash, computes ``recall_guard.mia.document_likelihood`` features, and:
 
 1. fits the calibrator on the calibration split ONLY, reports 5-fold stratified
    CV AUC there, chooses each single feature's sign there, and writes
@@ -12,6 +13,11 @@ text hash, computes ``recall_guard.mia.document_likelihood`` features, and:
 2. then scores the held-out split: calibrator AUC (1,000-resample stratified
    bootstrap 95 % interval), Brier with interval, base-rate reference Brier,
    ECE and reliability bins, and each single feature's unfitted AUC.
+
+``--published-after DATE`` keeps only control rows published strictly after
+DATE (memorized rows all, document ids keep their corpus index); it must equal
+the scores manifest's ``selection.control_published_after``. Without it the
+splits are used whole and the outputs are as before.
 
 Writes ``evaluation.json`` and ``evaluation.md`` next to ``frozen.json``.
 """
@@ -39,11 +45,20 @@ ROOT = Path(__file__).resolve().parent.parent
 GROUPS = ('is_memorized', 'oos_control')
 
 
-def load_split(data_dir: Path, split: str) -> dict[str, dict]:
+def keep_document(label: int, published_at, published_after) -> bool:
+    """Memorized rows always; control rows only if published strictly after ``published_after``."""
+    if published_after is None or label == 1:
+        return True
+    return published_at is not None and published_at > published_after
+
+
+def load_split(data_dir: Path, split: str, published_after=None) -> dict[str, dict]:
     documents = {}
     for group in GROUPS:
         for index, line in enumerate((data_dir / split / f'{group}.jsonl').read_text(encoding='utf-8').splitlines()):
             item = json.loads(line)
+            if not keep_document(int(item['label']), item.get('metadata', {}).get('published_at'), published_after):
+                continue
             documents[f'{split}/{group}/{index}'] = {'text': item['prompt'], 'label': int(item['label'])}
     return documents
 
@@ -66,9 +81,9 @@ def split_features(records: list[dict], documents: dict[str, dict], split: str):
     return rows, np.array(labels), ids
 
 
-def freeze_on_calibration(records, data_dir: Path) -> tuple[dict, object]:
+def freeze_on_calibration(records, data_dir: Path, published_after=None) -> tuple[dict, object]:
     """Everything decided from the calibration split alone."""
-    rows, labels, ids = split_features(records, load_split(data_dir, 'calibration'), 'calibration')
+    rows, labels, ids = split_features(records, load_split(data_dir, 'calibration', published_after), 'calibration')
     matrix = feature_matrix(rows)
     calibrator = fit_calibrator(matrix, labels)
     model = calibrator.pipeline
@@ -85,11 +100,14 @@ def freeze_on_calibration(records, data_dir: Path) -> tuple[dict, object]:
               'cv': cross_validated_auc(matrix, labels),
               'calibration_feature_means': {g: dict(zip(FEATURES, matrix[labels == v].mean(axis=0).tolist(), strict=True))
                                             for g, v in (('memorized', 1), ('control', 0))}}
+    if published_after is not None:
+        frozen['selection'] = {'control_published_after': published_after}
     return frozen, calibrator
 
 
 def evaluate_held_out(records, data_dir: Path, frozen: dict, calibrator) -> dict:
-    rows, labels, _ = split_features(records, load_split(data_dir, 'held_out'), 'held_out')
+    published_after = frozen.get('selection', {}).get('control_published_after')
+    rows, labels, _ = split_features(records, load_split(data_dir, 'held_out', published_after), 'held_out')
     matrix = feature_matrix(rows, frozen['features'])
     probabilities = calibrator.predict_memorized(matrix)
     single = {}
@@ -131,16 +149,19 @@ def main(argv=None):
     parser.add_argument('--scores', default='/outputs/gemma-doc/scores')
     parser.add_argument('--output', default='/outputs/gemma-doc/evaluation')
     parser.add_argument('--data', default=str(ROOT / 'data/edgar'))
+    parser.add_argument('--published-after', help='keep control rows published strictly after this date')
     args = parser.parse_args(argv)
     scores_dir, out, data_dir = Path(args.scores), Path(args.output), Path(args.data)
     scores_manifest = json.loads((scores_dir / 'manifest.json').read_text(encoding='utf-8'))
     raw = (scores_dir / 'scores.jsonl').read_bytes()
     if hashlib.sha256(raw).hexdigest() != scores_manifest['scores_sha256']:
         raise SystemExit('scores.jsonl does not match its manifest')
+    if scores_manifest.get('selection', {}).get('control_published_after') != args.published_after:
+        raise SystemExit('--published-after does not match the scores manifest selection')
     records = [json.loads(line) for line in raw.decode('utf-8').splitlines()]
     out.mkdir(parents=True, exist_ok=True)
 
-    frozen, calibrator = freeze_on_calibration(records, data_dir)
+    frozen, calibrator = freeze_on_calibration(records, data_dir, args.published_after)
     frozen['scores_sha256'] = scores_manifest['scores_sha256']
     frozen['model_digest'] = scores_manifest['model']['digest']
     (out / 'frozen.json').write_text(json.dumps(frozen, indent=2) + '\n', encoding='utf-8')
@@ -150,6 +171,8 @@ def main(argv=None):
     result = {'frozen_sha256': frozen_sha256, 'frozen': frozen, 'held_out': held,
               'scores_manifest': {k: scores_manifest[k] for k in ('model', 'build', 'flags', 'template', 'tokenization',
                                                                   'n_vocab', 'n_documents', 'n_tokens', 'scores_sha256')}}
+    if 'selection' in scores_manifest:
+        result['scores_manifest']['selection'] = scores_manifest['selection']
     (out / 'evaluation.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     (out / 'evaluation.md').write_text(render(frozen, held, scores_manifest), encoding='utf-8')
     print(render(frozen, held, scores_manifest))
