@@ -59,6 +59,7 @@ reproducible while keeping the held-out discrimination.
 
 | ID | Date | Track | Status | One line | Report |
 | --- | --- | --- | --- | --- | --- |
+| R24 | 2026-11-08 | Local | disqualified | Phi-4 Mini removed from the Phase A model set | [link](results/2026-11-08-phi4-mini-disqualified.md) |
 | R23 | 2026-11-08 | Modal | failed | Phase A rerun stopped after 4 requests (one evidence defect aborted calibration) | below |
 | R22 | 2026-11-08 | Modal | failed | Phase A first attempt stopped after 4 requests (reasoning truncation) | below |
 | R21 | 2026-11-08 | Modal | pending | Phase A rerun, low reasoning, 1,024 tokens, cap USD 2.00 | pending |
@@ -84,6 +85,17 @@ reproducible while keeping the held-out discrimination.
 | R01 | 2026-10-30 | NIM | measured | Hosted GPT-OSS-20B calibration and ETF evaluation | [link](results/2026-10-30-nim-measurement.md) |
 
 ## Entries
+
+### R24 · 2026-11-08 · Phi-4 Mini disqualified
+
+- **Question:** keep Phi-4 Mini in the matched set after its Phase A stop?
+- **Setup:** as R20.
+- **Data:** as R20.
+- **Result:** stopped at request 119 of 321 (all HTTP 200) on a per-response
+  evidence defect during memorized calibration (17 of 40 done, control baseline
+  complete). User decision: disqualify, no rerun.
+- **Limits:** the defect code was not recorded by the pre-fix harness.
+- **Evidence:** [dated report](results/2026-11-08-phi4-mini-disqualified.md).
 
 ### R23 · 2026-11-08 · Modal Phase A rerun (stopped)
 
@@ -129,8 +141,8 @@ reproducible while keeping the held-out discrimination.
 
 ### R20 · 2026-11-08 · Local Phase A (running)
 
-- **Question:** same as R21 for Phi-4 Mini, Llama 3.2 3B, Gemma 3 4B, Llama 3.1 8B
-  and LLaVA-Llama3 (ctx 2048).
+- **Question:** same as R21 for Llama 3.2 3B, Gemma 3 4B, Llama 3.1 8B and
+  LLaVA-Llama3 (ctx 2048). Phi-4 Mini was in the run and is disqualified (R24).
 - **Setup:** Windows Ollama 0.40.11 with iGPU through the R19 gateway; 2,048
   context, 32 output tokens, top-5, 0 retries; 321 requests per model, one model
   at a time, fresh memory preflight before each.
@@ -142,8 +154,7 @@ reproducible while keeping the held-out discrimination.
   | Gemma 3 4B | 0.812 | 0.574 [0.453, 0.690] | 0.253 [0.229, 0.280] | 0.122 | 40/40, 194/200, 79/80 |
   | Llama 3.2 3B | 0.464 | 0.503 [0.381, 0.623] | 0.259 [0.242, 0.278] | 0.064 | 39/40, 199/200, 79/80 |
 
-  Phi-4 Mini stopped after 119 requests on the evidence-defect bug fixed in
-  0c02b1e (rerun approved). Llama 3.1 8B and LLaVA are running. Single draws, so
+  Phi-4 Mini stopped after 119 requests and is disqualified (R24). Llama 3.1 8B and LLaVA are running. Single draws, so
   this is the baseline for the ensemble test (Phase B).
 - **Limits:** input token counts are upper bounds; the local endpoint is frozen in
   the plan hashes.

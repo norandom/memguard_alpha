@@ -135,3 +135,6 @@ not compared as full distributions.
   the evidence-defect bug (321 requests each, beyond the original 1,605).
 - Calibration quality: add Brier score and a reliability summary of held-out
   `p_memorized` to the reports (offline, no extra requests).
+- Phi-4 Mini disqualified (user, 2026-11-08); its rerun is withdrawn. Gemma 3 4B,
+  Llama 3.2 3B and Llama 3.1 8B stay in the set. An NPU model is to be evaluated
+  as an option (runtime with logprobs required).
