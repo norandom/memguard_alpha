@@ -11,7 +11,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import sys
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -24,9 +23,19 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recall_guard.core.completion import ModelConfig, ModelResponse
 from recall_guard.core.local_evidence import validate_local_evidence
-from recall_guard.core.profiles import HostingMode, ProviderProfile, connect, load_profile
+from recall_guard.core.profiles import (
+    HostingMode,
+    HostPreflightReport,
+    PreflightError,
+    ProviderProfile,
+    connect,
+    load_profile,
+    observe_ollama_host,
+    preflight_host,
+)
 from recall_guard.core.providers import OpenAICompatibleClient  # noqa: F401 - re-exported to smoke/tests
 from recall_guard.core.request_control import CallBudget, RequestError
+from recall_guard.harness.request_failures import print_failure, retained_failure
 
 PROMPT = 'Reply with the word OK.'
 MODEL_IDS = {'ollama-gemma3-4b': 'gemma3:4b', 'ollama-gpt-oss-20b': 'gpt-oss:20b'}
@@ -62,8 +71,17 @@ class ProbeConfig:
 
 
 def connect_probe(config: ProbeConfig, budget: CallBudget):
-    """Build the unauthenticated local client through the single profile factory."""
-    return connect(config.profile(), budget, environment={})
+    """Build the unauthenticated local client through the single profile factory.
+
+    The host gate already ran (:func:`host_preflight` plus the frozen-plan
+    :func:`preflight`), so the factory does not repeat it.
+    """
+    return connect(config.profile(), budget, environment={}, enforce_preflight=False)
+
+
+def host_preflight(config: ProbeConfig) -> HostPreflightReport:
+    """Free-RAM gate and read-only Ollama metadata before any journal entry or load."""
+    return preflight_host(config.profile(), environment={})
 
 
 def read_json(path: Path) -> dict:
@@ -97,38 +115,13 @@ def validate_evidence(response: ModelResponse, required_alternatives: int = 5) -
 
 
 def observe_host(config: ProbeConfig) -> dict:
-    """Read-only metadata, no generation, loading, unloading or inference transport."""
-    parsed = urlsplit(config.endpoint)
-    origin = f'{parsed.scheme}://{parsed.netloc}'
-    with requests.Session() as session:
-        session.trust_env = False
-        def get(path: str) -> dict:
-            result = session.get(origin + path, timeout=10, allow_redirects=False)
-            if result.status_code != 200:
-                raise ValueError('host_metadata_unavailable')
-            return result.json()
-        version, tags, running = get('/api/version'), get('/api/tags'), get('/api/ps')
-    installed = next((m for m in tags['models'] if m.get('name') == config.model), {})
-    models = running['models']
-    current = next((m for m in models if m.get('name') == config.model), {})
-    def count(value: object) -> int | None:
-        return value if type(value) is int and value >= 0 else None
+    """Read-only metadata, no generation, loading, unloading or inference transport.
 
-    size, vram = count(current.get('size')), count(current.get('size_vram'))
-    backend = None
-    if isinstance(size, int) and isinstance(vram, int) and size > 0:
-        backend = 'CPU' if vram == 0 else 'GPU' if vram >= size else 'CPU/GPU offload'
-    runtime_version = version.get('version')
-    digest = installed.get('digest')
-    if isinstance(digest, str) and re.fullmatch(r'[0-9a-f]{64}', digest):
-        digest = 'sha256:' + digest
-    return {'runtime_version': runtime_version if isinstance(runtime_version, str) and re.fullmatch(
-                r'\d+\.\d+\.\d+', runtime_version) else None,
-            'digest': digest if isinstance(digest, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', digest) else None,
-            'loaded_models': [config.model if m.get('name') == config.model else 'unexpected_model' for m in models],
-            'effective_context_tokens': count(current.get('context_length')),
-            'model_allocation_bytes': size, 'accelerator_allocation_bytes': vram,
-            'observed_backend': backend}
+    Delegates to the shared core observer (also used by host preflight).
+    """
+    observed = observe_ollama_host(config.endpoint, config.model)
+    observed.pop('model_installed')
+    return observed
 
 
 def preflight(config: ProbeConfig, host: dict, observed: dict) -> str | None:
@@ -196,6 +189,9 @@ def execute(config: ProbeConfig, receipt: dict, journal: dict, path: Path) -> No
         receipt.update(status='ineligible' if code in {'invalid_response', 'missing_token_evidence'} else 'unavailable',
                        reason=code, http_status=error.status_code,
                        rejected_parameter=error.parameter if error.parameter in SETTINGS else None)
+        # R2.7: keep the bounded, sanitized provider body of an HTTP failure (for
+        # example an Ollama 500 on load); transport failures retain nothing.
+        receipt['provider_failure'] = retained_failure(error, secrets=(PROMPT,))
     except KeyboardInterrupt:
         receipt.update(status='cancelled', reason='unknown_outcome')
     finally:
@@ -228,6 +224,9 @@ def run_probe(manifest_path: Path, candidate_id: str, host_path: Path, journal_p
     if dry_run:
         return receipt | {'status': 'dry_run', 'bounds': BOUNDS, 'ollama_attempt_limit': 4,
                           'reserved_blocked_npu_attempts': 2}
+    report = host_preflight(config)  # Zero inference; no journal entry, no load.
+    if not report.passed:
+        raise PreflightError(report)
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = journal_path.with_suffix(journal_path.suffix + '.lock')
     with lock_path.open('x', encoding='utf-8') as lock:
@@ -284,6 +283,9 @@ def main() -> int:
     candidate = args.profile or args.candidate
     try:
         result = run_probe(args.manifest, candidate, args.host_observation, args.journal, dry_run=args.dry_run)
+    except PreflightError as error:
+        print_failure(error, profile_id=candidate, stage='host preflight')
+        return 2
     except ValueError as error:
         print(f'Probe refused: {error}', file=sys.stderr)
         return 2

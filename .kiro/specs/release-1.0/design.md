@@ -220,6 +220,9 @@ executes zero-inference checks:
      - If `measured_free_ram_bytes < min_free_ram_bytes`:
        - Return `HostPreflightReport(passed=False, reason="insufficient_free_ram", ...)`
        - **Do not contact `/v1/chat/completions` or load the model.**
+       - Exception (loopback Ollama only): one read-only `/api/ps` call; if the
+         target model is already loaded the gate passes with `ram_gate:
+         "skipped_model_already_loaded"`, otherwise the block stands with no further HTTP.
        - Format the actionable recommendation: state measured GiB vs required
          GiB (e.g. `13.4 GiB measured vs 20.0 GiB required for gpt-oss:20b`) and
          propose `--profile modal-gpt-oss-20b`, `--profile ollama-gemma3-4b`, or

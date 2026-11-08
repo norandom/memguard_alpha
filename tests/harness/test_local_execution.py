@@ -264,3 +264,39 @@ def test_post_probe_digest_loss_cannot_be_repaired_by_closing_recovery(execution
     assert not result.calibrated_claims_allowed
     assert result.reason == 'probe_condition_mismatched'
     assert all(row.status == 'not_attempted' for row in result.rows if row.item_id == 'held')
+
+
+def test_http_500_body_is_retained_on_the_failed_row(execution, monkeypatch):
+    """R2.7: an Ollama 500 on load keeps its bounded sanitized body (2026-11-06 receipt had none)."""
+    budget, state, observer = execution
+    from recall_guard.core.providers import OpenAICompatibleClient
+    from recall_guard.core.request_control import RequestError
+    post = OpenAICompatibleClient._post
+    def rejected(client, payload):
+        if state.calls == 25:
+            state.calls += 1
+            raise RequestError('HTTP 500: load failed', status_code=500,
+                               detail='{"error":"model requires more system memory (20.0 GiB) than is available"}')
+        return post(client, payload)
+    monkeypatch.setattr(OpenAICompatibleClient, '_post', rejected)
+    result = execute_plan(budget, observer)
+    single = next(row for row in result.rows if row.arm == 'single')
+    assert single.status == 'failed'
+    assert single.failure['status_code'] == 500
+    assert 'requires more system memory' in single.failure['detail']
+
+
+def test_transport_failure_without_provider_body_retains_nothing(execution, monkeypatch):
+    budget, state, observer = execution
+    from recall_guard.core.providers import OpenAICompatibleClient
+    from recall_guard.core.request_control import RequestError
+    post = OpenAICompatibleClient._post
+    def rejected(client, payload):
+        if state.calls == 25:
+            state.calls += 1
+            raise RequestError('PRIVATE timeout text', code='timeout', detail='PRIVATE', retryable=True)
+        return post(client, payload)
+    monkeypatch.setattr(OpenAICompatibleClient, '_post', rejected)
+    result = execute_plan(budget, observer)
+    single = next(row for row in result.rows if row.arm == 'single')
+    assert single.status == 'failed' and single.failure is None

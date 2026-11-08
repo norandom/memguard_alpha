@@ -127,3 +127,13 @@ def test_cli_persists_partial_report_and_refuses_existing(execution, tmp_path, m
     assert cli.main(args) == 2
     assert report_path.read_bytes() == previous
     assert state.calls == 3
+
+
+def test_stopping_provider_failure_body_is_exported_with_prompts_redacted(execution):
+    budget, _, observer = execution
+    result = execute_plan(budget, observer)
+    prompt = budget.plan.items[0].prompt
+    result.failure = {'status_code': 500, 'code': None, 'detail': f'load failed while serving {prompt}'}
+    report = build_report(budget, result)
+    assert report['failure']['status_code'] == 500
+    assert report['failure']['detail'] == 'load failed while serving [PRIVATE]'

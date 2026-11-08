@@ -3,9 +3,10 @@
 A :class:`ProviderProfile` wraps an existing :class:`ModelConfig` and adds only
 what the config cannot express: hosting mode, response mapping, pinned Harmony
 tokenizer metadata, declared host requirements and the explicit unauthenticated
-choice. :func:`connect` dispatches to the existing transport clients; it never
-issues a request. Host preflight (free RAM, Ollama metadata) is a separate,
-later gate (M1.4) and is intentionally not performed here.
+choice. :func:`connect` dispatches to the existing transport clients and never
+issues an inference request. :func:`preflight_host` (R2.3) runs first by
+default: credential/tokenizer presence, the free-RAM gate and read-only Ollama
+metadata, returning a friendly per-host proposal instead of loading a model.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from urllib.parse import urlsplit
+
+import requests
 
 from recall_guard.core.completion import CompletionClient, CompletionProtocol, FeatureChoices, ModelConfig
 from recall_guard.core.harmony_evidence import HarmonyTokenMap
@@ -269,24 +272,321 @@ def _token_map(profile: ProviderProfile) -> HarmonyTokenMap:
     return token_map
 
 
+# --- Host preflight (R2.3, C1) ------------------------------------------------
+
+GIB = 1024 ** 3
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_SEMVER = re.compile(r"\d+\.\d+\.\d+")
+_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+@dataclass(frozen=True)
+class HostMemorySnapshot:
+    """Free RAM measured ON the model host (for example by a host-side helper).
+
+    Required when the endpoint is not loopback: a container or client machine
+    must never substitute its own memory for the external Ollama host's.
+    """
+
+    available_bytes: int
+    total_bytes: int | None = None
+    sampled_at: str | None = None
+    source: str = "host_snapshot"
+
+    def __post_init__(self) -> None:
+        if type(self.available_bytes) is not int or self.available_bytes < 0:
+            raise ProfileError("host_snapshot.available_bytes must be a nonnegative integer")
+        if self.total_bytes is not None and (type(self.total_bytes) is not int or self.total_bytes <= 0):
+            raise ProfileError("host_snapshot.total_bytes must be a positive integer or null")
+
+    @classmethod
+    def coerce(cls, value: HostMemorySnapshot | Mapping) -> HostMemorySnapshot:
+        if isinstance(value, cls):
+            return value
+        if not isinstance(value, Mapping):
+            raise ProfileError("host_snapshot must be a HostMemorySnapshot or mapping")
+        allowed = {"available_bytes", "total_bytes", "sampled_at", "source"}
+        return cls(**{key: value[key] for key in allowed if key in value})
+
+
+@dataclass(frozen=True)
+class HostPreflightReport:
+    """Zero-inference readiness verdict for one profile on one host (never global)."""
+
+    profile_id: str
+    model: str
+    passed: bool
+    reason: str | None = None
+    recommendation: str = ""
+    measured_free_ram_bytes: int | None = None
+    required_free_ram_bytes: int | None = None
+    total_ram_bytes: int | None = None
+    memory_source: str | None = None
+    fallback_profile_ids: tuple[str, ...] = ()
+    runtime_version: str | None = None
+    artifact_digest: str | None = None
+    model_installed: bool | None = None
+    loaded_models: tuple[str, ...] | None = None
+    observed_backend: str | None = None
+    effective_context_tokens: int | None = None
+    #: ``"enforced"`` or ``"skipped_model_already_loaded"``; None when no RAM gate applies.
+    ram_gate: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "profile_id": self.profile_id, "model": self.model, "passed": self.passed, "reason": self.reason,
+            "recommendation": self.recommendation, "measured_free_ram_bytes": self.measured_free_ram_bytes,
+            "required_free_ram_bytes": self.required_free_ram_bytes, "total_ram_bytes": self.total_ram_bytes,
+            "memory_source": self.memory_source, "fallback_profile_ids": list(self.fallback_profile_ids),
+            "runtime_version": self.runtime_version, "artifact_digest": self.artifact_digest,
+            "model_installed": self.model_installed,
+            "loaded_models": None if self.loaded_models is None else list(self.loaded_models),
+            "observed_backend": self.observed_backend, "effective_context_tokens": self.effective_context_tokens,
+            "ram_gate": self.ram_gate,
+        }
+
+
+class PreflightError(ProfileError):
+    """Host preflight refused the profile; ``report`` carries the friendly proposal."""
+
+    def __init__(self, report: HostPreflightReport) -> None:
+        super().__init__(report.recommendation or report.reason or "host preflight failed")
+        self.report = report
+
+
+def _psutil_memory() -> tuple[int, int]:
+    import psutil  # Core dependency; imported lazily so offline callers pay nothing.
+
+    memory = psutil.virtual_memory()
+    return int(memory.available), int(memory.total)
+
+
+def _gib(value: int) -> str:
+    return f"{value / GIB:.1f} GiB"
+
+
+def _fallback_text(fallbacks: tuple[str, ...]) -> str:
+    return " or ".join(f"--profile {item}" for item in fallbacks)
+
+
+def _ram_recommendation(model: str, measured: int, required: int, fallbacks: tuple[str, ...]) -> str:
+    options = f"Try {_fallback_text(fallbacks)}, or run" if fallbacks else "Run"
+    return (f"{_gib(measured)} free, {_gib(required)} required for {model}. Nothing was loaded and no "
+            f"request was sent. {options} on a machine with at least {_gib(required)} of free RAM.")
+
+
+def observe_ollama_host(endpoint: str, model: str, *, http_get=None) -> dict:
+    """Read-only Ollama metadata (``/api/version``, ``/api/tags``, ``/api/ps``).
+
+    Never generates, pulls, loads or unloads. ``http_get(url) -> object`` returns
+    parsed JSON or raises; the default uses a proxy-free ``requests`` session.
+    Raises ``ValueError('host_metadata_unavailable')`` on any unusable answer.
+    """
+    parsed = urlsplit(endpoint)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    try:
+        if http_get is None:
+            with requests.Session() as session:
+                session.trust_env = False
+
+                def fetch(path: str):
+                    result = session.get(origin + path, timeout=10, allow_redirects=False)
+                    if result.status_code != 200:
+                        raise ValueError("host_metadata_unavailable")
+                    return result.json()
+
+                version, tags, running = fetch("/api/version"), fetch("/api/tags"), fetch("/api/ps")
+        else:
+            version, tags, running = (http_get(origin + path) for path in ("/api/version", "/api/tags", "/api/ps"))
+        installed_models, models = tags["models"], running["models"]
+        if not isinstance(installed_models, list) or not isinstance(models, list):
+            raise TypeError("models must be lists")
+        installed = next((m for m in installed_models if isinstance(m, dict) and m.get("name") == model), None)
+        current = next((m for m in models if isinstance(m, dict) and m.get("name") == model), {})
+        loaded = [model if isinstance(m, dict) and m.get("name") == model else "unexpected_model" for m in models]
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+        raise ValueError("host_metadata_unavailable") from None
+
+    def count(value: object) -> int | None:
+        return value if type(value) is int and value >= 0 else None
+
+    size, vram = count(current.get("size")), count(current.get("size_vram"))
+    backend = None
+    if size is not None and vram is not None and size > 0:
+        backend = "CPU" if vram == 0 else "GPU" if vram >= size else "CPU/GPU offload"
+    runtime_version = version.get("version") if isinstance(version, dict) else None
+    digest = (installed or {}).get("digest")
+    if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
+        digest = "sha256:" + digest
+    return {"runtime_version": runtime_version if isinstance(runtime_version, str)
+                and _SEMVER.fullmatch(runtime_version) else None,
+            "digest": digest if isinstance(digest, str) and _DIGEST.fullmatch(digest) else None,
+            "loaded_models": loaded, "effective_context_tokens": count(current.get("context_length")),
+            "model_allocation_bytes": size, "accelerator_allocation_bytes": vram,
+            "observed_backend": backend, "model_installed": installed is not None}
+
+
+def _model_already_loaded(endpoint: str, model: str, http_get=None) -> bool:
+    """One read-only ``/api/ps`` call; any failure counts as not loaded."""
+    parsed = urlsplit(endpoint)
+    url = f"{parsed.scheme}://{parsed.netloc}/api/ps"
+    try:
+        if http_get is None:
+            with requests.Session() as session:
+                session.trust_env = False
+                result = session.get(url, timeout=10, allow_redirects=False)
+                if result.status_code != 200:
+                    return False
+                running = result.json()
+        else:
+            running = http_get(url)
+        models = running["models"]
+        return isinstance(models, list) and any(isinstance(m, dict) and m.get("name") == model for m in models)
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
+def _credential_failure(profile: ProviderProfile, environment: Mapping[str, str]) -> str | None:
+    reference = profile.model_config.credential_ref
+    if reference is None:
+        return None
+    name = reference.removeprefix("env:")
+    value = environment.get(name)
+    if isinstance(value, str) and value.strip():
+        return None
+    return (f"Profile {profile.profile_id!r} needs credential {name} in the environment. "
+            f"Set {name} (the value is never printed or stored) and try again.")
+
+
+def _memory_gate(endpoint, host_snapshot, memory_reader):
+    """Return ``(measured, total, source)``; ``measured is None`` when unknown."""
+    if host_snapshot is not None:
+        snapshot = HostMemorySnapshot.coerce(host_snapshot)
+        return snapshot.available_bytes, snapshot.total_bytes, snapshot.source
+    if (urlsplit(endpoint or "").hostname or "").lower() not in LOOPBACK_HOSTS:
+        return None, None, None
+    try:
+        available, total = (memory_reader or _psutil_memory)()
+    except (OSError, RuntimeError, ValueError, TypeError):
+        return None, None, None
+    if type(available) is not int or available < 0:
+        return None, None, None
+    return available, total if type(total) is int and total > 0 else None, "local_host_available_ram"
+
+
+def preflight_host(
+    profile: ProviderProfile | str | Path,
+    *,
+    environment: Mapping[str, str] | None = None,
+    host_snapshot: HostMemorySnapshot | Mapping | None = None,
+    memory_reader=None,
+    http_get=None,
+) -> HostPreflightReport:
+    """Zero-inference host checks before any client is built or model loaded.
+
+    Order: credential and pinned tokenizer presence (no I/O), then the free-RAM
+    gate, then read-only Ollama metadata. A failed gate stops there; the only
+    HTTP before an ``insufficient_free_ram`` verdict is one loopback ``/api/ps``
+    read, which passes the gate when the target model is already loaded.
+    Free RAM is measured with psutil only for a loopback endpoint; any other
+    endpoint needs an explicit ``host_snapshot`` taken on the model host.
+    Unknown host memory BLOCKS while a RAM requirement is declared: R2.3 says
+    the model is not loaded until the requirement is shown to be met, and an
+    under-provisioned load is exactly the opaque Ollama HTTP 500 this prevents.
+    """
+    profile = load_profile(profile)
+    environment = os.environ if environment is None else environment
+    if not isinstance(environment, Mapping):
+        raise TypeError("environment must be a mapping")
+    model = profile.model_config.model
+    requirements = profile.host_requirements
+    fallbacks = requirements.fallback_profile_ids
+    base = {"profile_id": profile.profile_id, "model": model, "fallback_profile_ids": fallbacks,
+            "required_free_ram_bytes": requirements.min_free_ram_bytes}
+    if message := _credential_failure(profile, environment):
+        return HostPreflightReport(passed=False, reason="missing_credential", recommendation=message, **base)
+    if profile.response_mapping == ResponseMapping.HARMONY_VLLM and not profile.harmony.resolve_path().is_file():
+        return HostPreflightReport(
+            passed=False, reason="missing_tokenizer", **base,
+            recommendation=(f"Profile {profile.profile_id!r} requires the pinned tokenizer at "
+                            f"{profile.harmony.tokenizer_path} (revision {profile.harmony.tokenizer_revision}). "
+                            "Download that pinned tokenizer.json before connecting; nothing was sent."))
+    if profile.hosting_mode != HostingMode.LOCAL:
+        return HostPreflightReport(passed=True, **base)
+    endpoint = _resolved_config(profile, environment).endpoint
+    memory: dict = {}
+    if requirements.min_free_ram_bytes is not None:
+        measured, total, source = _memory_gate(endpoint, host_snapshot, memory_reader)
+        memory = {"measured_free_ram_bytes": measured, "total_ram_bytes": total, "memory_source": source}
+        if measured is None:
+            host = urlsplit(endpoint or "").hostname or "the model host"
+            options = f" Or use {_fallback_text(fallbacks)}." if fallbacks else ""
+            return HostPreflightReport(
+                passed=False, reason="host_memory_unknown", **base, **memory,
+                recommendation=(f"Free RAM on {host} could not be measured from here, and {model} needs "
+                                f"{_gib(requirements.min_free_ram_bytes)} free. Nothing was loaded. Pass a "
+                                f"host memory snapshot taken on {host}, or run on the model host itself.{options}"))
+        memory["ram_gate"] = "enforced"
+        if measured < requirements.min_free_ram_bytes:
+            # A model that is already resident occupies the RAM being measured;
+            # one read-only /api/ps call (loopback Ollama only) avoids a false block.
+            loopback = (urlsplit(endpoint or "").hostname or "").lower() in LOOPBACK_HOSTS
+            if (loopback and profile.model_config.provider == "ollama"
+                    and _model_already_loaded(endpoint, model, http_get)):
+                memory["ram_gate"] = "skipped_model_already_loaded"
+            else:
+                return HostPreflightReport(
+                    passed=False, reason="insufficient_free_ram", **base, **memory,
+                    recommendation=_ram_recommendation(model, measured, requirements.min_free_ram_bytes,
+                                                       fallbacks))
+    if profile.model_config.provider != "ollama":
+        return HostPreflightReport(passed=True, **base, **memory)
+    try:
+        observed = observe_ollama_host(endpoint, model, http_get=http_get)
+    except ValueError:
+        return HostPreflightReport(
+            passed=False, reason="host_metadata_unavailable", **base, **memory,
+            recommendation=(f"Ollama metadata at {urlsplit(endpoint).netloc} did not answer. Start Ollama "
+                            "(ollama serve) or check the endpoint; nothing was loaded."))
+    host_fields = {"runtime_version": observed["runtime_version"], "artifact_digest": observed["digest"],
+                   "model_installed": observed["model_installed"], "loaded_models": tuple(observed["loaded_models"]),
+                   "observed_backend": observed["observed_backend"],
+                   "effective_context_tokens": observed["effective_context_tokens"]}
+    if not observed["model_installed"]:
+        return HostPreflightReport(
+            passed=False, reason="model_not_installed", **base, **memory, **host_fields,
+            recommendation=(f"{model} is not installed on this Ollama host. Nothing is downloaded automatically; "
+                            f"run `ollama pull {model}` yourself, then try again."))
+    return HostPreflightReport(passed=True, **base, **memory, **host_fields)
+
+
 def connect(
     profile: ProviderProfile | str | Path,
     budget: CallBudget,
     *,
     features: FeatureChoices | None = None,
     environment: Mapping[str, str] | None = None,
+    enforce_preflight: bool = True,
+    host_snapshot: HostMemorySnapshot | Mapping | None = None,
 ) -> CompletionClient:
-    """Build the configured client for ``profile`` without issuing any request.
+    """Build the configured client for ``profile`` without issuing any inference request.
 
     Dispatch is by ``(protocol, response_mapping)``. Credentials and the
     optional ``endpoint_ref`` are resolved from ``environment`` (default
-    ``os.environ``); no env file is read. Host preflight is not run here yet:
-    the free-RAM/metadata gate (M1.4) is added in front of client construction.
+    ``os.environ``); no env file is read. With ``enforce_preflight`` (default)
+    :func:`preflight_host` runs first and a failure raises :class:`PreflightError`
+    carrying the friendly proposal; for local Ollama profiles this reads host
+    RAM and read-only ``/api/*`` metadata. Pass ``enforce_preflight=False`` only
+    when the caller already ran its own host gate.
     """
     profile = load_profile(profile)
     environment = os.environ if environment is None else environment
     if not isinstance(environment, Mapping):
         raise TypeError("environment must be a mapping")
+    if enforce_preflight:
+        report = preflight_host(profile, environment=environment, host_snapshot=host_snapshot)
+        if not report.passed:
+            raise PreflightError(report)
     reference = profile.model_config.credential_ref
     if reference is not None:
         value = environment.get(reference.removeprefix("env:"))
@@ -308,6 +608,7 @@ def connect(
 
 
 __all__ = [
-    "HarmonyMappingConfig", "HostResourceRequirement", "HostingMode", "ProfileError", "ProviderProfile",
-    "ResponseMapping", "available_profiles", "connect", "load_profile",
+    "HarmonyMappingConfig", "HostMemorySnapshot", "HostPreflightReport", "HostResourceRequirement", "HostingMode",
+    "PreflightError", "ProfileError", "ProviderProfile", "ResponseMapping", "available_profiles", "connect",
+    "load_profile", "observe_ollama_host", "preflight_host",
 ]

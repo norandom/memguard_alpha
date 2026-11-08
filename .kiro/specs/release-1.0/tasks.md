@@ -1,6 +1,6 @@
 # Release 1.0: tasks and status
 
-**Current: M1.4** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
+**Current: M1.5** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
 
 Review 2026-11-08: [research review](research.md#7-streamlined-task-alignment-for-tasksmd) and [design draft](design.md).
 Task list, requirements and the M1.1 design approved by the user on 2026-11-08. Review proposals do not complete tasks, move this
@@ -41,8 +41,9 @@ Requirement 2 above is the new scope.
 - [x] M1.3 Implement profiles + factory; route scripts, harness and scorer
   through it; NIM via profile (R2.1–2.2, 2.5–2.6).
   - _Outcome 2026-11-08: `recall_guard/core/profiles.py` (`ProviderProfile`, `load_profile`, `connect`), seven profiles in `configs/providers/`, `CalibrationIdentity` v2 (rejects reuse across response mappings; legacy dicts unchanged), `MemoryGuardedScorer.from_profile`, `--profile` on the local probe and smoke scripts. NIM works as an OpenAI-compatible profile; `harness/runner.py`, `harness/smoke.py` and `MemoryGuardedScorer.calibrate` still use legacy `NvidiaLM` (different result type, public API kept). The Modal endpoint comes from `MODAL_ENDPOINT_URL`; the placeholder is refused. Full offline suite 2894 passed, 2 skipped; ruff and architecture checks clean. Follow-ups: C18, C19._
-- [ ] M1.4 Implement the free-RAM preflight with the friendly Modal / larger-host
+- [x] M1.4 Implement the free-RAM preflight with the friendly Modal / larger-host
   proposal and error-body retention (R2.3, 2.7; C1).
+  - _Outcome 2026-11-08: `preflight_host()` in `recall_guard/core/profiles.py`, run by `connect()` by default. Free RAM is read with psutil only for loopback endpoints; a remote local endpoint needs a snapshot taken on the model host, otherwise it is blocked as `host_memory_unknown`. A failed gate sends no request; the one exception is a read-only `/api/ps` call, which passes the gate if the model is already loaded. It suggests fallback profiles or a larger machine. Rich failure panels are wired into the probe and smoke scripts. HTTP error bodies (bounded, redacted) are now kept in probe receipts and local execution rows (C1 root cause of the missing body). `psutil` added to core; lock changed by two lines only. Full offline suite 2935 passed, 2 skipped. Cosmetic: the panel lists alternatives twice (M1.5)._
 - [ ] M1.5 Integrate the adopter flow and compact report (APR 4.1); update README
   "Choose where your model runs" from planned to shipped (APR 4.2, R4).
 - [ ] M1.6 Offline acceptance: one full regression + Docker smoke of the
@@ -108,7 +109,7 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 
 | ID | Concern | State | Tracked by |
 | --- | --- | --- | --- |
-| C1 | Ollama GPT-OSS-20B HTTP 500 on 2026-11-06; 13.9 GB CPU allocation vs ~13.4 GB free; body not retained | Hypothesis: free RAM | M1.4, P1 |
+| C1 | Ollama GPT-OSS-20B HTTP 500 on 2026-11-06; 13.9 GB CPU allocation vs ~13.4 GB free; body not retained | Mitigated: RAM gate and body retention shipped (M1.4); cause still a hypothesis | P1 |
 | C2 | Ollama GPT-OSS token-text alignment failed (2026-11-05); Harmony ID mapper needs token IDs | Open | P1 |
 | C3 | Modal repaired mapping verified only by offline replay | Open | M2.1 |
 | C4 | LLaVA effective context 4096 vs requested 2048 | Open | M3.1 |

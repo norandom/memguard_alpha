@@ -12,13 +12,16 @@ from recall_guard.core.profiles import (
     PROFILE_DIRECTORY,
     HarmonyMappingConfig,
     HostingMode,
+    HostMemorySnapshot,
     HostResourceRequirement,
+    PreflightError,
     ProfileError,
     ProviderProfile,
     ResponseMapping,
     available_profiles,
     connect,
     load_profile,
+    preflight_host,
 )
 from recall_guard.core.provider_anthropic import AnthropicClient
 from recall_guard.core.providers import HarmonyOpenAICompatibleClient, OpenAICompatibleClient
@@ -136,7 +139,7 @@ def test_host_requirement_validation():
 
 
 def test_connect_generic_local_profile_by_id():
-    client = connect("ollama-gemma3-4b", CallBudget(1), environment={})
+    client = connect("ollama-gemma3-4b", CallBudget(1), environment={}, enforce_preflight=False)
     assert type(client) is OpenAICompatibleClient
     assert client.config == load_profile("ollama-gemma3-4b").model_config
     assert client.budget.used == 0
@@ -196,3 +199,162 @@ def test_connect_anthropic_profile():
     assert type(client) is AnthropicClient
     with pytest.raises(ProfileError, match="TEST_ANTHROPIC_KEY"):
         connect(profile, CallBudget(1), environment={})
+
+
+# --- Host preflight (M1.4, R2.3): fakes only, no host memory or HTTP ----------
+
+DIGEST = "b" * 64
+MEASURED_LOW = int(13.4 * GIB)
+
+
+class FakeOllama:
+    def __init__(self, tags=("gpt-oss:20b",), running=()):
+        self.calls = []
+        self.tags = [{"name": name, "digest": DIGEST} for name in tags]
+        self.running = list(running)
+
+    def __call__(self, url):
+        self.calls.append(url)
+        path = url.split("11434", 1)[-1] if "11434" in url else url
+        return {"/api/version": {"version": "0.12.3"}, "/api/tags": {"models": self.tags},
+                "/api/ps": {"models": self.running}}[path]
+
+
+def reader(available, total=32 * GIB):
+    calls = []
+
+    def read():
+        calls.append(1)
+        return available, total
+    read.calls = calls
+    return read
+
+
+def gpt_oss(endpoint=None):
+    profile = load_profile("ollama-gpt-oss-20b")
+    if endpoint is None:
+        return profile
+    return replace(profile, model_config=replace(profile.model_config, endpoint=endpoint))
+
+
+def test_insufficient_free_ram_blocks_with_zero_http_and_friendly_proposal():
+    http = FakeOllama()
+    report = preflight_host(gpt_oss(), environment={}, memory_reader=reader(MEASURED_LOW), http_get=http)
+    assert not report.passed and report.reason == "insufficient_free_ram"
+    assert http.calls == ["http://localhost:11434/api/ps"]  # Exactly one read-only call, no load.
+    assert report.ram_gate == "enforced"
+    assert report.measured_free_ram_bytes == MEASURED_LOW
+    assert report.required_free_ram_bytes == 20 * GIB and report.total_ram_bytes == 32 * GIB
+    assert report.memory_source == "local_host_available_ram"
+    assert report.fallback_profile_ids == ("modal-gpt-oss-20b", "ollama-gemma3-4b")
+    assert report.recommendation == (
+        "13.4 GiB free, 20.0 GiB required for gpt-oss:20b. Nothing was loaded and no request was sent. "
+        "Try --profile modal-gpt-oss-20b or --profile ollama-gemma3-4b, or run on a machine with at least "
+        "20.0 GiB of free RAM.")
+
+
+def test_connect_raises_preflight_error_before_any_request():
+    snapshot = HostMemorySnapshot(MEASURED_LOW, sampled_at="2026-11-08T00:00:00Z")
+    with pytest.raises(PreflightError) as caught:
+        # Non-loopback host with a host-side snapshot: no /api/ps check, so zero HTTP.
+        connect(gpt_oss("http://host.docker.internal:11434/v1/chat/completions"), CallBudget(1),
+                environment={}, host_snapshot=snapshot)
+    assert caught.value.report.reason == "insufficient_free_ram"
+    assert "13.4 GiB free, 20.0 GiB required for gpt-oss:20b" in str(caught.value)
+    assert isinstance(caught.value, ProfileError)
+
+
+def test_sufficient_free_ram_passes_and_records_ollama_metadata():
+    http = FakeOllama(running=[{"name": "gpt-oss:20b", "size": 14 * GIB, "size_vram": 14 * GIB,
+                                "context_length": 2048}])
+    report = preflight_host(gpt_oss(), environment={}, memory_reader=reader(24 * GIB), http_get=http)
+    assert report.passed and report.reason is None
+    assert [url.rsplit("/", 1)[-1] for url in http.calls] == ["version", "tags", "ps"]
+    assert all(url.startswith("http://localhost:11434/api/") for url in http.calls)
+    assert report.artifact_digest == "sha256:" + DIGEST and report.runtime_version == "0.12.3"
+    assert report.model_installed and report.loaded_models == ("gpt-oss:20b",)
+    assert report.observed_backend == "GPU" and report.effective_context_tokens == 2048
+    assert report.to_dict()["passed"] is True
+
+
+@pytest.mark.parametrize("size,vram,backend", [
+    (10 * GIB, 0, "CPU"), (10 * GIB, 10 * GIB, "GPU"), (10 * GIB, 4 * GIB, "CPU/GPU offload"), (0, 0, None),
+])
+def test_api_ps_cpu_gpu_parsing(size, vram, backend):
+    http = FakeOllama(running=[{"name": "gpt-oss:20b", "size": size, "size_vram": vram}])
+    report = preflight_host(gpt_oss(), environment={}, memory_reader=reader(24 * GIB), http_get=http)
+    assert report.observed_backend == backend
+
+
+def test_other_loaded_model_is_recorded_without_its_name():
+    http = FakeOllama(running=[{"name": "private-model:7b", "size": GIB, "size_vram": 0}])
+    report = preflight_host(gpt_oss(), environment={}, memory_reader=reader(24 * GIB), http_get=http)
+    assert report.loaded_models == ("unexpected_model",) and report.observed_backend is None
+
+
+def test_non_loopback_endpoint_without_snapshot_is_unknown_and_never_reads_local_memory():
+    local = reader(64 * GIB)
+    http = FakeOllama()
+    profile = gpt_oss("http://host.docker.internal:11434/v1/chat/completions")
+    report = preflight_host(profile, environment={}, memory_reader=local, http_get=http)
+    assert not report.passed and report.reason == "host_memory_unknown"
+    assert local.calls == [] and http.calls == []
+    assert report.measured_free_ram_bytes is None
+    assert "host.docker.internal" in report.recommendation and "20.0 GiB" in report.recommendation
+    snapshot = {"available_bytes": 24 * GIB, "sampled_at": "2026-11-08T00:00:00Z"}
+    passed = preflight_host(profile, environment={}, host_snapshot=snapshot, memory_reader=local, http_get=http)
+    assert passed.passed and passed.memory_source == "host_snapshot" and local.calls == []
+
+
+def test_missing_tag_fails_with_pull_suggestion_and_never_pulls():
+    http = FakeOllama(tags=("gemma3:4b",))
+    report = preflight_host(gpt_oss(), environment={}, memory_reader=reader(24 * GIB), http_get=http)
+    assert not report.passed and report.reason == "model_not_installed"
+    assert "ollama pull gpt-oss:20b" in report.recommendation
+    assert report.model_installed is False and report.artifact_digest is None
+    assert not any("pull" in url for url in http.calls)
+
+
+def test_unreachable_ollama_metadata_fails_clearly():
+    def down(url):
+        raise requests.ConnectionError("refused")
+    report = preflight_host(gpt_oss(), environment={}, memory_reader=reader(24 * GIB), http_get=down)
+    assert not report.passed and report.reason == "host_metadata_unavailable"
+
+
+def test_missing_credential_is_reported_without_the_value():
+    report = preflight_host("nim-llama3.1-70b", environment={})
+    assert not report.passed and report.reason == "missing_credential"
+    assert "NVIDIA_API_KEY" in report.recommendation
+    assert preflight_host("nim-llama3.1-70b", environment={"NVIDIA_API_KEY": "nvapi-test"}).passed
+    assert "nvapi-test" not in json.dumps(
+        preflight_host("nim-llama3.1-70b", environment={"NVIDIA_API_KEY": "nvapi-test"}).to_dict())
+
+
+def test_missing_pinned_tokenizer_fails_preflight(tokenizer, tmp_path):
+    missing = harmony_profile(tokenizer, harmony=HarmonyMappingConfig(str(tmp_path / "absent.json"), REVISION))
+    report = preflight_host(missing, environment=MODAL_ENV)
+    assert not report.passed and report.reason == "missing_tokenizer"
+    assert preflight_host(harmony_profile(tokenizer), environment=MODAL_ENV).passed
+
+
+def test_profile_without_ram_requirement_skips_the_gate():
+    profile = replace(gpt_oss(), host_requirements=HostResourceRequirement())
+    local = reader(GIB)
+    report = preflight_host(profile, environment={}, memory_reader=local, http_get=FakeOllama())
+    assert report.passed and local.calls == [] and report.measured_free_ram_bytes is None
+
+
+def test_ram_gate_passes_when_target_model_is_already_loaded():
+    http = FakeOllama(running=[{"name": "gpt-oss:20b", "size": 14 * GIB, "size_vram": 0}])
+    report = preflight_host(gpt_oss(), environment={}, memory_reader=reader(MEASURED_LOW), http_get=http)
+    assert report.passed and report.ram_gate == "skipped_model_already_loaded"
+    assert report.measured_free_ram_bytes == MEASURED_LOW and report.observed_backend == "CPU"
+    assert http.calls[0] == "http://localhost:11434/api/ps"
+
+
+def test_ram_gate_still_blocks_when_another_model_is_loaded():
+    http = FakeOllama(running=[{"name": "gemma3:4b", "size": 4 * GIB, "size_vram": 0}])
+    report = preflight_host(gpt_oss(), environment={}, memory_reader=reader(MEASURED_LOW), http_get=http)
+    assert not report.passed and report.reason == "insufficient_free_ram"
+    assert http.calls == ["http://localhost:11434/api/ps"]

@@ -50,6 +50,9 @@ def setup(tmp_path, monkeypatch):
                 'model_allocation_bytes': None, 'accelerator_allocation_bytes': None,
                 'observed_backend': None}
     monkeypatch.setattr(probe, 'observe_host', lambda config: dict(observed), raising=False)
+    # Never read this machine's RAM or call localhost from tests.
+    monkeypatch.setattr(probe, 'host_preflight', lambda config: probe.HostPreflightReport(
+        config.candidate_id, config.model, passed=True))
     return tmp_path, host_path, candidate, observed
 
 
@@ -237,3 +240,47 @@ def test_probe_client_is_built_through_profile_factory_with_frozen_settings():
     assert client.config == config.client_config() and client.budget.used == 0
     adhoc = probe.ProbeConfig('x', 'llava-llama3:latest', config.endpoint, '', '')
     assert adhoc.profile().profile_id == 'ollama-adhoc'
+
+
+def insufficient_report(config):
+    return probe.HostPreflightReport(
+        'ollama-gpt-oss-20b', config.model, passed=False, reason='insufficient_free_ram',
+        recommendation='13.4 GiB free, 20.0 GiB required for gpt-oss:20b. Nothing was loaded.',
+        measured_free_ram_bytes=int(13.4 * 1024 ** 3), required_free_ram_bytes=20 * 1024 ** 3,
+        fallback_profile_ids=('modal-gpt-oss-20b', 'ollama-gemma3-4b'))
+
+
+def test_failed_host_preflight_refuses_before_journal_or_inference(setup, monkeypatch):
+    calls = install_response(monkeypatch, setup[0])
+    monkeypatch.setattr(probe, 'host_preflight', insufficient_report)
+    with pytest.raises(probe.PreflightError) as caught:
+        run(setup)
+    assert caught.value.report.reason == 'insufficient_free_ram'
+    assert not calls
+    assert not (setup[0] / 'journal.json').exists()
+
+
+def test_cli_prints_friendly_panel_without_traceback(setup, monkeypatch, capsys):
+    path, host, candidate, _ = setup
+    monkeypatch.setattr(probe, 'host_preflight', insufficient_report)
+    monkeypatch.setattr('sys.argv', ['probe', '--manifest', str(MANIFEST), '--candidate', candidate['id'],
+                                     '--host-observation', str(host), '--journal', str(path / 'journal.json')])
+    assert probe.main() == 2
+    err = capsys.readouterr().err
+    assert 'Not enough free memory' in err and '13.4 GiB free, 20.0 GiB required' in err
+    assert '--profile modal-gpt-oss-20b' in err
+    assert 'Traceback' not in err
+
+
+def test_http_500_receipt_keeps_bounded_sanitized_body(setup, monkeypatch):
+    body = 'model failed to load: llama runner process has terminated: ' + 'x' * 3000
+    install_response(monkeypatch, setup[0], error=probe.RequestError(
+        'HTTP 500: load failed', status_code=500, detail=body))
+    result = run(setup)
+    assert result['status'] == 'unavailable' and result['http_status'] == 500
+    failure = result['provider_failure']
+    assert failure['status_code'] == 500
+    assert failure['detail'].startswith('model failed to load: llama runner process has terminated')
+    assert failure['detail'].endswith('...[truncated]') and len(failure['detail']) < 1100
+    persisted = json.loads((setup[0] / 'journal.json').read_text(encoding='utf-8'))
+    assert persisted['attempts'][-1]['provider_failure'] == failure

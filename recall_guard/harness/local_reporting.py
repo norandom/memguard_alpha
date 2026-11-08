@@ -2,7 +2,9 @@
 
 All probabilities and AUC are dimensionless existing scorer outputs. Bytes and
 seconds are explicit in resource column names. No prompts, output tokens, raw
-responses or provider error strings are exported. Unknown quantities are null.
+responses or exception strings are exported. The one provider HTTP failure that
+stopped a batch keeps its bounded body (R2.7) after secret and prompt redaction.
+Unknown quantities are null.
 """
 import hashlib
 import json
@@ -115,6 +117,7 @@ def build_report(budget, result):
                                                'usage', 'cost', 'host_execution_stopped')} for a in receipt['attempts']]
     return {'schema_version': 1, 'status': result.status,
         'reason': result.reason if result.reason in _REASONS else None,
+        'failure': None if result.failure is None else _safe_value(dict(result.failure), budget),
         'calibrated_claims_allowed': result.calibrated_claims_allowed,
         'calibration_fit_completed': result.calibration_fit_completed,
         'batch_check': None if result.batch_check is None else asdict(result.batch_check),

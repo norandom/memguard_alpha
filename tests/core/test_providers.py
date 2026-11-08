@@ -799,3 +799,19 @@ def test_local_sidecar_batch_rejects_streaming_before_transport(wire):
     with pytest.raises(ValueError, match='non-streaming'):
         adapter.generate('x', stream=True)
     assert adapter.budget.used == 0
+
+
+def test_plain_text_http_500_body_is_retained_and_redacted(monkeypatch):
+    """Ollama can answer a failed load with a non-JSON 500; the body must survive (R2.7)."""
+    def send(adapter, prepared, **kwargs):
+        response = requests.Response()
+        response.status_code = 500
+        response._content = f"llama runner process has terminated: key={FAKE_KEY}".encode()
+        response.url, response.request = prepared.url, prepared
+        return response
+
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", send)
+    with pytest.raises(RequestError) as caught:
+        client(budget=CallBudget(1)).generate("prompt")
+    assert caught.value.status_code == 500
+    assert caught.value.detail == "llama runner process has terminated: key=[REDACTED]"

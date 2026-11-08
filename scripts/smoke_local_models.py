@@ -10,6 +10,7 @@ import argparse
 import math
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
@@ -19,7 +20,8 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recall_guard.core.local_evidence import LocalEvidenceError, validate_local_evidence
-from recall_guard.core.profiles import ProfileError, load_profile
+from recall_guard.core.profiles import PreflightError, ProfileError, load_profile, preflight_host
+from recall_guard.harness.request_failures import print_failure
 from scripts.probe_local_model import (
     PROFILE_MODELS,
     PROMPT,
@@ -56,6 +58,19 @@ def profile_selection(profile_ids, endpoint: str | None) -> tuple[list[str], str
             raise ProfileError('selected_profiles_disagree_on_endpoint_pass_endpoint')
         endpoint = endpoints.pop() if endpoints else DEFAULT_ENDPOINT
     return models, endpoint
+
+
+def profile_preflight(profile_ids, endpoint: str, *, check=preflight_host) -> None:
+    """Run the shared host preflight for each selected profile at the chosen endpoint.
+
+    Raises :class:`PreflightError` on the first failure; nothing is loaded.
+    """
+    for profile_id in profile_ids:
+        profile = load_profile(profile_id)
+        profile = replace(profile, model_config=replace(profile.model_config, endpoint=endpoint))
+        report = check(profile, environment={})
+        if not report.passed:
+            raise PreflightError(report)
 
 
 def available_memory_bytes() -> int | None:
@@ -303,9 +318,13 @@ def main() -> int:
     try:
         profiled, endpoint = profile_selection(args.profile or (), args.endpoint)
         models = list(dict.fromkeys([*profiled, *(args.model or ())])) or MODELS
+        profile_preflight(args.profile or (), endpoint)
         host = read_json(args.host_observation) if args.execute else {}
         result = run_smoke(endpoint, host, args.output, models=models,
                            execute=args.execute, minimum_available_gib=args.minimum_available_gib)
+    except PreflightError as error:
+        print_failure(error, stage='host preflight')
+        return 2
     except (OSError, ValueError):
         print('Smoke refused: invalid configuration, unavailable host file or existing receipt.', file=sys.stderr)
         return 2

@@ -17,6 +17,7 @@ from recall_guard.core.local_evidence import (
 )
 from recall_guard.core.request_control import BudgetExhaustedError
 from recall_guard.harness.local_evaluation import LocalAttemptBudget
+from recall_guard.harness.request_failures import retained_failure
 from recall_guard.harness.scorer import GuardedScore, MemoryGuardedScorer
 
 
@@ -65,6 +66,8 @@ class MeasurementRow:
     response: object | None = field(default=None, repr=False)
     reason: str | None = None
     physical_call_ids: tuple[int, ...] = ()
+    #: Bounded sanitized status/code/body of a provider HTTP failure (R2.7).
+    failure: dict | None = None
 
 
 @dataclass
@@ -81,6 +84,8 @@ class LocalExecutionResult:
     host_observations: dict[str, HostObservation] = field(default_factory=dict)
     calibration_fit_completed: bool = False
     endpoint_probe_passed: bool = False
+    #: Bounded sanitized status/code/body of the stopping provider HTTP failure (R2.7).
+    failure: dict | None = None
 
 
 class _CaptureClient:
@@ -139,8 +144,9 @@ class _CaptureClient:
                 evidence = replace(evidence, response=replace(evidence.response, local_identity=identity))
                 row.response = evidence.response
             return evidence
-        except Exception:
+        except Exception as error:
             row.status, row.reason = 'failed', 'probe_unavailable'
+            row.failure = retained_failure(error)
             raise
         finally:
             row.physical_call_ids = tuple(range(start + 1, self.budget.used + 1))
@@ -178,6 +184,7 @@ class _CaptureClient:
                 row.response = getattr(error, 'response_evidence', None)
             row.status = 'failed'
             row.reason = 'invalid_evidence_or_identity' if isinstance(error, ValueError) else 'generation_unavailable'
+            row.failure = retained_failure(error)
             raise
         finally:
             row.physical_call_ids = tuple(range(start + 1, self.budget.used + 1))
@@ -246,6 +253,8 @@ def execute_plan(budget: LocalAttemptBudget, observer) -> LocalExecutionResult:
                          'budget_or_cancellation' if isinstance(error, BudgetExhaustedError) else
                          'invalid_evidence_identity_or_fit' if isinstance(error, ValueError) else
                          'host_or_calibration_unavailable')
+        result.failure = retained_failure(error) or next(
+            (row.failure for row in result.rows if row.failure is not None), None)
         if capture is not None and capture.current_row is not None and capture.current_row.status == 'received':
             capture.current_row.status, capture.current_row.reason = 'failed', result.reason
     finally:

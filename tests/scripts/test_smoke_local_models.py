@@ -219,3 +219,27 @@ def test_profile_selection_maps_curated_profiles_and_keeps_explicit_endpoint():
     assert smoke.profile_selection(['ollama-gemma3-4b'], ENDPOINT) == (['gemma3:4b'], ENDPOINT)
     with pytest.raises(ValueError):
         smoke.profile_selection(['nim-llama3.1-70b'], None)
+
+
+def test_profile_preflight_uses_selected_endpoint_and_main_prints_panel(monkeypatch, capsys):
+    from recall_guard.core.profiles import HostPreflightReport
+
+    seen = []
+
+    def check(profile, *, environment):
+        seen.append((profile.profile_id, profile.model_config.endpoint, dict(environment)))
+        return HostPreflightReport(profile.profile_id, profile.model_config.model, passed=False,
+                                   reason='insufficient_free_ram',
+                                   recommendation='13.4 GiB free, 20.0 GiB required for gpt-oss:20b.',
+                                   fallback_profile_ids=('modal-gpt-oss-20b',),
+                                   required_free_ram_bytes=20 * GIB)
+
+    with pytest.raises(smoke.PreflightError):
+        smoke.profile_preflight(['ollama-gpt-oss-20b'], ENDPOINT, check=check)
+    assert seen == [('ollama-gpt-oss-20b', ENDPOINT, {})]
+    monkeypatch.setattr(smoke, 'preflight_host', check)
+    monkeypatch.setattr(smoke.profile_preflight, '__kwdefaults__', {'check': check})
+    monkeypatch.setattr('sys.argv', ['smoke', '--profile', 'ollama-gpt-oss-20b'])
+    assert smoke.main() == 2
+    err = capsys.readouterr().err
+    assert 'Not enough free memory' in err and '--profile modal-gpt-oss-20b' in err and 'Traceback' not in err

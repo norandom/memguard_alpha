@@ -41,7 +41,7 @@ def test_default_runtime_dependency_set_stays_lean() -> None:
         for dep in data["project"]["dependencies"]
     }
     assert roots == {
-        "numpy", "scikit-learn", "rich", "pyyaml", "requests", "python-dotenv",
+        "numpy", "scikit-learn", "rich", "pyyaml", "requests", "python-dotenv", "psutil",
     }
     # The heavyweight stacks must never creep into the default install.
     assert not ({"matplotlib", "vectorbt", "mkdocs", "pytest", "dagger-io"} & roots)
