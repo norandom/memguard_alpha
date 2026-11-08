@@ -283,3 +283,15 @@ def test_explicit_single_completion_is_budgeted(inputs):
     plan = local.load_plan(*inputs)
     config = replace(plan.config, parameters=dict(plan.config.parameters) | {'n': 1})
     assert replace(plan, config=config).physical_requests == plan.physical_requests
+
+
+def test_zero_draws_is_a_single_answer_only_plan(inputs):
+    data = json.loads(inputs[0].read_text())
+    data['ensemble_draws'] = 0
+    inputs[0].write_text(json.dumps(data), encoding='utf-8')
+    plan = local.load_plan(*inputs)
+    assert plan.logical_requests == 5  # probe + IS + OOS baseline + OOS training + single
+    data['ensemble_draws'] = -1
+    inputs[0].write_text(json.dumps(data), encoding='utf-8')
+    with pytest.raises(ValueError, match='nonnegative'):
+        local.load_plan(*inputs)

@@ -1,14 +1,16 @@
 #!/bin/sh
 # Run the Modal operator tooling (deploy/modal, Python 3.12) inside a container.
 # Usage (from WSL/Linux/macOS): sh scripts/modal_operator.sh plan | apps | inventory | lock | execute RECEIPT APPROVAL | stop APP_ID
-# plan and lock need no credentials; other modes pass the root .env to the container only.
+#   | measure-plan PLAN MANIFEST CORPUS [APPROVAL]  (offline dry run of a measurement plan)
+#   | execute-measurement PLAN MANIFEST CORPUS APPROVAL JOURNAL RECEIPT  (paid; measurement manifest)
+# plan, measure-plan and lock need no credentials; other modes pass the root .env to the container only.
 # Credential values are whitespace-trimmed in the container; .env is never modified.
 set -eu
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 MODE="$1"; shift
 ENV_ARGS=""
 case "$MODE" in
-  plan|lock) ;;
+  plan|measure-plan|lock) ;;
   *) ENV_ARGS="--env-file $REPO/.env" ;;
 esac
 # shellcheck disable=SC2086
@@ -30,6 +32,17 @@ exec docker run --rm $ENV_ARGS \
         ;;
       execute)
         run scripts/probe_modal_model.py --execute --harmony-eligibility-only --receipt "$1" --approval "$2"
+        ;;
+      measure-plan)
+        if [ "$#" -ge 4 ]; then
+          run scripts/measure_modal_model.py --plan "$1" --manifest "$2" --corpus "$3" --approval "$4"
+        else
+          run scripts/measure_modal_model.py --plan "$1" --manifest "$2" --corpus "$3"
+        fi
+        ;;
+      execute-measurement)
+        [ "$#" -eq 6 ] || { echo "execute-measurement needs PLAN MANIFEST CORPUS APPROVAL JOURNAL RECEIPT" >&2; exit 2; }
+        run scripts/measure_modal_model.py --execute --plan "$1" --manifest "$2" --corpus "$3"           --approval "$4" --journal "$5" --receipt "$6"
         ;;
       apps)
         run -m modal app list --env recall-guard-pilot

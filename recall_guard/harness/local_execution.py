@@ -231,7 +231,8 @@ def execute_plan(budget: LocalAttemptBudget, observer) -> LocalExecutionResult:
         capture._check_running()
         capture.scorer = scorer
         result.holdout_auc = scorer.holdout_auc
-        spec = EnsembleSpec(draws=plan.ensemble_draws, min_parsed=plan.ensemble_min_parsed,
+        spec = None if not plan.ensemble_draws else EnsembleSpec(
+            draws=plan.ensemble_draws, min_parsed=plan.ensemble_min_parsed,
             max_workers=1, retain_draws=True, max_tokens=plan.config.parameters['max_tokens'],
             temperature=plan.config.parameters.get('temperature'))
         for item in plan.items:
@@ -241,6 +242,8 @@ def execute_plan(budget: LocalAttemptBudget, observer) -> LocalExecutionResult:
             capture.active_rows, capture.offset = rows[:1], 0
             rows[0].score = scorer.score(item.prompt)
             capture._check_running()
+            if spec is None:
+                continue
             capture.active_rows, capture.offset = rows[1:], 0
             result.ensembles[item.item_id] = scorer.score_ensemble(item.prompt, spec=spec)
             capture._check_running()

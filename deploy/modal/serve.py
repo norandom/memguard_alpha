@@ -25,7 +25,7 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from deploy.modal.manifest import UPLOAD_ALLOWLIST, Plan, load_plan
+from deploy.modal.manifest import PILOT_MANIFEST, Plan, load_plan, upload_allowlist
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = "/cache/huggingface"
@@ -180,7 +180,7 @@ async def expire_experiment(plan: Plan, app_id: str, deadline_unix_s: float, arm
         # Rates from the frozen manifest, checked 2026-11-06; excludes burst usage,
         # image builds/storage/egress. Observed cost always remains unknown here.
         "estimated_usd": (time.monotonic() - started) * (0.125 * 0.0000131 + 0.125 * 0.00000222),
-        "estimate_source": "configs/modal/gpt-oss-20b-pilot.json cost; 2026-11-06",
+        "estimate_source": plan.serving_manifest + " cost; 2026-11-06",
         "cost_caveat": "Resource request estimate; burst use and other charges excluded; no exact dollar ceiling",
     })
     await asyncio.wait_for(store.put.aio((app_id, "expiry_cleanup"), result), CONTROL_TIMEOUT_SECONDS)
@@ -241,14 +241,21 @@ async def experiment_lifecycle(plan: Plan, app_id: str, *, gpu_started_at_unix_s
             lease["expiry_cleanup"] = await stop_expiry_controller(plan, sdk=sdk)
 
 
-def create_expiry_app(*, sdk=None, root: Path = ROOT):
-    """Construct only: operator must separately deploy this CPU app before GPU startup."""
+def create_expiry_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANIFEST):
+    """Construct only: operator must separately deploy this CPU app before GPU startup.
+
+    ``manifest`` selects a reviewed serving manifest; its GPU phase bounds the
+    controller's own timeout (phase plus 150 s for the stop and verification).
+    """
     require_operator_python()
     sdk = _sdk(sdk)
-    plan = load_plan(root / "configs/modal/gpt-oss-20b-pilot.json")
+    allowlist = upload_allowlist(manifest)
+    plan = load_plan(root / manifest)
+    if plan.serving_manifest != manifest:
+        raise ValueError("Serving manifest differs from its reviewed upload allowlist")
     app = sdk.App(plan.target.app + "-expiry")
     image = sdk.Image.debian_slim(python_version="3.12")
-    for relative in UPLOAD_ALLOWLIST:
+    for relative in allowlist:
         path = root / relative
         if not path.is_file() or any(p.is_symlink() or p.is_junction() for p in (path, *path.parents)):
             raise ValueError("Unsafe expiry upload")
@@ -257,7 +264,8 @@ def create_expiry_app(*, sdk=None, root: Path = ROOT):
     @app.function(
         name="expire", image=image, gpu=None, cpu=0.125, memory=128,
         min_containers=0, max_containers=1, buffer_containers=0, scaledown_window=2,
-        retries=0, timeout=1350, startup_timeout=30, include_source=False, serialized=True,
+        retries=0, timeout=plan.limits.gpu_phase_seconds + 150, startup_timeout=30, include_source=False,
+        serialized=True,
     )
     @sdk.concurrent(max_inputs=1)
     async def expire(app_id, deadline_unix_s, arm_id):
@@ -407,11 +415,15 @@ def read_observations(plan: Plan, app_id: str, *, sdk=None) -> list[dict]:
     return results
 
 
-def create_app(*, sdk=None, root: Path = ROOT):
-    """Construct lazy SDK handles only; caller controls deployment and environment."""
+def create_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANIFEST):
+    """Construct lazy SDK handles only; caller controls deployment and environment.
+
+    ``manifest`` selects a reviewed serving manifest (pilot by default).
+    """
     require_operator_python()
     root = root.absolute()
-    files = [root / relative for relative in UPLOAD_ALLOWLIST]
+    allowlist = upload_allowlist(manifest)
+    files = [root / relative for relative in allowlist]
     for path in files:
         if (
             not path.is_file()
@@ -419,7 +431,9 @@ def create_app(*, sdk=None, root: Path = ROOT):
             or any(parent.is_symlink() or parent.is_junction() for parent in (path, *path.parents))
         ):
             raise ValueError("Unsafe serving upload")
-    plan = load_plan(root / "configs/modal/gpt-oss-20b-pilot.json")
+    plan = load_plan(root / manifest)
+    if plan.serving_manifest != manifest:
+        raise ValueError("Serving manifest differs from its reviewed upload allowlist")
     if sdk is None:
         import modal as sdk
 
@@ -447,7 +461,7 @@ def create_app(*, sdk=None, root: Path = ROOT):
         }
     )
     # Deferred local files must follow all image build operations, including env.
-    for path, relative in zip(files, UPLOAD_ALLOWLIST, strict=True):
+    for path, relative in zip(files, allowlist, strict=True):
         image = image.add_local_file(path, "/root/" + relative)
     weights = sdk.Volume.from_name("recall-guard-gpt-oss-20b-weights", environment_name=plan.target.environment,
                                    create_if_missing=False)

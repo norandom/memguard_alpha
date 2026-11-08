@@ -115,10 +115,13 @@ class LocalMeasurementPlan:
             raise ValueError('unsupported_selected_features')
         if config.parameters.get('top_logprobs', 0) < 1:
             raise ValueError('selected_features_require_alternatives')
-        _positive(self.ensemble_draws, 'ensemble_draws')
+        # Zero draws is a single-answer-only plan (measurement Phase A); the
+        # ensemble arm is then neither planned, reserved nor executed.
+        if type(self.ensemble_draws) is not int or self.ensemble_draws < 0:
+            raise ValueError('ensemble_draws must be a nonnegative integer')
         _positive(self.min_valid, 'min_valid')
         _positive(self.ensemble_min_parsed, 'ensemble_min_parsed')
-        if self.ensemble_min_parsed > self.ensemble_draws:
+        if self.ensemble_draws and self.ensemble_min_parsed > self.ensemble_draws:
             raise ValueError('ensemble_min_parsed_exceeds_draws')
         if type(self.seed) is not int or not 0 <= self.seed < 2**32:
             raise ValueError('invalid_calibration_seed')

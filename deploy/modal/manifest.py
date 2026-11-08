@@ -85,6 +85,25 @@ def _typed(cls, raw):
     return cls(**raw)
 
 
+PILOT_MANIFEST = "configs/modal/gpt-oss-20b-pilot.json"
+MEASUREMENT_MANIFEST = "configs/modal/gpt-oss-20b-measurement.json"
+_SOURCES = ("deploy/modal/serve.py", "deploy/modal/manifest.py")
+# Reviewed bounds per serving manifest. The pilot entry is pinned by existing
+# approval records; the measurement entry covers M4 Phase A (321 requests,
+# USD 2.00 cap). A new manifest needs its own reviewed entry here.
+REVIEWED_LIMITS = {
+    PILOT_MANIFEST: (Limits(8, 1, 7, 0, 512, 4096, 120, 1200, 600, 120, 0, 1, True, 5), 5),
+    MEASUREMENT_MANIFEST: (Limits(321, 1, 320, 0, 512, 164352, 120, 2700, 600, 120, 0, 1, True, 5), 2),
+}
+
+
+def upload_allowlist(manifest: str = PILOT_MANIFEST) -> tuple[str, ...]:
+    """Exact upload set for one reviewed serving manifest (repository-relative)."""
+    if manifest not in REVIEWED_LIMITS:
+        raise ValueError("Unreviewed serving manifest")
+    return (*_SOURCES, manifest)
+
+
 @dataclass(frozen=True)
 class Plan:
     target: Target
@@ -92,6 +111,7 @@ class Plan:
     resources: Resources
     limits: Limits
     execution_blockers: tuple[str, ...]
+    serving_manifest: str = PILOT_MANIFEST
 
     @property
     def memory_mib(self) -> int:
@@ -101,14 +121,10 @@ class Plan:
     def upload_allowed(self, relative_path: str) -> bool:
         """Exact file allowlist; callers must also reject symlinks before upload."""
         path = PurePosixPath(relative_path)
-        return relative_path == path.as_posix() and relative_path in UPLOAD_ALLOWLIST
+        return relative_path == path.as_posix() and relative_path in upload_allowlist(self.serving_manifest)
 
 
-UPLOAD_ALLOWLIST = (
-    "deploy/modal/serve.py",
-    "deploy/modal/manifest.py",
-    "configs/modal/gpt-oss-20b-pilot.json",
-)
+UPLOAD_ALLOWLIST = upload_allowlist(PILOT_MANIFEST)
 
 
 def load_plan(path: str | Path) -> Plan:
@@ -173,8 +189,15 @@ def load_plan(path: str | Path) -> Plan:
         raise ValueError("Unsupported artifact configuration; requires revalidation")
     if resources != Resources("A100-40GB", 1, 4, 32, 4096, 1, 1, 1, 0, 1, 0, 60):
         raise ValueError("Resources differ from the reviewed candidate or units")
-    if limits != Limits(8, 1, 7, 0, 512, 4096, 120, 1200, 600, 120, 0, 1, True, 5):
-        raise ValueError("Pilot limits differ from the reviewed bounds")
+    allowlist = raw["upload_allowlist"]
+    if (not isinstance(allowlist, list) or len(allowlist) != 3 or tuple(allowlist[:2]) != _SOURCES
+            or allowlist[2] not in REVIEWED_LIMITS):
+        raise ValueError("Upload allowlist differs from the reviewed files")
+    serving_manifest = allowlist[2]
+    reviewed_limits, reviewed_target_usd = REVIEWED_LIMITS[serving_manifest]
+    if limits != reviewed_limits:
+        raise ValueError("Pilot limits differ from the reviewed bounds" if serving_manifest == PILOT_MANIFEST
+                         else "Measurement limits differ from the reviewed bounds")
     if raw["cache"] != {
         "volume": "recall-guard-gpt-oss-20b-weights",
         "mount_path": "/cache/huggingface",
@@ -183,8 +206,6 @@ def load_plan(path: str | Path) -> Plan:
         "retain_after_cleanup": True,
     }:
         raise ValueError("Cache staging must be separate and CPU-only")
-    if raw["upload_allowlist"] != list(UPLOAD_ALLOWLIST):
-        raise ValueError("Upload allowlist differs from the reviewed files")
     cost = raw["cost"]
     expected_cost_fields = {
         "pricing_checked_at",
@@ -208,8 +229,9 @@ def load_plan(path: str | Path) -> Plan:
         timestamp = datetime.fromisoformat(cost["pricing_checked_at"].replace("Z", "+00:00"))
     except (ValueError, TypeError, AttributeError) as exc:
         raise ValueError("Invalid pricing timestamp") from exc
-    if timestamp.tzinfo is None or cost["hard_ceiling"] is not False or cost["target_usd"] != 5:
-        raise ValueError("Dated USD5 target required; never an exact spend ceiling")
+    if (timestamp.tzinfo is None or cost["hard_ceiling"] is not False
+            or type(cost["target_usd"]) not in (int, float) or cost["target_usd"] != reviewed_target_usd):
+        raise ValueError("Dated reviewed USD target required; never an exact spend ceiling")
     for field in (
         "gpu_usd_per_second",
         "physical_core_usd_per_second",
@@ -245,7 +267,7 @@ def load_plan(path: str | Path) -> Plan:
     )
     # Budget review is a later runner responsibility; a setup plan never authorizes execution.
     blockers += ("provider_budget", "account_access_unverified", "paid_execution_not_authorized")
-    return Plan(target, artifacts, resources, limits, blockers)
+    return Plan(target, artifacts, resources, limits, blockers, serving_manifest)
 
 
 def main() -> None:

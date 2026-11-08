@@ -143,21 +143,34 @@ def tokenizer_counts(plan, root):
     No downloads, fallback estimates or fabricated usage. Only the exact HF snapshot
     layout is accepted. The serving provenance must later match these file hashes.
     """
-    directory = (root / "hub" / ("models--" + plan.artifacts.tokenizer.replace("/", "--"))
-                 / "snapshots" / plan.artifacts.tokenizer_revision)
-    files = [directory / name for name in ("tokenizer.json", "tokenizer_config.json")]
-    if any(not file.is_file() for file in files):
+    hashes = tokenizer_hashes(plan, root)
+    if hashes is None:
         return None, None
     from transformers import AutoTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(str(directory), local_files_only=True, trust_remote_code=False)
+    tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_directory(plan, root)), local_files_only=True,
+                                              trust_remote_code=False)
     counts = [len(tokenizer.apply_chat_template(
         [{"role": "user", "content": prompt}], tokenize=True, add_generation_prompt=True
     )) for prompt in PROMPTS]
+    return counts, hashes
+
+
+def tokenizer_directory(plan, root):
+    return (root / "hub" / ("models--" + plan.artifacts.tokenizer.replace("/", "--"))
+            / "snapshots" / plan.artifacts.tokenizer_revision)
+
+
+def tokenizer_hashes(plan, root):
+    """Local pinned tokenizer file hashes, in the serving provenance's shape; None if absent."""
+    directory = tokenizer_directory(plan, root)
+    files = [directory / name for name in ("tokenizer.json", "tokenizer_config.json")]
+    if any(not file.is_file() for file in files):
+        return None
     hashes = {file.name: digest(file.read_bytes()) for file in files}
     template = directory / "chat_template.jinja"
     hashes[template.name] = digest(template.read_bytes()) if template.is_file() else None
-    return counts, hashes
+    return hashes
 
 
 def planning(manifest=MANIFEST, *, tokenizer_root=Path("models")):
@@ -205,18 +218,28 @@ def persist(path, receipt):
             temporary.unlink(missing_ok=True)
 
 
-def approval_check(path, frozen, plan):
+APPROVAL_ASSERTIONS = ("paid_execution_authorized", "account_access_verified", "operator_allowance_confirmed",
+                       "model_access_verified", "pricing_and_budget_reviewed")
+
+
+def approval_record(path, plan, hashes):
+    """Shared approval gate: five explicit assertions, exact frozen input hashes,
+    explicit workspace/endpoint and a reviewed provider budget reference."""
     record = json.loads(path.read_text(encoding="utf-8"))
-    required = ("paid_execution_authorized", "account_access_verified", "operator_allowance_confirmed",
-                "model_access_verified", "pricing_and_budget_reviewed")
-    if any(record.get(key) is not True for key in required):
+    if any(record.get(key) is not True for key in APPROVAL_ASSERTIONS):
         raise ValueError("execution_approval_or_prerequisites_missing")
-    if record.get("manifest_sha256") != frozen["manifest_sha256"] or record.get("prompts_sha256") != frozen["prompts_sha256"]:
+    if any(record.get(key) != value for key, value in hashes.items()):
         raise ValueError("approval_plan_mismatch")
     if record.get("workspace") != plan.target.workspace or not plan.target.workspace or not plan.target.endpoint:
         raise ValueError("explicit_workspace_and_endpoint_required")
     if not isinstance(record.get("provider_budget_reference"), str) or not record["provider_budget_reference"]:
         raise ValueError("reviewed_provider_budget_required")
+    return record
+
+
+def approval_check(path, frozen, plan):
+    record = approval_record(path, plan, {"manifest_sha256": frozen["manifest_sha256"],
+                                          "prompts_sha256": frozen["prompts_sha256"]})
     if frozen["input_tokens"] is None or "context_allowance_exceeded" in frozen["execution_blockers"]:
         raise ValueError("pinned_tokenizer_context_required")
     budget = validate_budget(record.get("monthly_budget"), plan)
@@ -361,26 +384,22 @@ def unauthenticated_health_guard(plan, receipt, path):
         persist(path, receipt)
 
 
-async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("models"), sdk=None,
-                  harmony_eligibility_only=False):
-    serve.require_operator_python()
-    frozen = planning(manifest, tokenizer_root=tokenizer_root)
-    plan = load_plan(manifest)
-    # An existing receipt is never resumable, even when it contains no finished calls.
-    with receipt_path.open("x", encoding="utf-8"):
-        pass
-    receipt = {"plan": frozen, "attempts": [], "control_events": [], "lifecycle": {},
-               "staging_events": [{"operation": "external_weight_staging", "status": "separate_prerequisite",
-                                   "estimated_gross_usd": None, "observed_gross_usd": None}],
-               "inference_posts": 0, "status": "reserved", "calibration": "unavailable",
-               "environment_status": "unknown", "evidence_status": "unobserved",
-               "mode": "harmony_eligibility" if harmony_eligibility_only else "pilot"}
-    persist(receipt_path, receipt)
+async def run_lifecycle(plan, receipt, receipt_path, *, preflight, body, tokenizer_hashes, sdk=None):
+    """Shared paid sequence for every Modal runner mode.
+
+    Order: budget preflight, CPU weight-cache inventory, credential preflight,
+    expiry-controller deploy, model deploy, armed expiry, endpoint identity,
+    unauthenticated 401 guard, readiness, provenance, then ``body(app, endpoint)``
+    only on an observed-stable environment, and verified stop of the model app
+    and the expiry controller on every exit. ``preflight()`` returns the budget
+    review and must raise before any cloud call. Never raises; failures are in
+    the receipt.
+    """
     app = None
     try:
         with diagnostic_stage(receipt, receipt_path, "budget_preflight"):
-            receipt["budget_review"] = approval_check(approval, frozen, plan)
-            serving_plan = load_plan(serve.ROOT / "configs/modal/gpt-oss-20b-pilot.json")
+            receipt["budget_review"] = preflight()
+            serving_plan = load_plan(serve.ROOT / plan.serving_manifest)
             if ((plan.target.app, plan.target.environment, plan.artifacts, plan.resources, plan.limits) !=
                     (serving_plan.target.app, serving_plan.target.environment, serving_plan.artifacts,
                      serving_plan.resources, serving_plan.limits)):
@@ -398,10 +417,10 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
             OpenAICompatibleClient(ModelConfig(protocol="openai_chat", model=plan.artifacts.model,
                 endpoint=plan.target.endpoint + "/chat/completions", credential_ref=plan.target.credential_env), CallBudget(0))
         with diagnostic_stage(receipt, receipt_path, "controller_deploy"):
-            expiry = serve.create_expiry_app(sdk=sdk)
+            expiry = serve.create_expiry_app(sdk=sdk, manifest=plan.serving_manifest)
             await asyncio.wait_for(expiry.deploy.aio(environment_name=plan.target.environment), 600)
         with diagnostic_stage(receipt, receipt_path, "model_deploy"):
-            app = serve.create_app(sdk=sdk)
+            app = serve.create_app(sdk=sdk, manifest=plan.serving_manifest)
             receipt["gpu_started_at_unix_s"] = time.time()
             persist(receipt_path, receipt)
             await asyncio.wait_for(app.deploy.aio(environment_name=plan.target.environment), 600)
@@ -435,13 +454,10 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
                     event["finished_at_unix_s"] = receipt["ready_at_unix_s"]
                 with diagnostic_stage(receipt, receipt_path, "provenance"):
                     receipt["observed_before"] = await asyncio.wait_for(asyncio.to_thread(serve.read_observations, plan, app.app_id, sdk=sdk), 10)
-                    receipt["environment_status"] = environment_status(plan, receipt["observed_before"], frozen["tokenizer_sha256"])
+                    receipt["environment_status"] = environment_status(plan, receipt["observed_before"], tokenizer_hashes)
                 with diagnostic_stage(receipt, receipt_path, "inference"):
-                    if receipt["environment_status"] == "observed_stable" and harmony_eligibility_only:
-                        # One eligibility POST only; measurement prompts stay unsent.
-                        await attempts(plan, receipt, receipt_path, client_factory=harmony_client, prompts=PROMPTS[:1])
-                    elif receipt["environment_status"] == "observed_stable":
-                        await attempts(plan, receipt, receipt_path)
+                    if receipt["environment_status"] == "observed_stable":
+                        await body(app, endpoint)
                     else:
                         receipt["status"] = "environment_ineligible"
     except (Exception, asyncio.CancelledError, KeyboardInterrupt) as exc:
@@ -461,12 +477,41 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
             try:
                 receipt["observed_after"] = await asyncio.wait_for(asyncio.to_thread(serve.read_observations, plan, app.app_id, sdk=sdk), 10)
                 receipt["environment_status"] = environment_status(plan,
-                    receipt.get("observed_before", []) + receipt["observed_after"], frozen["tokenizer_sha256"])
+                    receipt.get("observed_before", []) + receipt["observed_after"], tokenizer_hashes)
                 if not any(row.get("phase") == "closing" for row in receipt["observed_after"]):
                     receipt["environment_status"] = "unknown"
             except Exception as exc:
                 receipt["environment_status"] = "unknown"
                 record_error(receipt, receipt_path, exc, "provenance_after")
+
+
+async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("models"), sdk=None,
+                  harmony_eligibility_only=False):
+    serve.require_operator_python()
+    frozen = planning(manifest, tokenizer_root=tokenizer_root)
+    plan = load_plan(manifest)
+    # An existing receipt is never resumable, even when it contains no finished calls.
+    with receipt_path.open("x", encoding="utf-8"):
+        pass
+    receipt = {"plan": frozen, "attempts": [], "control_events": [], "lifecycle": {},
+               "staging_events": [{"operation": "external_weight_staging", "status": "separate_prerequisite",
+                                   "estimated_gross_usd": None, "observed_gross_usd": None}],
+               "inference_posts": 0, "status": "reserved", "calibration": "unavailable",
+               "environment_status": "unknown", "evidence_status": "unobserved",
+               "mode": "harmony_eligibility" if harmony_eligibility_only else "pilot"}
+    persist(receipt_path, receipt)
+
+    async def body(app, endpoint):
+        if harmony_eligibility_only:
+            # One eligibility POST only; measurement prompts stay unsent.
+            await attempts(plan, receipt, receipt_path, client_factory=harmony_client, prompts=PROMPTS[:1])
+        else:
+            await attempts(plan, receipt, receipt_path)
+
+    try:
+        await run_lifecycle(plan, receipt, receipt_path, preflight=lambda: approval_check(approval, frozen, plan),
+                            body=body, tokenizer_hashes=frozen["tokenizer_sha256"], sdk=sdk)
+    finally:
         receipt["evidence_status"] = ("eligible" if receipt["attempts"] and all(
             row["status"] == "eligible" for row in receipt["attempts"]) else "ineligible_or_unobserved")
         receipt["finished_at_unix_s"] = time.time()
