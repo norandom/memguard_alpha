@@ -52,6 +52,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Research register: research-register.md
   - Docker and development: development.md
   - PIT architecture: pit-architecture.md
   - Ensemble consensus: ensemble.md

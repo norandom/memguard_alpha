@@ -325,6 +325,7 @@ the Jane Street feature.
 
 ## Further reading
 
+- [Research register](docs/research-register.md): every dated decision, experiment and result
 - [Engineering guide and API reference](https://norandom.github.io/memguard_alpha/)
 - [Point-in-time architecture](docs/pit-architecture.md)
 - [Ensemble scoring](docs/ensemble.md)
