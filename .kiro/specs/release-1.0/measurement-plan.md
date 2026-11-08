@@ -120,3 +120,18 @@ not compared as full distributions.
 - D3: local serving route (container Ollama in WSL recommended).
 - Limits: Phase A local (1,605 requests), Phase A Modal (321 requests, cap USD 2.00);
   Phase B is approved separately later.
+
+## Decisions after the first runs (2026-11-08)
+
+- Purpose (user): Recall Guard calibrates the memorization estimate; it does not
+  remove memorization. The ensemble gives the calibrated model's answer and score
+  with less serving nondeterminism.
+- Phase B (user): 32 draws per held-out item, analysed split-half (two
+  16-draw ensembles per item compared with each other and with single draws).
+  2,560 requests per model; Modal about USD 7. Inputs and limits to be frozen and
+  approved before execution.
+- Modal Phase A: rerun r3 approved (cap USD 2.00) after two stops on harness
+  defects (register R22, R23). Local reruns approved for models that stopped on
+  the evidence-defect bug (321 requests each, beyond the original 1,605).
+- Calibration quality: add Brier score and a reliability summary of held-out
+  `p_memorized` to the reports (offline, no extra requests).
