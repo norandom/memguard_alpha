@@ -1,5 +1,11 @@
 # recall_guard — package, public API & invariants
 
+Execution-policy amendment, 2026-11-08: the user now requires Docker for Recall
+Guard execution on Windows and drops direct native Windows application support.
+The [execution environment](execution-environment.md) supersedes historical
+first-class Windows and PowerShell-Python statements below. Native host Ollama
+remains an explicit model-serving exception; portable library behavior remains.
+
 Durable project memory for the packaging work landed on `main`
 (commits `3ba8425`, `03a3752`, `efad5f5`, `951553d`). Full spec:
 [`.kiro/specs/recall-guard-package/`](../specs/recall-guard-package/).
@@ -56,9 +62,9 @@ scorer.holdout_auc, scorer.is_weak    # calibrator quality
   existing complexity/length limits as review guidelines, not a tool dependency.
   Prefer focused idiomatic Python/NumPy and names that match domain meaning,
   representation and units. Document array axes and DataFrame row grain,
-  column/index meanings and alignment. Windows is a first-class development
-  platform: use explicit UTF-8 for text artifacts, portable diagnostic paths and
-  shell-neutral Python entry points.
+  column/index meanings and alignment. Windows users execute the application
+  through Docker. Retain explicit UTF-8 text artifacts, portable diagnostic
+  paths and shell-neutral Python entry points.
 - **Renames touch strings too.** When moving modules, rewrite `recall_guard.<layer>`
   references inside string literals — `mocker.patch(...)` targets, `logger="…"` names, the
   `python -m …` CLI `prog`, error messages — not just `from … import` lines. A plain import
@@ -145,9 +151,9 @@ Delayed wakeups must not compress subsequent starts.
 ## Project command invocation
 
 Current shell/environment policy: [execution-environment.md](execution-environment.md).
-Use PowerShell on Windows. WSL is reserved for Dagger CI, not ordinary commands,
-local hosting, measurements or direct Docker validation. This November 5 user
-decision supersedes conflicting historical execution guidance below.
+Use PowerShell to launch Docker on Windows; project Python executes inside the
+container. WSL may supply Docker/Dagger infrastructure. This November 8 decision
+supersedes the native execution instructions and historical receipts below.
 
 Per user instruction on 2026-11-01, invoke project Python commands through `uv run --no-sync ...` from the repository root. Use `uv run --no-sync python ...` for scripts and `uv run --no-sync pytest ...` for tests. Do not invoke a hard-coded base interpreter or `.venv/Scripts/python.exe` directly. Interpreter metadata alone does not establish the cause of prior abnormal process exits; retain those receipts without attributing them to Windows or uv.
 

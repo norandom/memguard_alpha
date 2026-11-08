@@ -1,6 +1,6 @@
 # Release 1.0: tasks and status
 
-**Current: M2.1** (awaiting user authorization) · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
+**Current: M1.7** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
 
 Review 2026-11-08: [research review](research.md#7-streamlined-task-alignment-for-tasksmd) and [design draft](design.md).
 Task list, requirements and the M1.1 design approved by the user on 2026-11-08. Review proposals do not complete tasks, move this
@@ -50,6 +50,19 @@ Requirement 2 above is the new scope.
 - [x] M1.6 Offline acceptance: one full regression + Docker smoke of the
   selection → fallback → report flow (APR 5.1, Docker 3.2).
   - _Outcome 2026-11-08: shared `recall-guard:dev` image built from d2cfb0d with Docker Engine 29.9.2 in WSL Debian. `examples/adopter_flow.py --fixture` completed in the container (12 physical requests, cost unknown). Full offline suite in Linux: 2951 passed, 1 skipped. Native Windows: 2950 passed, 2 skipped (the extra skip is the symlink privilege test). C17 rechecked: not reachable in sequential flows; it stays low/watch for concurrent ensemble draws._
+- [ ] M1.7 Windows runs containers only (user decision 2026-11-08; steering
+  `execution-environment.md`). Inserted before M2 because it changes how adopters
+  run every command.
+  - [ ] M1.7a Preflight inside containers: when running in a container, never read
+    local memory as the model host's, even for a loopback endpoint reached through
+    host networking (C20). Host memory snapshots carry a timestamp and are refused
+    when stale (C21).
+  - [ ] M1.7b Host-side memory snapshot helper for the Windows Ollama host
+    (PowerShell, writes JSON to `runs/container` = `/outputs`); `--host-snapshot`
+    and `--endpoint` options on the probe/smoke scripts and the example.
+  - [ ] M1.7c Move README and docs commands from native `uv run` to Docker
+    Compose; document container→Windows-Ollama connectivity for Docker Engine in
+    WSL and Docker Desktop; credentialed commands keep the single root `.env`.
 
 ## M2. Track 3 gate: Modal live eligibility (authorize)
 
@@ -130,6 +143,8 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 | C17 | A failure latched before any readiness trace (e.g. a settings check that fails before the first request) leaves `root_observation` empty, so woken queued observations keep `caller_cancelled`. Not reproducible in current flows | Low; watch | M1.6 |
 | C18 | Profiles resolved only from the checkout | Resolved 2026-11-08 (package data) | M1.5 |
 | C19 | `MODAL_ENDPOINT_URL` template line | Resolved 2026-11-08 (d8a97b0); value set after M2 deploy | M2.1 |
+| C20 | Inside a container with host networking, a loopback endpoint would make the RAM gate read container/WSL VM memory as the host's | Open | M1.7a |
+| C21 | Host memory snapshots have no timestamp or age limit | Open | M1.7a |
 
 ## Spec register
 
