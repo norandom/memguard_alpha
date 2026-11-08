@@ -32,7 +32,8 @@ track. The guard does not need it to work.
    research. Six model runs finished Phase A on one clean corpus (R26, R30, R38);
    every held-out AUC interval includes 0.5: Gemma 3 4B 0.574 (iGPU) and 0.599
    (NPU), Gemma 4 E4B 0.438 (NPU), Llama 3.2 3B 0.503, Llama 3.1 8B 0.462,
-   GPT-OSS-20B 0.574. With 80 held-out rows per model the
+   GPT-OSS-20B 0.574. Scoring the documents themselves from full logits gives the
+   same answer for Gemma 3 4B (0.562 [0.439, 0.693], R40). With 80 held-out rows per model the
    intervals are wide, so a small effect is not ruled out.
 2. **Calibration is at the no-skill level, consistent with point 1.** Held-out
    Brier scores are 0.249 to 0.269 against 0.245 to 0.250 for always predicting
@@ -103,6 +104,7 @@ track. The guard does not need it to work.
 | R37 | 2026-11-08 | Method | decision | Gemma focus: document-likelihood scoring with full logits |
 | R38 | 2026-11-08 | NPU | measured | Phase A single draw on the NPU: Gemma 3 4B and Gemma 4 E4B |
 | R39 | 2026-11-08 | NPU | feasibility | Gemma 4 E4B full logits and teacher forcing on the NPU via OGA |
+| R40 | 2026-11-08 | Local | measured | Gemma 3 4B document likelihood from full logits |
 
 ## Entries
 
@@ -532,6 +534,22 @@ track. The guard does not need it to work.
   position (up to 0.32 in logprob, same argmax), so every document is scored the
   same way (decode route, fresh load). About 4.4 h for 220 documents.
 - **Evidence:** release plan R37.
+
+### R40 · 2026-11-08 · Gemma 3 4B document likelihood
+
+- **Question:** does the full-distribution likelihood of the document itself
+  separate memorized from control press releases on held-out data?
+- **Setup:** exact Phase A GGUF on llama.cpp b12199 (iGPU), teacher forcing on
+  raw text, exact against llama-server within 8e-7; features mean NLL, Min-K
+  10 % and 20 %, zlib ratio, entropy, log rank; logistic calibrator on the
+  calibration split, frozen before held-out.
+- **Data:** R19; 220 documents, 78,862 scored positions.
+- **Result:** held-out calibrator AUC 0.562 [0.439, 0.693], Brier 0.255 [0.226,
+  0.282] against 0.250, ECE 0.097; single features 0.415 to 0.599, all intervals
+  include 0.5. No predictive capacity, as the design expects, now with full
+  distributions over the whole text.
+- **Limits:** 80 held-out documents.
+- **Evidence:** [report](results/2026-11-08-gemma3-document-likelihood.md).
 
 ## How to add an entry
 
