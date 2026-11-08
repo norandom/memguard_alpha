@@ -404,6 +404,17 @@ with a fresh snapshot, unloads the model, and stops the gateway in a `finally`
 block. It refuses to start when outputs under `runs/container/phase-a/` already
 exist or when the gateway address no longer matches the frozen endpoint.
 
+Phase A reports measure how well calibrated the held-out single-answer estimate
+`feature_p_memorized` is, next to its held-out AUC. `held_out_evaluation` adds the
+Brier score (`brier`) with the same seeded 1,000-resample stratified bootstrap 95%
+interval (`brier_ci_low`, `brier_ci_high`), the no-skill reference that predicts
+the held-out base rate (`brier_reference`), expected calibration error (`ece`) over
+10 equal-width bins, the non-empty `reliability_bins` (count, mean predicted,
+observed memorized fraction), and calibration-in-the-large (`mean_predicted`
+against `base_rate`). These need at least 2 usable items per class; otherwise they
+are null and `calibration_reason` says why. `claims.calibration_quality` repeats the
+headline numbers, or stays `not_measured` with `claims.calibration_quality_reason`.
+
 ## Read the evidence and its limits
 
 Execution writes the journal plus `.report.json` and `.report.md` beside it. Rows

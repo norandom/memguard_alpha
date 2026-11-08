@@ -159,6 +159,53 @@ def test_held_out_discrimination_needs_both_classes():
     assert result['auc'] is None and result['ci_low'] is None and result['n_control'] == 0
 
 
+def test_held_out_calibration_perfect_predictor():
+    from recall_guard.harness.local_reporting import held_out_calibration
+    result = held_out_calibration([1.0, 1.0, 1.0, 0.0, 0.0], [1, 1, 1, 0, 0], seed=0)
+    assert result['brier'] == 0.0 and result['brier_ci_low'] == result['brier_ci_high'] == 0.0
+    assert result['ece'] == 0.0 and result['brier_reference'] == pytest.approx(0.6 * 0.4)
+    assert (result['mean_predicted'], result['base_rate']) == (pytest.approx(0.6), pytest.approx(0.6))
+    assert [(b['low'], b['high'], b['count']) for b in result['reliability_bins']] == [(0.0, 0.1, 2), (0.9, 1.0, 3)]
+
+
+def test_held_out_calibration_constant_base_rate_equals_reference():
+    from recall_guard.harness.local_reporting import held_out_calibration
+    labels = [1, 1, 0, 0, 0, 0, 0, 0]
+    result = held_out_calibration([0.25] * 8, labels, seed=0)
+    assert result['brier'] == pytest.approx(result['brier_reference']) == pytest.approx(0.25 * 0.75)
+    assert result['ece'] == pytest.approx(0.0) and result['mean_predicted'] == pytest.approx(result['base_rate'])
+    assert result['reliability_bins'] == [{'low': 0.2, 'high': 0.3, 'count': 8, 'mean_predicted': 0.25,
+                                           'observed_memorized_fraction': 0.25}]
+
+
+def test_held_out_calibration_miscalibrated_bins_and_seed():
+    import json
+
+    from recall_guard.harness.local_reporting import held_out_calibration
+    # Overconfident: every item predicted 0.95 or 0.85 regardless of label.
+    scores = [0.95, 0.95, 0.85, 0.95, 0.85, 0.85]
+    labels = [1, 0, 1, 0, 0, 1]
+    result = held_out_calibration(scores, labels, seed=3)
+    bins = result['reliability_bins']
+    assert [(b['low'], b['count']) for b in bins] == [(0.8, 3), (0.9, 3)]
+    assert bins[0]['mean_predicted'] == pytest.approx(0.85) and bins[0]['observed_memorized_fraction'] == pytest.approx(2 / 3)
+    assert bins[1]['mean_predicted'] == pytest.approx(0.95) and bins[1]['observed_memorized_fraction'] == pytest.approx(1 / 3)
+    assert result['ece'] == pytest.approx((3 * (0.85 - 2 / 3) + 3 * (0.95 - 1 / 3)) / 6) and result['ece'] > 0
+    assert result['brier'] > result['brier_reference']
+    assert result['brier_ci_low'] <= result['brier'] <= result['brier_ci_high']
+    assert result == held_out_calibration(scores, labels, seed=3)
+    json.dumps(result, allow_nan=False)
+    assert all(type(result[k]) is float for k in ('brier', 'brier_ci_low', 'brier_ci_high', 'brier_reference',
+                                                  'ece', 'mean_predicted', 'base_rate'))
+
+
+def test_held_out_calibration_needs_two_per_class():
+    from recall_guard.harness.local_reporting import held_out_calibration
+    result = held_out_calibration([0.9, 0.8, 0.1], [1, 1, 0])
+    assert result['brier'] is None and result['ece'] is None and result['brier_reference'] is None
+    assert result['reliability_bins'] == [] and result['base_rate'] is None
+
+
 def test_report_held_out_auc_from_labels_and_split_counts(execution):
     from recall_guard.harness.local_reporting import _held_out_evaluation, _key
     budget, _, observer = execution
@@ -166,6 +213,8 @@ def test_report_held_out_auc_from_labels_and_split_counts(execution):
     report = build_report(budget, result)
     assert report['held_out_evaluation']['reason'] == 'no_labeled_held_out_items'
     assert report['claims']['discrimination']['held_out_evaluation_auc'] is None
+    assert report['claims']['calibration_quality'] == 'not_measured'
+    assert report['claims']['calibration_quality_reason'] == 'no_labeled_held_out_items'
     assert report['splits']['is_memorized'] == dict(planned=8, attempted=8, valid=8, failed=0, unparsed=0, item_evidence_codes={})
     assert report['splits']['oos_control']['planned'] == 16
     assert report['splits']['held_out'] == dict(planned=1, attempted=1, valid=1, failed=0, unparsed=0, item_evidence_codes={})
@@ -182,6 +231,9 @@ def test_report_held_out_auc_from_labels_and_split_counts(execution):
     assert (evaluation['n_labeled'], evaluation['n_usable'], evaluation['reason']) == (7, 5, None)
     assert (evaluation['n_memorized'], evaluation['n_control']) == (2, 3)
     assert evaluation["auc"] == pytest.approx(0.5)  # 3 of 6 memorized/control pairs ordered
+    # AUC needs one per class; calibration needs two, so 2 memorized / 3 control is enough.
+    assert evaluation['calibration_reason'] is None and evaluation['brier'] is not None
+    assert evaluation['base_rate'] == pytest.approx(0.4)
     assert _held_out_evaluation(plan, [], False)['reason'] == 'calibrated_claims_not_allowed'
     assert 'Held-out AUC' in __import__('recall_guard.harness.local_reporting', fromlist=['x']).render_markdown(report)
 
@@ -249,4 +301,11 @@ def test_held_out_auc_uses_feature_scores_of_unparsed_answers(tmp_path, monkeypa
     assert (held['n_labeled'], held['n_usable'], held['n_memorized'], held['n_control']) == (6, 6, 3, 3)
     assert held['reason'] is None and held['auc'] is not None and held['ci_low'] <= held['auc'] <= held['ci_high']
     assert report['claims']['discrimination']['held_out_evaluation_auc'] == held['auc']
+    claim = report['claims']['calibration_quality']
+    assert claim['brier'] == held['brier'] and claim['ece'] == held['ece'] and claim['base_rate'] == 0.5
+    assert report['claims']['calibration_quality_reason'] is None
+    assert sum(b['count'] for b in held['reliability_bins']) == 6
+    from recall_guard.harness.local_reporting import render_markdown
+    markdown = render_markdown(report)
+    assert 'Held-out Brier score' in markdown and 'Held-out ECE' in markdown
     assert report['splits']['held_out']['valid'] == 6 and report['splits']['held_out']['unparsed'] == 6

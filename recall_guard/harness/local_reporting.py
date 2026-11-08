@@ -114,6 +114,56 @@ def held_out_discrimination(scores, labels, *, seed=0, n_resamples=HELD_OUT_RESA
                      'ci_low': float(low), 'ci_high': float(high)}
 
 
+CALIBRATION_BINS = 10
+CALIBRATION_MIN_PER_CLASS = 2
+
+
+def held_out_calibration(scores, labels, *, seed=0, n_resamples=HELD_OUT_RESAMPLES, confidence=0.95,
+                         bins=CALIBRATION_BINS, min_per_class=CALIBRATION_MIN_PER_CLASS):
+    """Calibration quality of labeled held-out probabilities (label 1 = memorized).
+
+    Brier score is the mean squared error of p_memorized against the label, with
+    the same seeded stratified percentile bootstrap as the AUC. The no-skill
+    reference predicts the observed base rate for every item. Reliability uses
+    ``bins`` equal-width bins over [0, 1] (1.0 falls in the last bin) and lists
+    only non-empty bins; ECE is the count-weighted mean |mean predicted - observed|.
+    Needs at least ``min_per_class`` usable items per class, else every value is null.
+    """
+    import numpy as np
+
+    scores, labels = np.asarray(scores, dtype=float), np.asarray(labels, dtype=int)
+    positives, negatives = scores[labels == 1], scores[labels == 0]
+    result = {'brier': None, 'brier_ci_low': None, 'brier_ci_high': None, 'brier_reference': None,
+              'ece': None, 'reliability_bins': [], 'mean_predicted': None, 'base_rate': None,
+              'n_bins': bins, 'min_per_class': min_per_class}
+    if positives.size < min_per_class or negatives.size < min_per_class:
+        return result
+    predicted = np.r_[positives, negatives]
+    truth = np.r_[np.ones(positives.size), np.zeros(negatives.size)]
+    base_rate = float(truth.mean())
+    rng = np.random.default_rng(seed)
+    resampled = [np.mean((np.r_[rng.choice(positives, positives.size),
+                                rng.choice(negatives, negatives.size)] - truth) ** 2)
+                 for _ in range(n_resamples)]
+    tail = (1 - confidence) / 2
+    low, high = np.quantile(resampled, [tail, 1 - tail])
+    index = np.clip(np.floor(predicted * bins).astype(int), 0, bins - 1)
+    reliability, ece = [], 0.0
+    for b in range(bins):
+        member = index == b
+        if not member.any():
+            continue
+        mean, observed = float(predicted[member].mean()), float(truth[member].mean())
+        reliability.append({'low': b / bins, 'high': (b + 1) / bins, 'count': int(member.sum()),
+                            'mean_predicted': mean, 'observed_memorized_fraction': observed})
+        ece += int(member.sum()) * abs(mean - observed)
+    return result | {'brier': float(np.mean((predicted - truth) ** 2)),
+                     'brier_ci_low': float(low), 'brier_ci_high': float(high),
+                     'brier_reference': float(np.mean((base_rate - truth) ** 2)),
+                     'ece': float(ece / predicted.size), 'reliability_bins': reliability,
+                     'mean_predicted': float(predicted.mean()), 'base_rate': base_rate}
+
+
 def _split_counts(plan, rows):
     """Per corpus split: logical rows (OOS counts baseline and calibration rows).
 
@@ -150,12 +200,22 @@ def _held_out_evaluation(plan, rows, allowed):
     labeled = {key: label for key, label in labels.items() if label is not None}
     # Feature-based p_memorized (MIA features + fitted calibrator), independent of answer parsing.
     usable = [r for r in rows if r['arm'] == 'single' and r['feature_scored'] and r['item_sha256'] in labeled]
-    evaluation = held_out_discrimination([r['feature_p_memorized'] for r in usable],
-                                         [labeled[r['item_sha256']] for r in usable], seed=plan.seed)
+    scores, truth = [r['feature_p_memorized'] for r in usable], [labeled[r['item_sha256']] for r in usable]
+    evaluation = held_out_discrimination(scores, truth, seed=plan.seed)
+    calibration = held_out_calibration(scores, truth, seed=plan.seed)
     reason = ('no_labeled_held_out_items' if not labeled else 'calibrated_claims_not_allowed' if not allowed
               else 'insufficient_usable_items_per_class' if evaluation['auc'] is None else None)
+    calibration_reason = reason or ('insufficient_usable_items_per_class' if calibration['brier'] is None else None)
     return {'arm': 'single', 'score': 'feature_p_memorized', 'n_held_out': len(labels), 'n_labeled': len(labeled), 'n_usable': len(usable),
-            'reason': reason, **evaluation}
+            'reason': reason, **evaluation, 'calibration_reason': calibration_reason, **calibration}
+
+
+def _calibration_claim(held):
+    """Headline calibration numbers, or 'not_measured' when they are not computable."""
+    if held['brier'] is None:
+        return 'not_measured'
+    return {name: held[name] for name in ('brier', 'brier_ci_low', 'brier_ci_high', 'brier_reference',
+                                          'ece', 'mean_predicted', 'base_rate')}
 
 
 def build_report(budget, result):
@@ -223,12 +283,13 @@ def build_report(budget, result):
         'claims': {'endpoint_feasibility': 'probe_passed' if result.endpoint_probe_passed else 'not_established',
                    'discrimination': {'calibrator_holdout_auc': result.holdout_auc if result.calibrated_claims_allowed else None,
                                       'held_out_evaluation_auc': held_out['auc']},
-                   'calibration_quality': 'not_measured', 'mitigation': 'not_performed',
+                   'calibration_quality': _calibration_claim(held_out),
+                   'calibration_quality_reason': held_out['calibration_reason'], 'mitigation': 'not_performed',
                    'exact_full_vocabulary_divergence': 'not_performed', 'intervention_before_token_selection': 'not_performed'},
         'historical_nim': {'status': 'NIM unavailable', 'http_status': 504, 'cause': None},
         'frontier_completion_only': 'separate_path_not_performed',
         'limitations': ['Sidecar observations are not atomic identity guarantees.',
-            'AUC measures discrimination, not probability calibration or mitigation.',
+            'AUC measures discrimination; Brier, ECE and reliability bins measure calibration of p_memorized; neither is mitigation.',
             'Null means unknown or unavailable, never zero; allocation is not dedicated GPU memory.',
             'Request latency includes transport and host work; load and generation times require separate observations.',
             'Client timeout does not establish that host generation stopped.',
@@ -243,6 +304,22 @@ def build_report(budget, result):
 
 def report_paths(journal):
     return Path(str(journal) + '.report.json'), Path(str(journal) + '.report.md')
+
+
+def _calibration_lines(held):
+    """Held-out calibration of the single answer's feature-based p_memorized."""
+    if held.get('brier') is None:
+        reason = held.get('calibration_reason')
+        return ['Held-out calibration quality: not measured' + (f' ({reason})' if reason else '') + '.']
+    lines = [f"Held-out Brier score: {held['brier']}, {held['n_resamples']}-resample stratified bootstrap "
+             f"{held['confidence']} interval [{held['brier_ci_low']}, {held['brier_ci_high']}]; "
+             f"no-skill reference (base rate): {held['brier_reference']}",
+             f"Held-out ECE ({held['n_bins']} equal-width bins): {held['ece']}; "
+             f"mean p_memorized {held['mean_predicted']} vs observed base rate {held['base_rate']}", '',
+             '| Bin | Count | Mean predicted | Observed memorized |', '| --- | ---: | ---: | ---: |']
+    lines += [f"| [{b['low']}, {b['high']}{']' if b['high'] == 1 else ')'} | {b['count']} | {b['mean_predicted']} | {b['observed_memorized_fraction']} |"
+              for b in held['reliability_bins']]
+    return lines + ['']
 
 
 def render_markdown(report):
@@ -266,7 +343,8 @@ def render_markdown(report):
         f"{held.get('auc')}, {held.get('n_resamples')}-resample stratified bootstrap "
         f"{held.get('confidence')} interval [{held.get('ci_low')}, {held.get('ci_high')}]"
         + (f" ({held['reason']})" if held.get('reason') else ''),
-        'Calibration quality: not measured. Mitigation: not performed.',
+        *_calibration_lines(held),
+        'Mitigation: not performed.',
         'NIM unavailable: historical HTTP 504; cause unknown. Opus/frontier work is separate.', '',
         'Model, runtime identity, draw rows, resource observations and physical attempts are in the companion JSON.', '',
         *['- ' + text for text in report['limitations']], '']
