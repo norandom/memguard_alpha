@@ -26,7 +26,7 @@ def make_client(model, settings, environment):
         readiness = ReadinessPolicy(
             connect_timeout_s=settings["connect_timeout_s"],
             socket_idle_timeout_s=settings["socket_idle_timeout_s"],
-            max_wait_s=600, max_poll_requests=0, allow_ambiguous_replay=False,
+            max_wait_s=600, allow_ambiguous_replay=False,
         )
     elif settings["api_version"] != ANTHROPIC_API_VERSION:
         raise ValueError("Frozen Anthropic API version differs from adapter")

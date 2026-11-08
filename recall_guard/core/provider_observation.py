@@ -2,7 +2,7 @@
 
 No admission, retry, polling loop or credential discovery lives here. Fixture
 support is restricted to literal loopback hosts and establishes no hosted API
-capability. Response Location headers never select a status route.
+capability. Accepted (HTTP 202) work is returned as a receipt and never polled.
 """
 
 import ipaddress
@@ -31,9 +31,6 @@ def validate_observation_profile(config):
             local = False
         if not local:
             raise ValueError("Fixture observation profile requires a literal loopback endpoint")
-    route = config.readiness.pending_status
-    if route is not None and (config.provider != "fixture" or route.profile != "openai_chat_fixture"):
-        raise ValueError("Unsupported pending observation profile; hosted route remains unverified")
 
 
 def _retry_hint(response):
@@ -41,14 +38,9 @@ def _retry_hint(response):
     return None if value is None else RetryAfterHint(value, datetime.now(UTC).isoformat())
 
 
-def exchange(config, credential, payload, parameters, context, *, pending=None, parse_response,
-             http_failure, transport_failure):
-    """Exactly one POST or a model-bound same-origin status GET, owned to EOF."""
+def exchange(config, credential, payload, parameters, context, *, parse_response, http_failure, transport_failure):
+    """Exactly one POST, owned to EOF."""
     policy = config.readiness
-    url, method = config.endpoint, "POST"
-    if pending is not None:
-        url = policy.pending_status.status_url(pending.request_id, model=config.model, endpoint=config.endpoint)
-        method = "GET"
     headers = {"Content-Type": "application/json"}
     if credential is not None:
         headers["Authorization"] = f"Bearer {credential}"
@@ -60,15 +52,14 @@ def exchange(config, credential, payload, parameters, context, *, pending=None, 
             session.mount("http://", requests.adapters.HTTPAdapter(max_retries=0))
             session.mount("https://", requests.adapters.HTTPAdapter(max_retries=0))
             context.check()
-            with session.request(method, url, headers=headers, json=payload if pending is None else None,
-                                 timeout=(context.connect_timeout_s, context.socket_idle_timeout_s),
-                                 allow_redirects=False, stream=True) as response:
+            with session.post(config.endpoint, headers=headers, json=payload,
+                              timeout=(context.connect_timeout_s, context.socket_idle_timeout_s),
+                              allow_redirects=False, stream=True) as response:
                 hint = _retry_hint(response)
                 request_id = response.headers.get("x-request-id")
                 if response.status_code == 202:
-                    name = "NVCF-REQID" if policy.pending_status is None else policy.pending_status.request_id_header
                     try:
-                        return PendingReceipt(context.operation_id, config.model, response.headers.get(name),
+                        return PendingReceipt(context.operation_id, config.model, response.headers.get("NVCF-REQID"),
                                               datetime.now(UTC).isoformat(), response.headers.get("NVCF-STATUS"), hint)
                     except ValueError:
                         raise RequestError("Accepted work has no verified request identity", status_code=202,

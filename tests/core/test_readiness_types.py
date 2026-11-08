@@ -28,79 +28,45 @@ def observation(**changes):
     } | changes))
 
 
-def pending_policy(**changes):
-    return r.PendingStatusPolicy(**({
-        "profile": "verified-fixture", "model": "selected-model",
-        "endpoint": "https://example.invalid/v1/chat/completions",
-        "status_url_template": "https://example.invalid/v1/status/{request_id}",
-        "request_id_header": "NVCF-REQID", "verified": True,
-    } | changes))
-
-
 def test_policy_is_immutable_and_has_independent_limits_without_duplicate_caps():
     policy = r.ReadinessPolicy(connect_timeout_s=2, socket_idle_timeout_s=7, max_wait_s=30)
     assert (policy.connect_timeout_s, policy.socket_idle_timeout_s, policy.max_wait_s) == (2, 7, 30)
     assert not policy.allow_ambiguous_replay
-    assert policy.pending_status is None
-    assert policy.max_poll_requests == 0
     with pytest.raises(FrozenInstanceError):
         policy.max_wait_s = 90
     exported = json.loads(json.dumps(policy.to_dict(), allow_nan=False))
     assert not {"max_retries", "min_call_interval_s", "request_budget", "cancellation", "on_observation"} & exported.keys()
-    assert exported["pending_status"] is None
+    assert not {"pending_status", "max_poll_requests"} & exported.keys()
 
 
 @pytest.mark.parametrize(("name", "value"), [
     ("connect_timeout_s", 0), ("socket_idle_timeout_s", -1), ("max_wait_s", float("nan")),
-    ("connect_timeout_s", float("inf")), ("max_wait_s", True), ("max_poll_requests", -1),
-    ("max_poll_requests", 1.5), ("max_poll_requests", False), ("backoff_initial_s", -1),
+    ("connect_timeout_s", float("inf")), ("max_wait_s", True), ("backoff_initial_s", -1),
     ("backoff_max_s", float("inf")), ("jitter_fraction", 1.1), ("jitter_fraction", float("nan")),
     ("allow_ambiguous_replay", 1), ("max_event_bytes", 0), ("max_response_bytes", True),
-    ("connect_timeout_s", 10**1000), ("pending_status", {}),
+    ("connect_timeout_s", 10**1000),
 ])
 def test_invalid_policy_fails_locally(name, value):
     with pytest.raises((TypeError, ValueError), match=name):
         r.ReadinessPolicy(**{name: value})
 
 
-def test_policy_rejects_contradictory_bounds_and_unconfigured_polling():
-    for changes in ({"backoff_initial_s": 5, "backoff_max_s": 2},
-                    {"max_event_bytes": 20, "max_response_bytes": 10}, {"max_poll_requests": 1}):
+def test_policy_rejects_contradictory_bounds():
+    for changes in ({"backoff_initial_s": 5, "backoff_max_s": 2}, {"max_event_bytes": 20, "max_response_bytes": 10}):
         with pytest.raises(ValueError):
             r.ReadinessPolicy(**changes)
-    policy = r.ReadinessPolicy(pending_status=pending_policy(), max_poll_requests=3)
-    assert policy.to_dict()["pending_status"]["model"] == "selected-model"
 
 
-@pytest.mark.parametrize("changes", [
-    {"verified": False}, {"verified": 1}, {"model": ""},
-    {"status_url_template": "https://evil.invalid/status/{request_id}"},
-    {"status_url_template": "http://example.invalid/status/{request_id}"},
-    {"status_url_template": "https://example.invalid:444/status/{request_id}"},
-    {"status_url_template": "https://example.invalid:0/status/{request_id}"},
-    {"status_url_template": "https://user:secret@example.invalid/status/{request_id}"},
-    {"status_url_template": "https://example.invalid/status/{request_id}?key=secret"},
-    {"status_url_template": "https://example.invalid/status/{request_id}#secret"},
-    {"status_url_template": "https://example.invalid/status/no-placeholder"},
-    {"status_url_template": "https://example.invalid/{other}/{request_id}"},
-    {"request_id_header": "Authorization"}, {"request_id_header": "X\r\nsecret"},
-])
-def test_pending_policy_rejects_unverified_or_unsafe_identity_contracts(changes):
-    with pytest.raises((TypeError, ValueError)) as error:
-        pending_policy(**changes)
-    assert "secret" not in str(error.value)
-
-
-def test_pending_url_is_bound_to_exact_configuration_and_uuid():
-    policy = pending_policy()
-    assert policy.status_url(REQUEST_ID, model="selected-model", endpoint=policy.endpoint).endswith(REQUEST_ID)
-    for request_id in ("../../secret", "not-uuid", "", REQUEST_ID + "?secret"):
-        with pytest.raises(ValueError):
-            policy.status_url(request_id, model="selected-model", endpoint=policy.endpoint)
-    with pytest.raises(ValueError, match="configuration"):
-        policy.status_url(REQUEST_ID, model="other-model", endpoint=policy.endpoint)
-    with pytest.raises(ValueError, match="configuration"):
-        policy.status_url(REQUEST_ID, model=policy.model, endpoint="https://example.invalid/other")
+def test_removed_status_poll_fields_load_only_as_inert_historical_values():
+    exported = r.ReadinessPolicy(max_wait_s=30).to_dict()
+    historical = r.ReadinessPolicy.from_dict(exported | {"max_poll_requests": 0, "pending_status": None})
+    assert historical == r.ReadinessPolicy.from_dict(exported) and historical.max_wait_s == 30
+    for active in ({"max_poll_requests": 1}, {"pending_status": {"profile": "fixture"}}):
+        with pytest.raises(ValueError, match="polling was removed"):
+            r.ReadinessPolicy.from_dict(exported | active)
+    for removed in ("max_poll_requests", "pending_status"):
+        with pytest.raises(TypeError):
+            r.ReadinessPolicy(**{removed: 0})
 
 
 def test_pending_receipt_retains_identity_without_claiming_completion():

@@ -23,7 +23,7 @@ def test_plan_is_environment_free(monkeypatch):
         "max_tokens": 2048, "temperature": 0, "logprobs": True, "top_logprobs": 20}
     assert plan["target"]["readiness"]["socket_idle_timeout_s"] == 600
     assert plan["target"]["readiness"]["max_wait_s"] == 1200
-    assert plan["target"]["readiness"]["max_poll_requests"] == 0
+    assert not {"max_poll_requests", "pending_status"} & plan["target"]["readiness"].keys()
     assert len(plan["input_hashes"]) == 3
 
 

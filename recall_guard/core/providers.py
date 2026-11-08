@@ -338,12 +338,12 @@ class OpenAICompatibleClient:
                     on_observation=on_observation, parameters=supplied, purpose=purpose)
         self._last_operation = operation
 
-        def perform(context, pending=None):
-            return exchange(settings, self._credential, payload, supplied, context, pending=pending,
+        def perform(context):
+            return exchange(settings, self._credential, payload, supplied, context,
                             parse_response=self._parse_response, http_failure=_http_failure,
                             transport_failure=_transport_failure)
 
-        return operation.run(perform, poll=perform if settings.readiness.pending_status is not None else None)
+        return operation.run(perform)
 
     def readiness_snapshot(self):
         """Inspect elapsed local waiting; a snapshot never asserts new progress."""

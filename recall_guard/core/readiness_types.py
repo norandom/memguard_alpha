@@ -6,13 +6,11 @@ whereas physical call IDs refer to the existing shared request ledger.
 """
 
 import math
-import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
 from threading import Event
-from urllib.parse import urlsplit
 from uuid import UUID
 
 
@@ -68,75 +66,6 @@ def _uuid(value: str) -> str:
     return str(parsed)
 
 
-def _origin(value: str) -> tuple[str, str, int]:
-    try:
-        _text(value, "endpoint/status URL")
-        parsed = urlsplit(value)
-        valid = (parsed.scheme in {"http", "https"} and parsed.hostname
-                 and parsed.username is None and parsed.password is None
-                 and not parsed.query and not parsed.fragment
-                 and not any(char.isspace() for char in value) and "\\" not in value)
-        if valid:
-            port = parsed.port
-            if port is None:
-                port = 443 if parsed.scheme == "https" else 80
-            return parsed.scheme, parsed.hostname.lower(), port
-    except ValueError:
-        pass
-    raise ValueError("endpoint/status URL must be credential-free HTTP(S) without query or fragment")
-
-
-@dataclass(frozen=True)
-class PendingStatusPolicy:
-    """Caller-declared verified route bound to one exact model and endpoint.
-
-    ``verified`` is an explicit assertion, not a discovery mechanism. Adapters
-    must additionally recognize ``profile`` before using it. The initial NIM
-    profile has no verified polling route and must not construct this policy.
-    Only the UUID placeholder in the path may vary; response locations are
-    never accepted as routing input. Redirect handling belongs to transport.
-    """
-
-    profile: str
-    model: str
-    endpoint: str
-    status_url_template: str
-    request_id_header: str
-    verified: bool
-
-    def __post_init__(self) -> None:
-        for name in ("profile", "model", "request_id_header"):
-            _text(getattr(self, name), name)
-        if self.verified is not True:
-            raise ValueError("verified must be explicitly true for a pending status route")
-        if (not re.fullmatch(r"[A-Za-z0-9-]+", self.request_id_header)
-                or self.request_id_header.lower() in {"authorization", "proxy-authorization", "cookie", "x-api-key"}):
-            raise ValueError("request_id_header must name a non-credential identity header")
-        template = self.status_url_template
-        _text(template, "status_url_template")
-        if template.count("{request_id}") != 1 or "{" in template.replace("{request_id}", "") or "}" in template.replace("{request_id}", ""):
-            raise ValueError("status_url_template must contain exactly one request_id placeholder")
-        if "{request_id}" not in urlsplit(template).path:
-            raise ValueError("status_url_template placeholder must be in the path")
-        if _origin(self.endpoint) != _origin(template):
-            raise ValueError("status_url_template must share the selected endpoint origin")
-
-    def status_url(self, request_id: str, *, model: str, endpoint: str) -> str:
-        """Construct only this verified route for the bound configuration."""
-        if (model, endpoint) != (self.model, self.endpoint):
-            raise ValueError("Pending route does not match the selected configuration")
-        return self.status_url_template.replace("{request_id}", _uuid(request_id))
-
-    def to_dict(self) -> dict:
-        return {"profile": self.profile, "model": self.model, "endpoint": self.endpoint,
-                "status_url_template": self.status_url_template, "request_id_header": self.request_id_header,
-                "verified": self.verified}
-
-    @classmethod
-    def from_dict(cls, data):
-        return cls(**_fields(data, {"profile", "model", "endpoint", "status_url_template", "request_id_header", "verified"}))
-
-
 @dataclass(frozen=True)
 class ReadinessPolicy:
     """Opt-in finite transport/wait limits; existing retry and budget caps win.
@@ -144,19 +73,18 @@ class ReadinessPolicy:
     ``max_wait_s`` bounds controlled waiting and subsequent admission, not an
     exact interrupt of blocked OS I/O. Connect/read bounds are capped at runtime
     by the remaining allowance. Jitter is a fraction in [0, 1] applied to local
-    backoff only; provider delays must never be shortened. Polls default to zero.
+    backoff only; provider delays must never be shortened. An accepted pending
+    receipt always defers: no status route is polled and the POST is not repeated.
     Response/event limits bound transport bytes; one event must fit a response.
     """
 
     connect_timeout_s: float = 10.0
     socket_idle_timeout_s: float = 30.0
     max_wait_s: float = 300.0
-    max_poll_requests: int = 0
     backoff_initial_s: float = 1.0
     backoff_max_s: float = 30.0
     jitter_fraction: float = 0.0
     allow_ambiguous_replay: bool = False
-    pending_status: PendingStatusPolicy | None = None
     max_event_bytes: int = 1024 * 1024
     max_response_bytes: int = 8 * 1024 * 1024
 
@@ -165,28 +93,22 @@ class ReadinessPolicy:
             _number(getattr(self, name), name, positive=True)
         for name in ("backoff_initial_s", "backoff_max_s", "jitter_fraction"):
             _number(getattr(self, name), name)
-        _integer(self.max_poll_requests, "max_poll_requests")
         for name in ("max_event_bytes", "max_response_bytes"):
             _integer(getattr(self, name), name, minimum=1)
         if not isinstance(self.allow_ambiguous_replay, bool):
             raise TypeError("allow_ambiguous_replay must be boolean")
-        if self.pending_status is not None and not isinstance(self.pending_status, PendingStatusPolicy):
-            raise TypeError("pending_status must be PendingStatusPolicy or None")
         if self.backoff_initial_s > self.backoff_max_s:
             raise ValueError("backoff_initial_s must not exceed backoff_max_s")
         if self.jitter_fraction > 1:
             raise ValueError("jitter_fraction must be at most one")
         if self.max_event_bytes > self.max_response_bytes:
             raise ValueError("max_event_bytes must not exceed max_response_bytes")
-        if self.max_poll_requests and self.pending_status is None:
-            raise ValueError("max_poll_requests requires a verified pending_status policy")
 
     def to_dict(self) -> dict:
         return {"connect_timeout_s": self.connect_timeout_s, "socket_idle_timeout_s": self.socket_idle_timeout_s,
-                "max_wait_s": self.max_wait_s, "max_poll_requests": self.max_poll_requests,
+                "max_wait_s": self.max_wait_s,
                 "backoff_initial_s": self.backoff_initial_s, "backoff_max_s": self.backoff_max_s,
                 "jitter_fraction": self.jitter_fraction, "allow_ambiguous_replay": self.allow_ambiguous_replay,
-                "pending_status": None if self.pending_status is None else self.pending_status.to_dict(),
                 "max_event_bytes": self.max_event_bytes, "max_response_bytes": self.max_response_bytes}
 
     @classmethod
@@ -194,8 +116,10 @@ class ReadinessPolicy:
         values = _fields(data, {"connect_timeout_s", "socket_idle_timeout_s", "max_wait_s", "max_poll_requests",
                                "backoff_initial_s", "backoff_max_s", "jitter_fraction", "allow_ambiguous_replay",
                                "pending_status", "max_event_bytes", "max_response_bytes"})
-        if values.get("pending_status") is not None:
-            values["pending_status"] = PendingStatusPolicy.from_dict(values["pending_status"])
+        # Historical plans exported the removed status-poll fields; only their
+        # inert defaults still load. An active poll route is refused, not ignored.
+        if values.pop("pending_status", None) is not None or values.pop("max_poll_requests", 0) != 0:
+            raise ValueError("Pending status polling was removed; pending work defers without polling")
         return cls(**values)
 
 
@@ -215,7 +139,6 @@ class ReadinessState(StrEnum):
 class ReadinessReason(StrEnum):
     REQUEST_BUDGET = "request_budget"
     RETRY_LIMIT = "retry_limit"
-    POLL_LIMIT = "poll_limit"
     WAITING_ALLOWANCE = "waiting_allowance"
     PENDING_ROUTE_UNAVAILABLE = "pending_route_unavailable"
     OBSERVATION_UNAVAILABLE = "observation_unavailable"

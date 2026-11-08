@@ -39,7 +39,7 @@ def target_config() -> ModelConfig:
         # User-specified NIM quota is 40 RPM; leave margin at 30 RPM per client.
         timeout_s=600, max_retries=0, min_call_interval_s=2.0,
         readiness=ReadinessPolicy(connect_timeout_s=10, socket_idle_timeout_s=600,
-                                  max_wait_s=1200, max_poll_requests=0, allow_ambiguous_replay=False),
+                                  max_wait_s=1200, allow_ambiguous_replay=False),
     )
 
 

@@ -368,24 +368,17 @@ class ReadinessOperation:
                 self._error = self.control._failure(self._error)
             raise
 
-    def _run(self, exchange, poll):
+    def _run(self, exchange):
         self._emit(ReadinessState.WAITING)
-        attempt, polls = 1, 0
+        attempt = 1
         while True:
             self._guard()
             failure = None
             try:
-                pending = self._pending
-                if pending is not None:
-                    if polls >= self.policy.max_poll_requests:
-                        raise _Stop(ReadinessState.EXHAUSTED, ReadinessReason.POLL_LIMIT)
-                    polls += 1
                 self._progress_before_exchange = self._progress.copy()
                 response = self.control.run_attempt(
-                    lambda pending=pending: exchange(self._context()) if pending is None else poll(self._context(), pending),
-                    stage=self.stage, attempt=attempt if pending is None else polls,
-                    purpose=(self.purpose if attempt == 1 else "retry") if pending is None else "status",
-                    request_id=None if pending is None else pending.request_id,
+                    lambda: exchange(self._context()), stage=self.stage, attempt=attempt,
+                    purpose=self.purpose if attempt == 1 else "retry",
                     operation_id=self.operation_id, admission_guard=self._guard, wait=self._wait)
             except RequestError as error:
                 failure = error
@@ -407,16 +400,8 @@ class ReadinessOperation:
                     else:
                         self._emit(ReadinessState.PENDING)
                     self._guard()
-                    if poll is None:
-                        raise _Stop(ReadinessState.DEFERRED, ReadinessReason.PENDING_ROUTE_UNAVAILABLE)
-                    if polls >= self.policy.max_poll_requests:
-                        raise _Stop(ReadinessState.EXHAUSTED, ReadinessReason.POLL_LIMIT)
-                    if self.control.budget.remaining == 0:
-                        raise _Stop(ReadinessState.EXHAUSTED, ReadinessReason.REQUEST_BUDGET)
-                    delay = self._delay(hint, polls + 1)
-                    self._publish_delay(delay[0])
-                    self._wait(*delay)
-                    continue
+                    # Accepted work is never re-POSTed and no status route is polled.
+                    raise _Stop(ReadinessState.DEFERRED, ReadinessReason.PENDING_ROUTE_UNAVAILABLE)
                 self._complete(response)
                 return
             self._error = failure
@@ -450,7 +435,7 @@ class ReadinessOperation:
             self._wait(*delay)
             attempt += 1
 
-    def run(self, exchange: Callable[[ExchangeContext], ModelResponse | PendingReceipt], *, poll=None) -> ReadinessResult:
+    def run(self, exchange: Callable[[ExchangeContext], ModelResponse | PendingReceipt]) -> ReadinessResult:
         """Execute once; failed/deferred results retain a terminal trace and evidence."""
         if not callable(exchange):
             raise TypeError("exchange must be callable")
@@ -461,7 +446,7 @@ class ReadinessOperation:
         stopped = None
         interrupted = None
         try:
-            self._run(exchange, poll)
+            self._run(exchange)
         except BudgetExhaustedError:
             stopped = _Stop(ReadinessState.EXHAUSTED, ReadinessReason.REQUEST_BUDGET)
         except _Stop as stop:

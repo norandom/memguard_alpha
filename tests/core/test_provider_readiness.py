@@ -12,7 +12,7 @@ import pytest
 from recall_guard.core.completion import FeatureChoices, ModelConfig
 from recall_guard.core.providers import OpenAICompatibleClient
 from recall_guard.core.readiness_evidence import ProbeEvidence
-from recall_guard.core.readiness_types import CancellationToken, PendingStatusPolicy, ReadinessPolicy
+from recall_guard.core.readiness_types import CancellationToken, ReadinessPolicy
 from recall_guard.core.request_control import CallBudget, RequestError
 from recall_guard.harness.workflow_plan import CompletionFallbackPolicy, WorkflowRequest
 from recall_guard.harness.workflow_preparation import prepare_workflow
@@ -133,19 +133,17 @@ def test_nim_pending_defers_without_guessing_status_route():
         assert len(seen) == 1 and c.budget.used == 1
 
 
-@pytest.mark.parametrize("cap,polls,expected,exchanges", [(5, 2, "ready", 3), (2, 2, "exhausted", 2), (5, 1, "exhausted", 2)])
-def test_accepted_work_uses_one_post_and_budgeted_status_gets(cap, polls, expected, exchanges):
+def test_accepted_work_defers_after_one_post_without_status_requests():
     pending = (202, {"NVCF-REQID": REQUEST_ID, "Retry-After": "0"}, {})
-    with server([pending, pending, (200, {}, BODY)]) as (endpoint, seen):
-        route = PendingStatusPolicy("openai_chat_fixture", "fixture-model", endpoint,
-                                    endpoint + "/status/{request_id}", "NVCF-REQID", True)
-        c = client(endpoint, policy=ReadinessPolicy(pending_status=route, max_poll_requests=polls,
-                   backoff_initial_s=0, backoff_max_s=0), cap=cap)
+    with server([pending, (200, {}, BODY)]) as (endpoint, seen):
+        c = client(endpoint, policy=ReadinessPolicy(allow_ambiguous_replay=True, backoff_initial_s=0,
+                   backoff_max_s=0), cap=5, retries=2)
         result = c.generate_with_readiness("hello")
-        assert result.observations[-1].state == expected
-        assert [row[0] for row in seen] == ["POST"] + ["GET"] * (exchanges - 1)
-        assert [row.purpose for row in c.budget.events] == ["inference"] + ["status"] * (exchanges - 1)
-        assert len({row.operation_id for row in c.budget.events}) == 1
+        assert result.observations[-1].state == "deferred"
+        assert result.observations[-1].reason == "pending_route_unavailable"
+        assert result.pending.request_id == REQUEST_ID
+        assert [row[0] for row in seen] == ["POST"]
+        assert [row.purpose for row in c.budget.events] == ["inference"]
 
 
 def sse(*events):
@@ -204,23 +202,6 @@ def test_generate_raises_failure_with_trace_for_unusable_pending():
         assert failure.value.readiness_trace[-1].state == "deferred"
 
 
-@pytest.mark.parametrize("status,body", [(429, {"error": {"message": "busy"}}),
-                                        (503, {"error": {"message": "busy"}}),
-                                        (504, {}), (200, b"not json")])
-def test_status_failures_never_repost_accepted_generation(status, body):
-    pending = (202, {"NVCF-REQID": REQUEST_ID}, {})
-    with server([pending, (status, {"Retry-After": "0"}, body), (200, {}, BODY)]) as (endpoint, seen):
-        route = PendingStatusPolicy("openai_chat_fixture", "fixture-model", endpoint,
-                                    endpoint + "/status/{request_id}", "NVCF-REQID", True)
-        c = client(endpoint, policy=ReadinessPolicy(pending_status=route, max_poll_requests=2,
-                   allow_ambiguous_replay=True, backoff_initial_s=0, backoff_max_s=0))
-        result = c.generate_with_readiness("hello")
-        assert seen[0][0] == "POST" and all(row[0] == "GET" for row in seen[1:])
-        assert len(seen) <= 3 and c.budget.used == len(seen)
-        assert all(row.operation_id == result.observations[0].operation_id for row in c.budget.events)
-        assert all(row.purpose == "status" for row in c.budget.events[1:])
-
-
 @pytest.mark.parametrize("headers", [{}, {"NVCF-REQID": "not-a-uuid"}, {"Location": "http://127.0.0.1:1/steal"}])
 def test_pending_without_valid_identity_defers_without_calls_to_locations(headers):
     with server([(202, headers, {})]) as (endpoint, seen):
@@ -265,14 +246,6 @@ def test_override_settings_are_preserved_without_injecting_defaults():
         assert result.requested_settings == {"max_tokens": 8, "temperature": 0.3}
         assert "top_p" not in seen[0][2]
         assert c.config.parameters == {"max_tokens": 8}
-
-
-def test_invalid_poll_profile_rejected_before_any_calls():
-    endpoint = "http://127.0.0.1:1/chat"
-    route = PendingStatusPolicy("unverified", "fixture-model", endpoint,
-                                endpoint + "/{request_id}", "NVCF-REQID", True)
-    with pytest.raises(ValueError, match="pending observation profile"):
-        client(endpoint, policy=ReadinessPolicy(pending_status=route, max_poll_requests=1))
 
 
 def test_redirect_is_not_followed():
@@ -356,33 +329,6 @@ def test_real_socket_progress_is_delivered_before_eof_and_idle_timeout_cleans_up
         assert result.observations[-1].state == "unknown_outcome"
         assert result.response.content == "partial" and not result.response.complete
         assert len(seen) == 1
-
-
-def test_status_socket_timeout_only_retries_gets_under_explicit_permission():
-    release = threading.Event()
-    ended = threading.Event()
-
-    def stalled(handler):
-        try:
-            handler.send_response(200)
-            handler.send_header("Content-Length", "10")
-            handler.end_headers()
-            release.wait(3)
-        finally:
-            ended.set()
-
-    pending = (202, {"NVCF-REQID": REQUEST_ID}, {})
-    with server([pending, (200, {}, stalled), (200, {}, BODY)]) as (endpoint, seen):
-        route = PendingStatusPolicy("openai_chat_fixture", "fixture-model", endpoint,
-                                    endpoint + "/status/{request_id}", "NVCF-REQID", True)
-        c = client(endpoint, policy=ReadinessPolicy(pending_status=route, max_poll_requests=2,
-                   allow_ambiguous_replay=True, socket_idle_timeout_s=0.1,
-                   backoff_initial_s=0, backoff_max_s=0))
-        result = c.generate_with_readiness("hello")
-        release.set()
-        assert ended.wait(1) and result.ready
-        assert [row[0] for row in seen] == ["POST", "GET", "GET"]
-        assert c.budget.used == 3 and c.budget.events[1].status == "failed"
 
 
 def test_missing_token_complete_evidence_is_sanitized_before_exposure():

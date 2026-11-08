@@ -253,10 +253,6 @@ class ModelConfig:
             raise TypeError("readiness must be ReadinessPolicy or None")
         if "stream" in self.parameters and (self.readiness is None or self.protocol != CompletionProtocol.OPENAI_CHAT):
             raise ValueError("stream requires opt-in OpenAI-chat readiness")
-        if self.readiness is not None and self.readiness.pending_status is not None:
-            pending = self.readiness.pending_status
-            if (pending.model, pending.endpoint) != (self.model, self.endpoint):
-                raise ValueError("Pending route does not match the selected configuration")
         object.__setattr__(self, "parameters", _parameters(self.parameters))
         object.__setattr__(self, "capabilities", _capabilities(self.capabilities))
 

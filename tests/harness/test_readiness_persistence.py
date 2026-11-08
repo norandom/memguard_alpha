@@ -211,21 +211,23 @@ def test_nested_codecs_do_not_accept_undeclared_fields(container, path):
         type(original).from_dict(payload)
 
 
-def test_pending_receipt_and_verified_policy_roundtrip():
-    from recall_guard.core.readiness_types import PendingReceipt, PendingStatusPolicy
+def test_pending_receipt_and_policy_roundtrip():
+    from recall_guard.core.readiness_types import PendingReceipt
 
-    route = PendingStatusPolicy("fixture", "model", config().endpoint, "https://example.test/status/{request_id}",
-                                "NVCF-REQID", True)
-    policy = ReadinessPolicy(pending_status=route, max_poll_requests=2)
+    policy = ReadinessPolicy(max_wait_s=30)
     selected = config(readiness=policy)
     restored = ModelConfig.from_dict(selected.to_dict())
     assert restored.readiness == policy
+    historical = selected.to_dict()
+    historical["readiness"] |= {"max_poll_requests": 0, "pending_status": None}
+    assert ModelConfig.from_dict(historical) == restored
+    historical["readiness"]["max_poll_requests"] = 2
+    with pytest.raises(ValueError, match="polling was removed"):
+        ModelConfig.from_dict(historical)
     receipt = PendingReceipt("op", "model", "12345678-1234-1234-1234-123456789abc", STAMP)
     assert PendingReceipt.from_dict(receipt.to_dict()) == receipt
     with pytest.raises(ValueError):
         PendingReceipt.from_dict(receipt.to_dict() | {"complete": True})
-    with pytest.raises(ValueError):
-        replace(selected, model="other-model")
 
 
 def test_complete_missing_token_probe_evidence_stays_complete_but_not_ready():

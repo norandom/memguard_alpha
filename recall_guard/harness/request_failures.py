@@ -32,7 +32,7 @@ def failure_kind(error: Exception) -> str:
         return "cancelled"
     if error.code in {"deferred", "waiting_allowance", "pending_route_unavailable", "retry_after_too_large"}:
         return "deferred"
-    if error.code in {"exhausted", "request_budget", "retry_limit", "poll_limit"}:
+    if error.code in {"exhausted", "request_budget", "retry_limit"}:
         return "exhausted"
     if error.parameter or error.status_code in (400, 404, 422) or error.code in _CONFIGURATION_CODES:
         return "configuration_error"
