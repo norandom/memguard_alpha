@@ -33,7 +33,7 @@ same model family. Pick the backend that fits your machine and budget:
 | Backend | Good fit when | Current state |
 | --- | --- | --- |
 | [Ollama, local](docs/local-provider.md) | You have the RAM for your model; no key, no cost | Phi-4 Mini, Llama 3.1 8B, Llama 3.2 3B and Gemma 3 4B returned aligned logprobs with five alternatives on CPU ([smoke](docs/results/2026-11-06-local-model-smoke.md)) |
-| [Modal, remote GPU](docs/modal-provider.md) | The model is too large for your machine | GPT-OSS-20B serves and returns logprobs; the repaired final-answer mapping is [verified on a captured response](docs/results/2026-11-06-gpt-oss-response-mapping.md) and awaits one live check |
+| [Modal, remote GPU](docs/modal-provider.md) | The model is too large for your machine | GPT-OSS-20B returned eligible final-answer logprobs with five alternatives in one live request on 2026-11-08, through the [repaired Harmony mapping](docs/results/2026-11-06-gpt-oss-response-mapping.md); not yet calibrated |
 | NVIDIA NIM, hosted | You have NIM credentials and capacity | Recent eligibility attempts timed out or returned 504; treat as unavailable until a fresh probe passes |
 
 **Sizing GPT-OSS-20B locally:** plan for **20 GiB of free RAM**. On CPU, Ollama

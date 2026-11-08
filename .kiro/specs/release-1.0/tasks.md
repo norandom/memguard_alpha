@@ -66,10 +66,11 @@ Requirement 2 above is the new scope.
 
 ## M2. Track 3 gate: Modal live eligibility (authorize)
 
-- [ ] M2.1 One live eligibility request for GPT-OSS-20B through the Harmony
+- [x] M2.1 One live eligibility request for GPT-OSS-20B through the Harmony
   profile after the response-mapping fix. Limit: 1 request, 0 retries, within
   the USD 5 pilot allowance. Recheck app inventory first; stop all apps after (C3,
   C10). Source: [local-ai-provider](../local-ai-provider/spec.json) modal extension.
+  - _Outcome 2026-11-08 (user-authorized; run before M1.7 closed because it is independent): operator tooling ran in a Linux container in WSL Debian (`deploy/modal` Python 3.12 lock updated for psutil only). `scripts/probe_modal_model.py --execute --harmony-eligibility-only` sent **1** inference POST (0 retries) through `HarmonyOpenAICompatibleClient`: **eligible**, aligned final-answer logprobs with top-5 alternatives, 73 prompt / 30 completion tokens, 2.8 s generation, 117 s cold start; environment observed stable on A100-SXM4-80GB (A100-40GB requested). Model app `ap-vDwQ3gTNDe2miK2fxKZIk9` verified stopped by the runner; expiry controller `ap-r71FVCOCf6mWZB2bPauNd3` stopped by exact ID; environment shows no running apps. Runner compute estimate USD 0.094; billed amount not yet reconciled. Private receipt: `runs/modal-preflight/pilot-2026-11-08-m2.json` (generated text not printed or published)._
 
 ## M3. Measurement plan for Tracks 2 and 3 (offline, then authorize)
 
@@ -126,7 +127,7 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 | --- | --- | --- | --- |
 | C1 | Ollama GPT-OSS-20B HTTP 500 on 2026-11-06; 13.9 GB CPU allocation vs ~13.4 GB free; body not retained | Mitigated: RAM gate and body retention shipped (M1.4); cause still a hypothesis | P1 |
 | C2 | Ollama GPT-OSS token-text alignment failed (2026-11-05); Harmony ID mapper needs token IDs | Open | P1 |
-| C3 | Modal repaired mapping verified only by offline replay | Open | M2.1 |
+| C3 | Modal repaired mapping verified only by offline replay | Resolved 2026-11-08: live eligible response (M2.1) | M2.1 |
 | C4 | LLaVA effective context 4096 vs requested 2048 | Open | M3.1 |
 | C5 | Score normalization semantics unknown; alternatives are partial top-k | Open | M3.2, M6.1 |
 | C6 | NIM unavailable (timeouts, HTTP 504) | Recorded | M5.1, P3 |
