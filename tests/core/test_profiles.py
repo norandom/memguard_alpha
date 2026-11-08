@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import replace
+from datetime import UTC, datetime
 
 import pytest
 import requests
@@ -253,12 +254,16 @@ def test_insufficient_free_ram_blocks_with_zero_http_and_friendly_proposal():
         "20.0 GiB of free RAM.")
 
 
-def test_connect_raises_preflight_error_before_any_request():
-    snapshot = HostMemorySnapshot(MEASURED_LOW, sampled_at="2026-11-08T00:00:00Z")
+def test_connect_raises_preflight_error_before_any_request(monkeypatch):
+    snapshot = HostMemorySnapshot(MEASURED_LOW, observed_at=datetime.now(UTC).isoformat())
+    checked = []
+    # The only permitted HTTP is the read-only /api/ps check on the snapshot's host; fake it as "not loaded".
+    monkeypatch.setattr("recall_guard.core.profiles._model_already_loaded",
+                        lambda endpoint, model, http_get=None: checked.append(endpoint) or False)
     with pytest.raises(PreflightError) as caught:
-        # Non-loopback host with a host-side snapshot: no /api/ps check, so zero HTTP.
         connect(gpt_oss("http://host.docker.internal:11434/v1/chat/completions"), CallBudget(1),
                 environment={}, host_snapshot=snapshot)
+    assert checked == ["http://host.docker.internal:11434/v1/chat/completions"]
     assert caught.value.report.reason == "insufficient_free_ram"
     assert "13.4 GiB free, 20.0 GiB required for gpt-oss:20b" in str(caught.value)
     assert isinstance(caught.value, ProfileError)
@@ -301,7 +306,7 @@ def test_non_loopback_endpoint_without_snapshot_is_unknown_and_never_reads_local
     assert local.calls == [] and http.calls == []
     assert report.measured_free_ram_bytes is None
     assert "host.docker.internal" in report.recommendation and "20.0 GiB" in report.recommendation
-    snapshot = {"available_bytes": 24 * GIB, "sampled_at": "2026-11-08T00:00:00Z"}
+    snapshot = {"available_bytes": 24 * GIB, "observed_at": datetime.now(UTC).isoformat()}
     passed = preflight_host(profile, environment={}, host_snapshot=snapshot, memory_reader=local, http_get=http)
     assert passed.passed and passed.memory_source == "host_snapshot" and local.calls == []
 

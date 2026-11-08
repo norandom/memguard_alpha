@@ -25,6 +25,7 @@ from recall_guard.core.completion import ModelConfig, ModelResponse
 from recall_guard.core.local_evidence import validate_local_evidence
 from recall_guard.core.profiles import (
     HostingMode,
+    HostMemorySnapshot,
     HostPreflightReport,
     PreflightError,
     ProviderProfile,
@@ -79,9 +80,24 @@ def connect_probe(config: ProbeConfig, budget: CallBudget):
     return connect(config.profile(), budget, environment={}, enforce_preflight=False)
 
 
-def host_preflight(config: ProbeConfig) -> HostPreflightReport:
-    """Free-RAM gate and read-only Ollama metadata before any journal entry or load."""
-    return preflight_host(config.profile(), environment={})
+def host_preflight(config: ProbeConfig, host_snapshot: HostMemorySnapshot | None = None) -> HostPreflightReport:
+    """Free-RAM gate and read-only Ollama metadata before any journal entry or load.
+
+    ``host_snapshot`` is free RAM measured on the model host (required inside a
+    container, where this machine's memory is not the Ollama host's).
+    """
+    return preflight_host(config.profile(), environment={}, host_snapshot=host_snapshot)
+
+
+def with_endpoint(config: ProbeConfig, endpoint: str | None) -> ProbeConfig:
+    """Override the manifest endpoint (for example host.docker.internal from a container)."""
+    if endpoint is None:
+        return config
+    config = replace(config, endpoint=endpoint)
+    config.client_config()  # Credential-free URL validation.
+    if urlsplit(config.endpoint).path != '/v1/chat/completions':
+        raise ValueError('explicit_full_chat_endpoint_required')
+    return config
 
 
 def read_json(path: Path) -> dict:
@@ -217,14 +233,16 @@ def execute(config: ProbeConfig, receipt: dict, journal: dict, path: Path) -> No
 
 
 def run_probe(manifest_path: Path, candidate_id: str, host_path: Path, journal_path: Path,
-              *, dry_run: bool = False) -> dict:
+              *, dry_run: bool = False, endpoint: str | None = None,
+              host_snapshot: HostMemorySnapshot | None = None) -> dict:
     """One explicitly requested probe. A separate invocation is never an automatic retry."""
-    config = load_config(manifest_path, candidate_id)
+    config = with_endpoint(load_config(manifest_path, candidate_id), endpoint)
     receipt = new_receipt(config)
     if dry_run:
         return receipt | {'status': 'dry_run', 'bounds': BOUNDS, 'ollama_attempt_limit': 4,
                           'reserved_blocked_npu_attempts': 2}
-    report = host_preflight(config)  # Zero inference; no journal entry, no load.
+    # Zero inference; no journal entry, no load.
+    report = host_preflight(config) if host_snapshot is None else host_preflight(config, host_snapshot)
     if not report.passed:
         raise PreflightError(report)
     journal_path.parent.mkdir(parents=True, exist_ok=True)
@@ -269,7 +287,7 @@ def run_probe(manifest_path: Path, candidate_id: str, host_path: Path, journal_p
         lock_path.unlink()
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--manifest', type=Path, default=Path('.kiro/specs/local-ai-provider/candidate-manifest.json'))
     selection = parser.add_mutually_exclusive_group(required=True)
@@ -279,10 +297,18 @@ def main() -> int:
     parser.add_argument('--host-observation', type=Path, default=Path('runs/local-provider/host-observation.json'))
     parser.add_argument('--journal', type=Path, default=Path('runs/local-provider/ollama-probe-journal.json'))
     parser.add_argument('--dry-run', action='store_true')
-    args = parser.parse_args()
+    parser.add_argument('--endpoint', default=None,
+                        help='Full chat-completions URL overriding the manifest endpoint '
+                             '(e.g. http://host.docker.internal:11434/v1/chat/completions from a container).')
+    parser.add_argument('--host-snapshot', type=Path, default=None,
+                        help='Host memory snapshot JSON written on the model host by scripts/host_memory_snapshot.ps1 '
+                             '(inside the container: /outputs/host-memory.json).')
+    args = parser.parse_args(argv)
     candidate = args.profile or args.candidate
     try:
-        result = run_probe(args.manifest, candidate, args.host_observation, args.journal, dry_run=args.dry_run)
+        snapshot = None if args.host_snapshot is None else HostMemorySnapshot.from_file(args.host_snapshot)
+        result = run_probe(args.manifest, candidate, args.host_observation, args.journal, dry_run=args.dry_run,
+                           endpoint=args.endpoint, host_snapshot=snapshot)
     except PreflightError as error:
         print_failure(error, profile_id=candidate, stage='host preflight')
         return 2

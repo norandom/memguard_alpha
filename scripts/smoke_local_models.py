@@ -20,7 +20,14 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recall_guard.core.local_evidence import LocalEvidenceError, validate_local_evidence
-from recall_guard.core.profiles import PreflightError, ProfileError, load_profile, preflight_host
+from recall_guard.core.profiles import (
+    HostMemorySnapshot,
+    PreflightError,
+    ProfileError,
+    load_profile,
+    preflight_host,
+    running_in_container,
+)
 from recall_guard.harness.request_failures import print_failure
 from scripts.probe_local_model import (
     PROFILE_MODELS,
@@ -60,15 +67,18 @@ def profile_selection(profile_ids, endpoint: str | None) -> tuple[list[str], str
     return models, endpoint
 
 
-def profile_preflight(profile_ids, endpoint: str, *, check=preflight_host) -> None:
+def profile_preflight(profile_ids, endpoint: str, *, check=preflight_host,
+                      host_snapshot: HostMemorySnapshot | None = None) -> None:
     """Run the shared host preflight for each selected profile at the chosen endpoint.
 
-    Raises :class:`PreflightError` on the first failure; nothing is loaded.
+    ``host_snapshot`` is free RAM measured on the model host (needed inside a
+    container). Raises :class:`PreflightError` on the first failure; nothing is loaded.
     """
+    extra = {} if host_snapshot is None else {'host_snapshot': host_snapshot}
     for profile_id in profile_ids:
         profile = load_profile(profile_id)
         profile = replace(profile, model_config=replace(profile.model_config, endpoint=endpoint))
-        report = check(profile, environment={})
+        report = check(profile, environment={}, **extra)
         if not report.passed:
             raise PreflightError(report)
 
@@ -90,10 +100,20 @@ def available_memory_bytes() -> int | None:
     return None
 
 
-def memory_gate(endpoint: str, threshold: int, reader=None) -> dict:
-    # A caller-supplied reader explicitly supplies verified SERVER memory. The CLI
-    # has no such override: remote endpoints cannot accidentally use client RAM.
-    local = urlsplit(endpoint).hostname in {'localhost', '127.0.0.1', '::1'}
+def memory_gate(endpoint: str, threshold: int, reader=None, *, host_snapshot: HostMemorySnapshot | None = None,
+                in_container: bool | None = None) -> dict:
+    # A caller-supplied reader explicitly supplies verified SERVER memory; the CLI
+    # supplies one only from a fresh --host-snapshot taken on the model host.
+    # Remote endpoints, and any endpoint seen from inside a container (C20), never use client RAM.
+    if host_snapshot is not None:
+        problem = host_snapshot.freshness_problem()
+        sample = None if problem else host_snapshot.available_bytes
+        return {'available_bytes': sample, 'threshold_bytes': threshold, 'sampled_at': host_snapshot.observed_at,
+                'source': host_snapshot.source if problem is None else problem[0],
+                'policy': 'conservative_available_ram_admission_not_proven_minimum',
+                'admitted': sample is not None and sample >= threshold}
+    container = running_in_container() if in_container is None else in_container
+    local = urlsplit(endpoint).hostname in {'localhost', '127.0.0.1', '::1'} and not container
     sample = None
     if local or reader is not None:
         try:
@@ -104,7 +124,8 @@ def memory_gate(endpoint: str, threshold: int, reader=None) -> dict:
         sample = None
     return {'available_bytes': sample, 'threshold_bytes': threshold,
             'sampled_at': datetime.now(UTC).isoformat(),
-            'source': 'verified_host_callback' if reader else 'local_host_available_ram' if local else 'unknown_remote_host',
+            'source': ('verified_host_callback' if reader else 'local_host_available_ram' if local
+                       else 'unknown_container_host' if container else 'unknown_remote_host'),
             'policy': 'conservative_available_ram_admission_not_proven_minimum',
             'admitted': sample is not None and sample >= threshold}
 
@@ -159,11 +180,13 @@ def probe(config: ProbeConfig, row: dict, journal: dict, output: Path) -> None:
 
 
 def run_smoke(endpoint: str, host: dict, output: Path | None = None, *, models=MODELS,
-              execute: bool = False, minimum_available_gib: float = 16, memory_reader=None) -> dict:
+              execute: bool = False, minimum_available_gib: float = 16, memory_reader=None,
+              host_snapshot: HostMemorySnapshot | None = None) -> dict:
     """One invocation, one new receipt, at most one inference per selected model.
 
-    ``memory_reader`` is an optional verified server-memory callback (bytes).
-    Only loopback endpoints use the built-in reader. No receipt may be replayed.
+    ``memory_reader`` is an optional verified server-memory callback (bytes);
+    ``host_snapshot`` a fresh snapshot taken on the model host. Only loopback
+    endpoints outside a container use the built-in reader. No receipt may be replayed.
     """
     models = tuple(models)
     if not models or len(set(models)) != len(models) or any(m not in MODELS for m in models):
@@ -262,7 +285,7 @@ def run_smoke(endpoint: str, host: dict, output: Path | None = None, *, models=M
                 row.update(reason=reason, environment_status='mismatched')
                 continue
             if config.model == 'gpt-oss:20b':
-                row['memory_gate'] = memory_gate(endpoint, threshold, memory_reader)
+                row['memory_gate'] = memory_gate(endpoint, threshold, memory_reader, host_snapshot=host_snapshot)
                 if not row['memory_gate']['admitted']:
                     row['reason'] = 'available_host_memory_unknown_or_below_policy'
                     continue
@@ -302,7 +325,7 @@ def run_smoke(endpoint: str, host: dict, output: Path | None = None, *, models=M
     return journal
 
 
-def main() -> int:
+def main(argv=None) -> int:
     import json
 
     parser = argparse.ArgumentParser(description=__doc__)
@@ -314,16 +337,23 @@ def main() -> int:
     parser.add_argument('--minimum-available-gib', type=float, default=16)
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--output', type=Path)
-    args = parser.parse_args()
+    parser.add_argument('--host-snapshot', type=Path, default=None,
+                        help='Host memory snapshot JSON written on the model host by scripts/host_memory_snapshot.ps1 '
+                             '(inside the container: /outputs/host-memory.json).')
+    args = parser.parse_args(argv)
     try:
+        snapshot = None if args.host_snapshot is None else HostMemorySnapshot.from_file(args.host_snapshot)
         profiled, endpoint = profile_selection(args.profile or (), args.endpoint)
         models = list(dict.fromkeys([*profiled, *(args.model or ())])) or MODELS
-        profile_preflight(args.profile or (), endpoint)
+        profile_preflight(args.profile or (), endpoint, host_snapshot=snapshot)
         host = read_json(args.host_observation) if args.execute else {}
-        result = run_smoke(endpoint, host, args.output, models=models,
-                           execute=args.execute, minimum_available_gib=args.minimum_available_gib)
+        result = run_smoke(endpoint, host, args.output, models=models, execute=args.execute,
+                           minimum_available_gib=args.minimum_available_gib, host_snapshot=snapshot)
     except PreflightError as error:
         print_failure(error, stage='host preflight')
+        return 2
+    except ProfileError as error:
+        print(f'Smoke refused: {error}', file=sys.stderr)
         return 2
     except (OSError, ValueError):
         print('Smoke refused: invalid configuration, unavailable host file or existing receipt.', file=sys.stderr)

@@ -8,7 +8,11 @@ are fixed, synthetic stand-ins. The provider client, preparation, RecallWorkflow
 execution, fidelity checks and request accounting are the real ones. The output
 shows wiring only, never model quality or mitigation effect. Without
 ``--fixture`` the script only prints the chosen profile and its declared host
-requirements; it reads no host memory and contacts nothing.
+requirements; it reads no local memory and contacts nothing. With
+``--host-snapshot PATH`` (written on the model host by
+scripts/host_memory_snapshot.ps1; /outputs/host-memory.json in the container)
+it also evaluates the free-RAM gate against that snapshot, still offline.
+``--endpoint URL`` replaces the profile's chat-completions endpoint.
 """
 
 import argparse
@@ -25,7 +29,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rich.console import Console
 
 from recall_guard.core.completion import CapabilityEvidence, FeatureChoices
-from recall_guard.core.profiles import GIB, PreflightError, connect, load_profile, preflight_host
+from recall_guard.core.profiles import (
+    GIB,
+    HostMemorySnapshot,
+    PreflightError,
+    ProfileError,
+    connect,
+    load_profile,
+    preflight_host,
+)
 from recall_guard.core.provider_probe import TOKEN_CONTROLS
 from recall_guard.core.providers import OpenAICompatibleClient
 from recall_guard.core.request_control import CallBudget
@@ -109,7 +121,10 @@ def preflight_with_fallback(requested, host, console):
     attempts = []
 
     def check(profile_id):
-        report = preflight_host(profile_id, environment={}, memory_reader=host.memory, http_get=host.metadata)
+        # The fixture host IS the simulated model host, so its reader stands in for host memory
+        # even when this example runs inside a container.
+        report = preflight_host(profile_id, environment={}, memory_reader=host.memory, http_get=host.metadata,
+                                in_container=False)
         attempts.append({"profile": profile_id, "passed": report.passed, "reason": report.reason,
                          "free_ram_gib": None if report.measured_free_ram_bytes is None
                          else round(report.measured_free_ram_bytes / GIB, 1),
@@ -237,19 +252,63 @@ def run_fixture(scenario="observed_missing_tokens", *, console=None):
     return record | {"status": "completed" if preparation.ready else "stopped_before_evaluation"}
 
 
+def _offline(url):
+    raise ValueError("dry run: Ollama metadata is not contacted")
+
+
+def dry_run(endpoint=None, snapshot_path=None):
+    """Profile summary; with a snapshot, also the offline free-RAM verdict."""
+    profile = load_profile(REQUESTED_PROFILE)
+    if endpoint is not None:
+        try:
+            profile = replace(profile, model_config=replace(profile.model_config, endpoint=endpoint))
+        except ValueError:
+            raise ProfileError("--endpoint must be a credential-free HTTP(S) chat-completions URL") from None
+    record = {"status": "dry_run", "network_requests": 0, "profile": profile.profile_id,
+              "model": profile.model_config.model, "endpoint": profile.model_config.endpoint,
+              "host_requirements": profile.host_requirements.to_dict(),
+              "next": "add --fixture for the offline end-to-end flow"}
+    if snapshot_path is None:
+        return record, None
+    snapshot = HostMemorySnapshot.from_file(snapshot_path)
+    report = preflight_host(profile, environment={}, host_snapshot=snapshot, http_get=_offline)
+    # Past the RAM gate the next step is Ollama metadata, which a dry run never contacts.
+    ram_passed = report.ram_gate is not None and (report.passed or report.reason == "host_metadata_unavailable")
+    record["host_memory"] = {"snapshot": snapshot.to_dict(), "ram_gate_passed": ram_passed,
+                             "reason": None if ram_passed else report.reason,
+                             "free_ram_gib": None if report.measured_free_ram_bytes is None
+                             else round(report.measured_free_ram_bytes / GIB, 1),
+                             "required_ram_gib": None if report.required_free_ram_bytes is None
+                             else round(report.required_free_ram_bytes / GIB, 1),
+                             "ollama_metadata": "not contacted in dry run"}
+    return record, None if ram_passed else report
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--fixture", action="store_true", help="Run the full flow against synthetic fixtures")
     parser.add_argument("--scenario", choices=SCENARIOS, default=SCENARIOS[0], help="Fixture scenario: " + " ".join(
         f"{name}: {note}" for name, note in SCENARIO_NOTES.items()))
+    parser.add_argument("--endpoint", default=None,
+                        help="Dry run: chat-completions URL of the model host "
+                             "(e.g. http://host.docker.internal:11434/v1/chat/completions from a container)")
+    parser.add_argument("--host-snapshot", type=Path, default=None,
+                        help="Dry run: host memory snapshot JSON from scripts/host_memory_snapshot.ps1 "
+                             "(/outputs/host-memory.json in the container)")
     args = parser.parse_args(argv)
+    if args.fixture and (args.endpoint is not None or args.host_snapshot is not None):
+        parser.error("--endpoint and --host-snapshot apply to the dry run, not to --fixture")
     if not args.fixture:
-        profile = load_profile(REQUESTED_PROFILE)
-        print(json.dumps({"status": "dry_run", "network_requests": 0, "profile": profile.profile_id,
-                          "model": profile.model_config.model, "endpoint": profile.model_config.endpoint,
-                          "host_requirements": profile.host_requirements.to_dict(),
-                          "next": "add --fixture for the offline end-to-end flow"}, indent=2))
-        return 0
+        try:
+            record, refusal = dry_run(args.endpoint, args.host_snapshot)
+        except ProfileError as error:
+            print(f"Dry run refused: {error}", file=sys.stderr)
+            return 2
+        if refusal is not None:
+            Console(file=sys.stderr, highlight=False).print(
+                render_failure_panel(describe_failure(PreflightError(refusal), stage="host preflight")))
+        print(json.dumps(record, indent=2))
+        return 0 if refusal is None else 2
     record = run_fixture(args.scenario)  # The friendly preflight panel prints first.
     print(json.dumps(record, indent=2))
     return 0 if record["status"] in {"completed", "stopped_before_evaluation"} else 2

@@ -53,13 +53,14 @@ Requirement 2 above is the new scope.
 - [ ] M1.7 Windows runs containers only (user decision 2026-11-08; steering
   `execution-environment.md`). Inserted before M2 because it changes how adopters
   run every command.
-  - [ ] M1.7a Preflight inside containers: when running in a container, never read
+  - [x] M1.7a Preflight inside containers: when running in a container, never read
     local memory as the model host's, even for a loopback endpoint reached through
     host networking (C20). Host memory snapshots carry a timestamp and are refused
     when stale (C21).
-  - [ ] M1.7b Host-side memory snapshot helper for the Windows Ollama host
+  - [x] M1.7b Host-side memory snapshot helper for the Windows Ollama host
     (PowerShell, writes JSON to `runs/container` = `/outputs`); `--host-snapshot`
     and `--endpoint` options on the probe/smoke scripts and the example.
+  - _M1.7a/b done 2026-11-08: container detection (`RECALL_GUARD_IN_CONTAINER` override, `/.dockerenv`, `/run/.containerenv`, cgroup markers); inside a container the RAM gate never reads local memory and needs a host snapshot. Snapshots carry `observed_at` and are refused when older than 10 minutes or more than 2 minutes in the future (`host_memory_stale`). Host helpers `scripts/host_memory_snapshot.ps1` (Windows; checked on this host) and `.sh` (Linux; the macOS branch is untested, to check on the Mac, P1). `--host-snapshot`/`--endpoint` on the probe, smoke and example. Full offline suite 2982 passed, 2 skipped; focused container run 153 passed. C20 and C21 resolved._
   - [ ] M1.7c Move README and docs commands from native `uv run` to Docker
     Compose; document container→Windows-Ollama connectivity for Docker Engine in
     WSL and Docker Desktop; credentialed commands keep the single root `.env`.
@@ -144,8 +145,8 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 | C17 | A failure latched before any readiness trace (e.g. a settings check that fails before the first request) leaves `root_observation` empty, so woken queued observations keep `caller_cancelled`. Not reproducible in current flows | Low; watch | M1.6 |
 | C18 | Profiles resolved only from the checkout | Resolved 2026-11-08 (package data) | M1.5 |
 | C19 | `MODAL_ENDPOINT_URL` template line | Resolved 2026-11-08 (d8a97b0); value set after M2 deploy | M2.1 |
-| C20 | Inside a container with host networking, a loopback endpoint would make the RAM gate read container/WSL VM memory as the host's | Open | M1.7a |
-| C21 | Host memory snapshots have no timestamp or age limit | Open | M1.7a |
+| C20 | Container RAM gate could read container/WSL memory as the host's | Resolved 2026-11-08 | M1.7a |
+| C21 | Host memory snapshots had no timestamp or age limit | Resolved 2026-11-08 (10 min max age) | M1.7a |
 
 ## Spec register
 

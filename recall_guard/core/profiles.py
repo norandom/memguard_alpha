@@ -16,6 +16,7 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from importlib import resources
 from pathlib import Path
@@ -285,19 +286,65 @@ GIB = 1024 ** 3
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 _SEMVER = re.compile(r"\d+\.\d+\.\d+")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+#: A host memory snapshot older than this is refused as stale (C21).
+SNAPSHOT_MAX_AGE = timedelta(minutes=10)
+#: A snapshot stamped further in the future than this is refused (clock skew allowance).
+SNAPSHOT_CLOCK_SKEW = timedelta(minutes=2)
+#: Host-side helper that writes a snapshot; the container sees runs/container as /outputs.
+SNAPSHOT_HELPER = "scripts/host_memory_snapshot.ps1"
+SNAPSHOT_CONTAINER_PATH = "/outputs/host-memory.json"
+#: Process-level override for container detection: ``1`` (in a container) or ``0`` (not).
+IN_CONTAINER_ENV = "RECALL_GUARD_IN_CONTAINER"
+_SNAPSHOT_STEP = (f"On the model host, run {SNAPSHOT_HELPER} (it writes runs/container/host-memory.json), "
+                  f"then pass --host-snapshot {SNAPSHOT_CONTAINER_PATH} (the path the container sees).")
+_CONTAINER_FILES = (".dockerenv", "run/.containerenv")
+_CGROUP_MARKERS = ("docker", "containerd", "kubepods", "libpod", "lxc")
+
+
+def running_in_container(*, environment: Mapping[str, str] | None = None, root: str | Path = "/") -> bool:
+    """True when this process runs inside a container (C20).
+
+    ``RECALL_GUARD_IN_CONTAINER`` (``1``/``0``) wins; otherwise ``/.dockerenv``,
+    ``/run/.containerenv`` or a container runtime in ``/proc/1/cgroup``. Inside a
+    container local memory belongs to the container or its VM, never the model host.
+    """
+    environment = os.environ if environment is None else environment
+    override = str(environment.get(IN_CONTAINER_ENV, "")).strip().lower()
+    if override in {"1", "true", "yes"}:
+        return True
+    if override in {"0", "false", "no"}:
+        return False
+    base = Path(root)
+    if any((base / name).exists() for name in _CONTAINER_FILES):
+        return True
+    try:
+        cgroup = (base / "proc" / "1" / "cgroup").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(marker in cgroup for marker in _CGROUP_MARKERS)
+
+
+def _parse_observed_at(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.strip())
+    if parsed.tzinfo is None:
+        raise ValueError("naive timestamp")
+    return parsed.astimezone(UTC)
 
 
 @dataclass(frozen=True)
 class HostMemorySnapshot:
-    """Free RAM measured ON the model host (for example by a host-side helper).
+    """Free RAM measured ON the model host by a host-side helper (C20, C21).
 
-    Required when the endpoint is not loopback: a container or client machine
-    must never substitute its own memory for the external Ollama host's.
+    Required inside a container and for non-loopback endpoints: a container or
+    client machine must never substitute its own memory for the Ollama host's.
+    ``observed_at`` is a timezone-aware ISO-8601 time (UTC recommended); a
+    snapshot without it, or older than the preflight's maximum age, is refused.
     """
 
     available_bytes: int
     total_bytes: int | None = None
-    sampled_at: str | None = None
+    observed_at: str | None = None
+    host: str | None = None
     source: str = "host_snapshot"
 
     def __post_init__(self) -> None:
@@ -305,6 +352,24 @@ class HostMemorySnapshot:
             raise ProfileError("host_snapshot.available_bytes must be a nonnegative integer")
         if self.total_bytes is not None and (type(self.total_bytes) is not int or self.total_bytes <= 0):
             raise ProfileError("host_snapshot.total_bytes must be a positive integer or null")
+        if self.observed_at is not None:
+            try:
+                _parse_observed_at(self.observed_at)
+            except (AttributeError, TypeError, ValueError):
+                raise ProfileError("host_snapshot.observed_at must be a timezone-aware ISO-8601 time") from None
+        if self.host is not None and (not isinstance(self.host, str) or not self.host.strip()
+                                      or len(self.host) > 255):
+            raise ProfileError("host_snapshot.host must be a short nonempty name or null")
+        if not isinstance(self.source, str) or not self.source.strip():
+            raise ProfileError("host_snapshot.source must be nonempty text")
+
+    @property
+    def observed_datetime(self) -> datetime | None:
+        return None if self.observed_at is None else _parse_observed_at(self.observed_at)
+
+    def to_dict(self) -> dict:
+        return {"available_bytes": self.available_bytes, "total_bytes": self.total_bytes,
+                "observed_at": self.observed_at, "host": self.host, "source": self.source}
 
     @classmethod
     def coerce(cls, value: HostMemorySnapshot | Mapping) -> HostMemorySnapshot:
@@ -312,8 +377,43 @@ class HostMemorySnapshot:
             return value
         if not isinstance(value, Mapping):
             raise ProfileError("host_snapshot must be a HostMemorySnapshot or mapping")
-        allowed = {"available_bytes", "total_bytes", "sampled_at", "source"}
+        allowed = {"available_bytes", "total_bytes", "observed_at", "host", "source"}
         return cls(**{key: value[key] for key in allowed if key in value})
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> HostMemorySnapshot:
+        """Load the JSON written by the host helper (a UTF-8 BOM is tolerated)."""
+        path = Path(path)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise ProfileError(f"Cannot read host memory snapshot {path.name}: {error.__class__.__name__}") from None
+        return cls.coerce(data)
+
+    def freshness_problem(self, *, now: datetime | None = None,
+                          max_age: timedelta = SNAPSHOT_MAX_AGE) -> tuple[str, str] | None:
+        """``None`` when fresh, else ``(reason, plain-English explanation)``."""
+        observed = self.observed_datetime
+        where = self.host or "the model host"
+        if observed is None:
+            return "host_memory_unknown", ("The host memory snapshot has no observed_at time, so its age is "
+                                           "unknown and it cannot pass the memory gate.")
+        now = (datetime.now(UTC) if now is None else now).astimezone(UTC)
+        age = now - observed
+        if age < -SNAPSHOT_CLOCK_SKEW:
+            return "host_memory_stale", (
+                f"The host memory snapshot from {where} is dated {_minutes(-age)} in the future, beyond the "
+                f"{_minutes(SNAPSHOT_CLOCK_SKEW)} clock-skew allowance. Check the clocks on both machines.")
+        if age > max_age:
+            return "host_memory_stale", (
+                f"The host memory snapshot from {where} is {_minutes(age)} old; the limit is {_minutes(max_age)}, "
+                "because free memory changes quickly.")
+        return None
+
+
+def _minutes(delta: timedelta) -> str:
+    minutes = delta.total_seconds() / 60
+    return f"{minutes:.1f} minutes" if minutes < 120 else f"{minutes / 60:.1f} hours"
 
 
 @dataclass(frozen=True)
@@ -465,20 +565,43 @@ def _credential_failure(profile: ProviderProfile, environment: Mapping[str, str]
             f"Set {name} (the value is never printed or stored) and try again.")
 
 
-def _memory_gate(endpoint, host_snapshot, memory_reader):
-    """Return ``(measured, total, source)``; ``measured is None`` when unknown."""
+def _is_loopback(endpoint) -> bool:
+    return (urlsplit(endpoint or "").hostname or "").lower() in LOOPBACK_HOSTS
+
+
+def _memory_gate(endpoint, host_snapshot, memory_reader, *, in_container, now, max_age):
+    """Return ``(measured, total, source, refusal)``.
+
+    ``refusal`` is ``None`` or ``(reason, explanation)``; ``explanation`` is None
+    when the generic unknown-memory text applies. Local memory is read only for a
+    loopback endpoint outside a container (C20); snapshots must be fresh (C21).
+    """
     if host_snapshot is not None:
         snapshot = HostMemorySnapshot.coerce(host_snapshot)
-        return snapshot.available_bytes, snapshot.total_bytes, snapshot.source
-    if (urlsplit(endpoint or "").hostname or "").lower() not in LOOPBACK_HOSTS:
-        return None, None, None
+        refusal = snapshot.freshness_problem(now=now, max_age=max_age)
+        if refusal is not None:
+            return None, None, snapshot.source, refusal
+        return snapshot.available_bytes, snapshot.total_bytes, snapshot.source, None
+    if in_container or not _is_loopback(endpoint):
+        return None, None, None, ("host_memory_unknown", None)
     try:
         available, total = (memory_reader or _psutil_memory)()
     except (OSError, RuntimeError, ValueError, TypeError):
-        return None, None, None
+        return None, None, None, ("host_memory_unknown", None)
     if type(available) is not int or available < 0:
-        return None, None, None
-    return available, total if type(total) is int and total > 0 else None, "local_host_available_ram"
+        return None, None, None, ("host_memory_unknown", None)
+    return available, total if type(total) is int and total > 0 else None, "local_host_available_ram", None
+
+
+def _unknown_memory_text(endpoint, model: str, required: int, in_container: bool) -> str:
+    host = urlsplit(endpoint or "").hostname or "the model host"
+    if in_container:
+        return (f"Recall Guard is running in a container, so this machine's memory is not the model host's. "
+                f"Free RAM on {host} is unknown, and {model} needs {_gib(required)} free. Nothing was loaded. "
+                + _SNAPSHOT_STEP)
+    return (f"Free RAM on {host} could not be measured from here, and {model} needs "
+            f"{_gib(required)} free. Nothing was loaded. Pass a host memory snapshot taken on {host}, "
+            f"or run on the model host itself. {_SNAPSHOT_STEP}")
 
 
 def preflight_host(
@@ -488,15 +611,21 @@ def preflight_host(
     host_snapshot: HostMemorySnapshot | Mapping | None = None,
     memory_reader=None,
     http_get=None,
+    in_container: bool | None = None,
+    max_snapshot_age: timedelta = SNAPSHOT_MAX_AGE,
+    now: datetime | None = None,
 ) -> HostPreflightReport:
     """Zero-inference host checks before any client is built or model loaded.
 
     Order: credential and pinned tokenizer presence (no I/O), then the free-RAM
     gate, then read-only Ollama metadata. A failed gate stops there; the only
-    HTTP before an ``insufficient_free_ram`` verdict is one loopback ``/api/ps``
-    read, which passes the gate when the target model is already loaded.
-    Free RAM is measured with psutil only for a loopback endpoint; any other
-    endpoint needs an explicit ``host_snapshot`` taken on the model host.
+    HTTP before an ``insufficient_free_ram`` verdict is one read-only ``/api/ps``
+    call (loopback local reading or a host snapshot), which passes the gate when
+    the target model is already loaded.
+    Free RAM is measured with psutil only for a loopback endpoint outside a
+    container (``in_container`` defaults to :func:`running_in_container`); a
+    container or any other endpoint needs a ``host_snapshot`` taken on the model
+    host, no older than ``max_snapshot_age`` (``host_memory_stale`` otherwise).
     Unknown host memory BLOCKS while a RAM requirement is declared: R2.3 says
     the model is not loaded until the requirement is shown to be met, and an
     under-provisioned load is exactly the opaque Ollama HTTP 500 this prevents.
@@ -505,6 +634,8 @@ def preflight_host(
     environment = os.environ if environment is None else environment
     if not isinstance(environment, Mapping):
         raise TypeError("environment must be a mapping")
+    if not isinstance(max_snapshot_age, timedelta) or max_snapshot_age <= timedelta(0):
+        raise ValueError("max_snapshot_age must be a positive timedelta")
     model = profile.model_config.model
     requirements = profile.host_requirements
     fallbacks = requirements.fallback_profile_ids
@@ -523,22 +654,26 @@ def preflight_host(
     endpoint = _resolved_config(profile, environment).endpoint
     memory: dict = {}
     if requirements.min_free_ram_bytes is not None:
-        measured, total, source = _memory_gate(endpoint, host_snapshot, memory_reader)
+        container = running_in_container() if in_container is None else bool(in_container)
+        measured, total, source, refusal = _memory_gate(
+            endpoint, host_snapshot, memory_reader if host_snapshot is None else None,
+            in_container=container, now=now, max_age=max_snapshot_age)
         memory = {"measured_free_ram_bytes": measured, "total_ram_bytes": total, "memory_source": source}
-        if measured is None:
-            host = urlsplit(endpoint or "").hostname or "the model host"
+        if refusal is not None:
+            reason, explanation = refusal
             options = f" Or use {_fallback_text(fallbacks)}." if fallbacks else ""
-            return HostPreflightReport(
-                passed=False, reason="host_memory_unknown", **base, **memory,
-                recommendation=(f"Free RAM on {host} could not be measured from here, and {model} needs "
-                                f"{_gib(requirements.min_free_ram_bytes)} free. Nothing was loaded. Pass a "
-                                f"host memory snapshot taken on {host}, or run on the model host itself.{options}"))
+            if explanation is None:
+                explanation = _unknown_memory_text(endpoint, model, requirements.min_free_ram_bytes, container)
+            else:
+                explanation += (f" {model} needs {_gib(requirements.min_free_ram_bytes)} free; nothing was "
+                                f"loaded. {_SNAPSHOT_STEP}")
+            return HostPreflightReport(passed=False, reason=reason, **base, **memory,
+                                       recommendation=explanation + options)
         memory["ram_gate"] = "enforced"
         if measured < requirements.min_free_ram_bytes:
             # A model that is already resident occupies the RAM being measured;
-            # one read-only /api/ps call (loopback Ollama only) avoids a false block.
-            loopback = (urlsplit(endpoint or "").hostname or "").lower() in LOOPBACK_HOSTS
-            if (loopback and profile.model_config.provider == "ollama"
+            # one read-only /api/ps call to that same host avoids a false block.
+            if (profile.model_config.provider == "ollama" and (host_snapshot is not None or _is_loopback(endpoint))
                     and _model_already_loaded(endpoint, model, http_get)):
                 memory["ram_gate"] = "skipped_model_already_loaded"
             else:
@@ -575,6 +710,7 @@ def connect(
     environment: Mapping[str, str] | None = None,
     enforce_preflight: bool = True,
     host_snapshot: HostMemorySnapshot | Mapping | None = None,
+    max_snapshot_age: timedelta = SNAPSHOT_MAX_AGE,
 ) -> CompletionClient:
     """Build the configured client for ``profile`` without issuing any inference request.
 
@@ -591,7 +727,8 @@ def connect(
     if not isinstance(environment, Mapping):
         raise TypeError("environment must be a mapping")
     if enforce_preflight:
-        report = preflight_host(profile, environment=environment, host_snapshot=host_snapshot)
+        report = preflight_host(profile, environment=environment, host_snapshot=host_snapshot,
+                                max_snapshot_age=max_snapshot_age)
         if not report.passed:
             raise PreflightError(report)
     reference = profile.model_config.credential_ref
@@ -617,5 +754,5 @@ def connect(
 __all__ = [
     "HarmonyMappingConfig", "HostMemorySnapshot", "HostPreflightReport", "HostResourceRequirement", "HostingMode",
     "PreflightError", "ProfileError", "ProviderProfile", "ResponseMapping", "available_profiles", "connect",
-    "load_profile", "observe_ollama_host", "preflight_host",
+    "load_profile", "observe_ollama_host", "preflight_host", "running_in_container",
 ]

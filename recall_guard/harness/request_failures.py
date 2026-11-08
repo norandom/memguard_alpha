@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from recall_guard.core.profiles import HostPreflightReport
+from recall_guard.core.profiles import SNAPSHOT_CONTAINER_PATH, SNAPSHOT_HELPER, HostPreflightReport
 from recall_guard.core.request_control import BudgetExhaustedError, RequestError
 
 FATAL_FAILURES = frozenset({"budget_exhausted", "authentication_error", "configuration_error", "eligibility_error",
@@ -138,6 +138,7 @@ class FailurePresentation:
 _PREFLIGHT_TITLES = {
     "insufficient_free_ram": "Not enough free memory for this model",
     "host_memory_unknown": "Free memory on the model host is unknown",
+    "host_memory_stale": "The host memory snapshot is too old to trust",
     "model_not_installed": "Model is not installed on this Ollama host",
     "host_metadata_unavailable": "Ollama did not answer",
     "missing_credential": "A credential is missing",
@@ -147,13 +148,18 @@ _OVERLOADED_CODES = frozenset({"overloaded", "overloaded_error", "service_unavai
 _MAPPING_CODES = frozenset({"missing_token_evidence", "response_mapping_failed"})
 _TIMEOUT_CODES = frozenset({"timeout", "connection_error", "transport_error", "disconnect"})
 #: Start of the alternatives sentence that profiles.preflight_host appends to its recommendation.
-_ALTERNATIVES_SENTENCE = re.compile(r" (?=Try --profile |Run on a machine |Or use --profile )")
+_SNAPSHOT_REASONS = frozenset({"host_memory_unknown", "host_memory_stale"})
+#: The snapshot instruction is also cut there; it is listed once as a step.
+_ALTERNATIVES_SENTENCE = re.compile(r" (?=Try --profile |Run on a machine |Or use --profile |On the model host, run )")
 
 
 def _preflight_presentation(report: HostPreflightReport, profile_id, stage) -> FailurePresentation:
     steps = []
-    if report.reason in {"insufficient_free_ram", "host_memory_unknown"}:
-        steps = [f"Use --profile {item}" for item in report.fallback_profile_ids]
+    if report.reason in _SNAPSHOT_REASONS:
+        steps.append(f"Take a fresh snapshot on the model host ({SNAPSHOT_HELPER}) and pass "
+                     f"--host-snapshot {SNAPSHOT_CONTAINER_PATH}")
+    if report.reason in {"insufficient_free_ram", *_SNAPSHOT_REASONS}:
+        steps += [f"Use --profile {item}" for item in report.fallback_profile_ids]
     if report.reason == "insufficient_free_ram" and report.required_free_ram_bytes:
         steps.append(f"Run on a machine with at least {report.required_free_ram_bytes / 1024 ** 3:.1f} GiB of free RAM")
     explanation = report.recommendation
