@@ -43,9 +43,10 @@ track. The guard does not need it to work.
 4. **The measurement chain works.** Token evidence, memory preflight,
    authenticated auto-stopping hosts and cost-capped Modal runs are verified (R15
    to R25).
-5. **Next:** the ensemble test (Phase B, 32 draws per held-out item), and full
-   logits or logprobs from local models, NPU included (R31, R33). Complete
-   next-token distributions establish the experiments better than top-5 lists.
+5. **Full distributions are available locally.** llama.cpp gives full-vocabulary
+   logprobs for the exact Phase A weights on the iGPU (R35); Ryzen AI OGA gives
+   full logits on the NPU (R36); FastFlowLM gives top-100 on the NPU (R34).
+   Next: the ensemble test (Phase B) and a full-distribution analysis.
 6. **Mitigation (optional track):** no method has reduced recall (R02, R03, R07).
 
 ## Claims and how they could fail
@@ -97,6 +98,7 @@ track. The guard does not need it to work.
 | R33 | 2026-11-08 | Method | decision | Full logits or logprobs from local models, NPU included |
 | R34 | 2026-11-08 | NPU | feasibility | Three models eligible on the NPU through FastFlowLM, top-100 logprobs |
 | R35 | 2026-11-08 | Local | feasibility | Full-vocabulary logprobs from the Phase A GGUF weights via llama.cpp |
+| R36 | 2026-11-08 | NPU | feasibility | Full logits on the NPU via Ryzen AI OGA |
 
 ## Entries
 
@@ -447,6 +449,26 @@ track. The guard does not need it to work.
   is not exact; the llama.cpp chat template differs from Ollama's for Llama 3.2,
   so prompts are rendered with Ollama's template.
 - **Evidence:** release plan R33 follow-up.
+
+### R36 · 2026-11-08 · Full logits on the NPU via Ryzen AI OGA
+
+- **Question:** can the NPU give full next-token logits, not only top-k?
+- **Setup:** `onnxruntime-genai-directml-ryzenai` 0.18.0 (AMD's Ryzen AI 1.9
+  wheel index, no MSI, no admin) in a project-local venv, natively on Windows; NPU
+  driver 32.0.20102.3930; greedy decoding, `Generator.get_logits()` per step.
+- **Data:** one prompt; model `amd/Llama-3.2-3B-Instruct_rai_1.9.0_npu` at
+  revision 315fc90 (public, `model.onnx` sha256 22b9b161…).
+- **Result:** logits of shape (1, 1, 128256) equal to the vocabulary size at every
+  step, all finite; softmax sums to 1; argmax equals the generated token up to
+  end-of-sequence; repeat runs bit-identical; NPU compute engine at 92 % from our
+  process; about 14 to 15 tokens/s, model load about 5 s. AMD's Gemma 4 E4B
+  (262,144) and Qwen3 4B (151,936) NPU builds also declare full-vocabulary heads
+  (checked by config only).
+- **Limits:** logits after end-of-sequence are padding and must be ignored (stop
+  on `is_done()`); the Gemma 3 "logit-pruning" build is not reachable and is
+  avoided; AMD's NPU build is a different quantisation from the Ollama GGUF and
+  the FastFlowLM build, so it is its own model identity.
+- **Evidence:** release plan R33 follow-up; model in `models/oga/`.
 
 ## How to add an entry
 
