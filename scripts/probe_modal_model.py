@@ -14,7 +14,7 @@ import sys
 import tempfile
 import time
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path, PurePosixPath
 
 import requests
@@ -24,8 +24,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from deploy.modal import serve
 from deploy.modal.manifest import Resources, load_plan
 from recall_guard.core.completion import ModelConfig
+from recall_guard.core.harmony_evidence import HarmonyTokenMap
 from recall_guard.core.local_evidence import LocalEvidenceError, validate_local_evidence
-from recall_guard.core.providers import OpenAICompatibleClient
+from recall_guard.core.profiles import load_profile
+from recall_guard.core.providers import HarmonyOpenAICompatibleClient, OpenAICompatibleClient
 from recall_guard.core.request_control import CallBudget, RequestError
 from scripts.modal_cost_report import append_billing, cost_report, validate_budget
 
@@ -270,10 +272,21 @@ def environment_status(plan, observations, hashes):
     return "observed_stable"
 
 
-async def attempts(plan, receipt, path, *, client_factory=OpenAICompatibleClient, cancelled=lambda: False):
-    budget = CallBudget(8)
+def harmony_client(config, budget):
+    """Final-answer evidence through the pinned modal-gpt-oss-20b Harmony profile."""
+    harmony = load_profile("modal-gpt-oss-20b").harmony
+    token_map = HarmonyTokenMap.from_tokenizer_json(harmony.resolve_path(), tokenizer_revision=harmony.tokenizer_revision)
+    if harmony.tokenizer_sha256 is not None and token_map.tokenizer_sha256 != harmony.tokenizer_sha256:
+        raise ValueError("pinned_harmony_tokenizer_mismatch")
+    config = replace(config, parameters={**config.parameters, "return_token_ids": True})
+    return HarmonyOpenAICompatibleClient(config, budget, token_map=token_map)
+
+
+async def attempts(plan, receipt, path, *, client_factory=OpenAICompatibleClient, cancelled=lambda: False,
+                   prompts=PROMPTS):
+    budget = CallBudget(len(prompts))
     deadline = receipt["lifecycle"]["deadline_unix_s"]
-    for position, prompt in enumerate(PROMPTS):
+    for position, prompt in enumerate(prompts):
         remaining = deadline - time.time()
         if cancelled() or remaining <= 0 or not receipt["lifecycle"]["admission_open"]:
             receipt["status"] = "admission_closed"
@@ -348,7 +361,8 @@ def unauthenticated_health_guard(plan, receipt, path):
         persist(path, receipt)
 
 
-async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("models"), sdk=None):
+async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("models"), sdk=None,
+                  harmony_eligibility_only=False):
     serve.require_operator_python()
     frozen = planning(manifest, tokenizer_root=tokenizer_root)
     plan = load_plan(manifest)
@@ -359,7 +373,8 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
                "staging_events": [{"operation": "external_weight_staging", "status": "separate_prerequisite",
                                    "estimated_gross_usd": None, "observed_gross_usd": None}],
                "inference_posts": 0, "status": "reserved", "calibration": "unavailable",
-               "environment_status": "unknown", "evidence_status": "unobserved"}
+               "environment_status": "unknown", "evidence_status": "unobserved",
+               "mode": "harmony_eligibility" if harmony_eligibility_only else "pilot"}
     persist(receipt_path, receipt)
     app = None
     try:
@@ -422,7 +437,10 @@ async def execute(manifest, receipt_path, approval, *, tokenizer_root=Path("mode
                     receipt["observed_before"] = await asyncio.wait_for(asyncio.to_thread(serve.read_observations, plan, app.app_id, sdk=sdk), 10)
                     receipt["environment_status"] = environment_status(plan, receipt["observed_before"], frozen["tokenizer_sha256"])
                 with diagnostic_stage(receipt, receipt_path, "inference"):
-                    if receipt["environment_status"] == "observed_stable":
+                    if receipt["environment_status"] == "observed_stable" and harmony_eligibility_only:
+                        # One eligibility POST only; measurement prompts stay unsent.
+                        await attempts(plan, receipt, receipt_path, client_factory=harmony_client, prompts=PROMPTS[:1])
+                    elif receipt["environment_status"] == "observed_stable":
                         await attempts(plan, receipt, receipt_path)
                     else:
                         receipt["status"] = "environment_ineligible"
@@ -464,11 +482,15 @@ def main():
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--approval", type=Path)
+    parser.add_argument("--harmony-eligibility-only", action="store_true",
+                        help="with --execute: send only the first prompt, through the Harmony final-answer profile")
     parser.add_argument("--reconcile-billing", type=Path,
                         help="append a reviewed local billing snapshot to --receipt; no cloud access")
     args = parser.parse_args()
     if args.execute and (args.receipt is None or args.approval is None):
         parser.error("--execute requires --receipt NEW_PATH and --approval REVIEWED_RECORD")
+    if args.harmony_eligibility_only and not args.execute:
+        parser.error("--harmony-eligibility-only requires --execute")
     if args.reconcile_billing:
         if args.execute or args.receipt is None:
             parser.error("--reconcile-billing requires --receipt and excludes --execute")
@@ -478,7 +500,8 @@ def main():
         result["cost_report"] = cost_report(result, result["plan"]["cost_review"], Resources(**result["plan"]["resources"]))
         persist(args.receipt, result)
     elif args.execute:
-        result = asyncio.run(execute(args.manifest, args.receipt, args.approval, tokenizer_root=args.tokenizer_root))
+        result = asyncio.run(execute(args.manifest, args.receipt, args.approval, tokenizer_root=args.tokenizer_root,
+                                     harmony_eligibility_only=args.harmony_eligibility_only))
     else:
         result = planning(args.manifest, tokenizer_root=args.tokenizer_root)
     print(json.dumps(result, indent=2))

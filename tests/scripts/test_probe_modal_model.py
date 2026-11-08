@@ -587,3 +587,34 @@ def test_request_error_chain_is_transitively_opaque():
     diagnostic = probe.error_diagnostic(outer, "model_deploy")
     assert "private-" not in json.dumps(diagnostic)
     assert diagnostic["message"] == "useful ordinary deployment failure"
+
+
+def test_eligibility_only_sends_one_post_and_leaves_measurement_unsent(configured, monkeypatch):
+    manifest, _, path = configured
+    calls = install_transport(monkeypatch, path)
+    receipt = attempt_receipt(manifest)
+    asyncio.run(probe.attempts(load_plan(manifest), receipt, path, prompts=probe.PROMPTS[:1]))
+    assert len(calls) == receipt["inference_posts"] == 1
+    assert [row["stage"] for row in receipt["attempts"]] == ["eligibility"]
+    assert receipt["status"] == "completed"
+
+
+def test_harmony_client_uses_pinned_profile_and_token_ids(monkeypatch):
+    harmony = probe.load_profile("modal-gpt-oss-20b").harmony
+    if not harmony.resolve_path().is_file():
+        pytest.skip("pinned GPT-OSS tokenizer is not present in this checkout")
+    config = probe.ModelConfig(protocol="openai_chat", provider="modal", model="openai/gpt-oss-20b",
+                               endpoint="https://example.modal.run/v1/chat/completions",
+                               credential_ref="env:MODAL_PROXY_BEARER", parameters=probe.SETTINGS)
+    monkeypatch.setenv("MODAL_PROXY_BEARER", "test.secret")
+    client = probe.harmony_client(config, probe.CallBudget(1))
+    assert isinstance(client, probe.HarmonyOpenAICompatibleClient)
+    assert client.config.parameters["return_token_ids"] is True
+    assert client.token_map.tokenizer_sha256 == harmony.tokenizer_sha256
+
+
+def test_eligibility_only_flag_requires_execute(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["probe_modal_model.py", "--harmony-eligibility-only"])
+    with pytest.raises(SystemExit) as exit_info:
+        probe.main()
+    assert exit_info.value.code == 2
