@@ -1,6 +1,6 @@
 # Release 1.0: tasks and status
 
-**Current: M1.7** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
+**Current: M3.1** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
 
 Review 2026-11-08: [research review](research.md#7-streamlined-task-alignment-for-tasksmd) and [design draft](design.md).
 Task list, requirements and the M1.1 design approved by the user on 2026-11-08. Review proposals do not complete tasks, move this
@@ -50,7 +50,7 @@ Requirement 2 above is the new scope.
 - [x] M1.6 Offline acceptance: one full regression + Docker smoke of the
   selection → fallback → report flow (APR 5.1, Docker 3.2).
   - _Outcome 2026-11-08: shared `recall-guard:dev` image built from d2cfb0d with Docker Engine 29.9.2 in WSL Debian. `examples/adopter_flow.py --fixture` completed in the container (12 physical requests, cost unknown). Full offline suite in Linux: 2951 passed, 1 skipped. Native Windows: 2950 passed, 2 skipped (the extra skip is the symlink privilege test). C17 rechecked: not reachable in sequential flows; it stays low/watch for concurrent ensemble draws._
-- [ ] M1.7 Windows runs containers only (user decision 2026-11-08; steering
+- [x] M1.7 Windows runs containers only (user decision 2026-11-08; steering
   `execution-environment.md`). Inserted before M2 because it changes how adopters
   run every command.
   - [x] M1.7a Preflight inside containers: when running in a container, never read
@@ -61,9 +61,10 @@ Requirement 2 above is the new scope.
     (PowerShell, writes JSON to `runs/container` = `/outputs`); `--host-snapshot`
     and `--endpoint` options on the probe/smoke scripts and the example.
   - _M1.7a/b done 2026-11-08: container detection (`RECALL_GUARD_IN_CONTAINER` override, `/.dockerenv`, `/run/.containerenv`, cgroup markers); inside a container the RAM gate never reads local memory and needs a host snapshot. Snapshots carry `observed_at` and are refused when older than 10 minutes or more than 2 minutes in the future (`host_memory_stale`). Host helpers `scripts/host_memory_snapshot.ps1` (Windows; checked on this host) and `.sh` (Linux; the macOS branch is untested, to check on the Mac, P1). `--host-snapshot`/`--endpoint` on the probe, smoke and example. Full offline suite 2982 passed, 2 skipped; focused container run 153 passed. C20 and C21 resolved._
-  - [ ] M1.7c Move README and docs commands from native `uv run` to Docker
+  - [x] M1.7c Move README and docs commands from native `uv run` to Docker
     Compose; document container→Windows-Ollama connectivity for Docker Engine in
     WSL and Docker Desktop; credentialed commands keep the single root `.env`.
+  - _M1.7c done 2026-11-08: README and docs (index, development, local-provider, completion-api, modal-provider, modal-cost-report) run Recall Guard through Docker Compose on Windows. Credentials are passed by name only (`-e VAR`). New "Local Ollama from a container" section: snapshot, endpoint and three connectivity options (only WSL NAT exists on this host; the others are untested). Modal operator via `scripts/modal_operator.sh` (plan, apps, inventory, execute, stop); the expiry controller is stopped automatically after a verified run (929cda3). `.gitattributes` keeps `*.sh` LF. Container acceptance with the rebuilt dev image: adopter example completed, strict MkDocs clean, full suite 2984 passed, 2 skipped._
 
 ## M2. Track 3 gate: Modal live eligibility (authorize)
 
@@ -86,6 +87,10 @@ Requirement 2 above is the new scope.
 - [ ] M4.1 Fit calibrators per profile; evaluate held-out single-answer results.
 - [ ] M4.2 Run the ensemble with its separately approved budget; report separately.
 - [ ] M4.3 Publish a dated report (docs/results) and link it from the README.
+- [ ] M4.4 Delete the Modal weights volume `recall-guard-gpt-oss-20b-weights` and the
+  provenance Dict after the last planned Modal run (user decision 2026-11-08: keep
+  until then, about USD 1.16/month at list price). Confirm with
+  `sh scripts/modal_operator.sh inventory` that no apps, volumes or dicts remain (C10).
 
 ## M5. Track 1: completion-only pilot (authorize)
 
@@ -135,7 +140,7 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 | C7 | NPU artifact access and runtime/driver compatibility unresolved | Parked | P2 |
 | C8 | Divergence decoding needs a validated statistical source, not partial top-k | Open | M6.1 |
 | C9 | Calibrators must not cross evidence profiles | Requirement | M1.3 |
-| C10 | Cost: USD 5 pilot allowance (≈ 0.30 gross used), USD 30/month cap operator-confirmed, Modal weight storage ≈ USD 1.16/month | Watch | M2–M6 gates |
+| C10 | Cost: USD 5 pilot allowance (≈ 0.30 gross before M2.1; M2.1 runner estimate USD 0.094, not reconciled), USD 30/month cap operator-confirmed, Modal weight storage ≈ USD 1.16/month kept until M4.4. After M2.1, no apps run; the expiry controller is now stopped automatically | Watch | M2–M6 gates, M4.4 |
 | C11 | Child spec phases/checkboxes out of sync with shipped code | Resolved 2026-11-08 | M0.1 |
 | C12 | Pre-existing user changes `.env.sample`, `.openidea/` | Preserve | M0.2 |
 | C13 | Remote push not completed for earlier work | Open | M0.2 |

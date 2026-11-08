@@ -110,15 +110,20 @@ discipline.
 
 ## Run the repository workflows
 
-From a development checkout, use the same Python commands in PowerShell and bash.
-For hosted runs, set `NVIDIA_API_KEY`; the portfolio workflow also needs
-`FMP_API_KEY`. Python entry points read the repository's `.env` file.
+From a development checkout, run these in the development container (required
+on Windows; see [the Docker guide](development.md)). For hosted runs, set
+`NVIDIA_API_KEY`; the portfolio workflow also needs `FMP_API_KEY`. Keep both in
+the root `.env`; the image excludes that file, so pass each variable by name and
+Compose reads its value from `.env`:
 
 ```text
-uv run python harness.py --help
-uv run python harness.py --eval-set data/eval/etf_portfolio.jsonl --is-memorized data/calibration/is_memorized.jsonl --oos-control data/calibration/oos_control.jsonl --cutoffs data/cutoffs.yaml --shortlist openai/gpt-oss-20b --min-call-interval 1.5
-uv run python scripts/run_cmmd_backtest.py
+docker compose run --rm dev uv run --no-sync python harness.py --help
+docker compose run --rm -e NVIDIA_API_KEY dev uv run --no-sync python harness.py --eval-set data/eval/etf_portfolio.jsonl --is-memorized data/calibration/is_memorized.jsonl --oos-control data/calibration/oos_control.jsonl --cutoffs data/cutoffs.yaml --shortlist openai/gpt-oss-20b --min-call-interval 1.5 --out-dir /outputs/harness
+docker compose run --rm -e NVIDIA_API_KEY -e FMP_API_KEY dev uv run --no-sync python scripts/run_cmmd_backtest.py --run-dir /outputs/cmmd
 ```
+
+On Linux and macOS, the same commands also run directly with
+`uv run --env-file .env python ...`.
 
 The harness writes `records.jsonl`, `summary.csv`, `top3.md` and
 `manifest.json` under the selected run directory. The manifest records input
@@ -133,17 +138,19 @@ Python command above is a smaller explicit run.
 
 ## Windows and development
 
-The core library and decoder use native Python/NumPy. No WSL, shell activation
-script, tensor framework or GPU is required by the package. Any real-model
-callback you supply has its own runtime requirements.
+The core library and decoder use plain Python/NumPy. No tensor framework or GPU
+is required by the package. Any real-model callback you supply has its own
+runtime requirements. On Windows, run the package, tests and tools in Linux
+containers only; native Windows Python is no longer supported. Linux and macOS
+can also run them directly.
 
 ```text
-uv sync --frozen
-uv run pytest -q
-uv run ruff check .
-uv run python scripts/check_architecture.py
-uv build
-uv run mkdocs build --strict
+docker compose build dev
+docker compose run --rm dev uv run --no-sync pytest -q
+docker compose run --rm dev uv run --no-sync ruff check .
+docker compose run --rm dev uv run --no-sync python scripts/check_architecture.py
+docker compose run --rm dev uv build --out-dir /outputs/dist
+docker compose run --rm dev uv run --no-sync mkdocs build --strict --site-dir /outputs/site
 ```
 
 The test suite is offline. Live scoring and data refresh are separate operations.

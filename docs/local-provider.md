@@ -31,21 +31,24 @@ on their own and returns a report.
 | `nim-llama3.1-70b` | NVIDIA NIM | remote |
 
 Before a local model is used, the preflight reads free RAM (only when the
-endpoint is on this machine), then Ollama's read-only `/api/version`, `/api/tags`
-and `/api/ps`. It stops before any inference when:
+endpoint is on this machine and the check does not run in a container), then
+Ollama's read-only `/api/version`, `/api/tags` and `/api/ps`. It stops before any
+inference when:
 
 - free RAM is below the profile's requirement and the model is not already loaded;
-- the endpoint is on another host and no memory reading from that host was given;
+- the endpoint is on another host, or the check runs in a container, and no fresh
+  memory reading from the model host was given;
 - the model tag is not installed (it suggests `ollama pull`; nothing is pulled);
 - a credential or the pinned Harmony tokenizer is missing.
 
 Each refusal names what was measured, what is needed and which profiles to try
 instead. `scripts/probe_local_model.py --profile ...` and
 `scripts/smoke_local_models.py --profile ...` show it as a panel and exit with
-status 2. To see the refusal and the fallback without any host, keys or network:
+status 2. To see the refusal and the fallback without any host, keys or network,
+run this in the development container (see the [Docker guide](development.md)):
 
-```powershell
-uv run --no-sync python examples/adopter_flow.py --fixture
+```text
+docker compose run --rm dev uv run --no-sync python examples/adopter_flow.py --fixture
 ```
 
 `ollama-gpt-oss-20b` uses the generic mapping and was ineligible on Ollama 0.40.11
@@ -64,13 +67,17 @@ adapter mapping bug. The [follow-up diagnostic](results/2026-11-06-gpt-oss-respo
 records the explicit Harmony profile and same-response replay. It does not inherit
 the local CPU result or establish calibrated scoring quality.
 
-From a development checkout with its locked environment installed, use PowerShell:
+From a development checkout, build the image once with `docker compose build dev`,
+then run:
 
-```powershell
-uv run --no-sync python examples/local_provider.py --help
-uv run --no-sync python examples/local_provider.py
-uv run --no-sync python examples/local_provider.py --fixture
+```text
+docker compose run --rm dev uv run --no-sync python examples/local_provider.py --help
+docker compose run --rm dev uv run --no-sync python examples/local_provider.py
+docker compose run --rm dev uv run --no-sync python examples/local_provider.py --fixture
 ```
+
+On Windows these run only in the container. On Linux and macOS, the same
+`uv run --no-sync ...` commands also work directly in the checkout.
 
 The default validates a synthetic plan and prints `dry_run`, 29 planned logical
 requests and zero network requests. `--fixture` substitutes fixed HTTP responses
@@ -93,7 +100,9 @@ and SHA-256 verified there on November 6, retaining its blobs and manifests.
 The original copy remains pending cleanup; see the
 [storage and sequential test receipt](results/2026-11-06-local-model-storage.md).
 To start the optional
-host from this location, quit any existing Ollama server, then use PowerShell:
+host from this location, quit any existing Ollama server, then use PowerShell.
+This launches the Ollama model host natively on Windows; Recall Guard itself
+still runs in a container:
 
 ```powershell
 .\scripts\start_local_ollama.ps1
@@ -145,28 +154,74 @@ client = OpenAICompatibleClient(config, CallBudget(1), allow_unauthenticated=Tru
 Authentication is an explicit choice. Local unauthenticated use needs no NIM key;
 never send that key to a local endpoint. A protected endpoint uses
 `credential_ref="env:LOCAL_MODEL_API_KEY"` and manifest authentication
-`"environment"`; store the secret in the root `.env` and pass it to the command
-with `uv run --env-file .env ...`. There is no automatic
+`"environment"`; store the secret in the root `.env` and pass only that variable
+to the container by name, for example
+`docker compose run --rm -e LOCAL_MODEL_API_KEY dev ...`. Compose reads its value
+from the root `.env`. There is no automatic
 hosted fallback. Ollama documents a subset of the OpenAI wire API, so advertised
 compatibility does not replace an evidence probe. See its
 [compatibility reference](https://docs.ollama.com/api/openai-compatibility).
 
-Use PowerShell for Windows hosting, probes and measurement. WSL is reserved for
-Dagger CI. A Docker client must use an external host address reachable from its
-container network; container `localhost` refers to the container itself. Set the
-full endpoint in the manifest to the address provisioned for that network, and
-verify reachability separately. Keep the accelerator runtime on its external
-host. Offline CI needs no host, model download or accelerator installation.
+On Windows, run probes and measurements in the container; PowerShell only
+starts the Ollama host and takes memory snapshots. Container `localhost` refers
+to the container itself unless it shares the host network. Set the full endpoint
+in the manifest to an address reachable from the container network, and verify
+reachability separately. Keep the accelerator runtime on its external host.
+Offline CI needs no host, model download or accelerator installation.
+
+### Local Ollama from a container
+
+Inside a container, the RAM gate never reads the container's own memory. Take a
+memory snapshot on the Windows model host right before each run:
+
+```powershell
+pwsh -File scripts/host_memory_snapshot.ps1
+```
+
+It writes `runs/container/host-memory.json`, which the container sees as
+`/outputs/host-memory.json`. Snapshots older than 10 minutes are refused. Then
+pass the snapshot and an endpoint the container can reach. With Docker Desktop,
+this metadata-only smoke sends no inference:
+
+```text
+docker compose run --rm dev uv run --no-sync python scripts/smoke_local_models.py --profile ollama-gemma3-4b --host-snapshot /outputs/host-memory.json --endpoint http://host.docker.internal:11434/v1/chat/completions
+```
+
+Choose one way for the container to reach Windows Ollama. These are documented
+options, not tested end to end on the development host, which uses the WSL NAT
+default.
+
+| Setup | Endpoint | Exposure |
+| --- | --- | --- |
+| Recommended: Docker Engine in WSL with [mirrored networking](https://learn.microsoft.com/windows/wsl/networking#mirrored-mode-networking) and `--network host` | `http://localhost:11434/v1/chat/completions` | Ollama stays loopback-only |
+| Docker Desktop | `http://host.docker.internal:11434/v1/chat/completions` | Ollama stays loopback-only |
+| Docker Engine in WSL, NAT mode (WSL default) | `http://GATEWAY_IP:11434/v1/chat/completions`; Windows is the WSL default gateway | Ollama must listen beyond loopback |
+
+`docker compose run` has no host-network option, so for mirrored networking use
+`docker run` on the image Compose built, from a WSL shell in the checkout:
+
+```sh
+docker run --rm --network host -v "$PWD/runs/container:/outputs" recall-guard:dev uv run --no-sync python scripts/smoke_local_models.py --profile ollama-gemma3-4b --host-snapshot /outputs/host-memory.json --endpoint http://localhost:11434/v1/chat/completions
+```
+
+In NAT mode, find the gateway with `ip route show default` in WSL. Ollama reads
+its listen address from `OLLAMA_HOST`. Bind it only to the Windows address of the
+WSL interface (the gateway address), never to `0.0.0.0`, and allow port 11434
+only on that interface with a Windows firewall rule. Ollama has no
+authentication, so anything that can reach the port can use your models. Check
+the interface name with `Get-NetAdapter` before adding the rule.
 
 ## Prepare a frozen measurement
 
 The example can write all three required JSON files into a new directory. This
 gives you a runnable file-format reference without starting inference:
 
-```powershell
-uv run --no-sync python examples/local_provider.py --write-inputs runs/local-demo
-uv run --no-sync python scripts/measure_local_models.py --plan runs/local-demo/plan.json --manifest runs/local-demo/manifest.json --corpus runs/local-demo/corpus.json --dry-run
+```text
+docker compose run --rm dev uv run --no-sync python examples/local_provider.py --write-inputs /outputs/local-demo
+docker compose run --rm dev uv run --no-sync python scripts/measure_local_models.py --plan /outputs/local-demo/plan.json --manifest /outputs/local-demo/manifest.json --corpus /outputs/local-demo/corpus.json --dry-run
 ```
+
+The files appear under `runs/container/local-demo` on the host.
 
 `manifest.json` contains `config` (`ModelConfig.to_dict()`), `authentication` and
 `requested_execution_mode`; protected hosts also need `credential_ref` at the
@@ -191,9 +246,12 @@ features (`mia`, `mcs`), draw count, seed, fitting thresholds and limits. After
 editing either input file, recompute its hash deliberately:
 
 ```powershell
-(Get-FileHash runs/local-demo/manifest.json -Algorithm SHA256).Hash.ToLowerInvariant()
-(Get-FileHash runs/local-demo/corpus.json -Algorithm SHA256).Hash.ToLowerInvariant()
+(Get-FileHash runs/container/local-demo/manifest.json -Algorithm SHA256).Hash.ToLowerInvariant()
+(Get-FileHash runs/container/local-demo/corpus.json -Algorithm SHA256).Hash.ToLowerInvariant()
 ```
+
+In a Linux or macOS shell, `sha256sum` (or `shasum -a 256`) on the same files
+gives the same values.
 
 Copy those values into `manifest_sha256` and `corpus_sha256` in the plan. Do not
 change the inputs after review. The demo's timeout, token counts and prompts are
@@ -214,9 +272,13 @@ bound. These are admission ceilings, not measured token usage or cost estimates.
 Only after reviewing a real corpus, host configuration and complete budget, the
 execution form is:
 
-```powershell
-uv run --no-sync python scripts/measure_local_models.py --plan runs/local-demo/plan.json --manifest runs/local-demo/manifest.json --corpus runs/local-demo/corpus.json --execute --journal runs/local-demo/new-run.json --observer ollama
+```text
+docker compose run --rm dev uv run --no-sync python scripts/measure_local_models.py --plan /outputs/local-demo/plan.json --manifest /outputs/local-demo/manifest.json --corpus /outputs/local-demo/corpus.json --execute --journal /outputs/local-demo/new-run.json --observer ollama
 ```
+
+The manifest endpoint must be reachable from the container; see
+[Local Ollama from a container](#local-ollama-from-a-container) for the network
+setup.
 
 This command performs inference; it is not part of the offline walkthrough. The
 observer reads fresh host metadata before the probe, immediately after it and at

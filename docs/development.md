@@ -2,8 +2,11 @@
 
 Docker runs the existing Python library and examples using `pyproject.toml` and
 `uv.lock`. Compose and Dagger build the same root Dockerfile. The application
-still consists of API clients and calculations; Docker is optional for users
-installing the wheel or using an existing Python/Jupyter environment.
+still consists of API clients and calculations. On Windows, Docker is the only
+supported route: run Recall Guard, tests, probes, measurements and notebooks in
+Linux containers, not with native Windows Python. On Linux and macOS, Docker is
+optional for users installing the wheel or using an existing Python/Jupyter
+environment.
 
 ## Start with an offline result
 
@@ -104,15 +107,23 @@ live-study runner; the developer scripts are in the `dev` target.
 ## Supply provider credentials only for an explicit run
 
 Builds, tests and the default notebook service receive no provider keys. Docker
-excludes `.env` files from the build context. Compose can read a root `.env` for
-interpolation, but this configuration does not pass those variables into services.
+excludes `.env` files from the build context, and `compose.yaml` passes no
+variables into services. Keep credentials in the single repository-root `.env`.
 
-For an explicitly configured live study, Docker run can inject the existing
-environment-variable credentials at runtime. This example only opens CLI help:
+For an explicitly configured live study, name each variable the command needs
+with `-e NAME` and no value. Compose reads the value from your shell environment
+or, if unset there, from the root `.env`. Only the named variables enter the
+container, and no value appears on the command line. This example only opens CLI
+help:
 
 ```text
-docker run --rm --env-file .env recall-guard:dev uv run --no-sync python scripts/run_intervention.py --help
+docker compose run --rm -e ANTHROPIC_API_KEY -e NVIDIA_API_KEY dev uv run --no-sync python scripts/run_intervention.py --help
 ```
+
+This was checked with Compose v5.6.1 in WSL Debian using dummy values. Avoid
+`docker run --env-file .env`, which passes every provider credential in the file
+to the container. `docker compose --env-file` only feeds Compose interpolation and
+does not reach the container. Never print credential values to check them.
 
 Use the CLI's explicit `--run`, protocol, item, checkpoint and new output paths
 only after freezing the study and allowance. Mount study inputs read-only and

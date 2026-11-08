@@ -56,14 +56,16 @@ What you can do:
 
 The check is per machine, so the same profile can pass on a 64 GB workstation.
 A model that is already loaded passes. A missing model tag is reported with an
-`ollama pull` suggestion; nothing is downloaded for you. When Ollama runs on
-another host (for example `host.docker.internal` from a container), pass a
-memory reading taken on that host: the container's own memory is never used.
+`ollama pull` suggestion; nothing is downloaded for you. When Recall Guard runs
+in a container or Ollama runs on another host, pass a fresh memory reading taken
+on the model host: the container's own memory is never used. See
+[Local Ollama from a container](docs/local-provider.md#local-ollama-from-a-container).
 
-See the whole path offline, with no keys, network or model host:
+See the whole path offline, with no keys, network or model host. After building
+the image ([Docker quick start](#run-the-checkout-in-docker)):
 
-```powershell
-uv run --no-sync python examples/adopter_flow.py --fixture
+```text
+docker compose run --rm dev uv run --no-sync python examples/adopter_flow.py --fixture
 ```
 
 It shows the memory refusal, switches to the proposed profile, runs the existing
@@ -75,7 +77,10 @@ backends.
 
 Keep all provider credentials in one repository-root `.env`, using
 [`.env.sample`](.env.sample) as the field reference. Preserve your existing file.
-Credentialed commands use `uv run --env-file .env ...`; offline plans need none.
+Container commands receive no credentials by default. A credentialed command
+names only the variables it needs, for example
+`docker compose run --rm -e NVIDIA_API_KEY dev ...`; Compose reads the value from
+the root `.env`. Offline plans need none.
 [Jane Street's approach](https://blog.janestreet.com/mitigating-memorization-in-llms/)
 informs the separate divergence work. Endpoint support alone does not establish
 successful mitigation, and frontier completion-only APIs follow a separate path.
@@ -99,8 +104,8 @@ returned 504 at eligibility, so GPT-OSS results remain unavailable.
 
 ## Install the scorer
 
-Use Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
-The same command works in PowerShell, bash and zsh:
+Use Python 3.12 or newer and [uv](https://docs.astral.sh/uv/) on Linux or
+macOS, or inside a Linux container on Windows (see [Windows](#windows)):
 
 ```text
 uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.5.0"
@@ -143,8 +148,8 @@ edits persist in `notebooks/`; write other artifacts to `/outputs`, which maps t
 Source-code changes take effect after `docker compose build dev`.
 
 The [engineering guide](docs/development.md) covers prerequisites, focused tests,
-the lean runtime image, Dagger and explicit provider credentials. Direct Python
-and existing Jupyter kernels remain supported.
+the lean runtime image, Dagger and explicit provider credentials. On Linux and
+macOS, direct Python and existing Jupyter kernels remain supported.
 
 ## Try the completion workflow from a development checkout
 
@@ -153,13 +158,13 @@ single answers, n-draw ensembles and optional evidence rewriting. Start with the
 fixed offline callbacks to inspect capabilities, failures and missing MCS:
 
 ```text
-uv sync --frozen
-uv run --no-sync python examples/completion_workflow.py
+docker compose run --rm dev uv run --no-sync python examples/completion_workflow.py
 ```
 
-Use a checkout containing that example; these APIs are not in v0.5.0. Open
-`notebooks/completion_workflow.ipynb` in the same installed Python environment
-for the Jupyter path. The [engineering guide](docs/completion-api.md) explains
+Use a checkout containing that example; these APIs are not in v0.5.0. For the
+Jupyter path, start the notebook service
+(`docker compose --profile notebook up notebook`) and open
+`notebooks/completion_workflow.ipynb`. The [engineering guide](docs/completion-api.md) explains
 explicit provider settings and offline replay of the
 [dated pilot](docs/results/2026-10-31-completion-api-pilot.md). The fixtures test
 mechanics, and the pilot does not establish a mitigation benefit.
@@ -168,10 +173,10 @@ mechanics, and the pilot does not establish a mitigation benefit.
 
 Gemma 3 4B returned aligned token logprobs through the same OpenAI-compatible
 client used for NIM. Local hosting is optional and adds no accelerator runtime
-dependency to Recall Guard. Start with the offline example in PowerShell:
+dependency to Recall Guard. Start with the offline example:
 
-```powershell
-uv run --no-sync python examples/local_provider.py --fixture
+```text
+docker compose run --rm dev uv run --no-sync python examples/local_provider.py --fixture
 ```
 
 This runs the real parser and scorer against fixed responses with zero network
@@ -185,14 +190,20 @@ These integration APIs require the development checkout, not v0.5.0.
 
 ## Try the experimental mathematical layer
 
-The divergence utility is included in v0.5.0. From a checkout, install only the
-core dependencies:
+The divergence utility is included in v0.5.0. On Linux or macOS, install only
+the core dependencies from a checkout:
 
 ```text
 git clone https://github.com/norandom/memguard_alpha.git
 cd memguard_alpha
 uv sync --no-dev
 uv run --no-dev python -c "from recall_guard.core.divergence import combine_logits; print(combine_logits([2, 0], [0, 3], [0, 0], alpha=1.0))"
+```
+
+On Windows, run the same check in the development container:
+
+```text
+docker compose run --rm dev uv run --no-sync python -c "from recall_guard.core.divergence import combine_logits; print(combine_logits([2, 0], [0, 3], [0, 0], alpha=1.0))"
 ```
 
 Expected output: `[2. 3.]`. This verifies the equation locally. The
@@ -222,23 +233,19 @@ limits and incomplete provider coverage.
 
 ## Windows
 
-The Python library, mathematical utility and greedy decoder run natively on
-Windows. You do not need WSL or a GPU for the synthetic example. Use the Python
-entry points in PowerShell; `start.sh` is a convenience wrapper for bash.
+On Windows, run Recall Guard, its tests, probes, measurements and notebooks in
+Linux containers only. Native Windows Python is no longer a supported route.
+Use Docker Desktop with Linux containers or Docker Engine inside WSL, then follow
+the [Docker quick start](#run-the-checkout-in-docker) and the
+[engineering guide](docs/development.md). No GPU is needed for the examples.
 
-For a contributor checkout:
-
-```text
-uv sync --frozen
-uv run --no-sync pytest -q
-uv run --no-sync python harness.py --help
-uv run --no-sync mkdocs serve
-```
+Ollama may still run natively on Windows as an external model host
+(`scripts/start_local_ollama.ps1`). The container reaches it over the network;
+see [Local Ollama from a container](docs/local-provider.md#local-ollama-from-a-container).
 
 NIM scoring needs NVIDIA credentials and network access on every operating
 system. Local endpoints can use explicit unauthenticated access. Any local runtime
-behind your own callbacks has its own hardware and
-Windows support requirements. See [Windows and development](docs/index.md#windows-and-development).
+behind your own callbacks has its own hardware requirements.
 
 ## Understand a result before adopting it
 

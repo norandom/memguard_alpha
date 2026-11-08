@@ -69,10 +69,12 @@ whole-pilot cost or zero usable measurements produces null cost per usable
 measurement. A documented observed gross cost of zero may produce zero only
 when there is usable evidence.
 
-Append reviewed local billing without rerunning inference:
+Append reviewed local billing without rerunning inference. Keep the receipt and
+billing file under `runs/container`, which the development container sees as
+`/outputs`:
 
-```powershell
-uv run --no-sync python scripts/probe_modal_model.py --receipt runs/pilot.json --reconcile-billing runs/billing.json
+```text
+docker compose run --rm dev uv run --no-sync python scripts/probe_modal_model.py --receipt /outputs/pilot.json --reconcile-billing /outputs/billing.json
 ```
 
 The billing JSON contains `observed_gross_usd`, `credits_usd` (both may be null),

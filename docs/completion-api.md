@@ -11,17 +11,19 @@ they do not validate a provider or demonstrate reduced memorization.
 
 ## Run the offline application or notebook
 
-From a development checkout containing `examples/completion_workflow.py`:
+From a development checkout containing `examples/completion_workflow.py`, run it
+in the development container (see the [Docker guide](development.md)):
 
 ```text
-uv sync --frozen
-uv run --no-sync python examples/completion_workflow.py
+docker compose build dev
+docker compose run --rm dev uv run --no-sync python examples/completion_workflow.py
 ```
 
 Read `examples/completion_workflow.py` for the complete public-module imports
-and fixture definitions. To work in Jupyter, open
-`notebooks/completion_workflow.ipynb` and select the checkout's
-installed Python environment as its kernel. The notebook loads the companion
+and fixture definitions. To work in Jupyter, start
+`docker compose --profile notebook up notebook` and open
+`notebooks/completion_workflow.ipynb`. On Linux and macOS you can instead select
+the checkout's installed Python environment as its kernel. The notebook loads the companion
 application's fixture functions with `%run -n ../examples/completion_workflow.py`
 from `notebooks/`. It does not execute `main()` or require a shell command inside
 the kernel.
@@ -254,7 +256,7 @@ budget and performs a fresh access probe.
 From the repository root, this command runs offline with the checked-in bundle:
 
 ```text
-uv run --no-sync python scripts/run_intervention.py --replay docs/results/2026-10-31-completion-api/anthropic-evaluation-live
+docker compose run --rm dev uv run --no-sync python scripts/run_intervention.py --replay docs/results/2026-10-31-completion-api/anthropic-evaluation-live
 ```
 
 `--replay` verifies the portable bundle and recomputes saved paired metrics.
@@ -283,6 +285,6 @@ logit equation; ordinary completion text cannot supply that equation's inputs.
 See [divergence decoding](divergence-decoding.md) for the separate mathematical
 interface. Recall Guard's own measured effects are limited to the dated report.
 
-The application and notebook run natively on Windows or Linux with Python
-3.12 or newer. They require neither WSL nor a GPU. WSL/Dagger is a contributor
-route for Linux validation, not an adopter runtime requirement.
+The application and notebook need Python 3.12 or newer and no GPU. On Windows
+they run only in Linux containers (Docker Desktop or Docker Engine in WSL); native
+Windows Python is no longer supported. On Linux and macOS they also run directly.

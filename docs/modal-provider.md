@@ -35,8 +35,11 @@ The original local CPU result remains in the
 
 For this pinned vLLM/GPT-OSS response contract, opt into the response mapper
 explicitly. It reuses the existing transport and request budget. Run credentialed
-code with `uv run --env-file .env ...` so the constructor resolves the root file's
-proxy credential; the code does not read or print it.
+code in the development container and pass only the proxy credential by name,
+for example `docker compose run --rm -e MODAL_PROXY_BEARER dev ...`; Compose reads
+its value from the root `.env`, and the code does not print it. The image
+excludes `models/`, so mount the staged tokenizer read-only with
+`-v ./models:/app/models:ro`.
 
 ```python
 from pathlib import Path
@@ -75,12 +78,15 @@ fresh calibration is required before scoring claims.
 
 ## Inspect the plan without an SDK or account
 
-From the repository root in PowerShell, with the root development environment:
+From the repository root, in the development container:
 
-```powershell
-uv run --no-sync python deploy/modal/manifest.py configs/modal/gpt-oss-20b-pilot.json
-uv run --no-sync python scripts/probe_modal_model.py
+```text
+docker compose run --rm dev uv run --no-sync python deploy/modal/manifest.py configs/modal/gpt-oss-20b-pilot.json
+docker compose run --rm dev uv run --no-sync python scripts/probe_modal_model.py
 ```
+
+The development image excludes `models/`. To plan against a staged tokenizer,
+use the operator container below, which mounts the checkout.
 
 Both commands are verified offline. They do not import Modal, resolve credentials,
 download artifacts, deploy or send inference. The runner prints `mode: plan`,
@@ -107,18 +113,25 @@ record and dated pricing assumptions.
 
 ## Install the optional operator tools
 
-This explicit install downloads Python tooling, not models or remote images:
+The operator tooling runs in a container through `scripts/modal_operator.sh`,
+from a WSL, Linux or macOS shell in the repository root. This first run downloads
+Python tooling and the pinned `uv` Python 3.12 image, not models or remote images:
 
-```powershell
-uv sync --project deploy/modal --locked
-uv run --project deploy/modal --no-sync python -I -c "import modal, recall_guard; from transformers import AutoTokenizer"
-uv run --project deploy/modal --no-sync python scripts/probe_modal_model.py
+```sh
+sh scripts/modal_operator.sh plan
 ```
+
+The script mounts the checkout at `/app`, syncs the locked `deploy/modal`
+environment into the Docker volume `rg-modal-venv`, prints the Modal and
+Transformers versions, and runs the offline plan. Its other modes are `apps`,
+`lock`, `execute RECEIPT APPROVAL` and `stop APP_ID`. `plan` and `lock` read no
+credentials.
 
 The isolated lock includes Modal 1.6.3, the editable local Recall Guard package,
 Transformers 4.55.4, Hugging Face Hub 0.34.4 and Jinja2 3.1.6 for chat templates.
 The operator project requires Python 3.12 (`deploy/modal/.python-version`);
-`uv sync` selects that minor independently of the root development environment.
+the operator image provides that minor independently of the root development
+environment.
 Modal serializes the serving class and expiry function, so the operator's Python
 minor must match both remote images. Execution and recipe construction reject
 other minors locally, before SDK import, cache inventory or deployment. Offline
@@ -168,9 +181,11 @@ compute. Keep values out of shell output and Git.
 
 Create a separate Modal proxy token in workspace settings. Supply its ID and
 secret joined by a period in `MODAL_PROXY_BEARER` in that same root `.env`.
-Credentialed commands use `uv run --env-file .env ...` so the SDK receives values
-only for that child process. Offline planning omits this option and reads no
-credentials. This bearer protects the Web Function; SDK control-plane
+The credentialed operator modes (`apps`, `execute`, `stop`) pass the root `.env`
+to that one container with `docker run --env-file`, so every variable in the file
+reaches that container and no other. Inside it the script trims
+surrounding whitespace from the Modal values; `.env` is not modified. Offline
+planning (`plan`, `lock`) reads no credentials. This bearer protects the Web Function; SDK control-plane
 credentials are separate. The recipe sets `requires_proxy_auth=True`.
 [Modal proxy authentication](https://modal.com/docs/guide/webhook-proxy-auth)
 documents this scheme (checked 2026-11-06). Live denial without waking a GPU
@@ -209,13 +224,15 @@ strategy is for a separately approved setup window and needs disk/network and
 storage cost review. Local Ollama GGUF blobs are incompatible with this vLLM
 MXFP4/safetensors recipe. Do not upload the Ollama store or the checkout.
 
-The following PowerShell snippet uses the pinned Hub client on the local CPU.
+The following snippet uses the pinned Hub client on the local CPU, in the
+operator image after `sh scripts/modal_operator.sh plan` has synced its
+environment. Run it from a WSL, Linux or macOS shell in the repository root.
 It downloads selected snapshot files into the ignored `models/` directory, using
 the exact directory layout expected by the runner and remote server. No model
 framework or GPU is invoked. The download itself is unverified here.
 
-```powershell
-@'
+```sh
+docker run --rm -i -v "$PWD:/app" -w /app -v rg-modal-venv:/opt/modal-venv -e UV_PROJECT_ENVIRONMENT=/opt/modal-venv ghcr.io/astral-sh/uv:0.9.7-python3.12-bookworm-slim uv run --project deploy/modal --no-sync python - <<'EOF'
 import json
 from pathlib import Path
 from huggingface_hub import hf_hub_download, snapshot_download
@@ -237,7 +254,7 @@ snapshot_download(artifacts["model"], revision=revision, local_dir=snapshot,
                   allow_patterns=files, token=False, max_workers=1)
 required = shards | {"model.safetensors.index.json", "config.json", "tokenizer.json", "tokenizer_config.json"}
 assert all((snapshot / name).is_file() and (snapshot / name).stat().st_size > 0 for name in required)
-'@ | uv run --project deploy/modal --no-sync python -
+EOF
 ```
 
 `token=False` avoids reading a cached Hugging Face credential for this public
@@ -267,7 +284,7 @@ Inventory proves presence, not shard content integrity or a successful vLLM load
 
 ## Freeze approval and start only the reviewed pilot
 
-Save approval outside tracked files, for example `runs/modal-approval.json`.
+Save approval outside tracked files, for example `runs/container/modal-approval.json`.
 This is the runner's accepted record shape, intentionally unauthorized. Replace
 hashes with the final plan output and all review assertions with actual evidence;
 copying this example cannot grant approval.
@@ -308,12 +325,18 @@ true. Known insufficient headroom always fails. `scope` also accepts `workspace`
 billing data. The allowance must cover the compute subtotal; human review must
 also cover excluded costs. This record is a review snapshot, not reserved funds.
 
-Only after separate paid approval and prerequisite checks, the execution command
-is (not run for this delivery):
+Only after separate paid approval and prerequisite checks, run from a WSL, Linux
+or macOS shell:
 
-```powershell
-uv run --env-file .env --project deploy/modal --no-sync python scripts/probe_modal_model.py --execute --approval runs/modal-approval.json --receipt runs/modal-pilot-NEW.json
+```sh
+sh scripts/modal_operator.sh execute runs/container/modal-pilot-NEW.json runs/container/modal-approval.json
 ```
+
+This mode runs `scripts/probe_modal_model.py --execute --harmony-eligibility-only`:
+one eligibility request, the form used live on 2026-11-08. The full measurement
+pilot has no operator mode yet. Under `runs/container`, the receipt is also
+visible to the development container as `/outputs` for
+[billing reconciliation](modal-cost-report.md).
 
 The receipt path must be new and its parent must exist. Never resume or replay
 an existing receipt. Startup deploys the CPU expiry controller before the serving
@@ -331,19 +354,34 @@ two minutes. Local process loss leaves the separately armed CPU controller to
 stop that same app at its deadline, without calling inference. Network or control
 plane failure can still leave cleanup unverified.
 
-For unverified cleanup, use the exact app ID in the receipt and recovery command:
+For unverified cleanup, use the exact app ID from the receipt:
 
-```powershell
-uv run --env-file .env --project deploy/modal --no-sync python -m modal app stop ap-YOUR_EXPERIMENT_ID --yes
+```sh
+sh scripts/modal_operator.sh stop ap-YOUR_EXPERIMENT_ID
+sh scripts/modal_operator.sh apps
 ```
 
-Run with the reviewed workspace credentials and verify the stopped state in that
-environment. Never stop by reusable name or stop unrelated apps. The independent
-expiry app and provenance Dict remain; stop/remove them separately only after
-confirming no active lease and retaining needed receipts. The weight volume is
-retained deliberately and may keep accruing storage charges. Scale-to-zero does
-not delete storage or replace verified shutdown. The recorded storage assumption
-is USD 0.09/GiB-month; actual billing and retention duration remain unknown.
+The receipt's `recovery_command` field gives the same `modal_operator.sh stop`
+command with the exact app ID. Run with the reviewed workspace credentials and
+verify the stopped state in that environment; `apps` lists the
+`recall-guard-pilot` environment. Never stop by reusable name or stop unrelated
+apps.
+
+When the experiment app is verified stopped, the runner also stops the armed CPU
+expiry controller, so it does not idle until its deadline. If that stop is
+unverified, the receipt's `lifecycle.expiry_cleanup` says so; stop that app by
+its ID too. After a run, check that nothing is left running:
+
+```sh
+sh scripts/modal_operator.sh inventory
+```
+
+It lists apps, volumes and dicts in `recall-guard-pilot`. Stopped apps cost
+nothing. What remains is storage: the weight volume (about 13 GiB) is kept on
+purpose until the last planned Modal measurement, then deleted (release-1.0 task
+M4.4). The small provenance Dict stays with it. Scale-to-zero does not delete
+storage or replace verified shutdown. The recorded storage assumption is USD
+0.09/GiB-month; actual billing and retention duration remain unknown.
 
 Receipt `attempts` have one row per physical inference intent/outcome; `position`
 is a zero-based frozen prompt index. Lifecycle/control rows are separate.
