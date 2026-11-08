@@ -14,7 +14,7 @@ on real data).
 
 ## Tasks
 
-- [ ] 1. Foundation: dependencies, layer registration, eval-set builder
+- [x] 1. Foundation: dependencies, layer registration, eval-set builder
 
 - [x] 1.1 Add backtest dependencies and verify they install on Python 3.14
   - Add `vectorbt = "0.28.*"` and `matplotlib >= 3.8` to `pyproject.toml` `[project] dependencies`.
@@ -44,7 +44,7 @@ on real data).
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
   - _Boundary: scripts.build_etf_portfolio_eval_
 
-- [ ] 2. Core: the four `src/portfolio/` modules
+- [x] 2. Core: the four `src/portfolio/` modules
 
 - [x] 2.1 (P) Implement `portfolio.prices` for the universe
   - Create `src/portfolio/prices.py` exposing `fetch_universe_prices(tickers, start, end, api_key=None) -> pandas.DataFrame` and a `PriceFetchError` exception class.
@@ -102,7 +102,7 @@ on real data).
   - _Boundary: portfolio.backtest_
   - _Depends: 2.4_
 
-- [ ] 3. Integration: manifest, orchestrator, README
+- [x] 3. Integration: manifest, orchestrator, README
 
 - [x] 3.1 Extend the harness manifest writer with a backtest block
   - Modify `src/harness/runner.py::_build_manifest` (and the `Manifest` dataclass in `core.manifest` if needed) so callers can pass an optional `backtest` block — additive change; existing harness runs that do not pass it produce identical manifests.
@@ -138,7 +138,7 @@ on real data).
   - _Requirements: 2.4, 2.5, 7.1_
   - _Boundary: README.md_
 
-- [ ] 4. Validation: end-to-end run on real signals
+- [x] 4. Validation: end-to-end run on real signals
 
 - [x] 4.1 Run the full pipeline end-to-end and verify artifacts
   - Run `scripts/run_cmmd_backtest.py` against the live eval set + live `openai/gpt-oss-20b` endpoint; capture the run directory.

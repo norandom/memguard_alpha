@@ -1,3 +1,7 @@
+> SUPERSEDED 2026-11-08 (release-1.0 M0.1). This original DSPy plan was replaced by
+> the shipped `recall_guard` package; see recall-guard-package and honest-model-ranking.
+> Open boxes below are historical and are not tracked.
+
 # Implementation Plan
 
 ## Tasks

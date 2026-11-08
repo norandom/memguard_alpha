@@ -10,20 +10,28 @@ Historical accuracy can come from recall as well as reasoning. The score is a
 warning signal learned from your calibration data, not proof that an individual
 answer was memorized. Recall Guard is not a forecaster.
 
-Model hosting is optional. Use an external [local host](docs/local-provider.md)
-or review the [Modal pilot plan](docs/modal-provider.md) for remote GPU hosting;
-the Modal configuration is verified offline and remains a live candidate.
-The [2026-11-06 Modal pilot](docs/results/2026-11-06-modal-pilot.md) reached
-GPT-OSS-20B readiness, then stopped after its one eligibility response failed
-strict token alignment. A [follow-up diagnostic](docs/results/2026-11-06-gpt-oss-response-mapping.md)
-identified our response-handling bug: full-generation probabilities were attached
-to final-answer text. An explicit Harmony profile maps the final channel;
-calibration and mitigation effects remain unmeasured. All experiment apps stopped.
+## Choose where your model runs
 
-The [2026-11-06 local smoke](docs/results/2026-11-06-local-model-smoke.md) found
-aligned logprobs with five alternatives in Phi-4 Mini, both tested Llamas, Gemma
-and LLaVA on CPU. Four configurations matched the plan; LLaVA's context differed.
-GPT was excluded locally. Calibration and mitigation effects remain unmeasured.
+Recall Guard needs per-token logprobs, not a specific host. Ollama, Modal (vLLM)
+and NVIDIA NIM all speak OpenAI chat completions, and all three use the same
+client and scorer. Pick the backend that fits your machine and budget:
+
+| Backend | Good fit when | Current state |
+| --- | --- | --- |
+| [Ollama, local](docs/local-provider.md) | You have the RAM for your model; no key, no cost | Phi-4 Mini, Llama 3.1 8B, Llama 3.2 3B and Gemma 3 4B returned aligned logprobs with five alternatives on CPU ([smoke](docs/results/2026-11-06-local-model-smoke.md)) |
+| [Modal, remote GPU](docs/modal-provider.md) | The model is too large for your machine | GPT-OSS-20B serves and returns logprobs; the repaired final-answer mapping is [verified on a captured response](docs/results/2026-11-06-gpt-oss-response-mapping.md) and awaits one live check |
+| NVIDIA NIM, hosted | You have NIM credentials and capacity | Recent eligibility attempts timed out or returned 504; treat as unavailable until a fresh probe passes |
+
+**Sizing GPT-OSS-20B locally:** plan for **20 GB of free RAM**. On CPU, Ollama
+allocated 13.9 GB for it at a 2,048-token context, and the rest of the system
+needs headroom. A small integrated GPU does not help: Ollama ignores integrated
+GPUs by default (`OLLAMA_IGPU_ENABLE`) and runs on the CPU. If your machine
+cannot spare 20 GB, use Modal or a larger machine; the smaller models above run
+comfortably on a 32 GB laptop. A planned preflight check will measure free memory
+before loading and suggest these alternatives ([roadmap](.kiro/roadmap.md)).
+
+Calibration and mitigation effects have not yet been measured on any of these
+backends.
 
 Keep all provider credentials in one repository-root `.env`, using
 [`.env.sample`](.env.sample) as the field reference. Preserve your existing file.
@@ -132,6 +140,7 @@ explicit endpoint/model settings and bounded measurement plans. The
 [November 5 results](docs/results/2026-11-05-local-provider-feasibility.md) verify
 one Gemma CPU probe; GPT-OSS responded but failed token alignment, and NPU
 prerequisites failed. No local calibration or mitigation benefit was measured.
+For GPT-OSS-20B, see [sizing](#choose-where-your-model-runs) before loading it.
 These integration APIs require the development checkout, not v0.5.0.
 
 ## Try the experimental mathematical layer

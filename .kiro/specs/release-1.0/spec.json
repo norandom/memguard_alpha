@@ -1,0 +1,25 @@
+{
+  "feature_name": "release-1.0",
+  "created_at": "2026-11-08",
+  "updated_at": "2026-11-08",
+  "language": "en",
+  "phase": "tasks-approved",
+  "role": "tracker",
+  "current_task": "M0.2",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": false
+    },
+    "design": {
+      "generated": true,
+      "approved": false
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": false,
+  "approval_context": "User approved the task list and order on 2026-11-08. Requirements and the M1.1 design (design.md) await separate user approval; live-call gates (M2-M6) still need their own limits approved."
+}

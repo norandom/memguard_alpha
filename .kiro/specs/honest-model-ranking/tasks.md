@@ -10,7 +10,7 @@ Three things landed after the spec was validated and aren't on this list:
 
 ## Tasks
 
-- [ ] 1. Foundation: dependencies, calibration corpora, model registry, test layout
+- [x] 1. Foundation: dependencies, calibration corpora, model registry, test layout
 
 - [x] 1.1 Declare project dependencies and test layout
   - Add `numpy`, `scikit-learn`, `rich`, `pyyaml` to `pyproject.toml` `[project] dependencies`; declare existing `requests`, `python-dotenv`, `pytest`, `pytest-mock` explicitly.
@@ -59,7 +59,7 @@ Three things landed after the spec was validated and aren't on this list:
   - _Boundary: dataset.fmp_corpora_
   - _Depends: 1.2, 1.3_
 
-- [ ] 2. Core layer: HTTP client, loader, bootstrap, manifest
+- [x] 2. Core layer: HTTP client, loader, bootstrap, manifest
 
 - [x] 2.1 (P) Extend the NVIDIA LM client with temperature and reference-model support
   - Move the existing client to `src/core/nvidia_lm.py` and add a `temperature` parameter (default 0.0) plus a frozen `CompletionResult` dataclass exposing `content`, `logprobs` (list of `TokenLogprob` with `top_logprobs`), and `raw_temperature_observed`.
@@ -96,7 +96,7 @@ Three things landed after the spec was validated and aren't on this list:
   - _Requirements: 6.5, 8.4, 10.1, 10.2_
   - _Boundary: core.manifest_
 
-- [ ] 3. MIA layer: features, control baseline, MCS calibrator
+- [x] 3. MIA layer: features, control baseline, MCS calibrator
 
 - [x] 3.1 Implement the five MIA features
   - Create `src/mia/features.py` exporting a frozen `MiaFeatures` dataclass and `compute_mia_features(response, logprobs, ref_logprobs, k=0.2)`.
@@ -125,7 +125,7 @@ Three things landed after the spec was validated and aren't on this list:
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
   - _Boundary: mia.mcs_
 
-- [ ] 4. Harness layer: smoke gate, evaluator, ranker, report
+- [x] 4. Harness layer: smoke gate, evaluator, ranker, report
 
 - [x] 4.1 (P) Implement the smoke-test gate
   - Create `src/harness/smoke.py` exporting `SmokeOutcome`, `Shortlist`, and `smoke_test(candidates, api_key, smoke_prompts, max_size=10, timeout_s=15.0)`.
@@ -169,7 +169,7 @@ Three things landed after the spec was validated and aren't on this list:
   - _Boundary: harness.report_
   - _Depends: 4.2_
 
-- [ ] 5. Integration: runner, replay, legacy cleanup, plotting, notebook
+- [x] 5. Integration: runner, replay, legacy cleanup, plotting, notebook
 
 - [x] 5.1 Implement the runner CLI orchestrator
   - Create `harness.py` (project root) and `src/harness/runner.py` exporting `run(args)` plus an argparse front-end accepting `--eval-set`, `--candidates | --shortlist`, `--is-memorized`, `--oos-control`, `--cutoffs`, `--out-dir`, `--seed`, `--bootstrap-n`, `--reference-model | --no-reference`.
@@ -220,7 +220,7 @@ Three things landed after the spec was validated and aren't on this list:
   - _Boundary: src/{core,mia,harness}/__init__.py, notebooks/qualification.ipynb, tests/harness/test_notebook.py_
   - _Depends: 5.1, 5.4_
 
-- [ ] 6. Validation: integration tests for the harness
+- [x] 6. Validation: integration tests for the harness
 
 - [x] 6.1 (P) End-to-end run + manifest replay integration test
   - In `tests/harness/test_e2e.py`, drive `runner.run` against a 10-row in-memory eval set with two mocked models; assert `manifest.json`, `shortlist.json`, `records.jsonl`, `summary.csv`, and `top3.md` are written under the chosen `--out-dir`.

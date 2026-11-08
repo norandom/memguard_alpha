@@ -5,6 +5,10 @@ Implementation baseline: `main`, commit `d0cd222`.
 
 ## Start here
 
+As of 2026-11-08, progress is tracked in the single
+[1.0 release plan](specs/release-1.0/tasks.md); "Next work to propose" below is
+superseded by it.
+
 We established Ollama and Modal hosting/API integration and verified token
 evidence handling. We have not yet measured fresh calibration quality, ensemble
 benefits or Jane Street divergence-decoding effectiveness on this infrastructure.
