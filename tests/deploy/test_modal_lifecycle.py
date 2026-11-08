@@ -22,6 +22,8 @@ class Control:
         self.store = {}
         self.state = "deployed"
         self.app_id = "ap-aaaaaaaaaaaaaaaaaaaaaa"
+        self.expiry_app_id = "ap-cccccccccccccccccccccc"
+        self.expiry_state = "deployed"
         self.dict_options = []
         self.App = SimpleNamespace(lookup=aio(self.lookup))
         self.Dict = SimpleNamespace(from_name=self.dictionary)
@@ -35,10 +37,20 @@ class Control:
         self.events.append("hydrate")
 
     async def lookup(self, name, **kwargs):
-        assert name == PLAN.target.app
         assert kwargs == {"environment_name": PLAN.target.environment, "create_if_missing": False}
+        if name == PLAN.target.app + "-expiry":
+            self.events.append("lookup_expiry")
+            return SimpleNamespace(app_id=self.expiry_app_id, stop=aio(self.stop_expiry), info=aio(self.info_expiry))
+        assert name == PLAN.target.app
         self.events.append("lookup")
         return SimpleNamespace(app_id=self.app_id, stop=aio(self.stop), info=aio(self.info))
+
+    async def stop_expiry(self):
+        self.events.append("stop_expiry")
+        self.expiry_state = "stopped"
+
+    async def info_expiry(self, refresh):
+        return SimpleNamespace(lifecycle=SimpleNamespace(state=SimpleNamespace(value=self.expiry_state)))
 
     async def stop(self):
         self.events.append("stop")
@@ -81,7 +93,7 @@ def test_wrong_app_is_never_stopped():
     assert result["cleanup"] == "unverified"
     assert "stop" not in sdk.events
     assert result["app_id"] == "ap-aaaaaaaaaaaaaaaaaaaaaa"
-    assert result["recovery_command"] == "uv run --env-file .env --project deploy/modal --no-sync python -m modal app stop ap-aaaaaaaaaaaaaaaaaaaaaa --yes"
+    assert result["recovery_command"] == "sh scripts/modal_operator.sh stop ap-aaaaaaaaaaaaaaaaaaaaaa"
 
 
 def test_control_plane_failure_and_timeout_are_bounded(monkeypatch):
@@ -277,3 +289,43 @@ def test_cpu_recipe_has_no_gpu_or_cache_and_bounded_runtime(monkeypatch):
     assert options["timeout"] == 1350
     assert options["retries"] == options["min_containers"] == options["buffer_containers"] == 0
     assert options["max_containers"] == 1
+
+
+def test_verified_cleanup_also_stops_the_armed_expiry_controller(monkeypatch):
+    monkeypatch.setattr(serve.asyncio, "sleep", lambda *_: asyncio.sleep(0))
+    sdk = Control()
+
+    async def run():
+        lease = {}
+        async with serve.experiment_lifecycle(PLAN, sdk.app_id, gpu_started_at_unix_s=serve.time.time(),
+                                              receipt=lease, sdk=sdk):
+            pass
+        return lease
+
+    lease = asyncio.run(run())
+    assert lease["cleanup"]["cleanup"] == "verified_stopped"
+    assert lease["expiry_cleanup"]["cleanup"] == "verified_stopped"
+    assert lease["expiry_cleanup"]["app_id"] == "ap-cccccccccccccccccccccc"
+    assert sdk.state == sdk.expiry_state == "stopped"
+    assert sdk.events.index("stop") < sdk.events.index("stop_expiry")
+
+
+def test_unverified_experiment_stop_leaves_the_expiry_controller_armed(monkeypatch):
+    monkeypatch.setattr(serve.asyncio, "sleep", lambda *_: asyncio.sleep(0))
+    sdk = Control()
+
+    async def never_stops():
+        sdk.events.append("stop")
+
+    sdk.stop = never_stops
+
+    async def run():
+        lease = {}
+        async with serve.experiment_lifecycle(PLAN, sdk.app_id, gpu_started_at_unix_s=serve.time.time(),
+                                              receipt=lease, sdk=sdk):
+            pass
+        return lease
+
+    lease = asyncio.run(run())
+    assert lease["cleanup"]["cleanup"] != "verified_stopped"
+    assert "expiry_cleanup" not in lease and sdk.expiry_state == "deployed"

@@ -84,7 +84,7 @@ def running_app_id() -> str:
     return app_id
 
 
-async def stop_experiment(plan: Plan, app_id: str, *, sdk=None) -> dict:
+async def stop_experiment(plan: Plan, app_id: str, *, sdk=None, app_name: str | None = None) -> dict:
     """Two-minute stop/verification budget, no volume deletion or GPU invocation.
 
     Modal 1.6.3 public App.lookup returns a handle bound to an app ID; stop uses
@@ -96,7 +96,7 @@ async def stop_experiment(plan: Plan, app_id: str, *, sdk=None) -> dict:
     result = {
         "category": "control", "app_id": app_id, "cleanup": "unverified", "control_calls": 0,
         "retained_cache": "recall-guard-gpt-oss-20b-weights", "observed_usd": None,
-        "recovery_command": f"uv run --env-file .env --project deploy/modal --no-sync python -m modal app stop {app_id} --yes",
+        "recovery_command": f"sh scripts/modal_operator.sh stop {app_id}",
         "verification_budget_seconds": plan.limits.cleanup_seconds,
         "estimated_usd": None,
     }
@@ -109,7 +109,7 @@ async def stop_experiment(plan: Plan, app_id: str, *, sdk=None) -> dict:
     try:
         async with asyncio.timeout(plan.limits.cleanup_seconds):
             app = await control(sdk.App.lookup.aio(
-                plan.target.app, environment_name=plan.target.environment, create_if_missing=False
+                app_name or plan.target.app, environment_name=plan.target.environment, create_if_missing=False
             ))
             if app.app_id != app_id:
                 raise ValueError("Experiment app identity mismatch")
@@ -123,6 +123,25 @@ async def stop_experiment(plan: Plan, app_id: str, *, sdk=None) -> dict:
     except Exception as exc:
         result["error"] = type(exc).__name__  # Provider messages may contain credentials.
     result["elapsed_seconds"] = time.monotonic() - started
+    return result
+
+
+async def stop_expiry_controller(plan: Plan, *, sdk=None) -> dict:
+    """Stop the armed CPU controller once its experiment app is verified stopped.
+
+    Otherwise it idles, billed, until its deadline. Looked up by its own name in
+    the experiment environment and stopped by the resolved ID with verification.
+    """
+    sdk = _sdk(sdk)
+    name = plan.target.app + "-expiry"
+    try:
+        app = await asyncio.wait_for(sdk.App.lookup.aio(
+            name, environment_name=plan.target.environment, create_if_missing=False
+        ), CONTROL_TIMEOUT_SECONDS)
+    except Exception as exc:
+        return {"category": "control", "app_name": name, "cleanup": "unverified", "error": type(exc).__name__}
+    result = await stop_experiment(plan, app.app_id, sdk=sdk, app_name=name)
+    result["app_name"] = name
     return result
 
 
@@ -218,6 +237,8 @@ async def experiment_lifecycle(plan: Plan, app_id: str, *, gpu_started_at_unix_s
     finally:
         lease["admission_open"] = False
         lease["cleanup"] = await stop_experiment(plan, app_id, sdk=sdk)
+        if lease["cleanup"]["cleanup"] == "verified_stopped":
+            lease["expiry_cleanup"] = await stop_expiry_controller(plan, sdk=sdk)
 
 
 def create_expiry_app(*, sdk=None, root: Path = ROOT):
