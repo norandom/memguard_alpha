@@ -1,6 +1,6 @@
 # Release 1.0: tasks and status
 
-**Current: M0.2** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
+**Current: M1.1** (awaiting user design approval) · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
 
 Review 2026-11-08: [research review](research.md#7-streamlined-task-alignment-for-tasksmd) and [design draft](design.md).
 Task list and order approved by the user on 2026-11-08. Requirements and the M1.1
@@ -23,8 +23,9 @@ execution. Source links point to the child-spec detail that a task absorbs.
     `divergence-decoding`: all tasks ticked; set phase `implemented`.
   - Done when every child `spec.json` phase matches its `tasks.md` and the spec
     register below shows no "verify" entries.
-- [ ] M0.2 Commit the consolidation (README, roadmap, release-1.0 spec, `spec.json`
+- [x] M0.2 Commit the consolidation (README, roadmap, release-1.0 spec, `spec.json`
   tracker fields). Preserve `.env.sample` and `.openidea/` unstaged (C12).
+  - _Outcome 2026-11-08: committed as f67378d on `main`; not pushed (C13). Steering edits from the design session left unstaged for user review._
 
 ## M1. Backend seam and adopter flow (offline)
 
