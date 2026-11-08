@@ -51,8 +51,15 @@ function Invoke-Container([string]$ProfileId, [string[]]$Arguments) {
     $command = "cd '$WslRepo' && docker compose run --rm -e LOCAL_MODEL_API_KEY " +
         "-v '$WslRepo/runs/phase-a:/phase-a:ro' dev uv run --no-sync python scripts/measure_local_models.py " +
         "--plan $in/plan.json --manifest $in/manifest.json --corpus $in/corpus.json " + ($Arguments -join ' ')
-    $output = & wsl.exe -d $Distro -- sh -c $command 2>&1
-    return @{ exit_code = $LASTEXITCODE; output = ($output | Out-String) }
+    # Keep stdout (the script's JSON) apart from Compose's progress lines on stderr.
+    $errors = New-TemporaryFile
+    try {
+        $output = & wsl.exe -d $Distro -- sh -c $command 2> $errors.FullName
+        $exitCode = $LASTEXITCODE
+        return @{ exit_code = $exitCode; output = ($output | Out-String); errors = (Get-Content -Raw $errors.FullName) }
+    } finally {
+        Remove-Item -LiteralPath $errors.FullName -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Get-LoadedModels {
@@ -145,6 +152,7 @@ try {
                 '--observer', 'ollama', '--host-snapshot', "/outputs/phase-a/$ProfileId/host-memory.json")
             $record.exit_code = $result.exit_code
             [IO.File]::WriteAllText((Join-Path $dir "console-$stamp.txt"), $result.output, [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText((Join-Path $dir "stderr-$stamp.txt"), [string]$result.errors, [Text.UTF8Encoding]::new($false))
             $report = Join-Path $dir 'journal.json.report.json'
             $record.status = if (Test-Path -LiteralPath $report) { (Get-Content -LiteralPath $report -Raw | ConvertFrom-Json).status } else { 'no_report' }
         } catch {
