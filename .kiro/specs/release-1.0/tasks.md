@@ -125,7 +125,7 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 - P2 NPU branch: [local-ai-provider](../local-ai-provider/tasks.md) 2.2, 4.1, 4.2 (C7).
 - P3 NIM operational pilot: APR 5.2; reopen only after a fresh NIM probe passes (C6).
 - P4 iGPU offload trial with `OLLAMA_IGPU_ENABLE=1` (C15).
-- P5 Finish the Ollama store move: original `%USERPROFILE%\.ollama\models`
+- ~~P5~~ Done 2026-11-08 (C14). P5 Finish the Ollama store move: original `%USERPROFILE%\.ollama\models`
   copy remains (C14).
 - P6 Mistral target: the user will supply a local proxy endpoint later (2026-11-08).
   Add it as a provider profile once the endpoint exists; it does not block M1.
@@ -150,7 +150,7 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 | C11 | Child spec phases/checkboxes out of sync with shipped code | Resolved 2026-11-08 | M0.1 |
 | C12 | Pre-existing user changes `.env.sample`, `.openidea/` | Preserve | M0.2 |
 | C13 | Remote push not completed for earlier work | Resolved 2026-11-08: `main` pushed to origin (0578ec0..f384e09) | M0.2 |
-| C14 | Ollama store move incomplete | Parked | P5 |
+| C14 | Ollama store move incomplete | Resolved 2026-11-08: user-profile copy hash-verified against `models/` (28 files, 21.1 GB, 0 mismatches) and removed; user-level `OLLAMA_MODELS` points at the project folder | P5 |
 | C15 | Integrated GPU unused by Ollama by default | Parked | P4 |
 | C16 | Modal attempt 08 raw response not retained | Recorded, no action | — |
 | C17 | A failure latched before any readiness trace (e.g. a settings check that fails before the first request) leaves `root_observation` empty, so woken queued observations keep `caller_cancelled`. Not reproducible in current flows | Low; watch | M1.6 |
