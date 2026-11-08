@@ -1,2 +1,4 @@
 # Shell scripts run inside Linux containers/WSL from this checkout.
 *.sh text eol=lf
+# Hashed corpora: bytes must match data/edgar/manifest.json on every platform.
+data/edgar/** text eol=lf
