@@ -12,9 +12,23 @@ answer was memorized. Recall Guard is not a forecaster.
 
 ## Choose where your model runs
 
-Recall Guard needs per-token logprobs, not a specific host. Ollama, Modal (vLLM)
-and NVIDIA NIM all speak OpenAI chat completions, and all three use the same
-client and scorer. Pick the backend that fits your machine and budget:
+Pick a provider profile and Recall Guard builds the right client for it. Before
+it loads a local model, it checks that your machine can hold it. Recall Guard
+needs per-token logprobs, not a specific host: Ollama, Modal (vLLM) and NVIDIA
+NIM all speak OpenAI chat completions and share one client and scorer.
+
+```python
+from recall_guard.core.profiles import available_profiles, connect
+from recall_guard.core.request_control import CallBudget
+
+print(available_profiles())  # ollama-gemma3-4b, modal-gpt-oss-20b, nim-llama3.1-70b, ...
+client = connect("ollama-gemma3-4b", CallBudget(20))  # checks the host first; no inference yet
+```
+
+Credentials and the Modal endpoint come from environment variables named in
+each profile (`MODAL_PROXY_BEARER`, `MODAL_ENDPOINT_URL`, `NVIDIA_API_KEY`). A
+calibration fitted on one profile's evidence is refused on another, even for the
+same model family. Pick the backend that fits your machine and budget:
 
 | Backend | Good fit when | Current state |
 | --- | --- | --- |
@@ -22,13 +36,39 @@ client and scorer. Pick the backend that fits your machine and budget:
 | [Modal, remote GPU](docs/modal-provider.md) | The model is too large for your machine | GPT-OSS-20B serves and returns logprobs; the repaired final-answer mapping is [verified on a captured response](docs/results/2026-11-06-gpt-oss-response-mapping.md) and awaits one live check |
 | NVIDIA NIM, hosted | You have NIM credentials and capacity | Recent eligibility attempts timed out or returned 504; treat as unavailable until a fresh probe passes |
 
-**Sizing GPT-OSS-20B locally:** plan for **20 GB of free RAM**. On CPU, Ollama
+**Sizing GPT-OSS-20B locally:** plan for **20 GiB of free RAM**. On CPU, Ollama
 allocated 13.9 GB for it at a 2,048-token context, and the rest of the system
-needs headroom. A small integrated GPU does not help: Ollama ignores integrated
-GPUs by default (`OLLAMA_IGPU_ENABLE`) and runs on the CPU. If your machine
-cannot spare 20 GB, use Modal or a larger machine; the smaller models above run
-comfortably on a 32 GB laptop. A planned preflight check will measure free memory
-before loading and suggest these alternatives ([roadmap](.kiro/roadmap.md)).
+needs headroom. A small integrated GPU does not help, because Ollama ignores
+integrated GPUs by default (`OLLAMA_IGPU_ENABLE`) and runs on the CPU. The
+smaller models above run comfortably on a 32 GB laptop.
+
+**If your machine is short on memory, nothing is loaded.** `connect()` measures
+free RAM first and stops with a plain explanation and alternatives:
+
+```text
+13.4 GiB free, 20.0 GiB required for gpt-oss:20b. Nothing was loaded and no
+request was sent.
+What you can do:
+  - Use --profile modal-gpt-oss-20b
+  - Use --profile ollama-gemma3-4b
+  - Run on a machine with at least 20.0 GiB of free RAM
+```
+
+The check is per machine, so the same profile can pass on a 64 GB workstation.
+A model that is already loaded passes. A missing model tag is reported with an
+`ollama pull` suggestion; nothing is downloaded for you. When Ollama runs on
+another host (for example `host.docker.internal` from a container), pass a
+memory reading taken on that host: the container's own memory is never used.
+
+See the whole path offline, with no keys, network or model host:
+
+```powershell
+uv run --no-sync python examples/adopter_flow.py --fixture
+```
+
+It shows the memory refusal, switches to the proposed profile, runs the existing
+workflow against synthetic responses and prints one record of what ran, with
+exact request counts. Its token-evidence outcomes are simulated and say so.
 
 Calibration and mitigation effects have not yet been measured on any of these
 backends.

@@ -16,6 +16,45 @@ Gemma 3 4B and LLaVA on CPU. The first four matched the planned environment;
 LLaVA's context differed. GPT was excluded locally. These are feasibility results,
 with no calibration or mitigation measurement.
 
+## Choose a provider profile
+
+Each backend is one profile shipped with the package. `connect(profile_id, budget)`
+returns the matching client; `preflight_host(profile_id)` runs the same checks
+on their own and returns a report.
+
+| Profile | Host | Free RAM required |
+| --- | --- | ---: |
+| `ollama-phi4-mini`, `ollama-llama3.2-3b`, `ollama-gemma3-4b` | Ollama, local | 6 GiB |
+| `ollama-llama3.1-8b` | Ollama, local | 8 GiB |
+| `ollama-gpt-oss-20b` | Ollama, local | 20 GiB |
+| `modal-gpt-oss-20b` | Modal vLLM, Harmony final-answer mapping | remote |
+| `nim-llama3.1-70b` | NVIDIA NIM | remote |
+
+Before a local model is used, the preflight reads free RAM (only when the
+endpoint is on this machine), then Ollama's read-only `/api/version`, `/api/tags`
+and `/api/ps`. It stops before any inference when:
+
+- free RAM is below the profile's requirement and the model is not already loaded;
+- the endpoint is on another host and no memory reading from that host was given;
+- the model tag is not installed (it suggests `ollama pull`; nothing is pulled);
+- a credential or the pinned Harmony tokenizer is missing.
+
+Each refusal names what was measured, what is needed and which profiles to try
+instead. `scripts/probe_local_model.py --profile ...` and
+`scripts/smoke_local_models.py --profile ...` show it as a panel and exit with
+status 2. To see the refusal and the fallback without any host, keys or network:
+
+```powershell
+uv run --no-sync python examples/adopter_flow.py --fixture
+```
+
+`ollama-gpt-oss-20b` uses the generic mapping and was ineligible on Ollama 0.40.11
+(token-text alignment failed); a mapping for Ollama's Harmony output is still open.
+Use `modal-gpt-oss-20b` for GPT-OSS-20B evidence until then.
+
+When a provider returns an error, the receipt keeps a bounded, redacted copy of
+the response body, so an HTTP 500 can be diagnosed afterwards.
+
 ## Start without a model host
 
 For optional remote GPU hosting, use the [Modal operator guide](modal-provider.md).

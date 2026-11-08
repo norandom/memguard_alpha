@@ -1,6 +1,6 @@
 # Release 1.0: tasks and status
 
-**Current: M1.5** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
+**Current: M1.6** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
 
 Review 2026-11-08: [research review](research.md#7-streamlined-task-alignment-for-tasksmd) and [design draft](design.md).
 Task list, requirements and the M1.1 design approved by the user on 2026-11-08. Review proposals do not complete tasks, move this
@@ -44,9 +44,9 @@ Requirement 2 above is the new scope.
 - [x] M1.4 Implement the free-RAM preflight with the friendly Modal / larger-host
   proposal and error-body retention (R2.3, 2.7; C1).
   - _Outcome 2026-11-08: `preflight_host()` in `recall_guard/core/profiles.py`, run by `connect()` by default. Free RAM is read with psutil only for loopback endpoints; a remote local endpoint needs a snapshot taken on the model host, otherwise it is blocked as `host_memory_unknown`. A failed gate sends no request; the one exception is a read-only `/api/ps` call, which passes the gate if the model is already loaded. It suggests fallback profiles or a larger machine. Rich failure panels are wired into the probe and smoke scripts. HTTP error bodies (bounded, redacted) are now kept in probe receipts and local execution rows (C1 root cause of the missing body). `psutil` added to core; lock changed by two lines only. Full offline suite 2935 passed, 2 skipped. Cosmetic: the panel lists alternatives twice (M1.5)._
-- [ ] M1.5 Integrate the adopter flow and compact report (APR 4.1); update README
+- [x] M1.5 Integrate the adopter flow and compact report (APR 4.1); update README
   "Choose where your model runs" from planned to shipped (APR 4.2, R4).
-  - _M1.5a (code) done 2026-11-08: profiles ship as package data in `recall_guard/core/provider_profiles/` and load from an installed wheel (C18 resolved); the failure panel lists each alternative once; `examples/adopter_flow.py --fixture` runs offline: blocked GPT-OSS → proposed fallback → existing preparation/workflow → one compact record with exact request counts and MCS unavailable in completion-only mode. Every record says token-evidence outcomes are simulated. Full offline suite 2950 passed, 2 skipped. C17 not reachable in this sequential flow. M1.5b (docs, COBESY) open._
+  - _M1.5a (code) done 2026-11-08: profiles ship as package data in `recall_guard/core/provider_profiles/` and load from an installed wheel (C18 resolved); the failure panel lists each alternative once; `examples/adopter_flow.py --fixture` runs offline: blocked GPT-OSS → proposed fallback → existing preparation/workflow → one compact record with exact request counts and MCS unavailable in completion-only mode. Every record says token-evidence outcomes are simulated. Full offline suite 2950 passed, 2 skipped. C17 not reachable in this sequential flow. M1.5b (docs) done 2026-11-08, structured with COBESY: README "Choose where your model runs" now shows `connect()`, the shipped memory refusal and the offline example; `docs/local-provider.md` gains a profile table and the preflight rules. Docs tests 38 passed; strict MkDocs build clean._
 - [ ] M1.6 Offline acceptance: one full regression + Docker smoke of the
   selection → fallback → report flow (APR 5.1, Docker 3.2).
 
