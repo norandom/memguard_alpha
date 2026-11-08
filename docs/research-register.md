@@ -7,30 +7,48 @@ earlier entry stays.
 
 Last updated 2026-11-08. Release plan: [release 1.0](https://github.com/norandom/memguard_alpha/blob/main/.kiro/specs/release-1.0/tasks.md).
 
+## Purpose
+
+Recall Guard estimates how likely an answer is recalled rather than reasoned
+(`p_memorized`) and calibrates that estimate, so an application can discount
+recalled answers. The research question is therefore **calibration of the
+memorization estimate**: does `p_memorized` rank memorized text above unseen
+text (discrimination), and do its probabilities match observed frequencies
+(calibration)? Reducing memorization, by rewriting or divergence decoding, is a
+separate optional track and not what the guard needs in order to work.
+
+The estimate the guard applies is the ensemble point estimate: the mean
+`p_memorized` over many draws of the same prompt at production settings
+(`p_memorized_point`, [ensemble scoring](ensemble.md); 64 draws, at least 24
+parsed). A single answer is one draw of that estimate. Single-answer results are
+therefore the baseline; the ensemble measurement is the main test.
+
 ## State of evidence
 
-1. **No mitigation effect has been measured.** No rewrite, ensemble or divergence
-   correction has shown a reduction in recall on held-out data (R02, R03, R06).
-2. **The one strong detection number is confounded.** The 2026-10-30 NIM calibration
-   reached a holdout ROC-AUC of 0.876 (R01). Its "memorized" rows came from three
-   publication dates and a different source than its control rows (R18), so the
-   AUC may reflect date and source rather than memorization. Treat it as corpus
-   separation, as the report itself says.
-3. **The infrastructure is verified.** Token evidence works on five local models,
-   and on GPT-OSS-20B through Modal after the Harmony fix (R12, R16). Backend
-   choice, memory preflight and authenticated, auto-stopping hosts are in place
-   (R15, R19).
-4. **The first clean test is running.** Phase A calibrates six models on one
-   source (SEC EDGAR) and scores 80 labeled held-out rows each (R20, R21).
+1. **Single-draw discrimination on held-out data: not shown yet.** Phase A (the
+   single-draw baseline) has held-out results for two local models. Gemma 3 4B reached 0.812 on its calibrator
+   holdout but 0.574 [0.453, 0.690] on 80 new rows. Llama 3.2 3B reached 0.503
+   [0.381, 0.623]. Both intervals include 0.5 (R20).
+2. **Calibration quality: not measured yet.** Reports carry AUC only; Brier score
+   and reliability are not computed (open item).
+3. **The earlier strong number is confounded.** The 2026-10-30 NIM calibrator
+   reached 0.876 (R01) on a corpus whose classes differ in date and source (R18).
+   Treat it as corpus separation.
+4. **The infrastructure is verified.** Token evidence works locally and on Modal
+   (R12, R16), with memory preflight and authenticated, auto-stopping hosts (R15,
+   R19). Two Modal attempts stopped on harness defects that are now fixed (R22, R23).
+5. **Mitigation (optional track):** no rewrite or decoding method has reduced
+   recall (R02, R03, R06).
 
 ## Claims and how they could fail
 
 | Claim | Evidence so far | We are wrong if |
 | --- | --- | --- |
-| MIA features separate memorized from unseen text | R01 (confounded) | Phase A held-out AUC has a bootstrap interval that includes 0.5 for most models |
-| Calibrated scores transfer to new items | none yet | calibrator holdout AUC is high but held-out AUC is near 0.5 |
-| Ensembles improve detection | none yet (Phase B) | paired single-versus-ensemble difference is zero or negative |
-| Divergence decoding reduces recall | none (M6) | paired held-out recall does not drop at the frozen alpha |
+| `p_memorized` ranks memorized above unseen text on new data | R20: two models, both intervals include 0.5 | held-out AUC intervals include 0.5 for most models |
+| `p_memorized` is calibrated | none yet | reliability curve or Brier score shows probabilities far from observed frequencies |
+| A calibrator fitted on one corpus transfers to new items | R20 (Gemma) suggests not | calibrator holdout AUC is high but held-out AUC is near 0.5 |
+| The ensemble point estimate is the better-calibrated multiplier | none yet (Phase B) | its held-out AUC and calibration are no better than a single draw's |
+| Mitigation reduces recall (optional) | none | paired held-out recall does not drop at a frozen setting |
 
 ## Index
 
