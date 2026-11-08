@@ -27,28 +27,33 @@ track. The guard does not need it to work.
 
 ## State of evidence
 
-1. **Single-draw discrimination on new data: not shown.** Four models finished
-   Phase A on one clean corpus (R26, R30). All held-out AUC intervals include 0.5:
-   Gemma 3 4B 0.574, Llama 3.2 3B 0.503, Llama 3.1 8B 0.462, GPT-OSS-20B 0.574.
-2. **Single-draw calibration: no skill.** Held-out Brier scores are 0.249 to 0.269
-   against 0.245 to 0.250 for always predicting the base rate. Estimates cluster
-   near 0.5.
+1. **No predictive capacity, as the study design expects.** These models are not
+   supposed to separate the classes here, and establishing that is part of the
+   research. Four models finished Phase A on one clean corpus (R26, R30); every
+   held-out AUC interval includes 0.5: Gemma 3 4B 0.574, Llama 3.2 3B 0.503,
+   Llama 3.1 8B 0.462, GPT-OSS-20B 0.574. With 80 held-out rows per model the
+   intervals are wide, so a small effect is not ruled out.
+2. **Calibration is at the no-skill level, consistent with point 1.** Held-out
+   Brier scores are 0.249 to 0.269 against 0.245 to 0.250 for always predicting
+   the base rate; estimates cluster near 0.5 and their mean matches the base
+   rate.
 3. **Calibrators do not transfer.** Calibrator holdout AUC reached 0.812 for Gemma
    but 0.574 on new rows. The earlier 0.876 for GPT-OSS on NIM (R01) used a corpus
    whose classes differ in date and source (R24) and is corpus separation.
 4. **The measurement chain works.** Token evidence, memory preflight,
    authenticated auto-stopping hosts and cost-capped Modal runs are verified (R15
    to R25).
-5. **Next:** the ensemble test (Phase B, 32 draws per held-out item) and an NPU
-   runtime with logprobs (R31).
+5. **Next:** the ensemble test (Phase B, 32 draws per held-out item), and full
+   logits or logprobs from local models, NPU included (R31, R33). Complete
+   next-token distributions establish the experiments better than top-5 lists.
 6. **Mitigation (optional track):** no method has reduced recall (R02, R03, R07).
 
 ## Claims and how they could fail
 
 | Claim | Evidence so far | We are wrong if |
 | --- | --- | --- |
-| `p_memorized` ranks memorized above unseen text on new data | R26, R30: four models, all intervals include 0.5 | ensemble held-out AUC intervals also include 0.5 for most models |
-| `p_memorized` is calibrated | R26, R30: Brier at the no-skill level | ensemble Brier stays at the base-rate reference |
+| These models show no predictive capacity on this data (expected) | R26, R30: four models, all intervals include 0.5 | a held-out AUC interval excludes 0.5, or Brier beats the base-rate reference |
+| `p_memorized` stays at the base rate when there is nothing to detect | R26, R30: mean prediction within 0.06 of the base rate | predictions drift away from the base rate without any separation |
 | The ensemble reduces nondeterminism of answer and score | none yet (Phase B) | two 16-draw ensembles of the same prompt disagree about as much as single draws |
 | A calibrator fitted on one corpus transfers to new items | R26 suggests not | ensemble holdout AUC is high but held-out AUC near 0.5 |
 | Mitigation reduces recall (optional) | none | paired held-out recall does not drop at a frozen setting |
@@ -88,6 +93,8 @@ track. The guard does not need it to work.
 | R29 | 2026-11-08 | Platform | feasibility | Held-out calibration quality added to reports |
 | R30 | 2026-11-08 | Modal | measured | Phase A single draw: GPT-OSS-20B |
 | R31 | 2026-11-08 | Local | in progress | NPU runtime with logprobs: FastFlowLM selected |
+| R32 | 2026-11-08 | Local | stopped | LLaVA-Llama3 Phase A stopped on a host condition change |
+| R33 | 2026-11-08 | Method | decision | Full logits or logprobs from local models, NPU included |
 
 ## Entries
 
@@ -329,7 +336,8 @@ track. The guard does not need it to work.
   | Llama 3.2 3B | 0.464 | 0.503 [0.381, 0.623] | 0.259 [0.242, 0.278] | 0.250 | 0.064 |
   | Llama 3.1 8B | 0.544 | 0.462 [0.339, 0.598] | 0.269 [0.247, 0.293] | 0.250 | 0.090 |
 
-  LLaVA-Llama3 (ctx 2048) is running. Phi-4 Mini: R23.
+  LLaVA-Llama3 (ctx 2048): R32. Phi-4 Mini: R23. As the study design expects,
+  no model shows predictive capacity here.
 - **Limits:** single draws; partial top-5 logprobs; input token counts are upper bounds.
 - **Evidence:** [report](results/2026-11-08-phase-a-single-draw.md).
 
@@ -376,6 +384,29 @@ track. The guard does not need it to work.
 - **Data:** none yet.
 - **Result:** Ollama does not use the NPU. FastFlowLM v1.0.12 runs on XDNA2 and documents `logprobs` with `top_logprobs` since v1.0.11. Selected models: `gemma3:4b`, `llama3.2:3b`, `gemma4-it:e4b` (Gemma 4, cutoff January 2025, so its control rows must postdate 2025-01-31). Installation and eligibility probes are in progress, natively on Windows.
 - **Limits:** logprob behaviour on these models is not yet observed.
+- **Evidence:** release plan, NPU option.
+
+### R32 · 2026-11-08 · LLaVA-Llama3 Phase A stopped
+
+- **Question:** as R26.
+- **Setup:** as R26, `llava-llama3:ctx2048`.
+- **Data:** R19.
+- **Result:** stopped after 149 of 200 control requests (memorized 39 of 40 done):
+  the host's observed model condition changed during the run
+  (`condition_mismatched`), which stops a run by design. No calibrator, no
+  held-out scores.
+- **Limits:** the changed field is not yet identified.
+- **Evidence:** `runs/container/phase-a/ollama-llava-llama3-ctx2048/` (private).
+
+### R33 · 2026-11-08 · Full local logits or logprobs
+
+- **Question:** what would establish the experiments more firmly?
+- **Setup:** user decision.
+- **Data:** none.
+- **Result:** obtain full next-token logits or complete logprobs from local models,
+  NPU included, in addition to top-k lists. This removes the partial top-k limit
+  and is the basis for the divergence work.
+- **Limits:** depends on runtime support (R31).
 - **Evidence:** release plan, NPU option.
 
 ## How to add an entry
