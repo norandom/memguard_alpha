@@ -20,6 +20,8 @@ from recall_guard.core.completion import (
 )
 from recall_guard.core.local_evidence import LocalModelIdentity, validate_local_evidence
 from recall_guard.core.nvidia_lm import CompletionResult
+from recall_guard.core.profiles import ResponseMapping
+from recall_guard.core.providers import HarmonyOpenAICompatibleClient
 from recall_guard.core.request_control import BudgetExhaustedError
 from recall_guard.harness.request_failures import FATAL_FAILURES, failure_kind
 
@@ -39,6 +41,21 @@ class CalibrationIdentity:
     parameters_json: str
     intervention_id: str
     local_identity: LocalModelIdentity | None = None
+    #: Evidence profile (v2): calibrators never cross response mappings.
+    response_mapping: str = ResponseMapping.GENERIC.value
+    #: Pinned mapping identity, e.g. the Harmony tokenizer SHA-256.
+    mapping_revision: str | None = None
+
+    def __post_init__(self) -> None:
+        try:
+            object.__setattr__(self, "response_mapping", ResponseMapping(self.response_mapping).value)
+        except ValueError:
+            raise ValueError("response_mapping must be generic or harmony_vllm") from None
+        if self.mapping_revision is not None and (
+                not isinstance(self.mapping_revision, str) or not self.mapping_revision.strip()):
+            raise ValueError("mapping_revision must be nonempty text or null")
+        if self.response_mapping != ResponseMapping.GENERIC.value and self.mapping_revision is None:
+            raise ValueError("A non-generic response mapping requires its pinned mapping_revision")
 
     @property
     def reuse_scope(self) -> str:
@@ -55,15 +72,51 @@ class CalibrationIdentity:
         result = asdict(self)
         if self.local_identity is None:
             result.pop("local_identity")
+        if self.response_mapping == ResponseMapping.GENERIC.value and self.mapping_revision is None:
+            result.pop("response_mapping")
+            result.pop("mapping_revision")
         return result
 
     @classmethod
-    def from_config(cls, config: ModelConfig, intervention_id: str) -> CalibrationIdentity:
+    def from_dict(cls, data: Mapping) -> CalibrationIdentity:
+        """Load v1 (legacy) and v2 identity payloads; absent mapping means generic."""
+        required = {"protocol", "endpoint", "model", "parameters_json", "intervention_id"}
+        optional = {"local_identity", "response_mapping", "mapping_revision"}
+        if not isinstance(data, Mapping) or required - data.keys() or data.keys() - required - optional:
+            raise ValueError("Invalid calibration identity fields")
+        values = dict(data)
+        local = values.get("local_identity")
+        if local is not None:
+            local = dict(local)
+            local.setdefault("version", 1)  # dataclasses.asdict exports omit the version tag.
+            values["local_identity"] = LocalModelIdentity.from_dict(local)
+        values["protocol"] = CompletionProtocol(values["protocol"])
+        values.setdefault("response_mapping", ResponseMapping.GENERIC.value)
+        return cls(**values)
+
+    @classmethod
+    def from_config(
+        cls, config: ModelConfig, intervention_id: str, *,
+        response_mapping: str = ResponseMapping.GENERIC.value, mapping_revision: str | None = None,
+    ) -> CalibrationIdentity:
         if not isinstance(intervention_id, str) or not intervention_id.strip():
             raise ValueError("intervention_id must identify the calibration intervention")
         return cls(config.protocol, config.endpoint, config.model,
                    json.dumps(config.to_dict()["parameters"], sort_keys=True, separators=(",", ":")),
-                   intervention_id, config.local_identity)
+                   intervention_id, config.local_identity, response_mapping, mapping_revision)
+
+    @classmethod
+    def from_client(cls, client: CompletionClient, intervention_id: str) -> CalibrationIdentity:
+        """Configured identity plus the client's response mapping (v2)."""
+        mapping, revision = client_mapping(client)
+        return cls.from_config(client.config, intervention_id, response_mapping=mapping, mapping_revision=revision)
+
+
+def client_mapping(client: object) -> tuple[str, str | None]:
+    """Return ``(response_mapping, mapping_revision)`` for a configured client."""
+    if isinstance(client, HarmonyOpenAICompatibleClient):
+        return ResponseMapping.HARMONY_VLLM.value, client.token_map.tokenizer_sha256
+    return ResponseMapping.GENERIC.value, None
 
 
 class LegacyLogprobAdapter:
@@ -80,7 +133,7 @@ class LegacyLogprobAdapter:
         is_auth_error: Callable[[BaseException], bool],
     ) -> None:
         self.client = client
-        self.identity = CalibrationIdentity.from_config(client.config, intervention_id)
+        self.identity = CalibrationIdentity.from_client(client, intervention_id)
         self._client_identity = self.identity
         self._local_response_seen = False
         self._is_auth_error = is_auth_error
@@ -109,10 +162,15 @@ class LegacyLogprobAdapter:
         expected = self._client_identity if client is self.client else self.identity
         if client is not self.client and self.identity.reuse_scope == "within_run":
             raise ValueError("Unknown local provenance permits within-run calibration reuse on the original client only")
-        if CalibrationIdentity.from_config(client.config, intervention_id) != expected:
+        current = CalibrationIdentity.from_client(client, intervention_id)
+        if (current.response_mapping, current.mapping_revision) != (expected.response_mapping, expected.mapping_revision):
+            raise ValueError("Client response mapping differs from calibration; calibrators are not reused "
+                             "across evidence profiles")
+        if current != expected:
             raise ValueError("Client model/endpoint/protocol/settings/intervention identity differs from calibration")
         config = replace(client.config, parameters=dict(client.config.parameters) | parameters)
-        if CalibrationIdentity.from_config(config, intervention_id) != expected:
+        mapping = {"response_mapping": current.response_mapping, "mapping_revision": current.mapping_revision}
+        if CalibrationIdentity.from_config(config, intervention_id, **mapping) != expected:
             raise ValueError("Client model/endpoint/protocol/settings/intervention identity differs from calibration")
 
     def validate_response(self, response: ModelResponse) -> CompletionResult:
@@ -120,7 +178,9 @@ class LegacyLogprobAdapter:
             raise ValueError("Configured MIA scoring requires a ModelResponse with genuine token evidence")
         settings = ModelConfig(self.identity.protocol, self.identity.endpoint, self.identity.model,
                                parameters=response.requested_settings, local_identity=response.local_identity)
-        candidate = CalibrationIdentity.from_config(settings, self.identity.intervention_id)
+        candidate = CalibrationIdentity.from_config(settings, self.identity.intervention_id,
+                                                    response_mapping=self.identity.response_mapping,
+                                                    mapping_revision=self.identity.mapping_revision)
         if replace(candidate, local_identity=None) != replace(self.identity, local_identity=None):
             raise ValueError("Response requested settings differ from calibration identity")
         if self.identity.local_identity is not None or response.local_identity is not None:

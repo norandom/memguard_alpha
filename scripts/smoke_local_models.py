@@ -19,13 +19,15 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recall_guard.core.local_evidence import LocalEvidenceError, validate_local_evidence
+from recall_guard.core.profiles import ProfileError, load_profile
 from scripts.probe_local_model import (
+    PROFILE_MODELS,
     PROMPT,
     SETTINGS,
     CallBudget,
-    OpenAICompatibleClient,
     ProbeConfig,
     RequestError,
+    connect_probe,
     observe_host,
     persist,
     preflight,
@@ -37,6 +39,23 @@ MODELS = ('phi4-mini:3.8b', 'llama3.1:8b', 'llama3.2:3b', 'gemma3:4b',
           'llava-llama3:latest', 'gpt-oss:20b')
 GIB = 1024 ** 3
 HOST_ERRORS = (OSError, requests.RequestException, ValueError, KeyError, TypeError)
+DEFAULT_ENDPOINT = 'http://127.0.0.1:11434/v1/chat/completions'
+
+
+def profile_selection(profile_ids, endpoint: str | None) -> tuple[list[str], str]:
+    """Map curated local profile IDs to model tags; an explicit endpoint wins."""
+    models, endpoints = [], set()
+    for profile_id in profile_ids:
+        if profile_id not in PROFILE_MODELS:
+            raise ProfileError('smoke_profiles_must_be_curated_local_ollama_profiles')
+        config = load_profile(profile_id).model_config
+        models.append(config.model)
+        endpoints.add(config.endpoint)
+    if endpoint is None:
+        if len(endpoints) > 1:
+            raise ProfileError('selected_profiles_disagree_on_endpoint_pass_endpoint')
+        endpoint = endpoints.pop() if endpoints else DEFAULT_ENDPOINT
+    return models, endpoint
 
 
 def available_memory_bytes() -> int | None:
@@ -89,7 +108,7 @@ def unload_model(config: ProbeConfig) -> None:
 
 def probe(config: ProbeConfig, row: dict, journal: dict, output: Path) -> None:
     budget = CallBudget(1)
-    client = OpenAICompatibleClient(config.client_config(), budget, environment={}, allow_unauthenticated=True)
+    client = connect_probe(config, budget)
     row['status'] = 'intent'
     persist(output, journal)
     started = monotonic()
@@ -272,16 +291,20 @@ def main() -> int:
     import json
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--endpoint', default='http://127.0.0.1:11434/v1/chat/completions')
+    parser.add_argument('--endpoint', default=None, help=f'Full chat-completions URL (default {DEFAULT_ENDPOINT}).')
     parser.add_argument('--host-observation', type=Path, default=Path('runs/local-provider/host-observation.json'))
     parser.add_argument('--model', action='append', choices=MODELS)
+    parser.add_argument('--profile', action='append', choices=sorted(PROFILE_MODELS),
+                        help='Curated local provider profile ID; may be combined with --model.')
     parser.add_argument('--minimum-available-gib', type=float, default=16)
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     try:
+        profiled, endpoint = profile_selection(args.profile or (), args.endpoint)
+        models = list(dict.fromkeys([*profiled, *(args.model or ())])) or MODELS
         host = read_json(args.host_observation) if args.execute else {}
-        result = run_smoke(args.endpoint, host, args.output, models=args.model or MODELS,
+        result = run_smoke(endpoint, host, args.output, models=models,
                            execute=args.execute, minimum_available_gib=args.minimum_available_gib)
     except (OSError, ValueError):
         print('Smoke refused: invalid configuration, unavailable host file or existing receipt.', file=sys.stderr)

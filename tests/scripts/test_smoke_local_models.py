@@ -209,3 +209,13 @@ def test_identity_change_since_freeze_prevents_inference(rig, monkeypatch):
     result = run(execute=True, memory_reader=lambda: 20 * GIB)
     assert not state['posts']
     assert all(row['reason'] == 'model_digest_missing_or_mismatched' for row in result['attempts'])
+
+
+def test_profile_selection_maps_curated_profiles_and_keeps_explicit_endpoint():
+    models, endpoint = smoke.profile_selection(['ollama-phi4-mini', 'ollama-gpt-oss-20b'], None)
+    assert models == ['phi4-mini:3.8b', 'gpt-oss:20b']
+    assert endpoint == 'http://localhost:11434/v1/chat/completions'
+    assert smoke.profile_selection([], None) == ([], smoke.DEFAULT_ENDPOINT)
+    assert smoke.profile_selection(['ollama-gemma3-4b'], ENDPOINT) == (['gemma3:4b'], ENDPOINT)
+    with pytest.raises(ValueError):
+        smoke.profile_selection(['nim-llama3.1-70b'], None)

@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "profile_id": "ollama-phi4-mini",
+  "display_name": "Ollama phi4-mini:3.8b (local)",
+  "hosting_mode": "local",
+  "model_config": {
+    "protocol": "openai_chat",
+    "endpoint": "http://localhost:11434/v1/chat/completions",
+    "model": "phi4-mini:3.8b",
+    "provider": "ollama",
+    "parameters": {
+      "temperature": 0,
+      "top_p": 1,
+      "max_tokens": 512,
+      "logprobs": true,
+      "top_logprobs": 5
+    },
+    "capabilities": {},
+    "timeout_s": 300,
+    "max_retries": 0,
+    "retry_backoff_s": 2.0,
+    "min_call_interval_s": 0.0,
+    "local_identity": {
+      "version": 1,
+      "declared": {
+        "artifact_digest": null,
+        "artifact_revision": null,
+        "quantization": null,
+        "tokenizer": null,
+        "template": null,
+        "runtime": null,
+        "runtime_version": null,
+        "backend": null,
+        "driver_version": null,
+        "context_length": null,
+        "score_semantics": {
+          "normalization": null,
+          "log_base": null,
+          "sampling_stage": null
+        }
+      },
+      "observed": {
+        "artifact_digest": null,
+        "artifact_revision": null,
+        "quantization": null,
+        "tokenizer": null,
+        "template": null,
+        "runtime": null,
+        "runtime_version": null,
+        "backend": null,
+        "driver_version": null,
+        "context_length": null,
+        "score_semantics": {
+          "normalization": null,
+          "log_base": null,
+          "sampling_stage": null
+        }
+      }
+    }
+  },
+  "credential_ref": null,
+  "endpoint_ref": null,
+  "response_mapping": "generic",
+  "harmony": null,
+  "host_requirements": {
+    "min_free_ram_bytes": 6442450944,
+    "recommended_ram_bytes": null,
+    "context_tokens": 2048,
+    "fallback_profile_ids": [
+      "ollama-gemma3-4b",
+      "modal-gpt-oss-20b"
+    ]
+  },
+  "allow_unauthenticated": true,
+  "notes": "Eligibility unverified; run the per-host probe before calibration."
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "profile_id": "nim-llama3.1-70b",
+  "display_name": "NVIDIA NIM meta/llama-3.1-70b-instruct (managed API)",
+  "hosting_mode": "managed_api",
+  "model_config": {
+    "protocol": "openai_chat",
+    "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "model": "meta/llama-3.1-70b-instruct",
+    "provider": "nvidia_nim",
+    "parameters": {
+      "temperature": 0.0,
+      "max_tokens": 512,
+      "logprobs": true,
+      "top_logprobs": 20
+    },
+    "capabilities": {},
+    "timeout_s": 15,
+    "max_retries": 2,
+    "retry_backoff_s": 2.0,
+    "min_call_interval_s": 0.0
+  },
+  "credential_ref": "env:NVIDIA_API_KEY",
+  "endpoint_ref": null,
+  "response_mapping": "generic",
+  "harmony": null,
+  "host_requirements": {
+    "min_free_ram_bytes": null,
+    "recommended_ram_bytes": null,
+    "context_tokens": 2048,
+    "fallback_profile_ids": []
+  },
+  "allow_unauthenticated": false,
+  "notes": "OpenAI-compatible NIM path mirroring legacy NvidiaLM request settings."
+}

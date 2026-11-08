@@ -1,6 +1,6 @@
 # Release 1.0: tasks and status
 
-**Current: M1.3** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
+**Current: M1.4** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
 
 Review 2026-11-08: [research review](research.md#7-streamlined-task-alignment-for-tasksmd) and [design draft](design.md).
 Task list, requirements and the M1.1 design approved by the user on 2026-11-08. Review proposals do not complete tasks, move this
@@ -38,8 +38,9 @@ Requirement 2 above is the new scope.
 - [x] M1.2 Finish truthful execution failure/stop handling (APR 3.2) and prune
   unused polling scaffolding (APR 3.3).
   - _M1.2a (APR 3.2) accepted 2026-11-08: both 2026-11-01 defects were already fixed by ff70061 on the ordinary, native and callback paths; two focused regressions were added in `tests/harness/test_prepared_execution.py` (5 cases). Focused run: 425 passed; ruff clean. Gap logged as C17. M1.2b (APR 3.3 polling prune) accepted 2026-11-08: fixture-only `PendingStatusPolicy`, poll loop and status GET removed; HTTP 202 now defers after exactly one POST; legacy `pending_status: null`/`max_poll_requests: 0` keys still load for historical NIM-refresh plans. Full offline suite 2867 passed, 2 skipped; ruff and architecture checks clean. The APR 3.3 helper-inventory half is not done; it stays out of scope until a milestone needs it._
-- [ ] M1.3 Implement profiles + factory; route scripts, harness and scorer
+- [x] M1.3 Implement profiles + factory; route scripts, harness and scorer
   through it; NIM via profile (R2.1–2.2, 2.5–2.6).
+  - _Outcome 2026-11-08: `recall_guard/core/profiles.py` (`ProviderProfile`, `load_profile`, `connect`), seven profiles in `configs/providers/`, `CalibrationIdentity` v2 (rejects reuse across response mappings; legacy dicts unchanged), `MemoryGuardedScorer.from_profile`, `--profile` on the local probe and smoke scripts. NIM works as an OpenAI-compatible profile; `harness/runner.py`, `harness/smoke.py` and `MemoryGuardedScorer.calibrate` still use legacy `NvidiaLM` (different result type, public API kept). The Modal endpoint comes from `MODAL_ENDPOINT_URL`; the placeholder is refused. Full offline suite 2894 passed, 2 skipped; ruff and architecture checks clean. Follow-ups: C18, C19._
 - [ ] M1.4 Implement the free-RAM preflight with the friendly Modal / larger-host
   proposal and error-body retention (R2.3, 2.7; C1).
 - [ ] M1.5 Integrate the adopter flow and compact report (APR 4.1); update README
@@ -124,6 +125,8 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 | C15 | Integrated GPU unused by Ollama by default | Parked | P4 |
 | C16 | Modal attempt 08 raw response not retained | Recorded, no action | — |
 | C17 | A failure latched before any readiness trace (e.g. a settings check that fails before the first request) leaves `root_observation` empty, so woken queued observations keep `caller_cancelled`. Not reproducible in current flows | Low; watch | M1.6 |
+| C18 | Profiles resolve from the checkout (`configs/providers/`), so an installed wheel cannot load them by ID | Open | M1.5 |
+| C19 | New variable `MODAL_ENDPOINT_URL` is not yet in `.env.sample` (file holds uncommitted user edits) | Open; user to confirm | M1.5 |
 
 ## Spec register
 

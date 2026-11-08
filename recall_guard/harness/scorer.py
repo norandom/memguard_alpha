@@ -39,13 +39,15 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
-from recall_guard.core.completion import CompletionClient, ModelResponse, ParameterValue
+from recall_guard.core.completion import CompletionClient, FeatureChoices, ModelResponse, ParameterValue
 from recall_guard.core.consensus import lag_dependence, wilson_interval
 from recall_guard.core.ensemble import EnsembleSpec, canonical_draw_hash
 from recall_guard.core.loader import EvalRow
 from recall_guard.core.nvidia_lm import NvidiaLM, check_model_access, generate_many
-from recall_guard.core.request_control import BudgetExhaustedError
+from recall_guard.core.profiles import ProviderProfile, connect
+from recall_guard.core.request_control import BudgetExhaustedError, CallBudget
 from recall_guard.harness.evaluator import (
     FAIL_ERROR,
     FAIL_PARSE,
@@ -411,6 +413,36 @@ class MemoryGuardedScorer:
             if _is_auth_error(error):
                 raise ConfigurationError(f"Credential rejected while calibrating model {lm.model!r}") from error
             raise
+
+    @classmethod
+    def from_profile(
+        cls,
+        profile: ProviderProfile | str | Path,
+        budget: CallBudget,
+        *,
+        is_memorized: Sequence[str],
+        oos_control: Sequence[str],
+        intervention_id: str = "original",
+        environment: Mapping[str, str] | None = None,
+        min_auc: float = 0.6,
+        min_valid: int = 50,
+        seed: int = 0,
+        max_workers: int = 8,
+    ) -> tuple[MemoryGuardedScorer, CompletionClient]:
+        """Connect ``profile`` through :func:`connect` and calibrate on that client.
+
+        The client is built with MIA features selected, so unsupported
+        declarations fail locally before any request. Calibration then follows
+        :meth:`calibrate_client` exactly: its actual generation probe runs before
+        corpus calls, and the fit identity records the profile's response mapping.
+        Returns the scorer and the client it must score with.
+        """
+        client = connect(profile, budget, features=FeatureChoices(mia_scoring=True), environment=environment)
+        scorer = cls.calibrate_client(
+            client=client, is_memorized=is_memorized, oos_control=oos_control, intervention_id=intervention_id,
+            min_auc=min_auc, min_valid=min_valid, seed=seed, max_workers=max_workers,
+        )
+        return scorer, client
 
     @classmethod
     def _fit(

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "profile_id": "modal-gpt-oss-20b",
+  "display_name": "Modal vLLM openai/gpt-oss-20b (remote A100, Harmony)",
+  "hosting_mode": "remote_gpu",
+  "model_config": {
+    "protocol": "openai_chat",
+    "endpoint": "https://YOUR-HOST.modal.run/v1/chat/completions",
+    "model": "openai/gpt-oss-20b",
+    "provider": "modal",
+    "parameters": {
+      "temperature": 0,
+      "top_p": 1,
+      "max_tokens": 512,
+      "logprobs": true,
+      "top_logprobs": 5,
+      "return_token_ids": true
+    },
+    "capabilities": {},
+    "timeout_s": 120,
+    "max_retries": 0,
+    "retry_backoff_s": 2.0,
+    "min_call_interval_s": 0.0
+  },
+  "credential_ref": "env:MODAL_PROXY_BEARER",
+  "endpoint_ref": "env:MODAL_ENDPOINT_URL",
+  "response_mapping": "harmony_vllm",
+  "harmony": {
+    "tokenizer_path": "models/hub/models--openai--gpt-oss-20b/snapshots/6cee5e81ee83917806bbde320786a8fb61efebee/tokenizer.json",
+    "tokenizer_revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+    "tokenizer_sha256": "0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3"
+  },
+  "host_requirements": {
+    "min_free_ram_bytes": null,
+    "recommended_ram_bytes": null,
+    "context_tokens": 4096,
+    "fallback_profile_ids": []
+  },
+  "allow_unauthenticated": false,
+  "notes": "Set MODAL_ENDPOINT_URL to the registered full https://<host>.modal.run/v1/chat/completions URL (see docs/modal-provider.md); the placeholder endpoint is refused at connect time. Model/tokenizer revision pinned by configs/modal/gpt-oss-20b-pilot.json."
+}

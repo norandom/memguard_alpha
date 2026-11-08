@@ -13,7 +13,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
@@ -24,11 +24,15 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recall_guard.core.completion import ModelConfig, ModelResponse
 from recall_guard.core.local_evidence import validate_local_evidence
-from recall_guard.core.providers import OpenAICompatibleClient
+from recall_guard.core.profiles import HostingMode, ProviderProfile, connect, load_profile
+from recall_guard.core.providers import OpenAICompatibleClient  # noqa: F401 - re-exported to smoke/tests
 from recall_guard.core.request_control import CallBudget, RequestError
 
 PROMPT = 'Reply with the word OK.'
 MODEL_IDS = {'ollama-gemma3-4b': 'gemma3:4b', 'ollama-gpt-oss-20b': 'gpt-oss:20b'}
+#: Curated local profiles (configs/providers) by model tag; probe settings stay frozen.
+PROFILE_MODELS = MODEL_IDS | {'ollama-phi4-mini': 'phi4-mini:3.8b', 'ollama-llama3.2-3b': 'llama3.2:3b',
+                              'ollama-llama3.1-8b': 'llama3.1:8b'}
 SETTINGS = {'temperature': 0, 'top_p': 1, 'top_logprobs': 5, 'logprobs': True, 'max_tokens': 32}
 BOUNDS = {'total_generation_attempts': 6, 'attempts_per_configuration': 2,
           'context_tokens': 2048, 'max_output_tokens': 32, 'automatic_retries': 0,
@@ -47,6 +51,19 @@ class ProbeConfig:
     def client_config(self) -> ModelConfig:
         return ModelConfig(protocol='openai_chat', model=self.model, endpoint=self.endpoint,
                            provider='ollama', parameters=SETTINGS, timeout_s=300, max_retries=0)
+
+    def profile(self) -> ProviderProfile:
+        """The curated local profile for this model, carrying the frozen probe config."""
+        profile_id = next((pid for pid, tag in PROFILE_MODELS.items() if tag == self.model), None)
+        if profile_id is None:
+            return ProviderProfile('ollama-adhoc', f'Ollama {self.model}', HostingMode.LOCAL,
+                                   self.client_config(), allow_unauthenticated=True)
+        return replace(load_profile(profile_id), model_config=self.client_config())
+
+
+def connect_probe(config: ProbeConfig, budget: CallBudget):
+    """Build the unauthenticated local client through the single profile factory."""
+    return connect(config.profile(), budget, environment={})
 
 
 def read_json(path: Path) -> dict:
@@ -162,7 +179,7 @@ def safe_events(budget: CallBudget) -> list[dict]:
 
 def execute(config: ProbeConfig, receipt: dict, journal: dict, path: Path) -> None:
     budget = CallBudget(1)
-    client = OpenAICompatibleClient(config.client_config(), budget, environment={}, allow_unauthenticated=True)
+    client = connect_probe(config, budget)
     receipt['status'] = 'intent'
     persist(path, journal)  # Durable intent BEFORE RequestControl admits its physical POST.
     started = monotonic()
@@ -256,13 +273,17 @@ def run_probe(manifest_path: Path, candidate_id: str, host_path: Path, journal_p
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--manifest', type=Path, default=Path('.kiro/specs/local-ai-provider/candidate-manifest.json'))
-    parser.add_argument('--candidate', required=True, choices=MODEL_IDS)
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument('--candidate', choices=MODEL_IDS)
+    selection.add_argument('--profile', choices=MODEL_IDS,
+                           help='Curated provider profile ID (configs/providers); same IDs as --candidate.')
     parser.add_argument('--host-observation', type=Path, default=Path('runs/local-provider/host-observation.json'))
     parser.add_argument('--journal', type=Path, default=Path('runs/local-provider/ollama-probe-journal.json'))
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
+    candidate = args.profile or args.candidate
     try:
-        result = run_probe(args.manifest, args.candidate, args.host_observation, args.journal, dry_run=args.dry_run)
+        result = run_probe(args.manifest, candidate, args.host_observation, args.journal, dry_run=args.dry_run)
     except ValueError as error:
         print(f'Probe refused: {error}', file=sys.stderr)
         return 2

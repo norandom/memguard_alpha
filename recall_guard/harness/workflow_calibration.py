@@ -125,7 +125,7 @@ def calibrate_workflow(workflow, *, is_memorized, oos_control, rewrite, min_auc,
     if not callable(getattr(workflow.target, "probe", None)):
         raise ValueError("MIA calibration requires a target with an actual generation probe; use a CallbackClient adapter")
     intervention_id = workflow.rewrite_policy.intervention_id if rewrite else "original"
-    identity = CalibrationIdentity.from_config(target_config, intervention_id)
+    identity = CalibrationIdentity.from_client(workflow.target, intervention_id)
     provenance = {"target": target_config.to_dict(), "rewrite_scope": "shared_per_item" if rewrite else None,
                   "min_valid": min_valid, "min_auc": min_auc, "seed": seed, "max_workers": max_workers}
     # Early eligibility/capability gate covers every role before preparation.

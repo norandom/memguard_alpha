@@ -226,3 +226,14 @@ def test_timeout_stays_unresolved_even_if_post_metadata_drifts(setup, monkeypatc
     with pytest.raises(ValueError, match='unknown_outcome'):
         run(setup)
     assert len(calls) == 1
+
+
+def test_probe_client_is_built_through_profile_factory_with_frozen_settings():
+    config = probe.ProbeConfig('ollama-gemma3-4b', 'gemma3:4b', 'http://127.0.0.1:11434/v1/chat/completions', '', '')
+    profile = config.profile()
+    assert profile.profile_id == 'ollama-gemma3-4b' and profile.allow_unauthenticated
+    client = probe.connect_probe(config, probe.CallBudget(1))
+    assert type(client) is probe.OpenAICompatibleClient
+    assert client.config == config.client_config() and client.budget.used == 0
+    adhoc = probe.ProbeConfig('x', 'llava-llama3:latest', config.endpoint, '', '')
+    assert adhoc.profile().profile_id == 'ollama-adhoc'
