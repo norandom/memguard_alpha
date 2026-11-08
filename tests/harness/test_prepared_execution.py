@@ -409,3 +409,60 @@ def test_two_worker_local_stop_keeps_root_failure_and_never_claims_caller_cancel
     assert result.provenance["readiness_trace"][-1]["reason"] == "response_settings_mismatch"
     assert not any(event["reason"] == "caller_cancelled" for event in result.provenance["readiness_trace"])
 
+
+@pytest.mark.parametrize("kind", ["ordinary", "native", "callback"])
+def test_each_client_sanitizes_locally_rejected_response_and_keeps_success_unchanged(kind):
+    from recall_guard.core.completion import TokenEvidence
+    from recall_guard.core.provider_callback import CallbackClient
+    from recall_guard.harness.workflow_execution import WorkflowExecution
+    from tests.core import test_provider_anthropic as native
+    from tests.core import test_providers as ordinary
+
+    budget = CallBudget(1)
+    if kind == "ordinary":
+        client, secret = ordinary.client(budget=budget), ordinary.FAKE_KEY
+    elif kind == "native":
+        client, secret = native.client(budget=budget), native.FAKE_KEY
+    else:
+        secret = "SYNTHETIC_CALLBACK_FAILURE_SECRET"
+        client = CallbackClient(config(), budget, lambda prompt, **parameters: "OK", secrets=[secret])
+    success = ModelResponse(f"answer {secret}", token_evidence=(TokenEvidence(secret, -0.5),),
+                            usage={"output_tokens": 3}, request_id=f"req-{secret}")
+    snapshot = repr(success)
+    failure = WorkflowExecution().sanitize_failure(
+        client, RequestError(f"rejected {secret}", code="response_settings_mismatch"), response=success)
+    assert failure.code == "response_settings_mismatch"
+    assert secret not in repr(failure) and secret not in repr(failure.response_evidence)
+    assert "REDACTED" in failure.response_evidence.content
+    assert failure.response_evidence.usage == failure.usage == {"output_tokens": 3}
+    assert failure.response_evidence.token_evidence[0].logprob == -0.5
+    assert repr(success) == snapshot and budget.used == 0  # No physical request or mutation.
+
+
+@pytest.mark.parametrize("caller_cancelled", [False, True])
+def test_root_failure_is_published_before_queued_work_wakes_and_caller_cancel_stays_distinct(caller_cancelled):
+    from threading import Thread
+
+    from recall_guard.core.provider_callback import CallbackClient
+    from recall_guard.harness.workflow_execution import WorkflowExecution
+
+    caller = CancellationToken()
+    execution = WorkflowExecution(caller)
+    seen = []
+    def queued():
+        assert execution.cancellation.wait(3)
+        seen.append(execution.root_failure)
+    waiter = Thread(target=queued)
+    waiter.start()
+    if caller_cancelled:
+        caller.cancel()
+    else:
+        execution.latch_failure(RequestError("fatal", code="response_settings_mismatch"))
+        execution.cancellation.cancel()
+    waiter.join(3)
+    client = CallbackClient(config(), CallBudget(0), lambda prompt, **parameters: "OK")
+    woken = execution.sanitize_failure(client, RequestError("Caller cancelled the probe", code="caller_cancelled"))
+    if caller_cancelled:
+        assert seen == [None] and woken.code == "caller_cancelled"
+    else:
+        assert seen[0].code == "response_settings_mismatch" and woken.code == "response_settings_mismatch"

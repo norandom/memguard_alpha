@@ -1,10 +1,9 @@
 # Release 1.0: tasks and status
 
-**Current: M1.1** (awaiting user design approval) · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
+**Current: M1.2** · Updated 2026-11-08 · Narrative: [roadmap](../../roadmap.md)
 
 Review 2026-11-08: [research review](research.md#7-streamlined-task-alignment-for-tasksmd) and [design draft](design.md).
-Task list and order approved by the user on 2026-11-08. Requirements and the M1.1
-design await separate approval. Review proposals do not complete tasks, move this
+Task list, requirements and the M1.1 design approved by the user on 2026-11-08. Review proposals do not complete tasks, move this
 pointer, or renew any live-call allowance.
 
 Legend: `[x]` done · `[ ]` open · **Gate**: `offline` needs no approval beyond
@@ -33,10 +32,12 @@ Absorbs [adaptive-provider-readiness](../adaptive-provider-readiness/tasks.md)
 3.2, 3.3, 4.1, 4.2, 5.1 and [docker-execution](../docker-execution/tasks.md) 3.2.
 Requirement 2 above is the new scope.
 
-- [ ] M1.1 Design: provider profiles, `connect()` factory, RAM preflight,
+- [x] M1.1 Design: provider profiles, `connect()` factory, RAM preflight,
   calibration identity ([design.md](design.md), Requirement 2). Human-gated design approval.
+  - _Outcome 2026-11-08: approved as written, including `psutil` in core and Mistral as a target._
 - [ ] M1.2 Finish truthful execution failure/stop handling (APR 3.2) and prune
   unused polling scaffolding (APR 3.3).
+  - _M1.2a (APR 3.2) accepted 2026-11-08: both 2026-11-01 defects were already fixed by ff70061 on the ordinary, native and callback paths; two focused regressions were added in `tests/harness/test_prepared_execution.py` (5 cases). Focused run: 425 passed; ruff clean. Gap logged as C17. M1.2b (APR 3.3 polling prune) open._
 - [ ] M1.3 Implement profiles + factory; route scripts, harness and scorer
   through it; NIM via profile (R2.1–2.2, 2.5–2.6).
 - [ ] M1.4 Implement the free-RAM preflight with the friendly Modal / larger-host
@@ -99,6 +100,8 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 - P4 iGPU offload trial with `OLLAMA_IGPU_ENABLE=1` (C15).
 - P5 Finish the Ollama store move: original `%USERPROFILE%\.ollama\models`
   copy remains (C14).
+- P6 Mistral target: the user will supply a local proxy endpoint later (2026-11-08).
+  Add it as a provider profile once the endpoint exists; it does not block M1.
 
 ## Concern register
 
@@ -120,6 +123,7 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
 | C14 | Ollama store move incomplete | Parked | P5 |
 | C15 | Integrated GPU unused by Ollama by default | Parked | P4 |
 | C16 | Modal attempt 08 raw response not retained | Recorded, no action | — |
+| C17 | A failure latched before any readiness trace (e.g. a settings check that fails before the first request) leaves `root_observation` empty, so woken queued observations keep `caller_cancelled`. Not reproducible in current flows | Low; watch | M1.6 |
 
 ## Spec register
 

@@ -3,23 +3,23 @@
   "created_at": "2026-11-08",
   "updated_at": "2026-11-08",
   "language": "en",
-  "phase": "tasks-approved",
+  "phase": "implementing",
   "role": "tracker",
-  "current_task": "M1.1",
+  "current_task": "M1.2",
   "approvals": {
     "requirements": {
       "generated": true,
-      "approved": false
+      "approved": true
     },
     "design": {
       "generated": true,
-      "approved": false
+      "approved": true
     },
     "tasks": {
       "generated": true,
       "approved": true
     }
   },
-  "ready_for_implementation": false,
-  "approval_context": "User approved the task list and order on 2026-11-08. Requirements and the M1.1 design (design.md) await separate user approval; live-call gates (M2-M6) still need their own limits approved."
+  "ready_for_implementation": true,
+  "approval_context": "User approved the task list and order, then the requirements and M1.1 design as written (including psutil in core dependencies and Mistral as a design target) on 2026-11-08. Live-call gates (M2-M6) still need their own limits approved."
 }
