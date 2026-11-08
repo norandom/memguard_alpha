@@ -1,5 +1,13 @@
 # Integrate and verify Recall Guard
 
+Recall Guard estimates how likely a model's answer is recalled rather than
+reasoned (`p_memorized`) and calibrates that estimate on your own corpora, so your
+application can discount recalled answers. Because serving is nondeterministic,
+the [ensemble](ensemble.md) turns many draws into one reproducible answer and
+score. It does not remove memorization; the divergence utility below is a
+separate, optional experiment. Evidence for each claim is dated in the
+[research register](research-register.md).
+
 Choose a released scorer or mathematical interface, or opt into the development
 completion workflow. The scorer measures contamination-related
 features in hosted model responses. The experimental divergence utility changes

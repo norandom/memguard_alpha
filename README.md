@@ -10,6 +10,15 @@ Historical accuracy can come from recall as well as reasoning. The score is a
 warning signal learned from your calibration data, not proof that an individual
 answer was memorized. Recall Guard is not a forecaster.
 
+**What it does and does not do.** Recall Guard measures and calibrates how likely
+an answer is recalled; it does not remove memorization from a model. Serving
+stacks are nondeterministic even at temperature 0, so one call can return a
+different answer and score than the next. The [ensemble](docs/ensemble.md) draws
+the same prompt many times and returns one consensus answer and one
+`p_memorized_point`, which makes the calibrated result reproducible. Reducing
+memorization (rewriting, divergence decoding) is a separate, optional track. The
+[research register](docs/research-register.md) lists what each claim rests on.
+
 ## Choose where your model runs
 
 Pick a provider profile and Recall Guard builds the right client for it. Before
@@ -72,8 +81,9 @@ It shows the memory refusal, switches to the proposed profile, runs the existing
 workflow against synthetic responses and prints one record of what ran, with
 exact request counts. Its token-evidence outcomes are simulated and say so.
 
-Calibration and mitigation effects have not yet been measured on any of these
-backends.
+Calibration on these backends is being measured now (Phase A, single draw; see
+the [research register](docs/research-register.md)). The first two local models
+do not yet separate memorized from unseen text on held-out data.
 
 Keep all provider credentials in one repository-root `.env`, using
 [`.env.sample`](.env.sample) as the field reference. Preserve your existing file.
