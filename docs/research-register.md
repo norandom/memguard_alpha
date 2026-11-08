@@ -36,6 +36,7 @@ Last updated 2026-11-08. Release plan: [release 1.0](https://github.com/norandom
 
 | ID | Date | Track | Status | One line | Report |
 | --- | --- | --- | --- | --- | --- |
+| R23 | 2026-11-08 | Modal | failed | Phase A rerun stopped after 4 requests (one evidence defect aborted calibration) | below |
 | R22 | 2026-11-08 | Modal | failed | Phase A first attempt stopped after 4 requests (reasoning truncation) | below |
 | R21 | 2026-11-08 | Modal | pending | Phase A rerun, low reasoning, 1,024 tokens, cap USD 2.00 | pending |
 | R20 | 2026-11-08 | Local | running | Phase A, five Ollama models, 1,605 requests | pending |
@@ -60,6 +61,21 @@ Last updated 2026-11-08. Release plan: [release 1.0](https://github.com/norandom
 | R01 | 2026-10-30 | NIM | measured | Hosted GPT-OSS-20B calibration and ETF evaluation | [link](results/2026-10-30-nim-measurement.md) |
 
 ## Entries
+
+### R23 · 2026-11-08 · Modal Phase A rerun (stopped)
+
+- **Question:** as R21.
+- **Setup:** `reasoning_effort: low`, 1,024 output tokens; otherwise as R21.
+- **Data:** as R21.
+- **Result:** stopped after 4 of 321 requests, all HTTP 200, the longest 560
+  tokens. Low effort removed the truncation. One received response failed a
+  per-item evidence check, and the adapter treated that as fatal, so calibration
+  stopped and the reason was discarded. Fixed in the next commit: such a response
+  fails one item with its code, and `min_valid` decides. Runner estimate USD 0.10;
+  both apps verified stopped. Nothing measured.
+- **Limits:** the exact defect is unknown (most likely duplicate top-5
+  alternatives or an empty final answer); the next run reports it.
+- **Evidence:** `runs/container/phase-a/modal-gpt-oss-20b-r2/` (private).
 
 ### R22 · 2026-11-08 · Modal Phase A, first attempt (stopped)
 
