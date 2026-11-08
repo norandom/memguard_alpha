@@ -82,6 +82,7 @@ Requirement 2 above is the new scope.
   profile identities (Ollama: Phi-4 Mini, Llama 3.1 8B, Llama 3.2 3B, Gemma 3 4B;
   Modal: GPT-OSS-20B), generation settings, total request/token/cost limits.
   User approves the limits.
+  - _Draft 2026-11-08: [measurement-plan.md](measurement-plan.md). Awaiting user decisions D1 (labeled held-out set), D2 (missing cutoffs for Gemma 3 4B and LLaVA), D3 (local serving route) and Phase A limits (local 1,605 requests; Modal 321 requests, cap USD 2.00)._
 
 ## M4. Fresh calibration and evaluation (authorize)
 
@@ -127,6 +128,9 @@ revision 2 (requirements awaiting review); revision-1 tasks are historical.
   copy remains (C14).
 - P6 Mistral target: the user will supply a local proxy endpoint later (2026-11-08).
   Add it as a provider profile once the endpoint exists; it does not block M1.
+- P7 Dependabot: GitHub reported 178 alerts on `main` (10 critical, 87 high) at the
+  2026-11-08 push. Triage by dependency group (core vs dev/experiment/notebook) later;
+  user deferred it (2026-11-08).
 
 ## Concern register
 
