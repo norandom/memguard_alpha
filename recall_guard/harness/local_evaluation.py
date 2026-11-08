@@ -338,7 +338,8 @@ class LocalAttemptBudget(CallBudget):
             finished = self.events[event.call_id - 1]
             unknown = (finished.status_code in {408, 504} or (finished.status != 'succeeded'
                        and finished.status_code is None
-                       and finished.code not in {'missing_token_evidence', 'invalid_response'}))
+                       and finished.code not in {'missing_token_evidence', 'invalid_response',
+                                                 'response_mapping_failed'}))
             exceeded = (self._clock() - self._started > self.plan.limits.max_elapsed_s
                         or finished.latency_s > self.plan.config.timeout_s)
             self._stopped = unknown or exceeded
@@ -351,7 +352,8 @@ class LocalAttemptBudget(CallBudget):
             if token_exceeded:
                 self._stopped = True
             known_codes = {'model_not_found', 'unsupported_parameter', 'invalid_request_error',
-                           'missing_token_evidence', 'invalid_response', 'timeout', 'connection_error',
+                           'missing_token_evidence', 'invalid_response', 'response_mapping_failed',
+                           'timeout', 'connection_error',
                            'transport_error'}
             record = self._journal['attempts'][event.call_id - 1]
             record.update(status='unknown_outcome' if unknown else finished.status,

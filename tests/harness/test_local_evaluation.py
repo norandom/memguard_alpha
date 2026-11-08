@@ -257,6 +257,20 @@ def test_gateway_timeout_is_unknown_and_never_retried(inputs, tmp_path):
     assert json.loads(budget.path.read_text())['attempts'][0]['status'] == 'unknown_outcome'
 
 
+def test_received_response_without_final_answer_is_a_known_item_failure(inputs, tmp_path):
+    from recall_guard.core.request_control import RequestControl, RequestError
+    plan = local.load_plan(*inputs)
+    budget = local.LocalAttemptBudget(plan, tmp_path / 'attempts.json')
+    def truncated():
+        raise RequestError('Harmony response token mapping failed', code='response_mapping_failed',
+                           usage={'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15})
+    with pytest.raises(RequestError):
+        RequestControl(plan.config, budget).run(truncated, stage='probe')
+    attempt = json.loads(budget.path.read_text())['attempts'][0]
+    assert attempt['status'] != 'unknown_outcome' and attempt['code'] == 'response_mapping_failed'
+    assert not budget._stopped
+
+
 @pytest.mark.parametrize('parameters', [{'n': 20}, {'n': True}, {'n': 1.0}, {'n': None}, {'best_of': 2}, {'best_of': 1}])
 def test_programmatic_plan_rejects_unbudgeted_completion_controls(inputs, parameters):
     from dataclasses import replace
