@@ -102,6 +102,7 @@ track. The guard does not need it to work.
 | R36 | 2026-11-08 | NPU | feasibility | Full logits on the NPU via Ryzen AI OGA |
 | R37 | 2026-11-08 | Method | decision | Gemma focus: document-likelihood scoring with full logits |
 | R38 | 2026-11-08 | NPU | measured | Phase A single draw on the NPU: Gemma 3 4B and Gemma 4 E4B |
+| R39 | 2026-11-08 | NPU | feasibility | Gemma 4 E4B full logits and teacher forcing on the NPU via OGA |
 
 ## Entries
 
@@ -512,6 +513,25 @@ track. The guard does not need it to work.
   aside (R37).
 - **Limits:** single draws, top-5; Gemma 4 has fewer control rows.
 - **Evidence:** [Phase A report](results/2026-11-08-phase-a-single-draw.md).
+
+### R39 · 2026-11-08 · Gemma 4 E4B full logits on the NPU
+
+- **Question:** can Gemma 4 give full logits on the NPU, at every position of a
+  given document?
+- **Setup:** Ryzen AI OGA 0.18.0, natively on Windows; model
+  `amd/gemma-4-e4b-it-mobius-int4_rai_1.9.0_npu` at revision 5fcdd87 (public;
+  file hashes match the Hugging Face LFS hashes; 19.6 GB).
+- **Data:** one prompt; one 293-token press release from the held-out set.
+- **Result:** logits of shape (1, 1, 262144) at every step, finite, softmax sums
+  to 1, argmax equals the generated token, repeat runs bit-identical; the NPU does
+  the work. OGA returns logits for the last position only, so documents are
+  scored by appending one token at a time (about 6 tokens/s). Reproducible only
+  with a fresh model load per document: several generators on one loaded model
+  give differing decode logits (up to 1.8 in logprob).
+- **Limits:** prefill and decode give slightly different logits for the same
+  position (up to 0.32 in logprob, same argmax), so every document is scored the
+  same way (decode route, fresh load). About 4.4 h for 220 documents.
+- **Evidence:** release plan R37.
 
 ## How to add an entry
 
