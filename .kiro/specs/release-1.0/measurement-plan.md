@@ -138,3 +138,9 @@ not compared as full distributions.
 - Phi-4 Mini disqualified (user, 2026-11-08); its rerun is withdrawn. Gemma 3 4B,
   Llama 3.2 3B and Llama 3.1 8B stay in the set. An NPU model is to be evaluated
   as an option (runtime with logprobs required).
+- Gemma focus (user, 2026-11-08): next phase, before the paid Phase B, is
+  document-likelihood scoring with full logits: Gemma 3 4B via llama.cpp on the
+  iGPU (exact Phase A GGUF), Gemma 4 E4B via Ryzen AI OGA on the NPU after a
+  live full-logit check. Same EDGAR splits and held-out metrics; held-out stays
+  at 80 rows (power limit stated). FastFlowLM Llama 3.2 3B set aside after
+  `token_text_alignment_failed` at request 16.

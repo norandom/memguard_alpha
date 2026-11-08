@@ -99,6 +99,7 @@ track. The guard does not need it to work.
 | R34 | 2026-11-08 | NPU | feasibility | Three models eligible on the NPU through FastFlowLM, top-100 logprobs |
 | R35 | 2026-11-08 | Local | feasibility | Full-vocabulary logprobs from the Phase A GGUF weights via llama.cpp |
 | R36 | 2026-11-08 | NPU | feasibility | Full logits on the NPU via Ryzen AI OGA |
+| R37 | 2026-11-08 | Method | decision | Gemma focus: document-likelihood scoring with full logits |
 
 ## Entries
 
@@ -469,6 +470,24 @@ track. The guard does not need it to work.
   avoided; AMD's NPU build is a different quantisation from the Ollama GGUF and
   the FastFlowLM build, so it is its own model identity.
 - **Evidence:** release plan R33 follow-up; model in `models/oga/`.
+
+### R37 · 2026-11-08 · Gemma focus and document-likelihood scoring
+
+- **Question:** what is the statistically sound way forward?
+- **Setup:** user decision.
+- **Data:** none.
+- **Result:** focus on Gemma. Score the candidate text itself rather than the
+  model's continuation: per-token log-likelihood of each press release from full
+  logits, with features such as mean negative log-likelihood, Min-K% probability
+  and a compression-normalised score. Gemma 3 4B runs through llama.cpp on the iGPU
+  with the exact Phase A weights (R35); Gemma 4 E4B gets a full-logit check on the
+  NPU through Ryzen AI OGA (R36), then the same scoring. Same calibration and
+  held-out splits (R19), same held-out metrics (R29). Runs before the paid
+  ensemble test. Llama on FastFlowLM, which stopped on a token-text alignment
+  check after 16 requests, is set aside.
+- **Limits:** 80 held-out rows per model give AUC intervals of about plus or
+  minus 0.12; a small effect may stay undetected.
+- **Evidence:** release plan.
 
 ## How to add an entry
 
