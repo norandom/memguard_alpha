@@ -96,6 +96,7 @@ track. The guard does not need it to work.
 | R32 | 2026-11-08 | Local | stopped | LLaVA-Llama3 Phase A stopped on a host condition change |
 | R33 | 2026-11-08 | Method | decision | Full logits or logprobs from local models, NPU included |
 | R34 | 2026-11-08 | NPU | feasibility | Three models eligible on the NPU through FastFlowLM, top-100 logprobs |
+| R35 | 2026-11-08 | Local | feasibility | Full-vocabulary logprobs from the Phase A GGUF weights via llama.cpp |
 
 ## Entries
 
@@ -425,6 +426,27 @@ track. The guard does not need it to work.
   by up to 1.8e-6 from float32 rounding.
 - **Limits:** quantised (Q4_1) builds; one short prompt per model.
 - **Evidence:** release plan, NPU option; models in `models/flm/`.
+
+### R35 · 2026-11-08 · Full-vocabulary logprobs via llama.cpp
+
+- **Question:** can a local host give full next-token distributions for the exact
+  weights measured in Phase A?
+- **Setup:** llama.cpp b12199 (commit 372dc5ca1, Vulkan, installed by the user
+  with winget) natively on Windows, loopback only; the Ollama GGUF blobs loaded
+  read-only; `llama-server -ngl 99 -dev Vulkan0 -fa off`, `/completion` with
+  `n_probs` equal to the vocabulary size, temperature 0.
+- **Data:** one prompt rendered with Ollama's template.
+- **Result:** every generated position returns all 262,145 (Gemma 3 4B) or
+  128,256 (Llama 3.2 3B) entries; probabilities sum to 1 within 5e-6; the argmax
+  is the generated token; repeat runs are byte-identical after one warm-up
+  request; all layers on the Radeon 890M. A full-vocabulary response is about
+  80 MB (Gemma) or 24 MB (Llama) for 3 tokens.
+- **Limits:** the first request after loading can differ, so one warm-up request
+  is required; flash attention changes values by about 2e-3, so it is pinned;
+  probabilities below about 1e-38 floor at -3.4e38 (float32), so the extreme tail
+  is not exact; the llama.cpp chat template differs from Ollama's for Llama 3.2,
+  so prompts are rendered with Ollama's template.
+- **Evidence:** release plan R33 follow-up.
 
 ## How to add an entry
 
