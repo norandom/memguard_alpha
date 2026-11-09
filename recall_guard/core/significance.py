@@ -17,10 +17,24 @@ same interval on every platform numpy supports.
   per variant Req 8.3 tests.
 - :func:`random_answerer_null` is the Monte Carlo test of a model's decisions
   against a random answerer over the same decision space (Req 8.7).
+- :func:`paired_loss_difference` tests the paired difference in mean Brier
+  score or log loss against no adjustment (Req 8.4), and the negative-control
+  change against no adjustment (Req 7.2), with a moving-block interval.
+- :func:`half_ensemble_variance` compares the run-to-run variance of two
+  disjoint half-ensembles with that of two single draws on shared items
+  (Req 8.5).
+- :func:`simulated_power` is the power of a one-sided t test for a
+  pre-registered effect, by simulation and without a t table (Req 8.9).
 
 Intervals use the percentile convention of :mod:`recall_guard.core.bootstrap`:
 two-sided, with ``confidence`` the coverage, bounds at the ``(1 - confidence) / 2``
 and ``1 - (1 - confidence) / 2`` percentiles under numpy's linear rule.
+
+A statistic may return a float, a numpy scalar or a 0-d real array; the last is
+coerced with ``float()``. Any other value that is not a finite real is a
+dropped resample in the bootstrap and an error in the random-answerer null.
+Every :class:`TestResult` built on resampling records ``dropped_resamples`` in
+its parameters, so a conditional interval shows in reports, not only in logs.
 """
 
 from __future__ import annotations
@@ -39,6 +53,9 @@ logger = logging.getLogger(__name__)
 #: Method label of :func:`block_bootstrap` intervals.
 BLOCK_BOOTSTRAP_METHOD = "moving-block percentile bootstrap"
 
+#: Method label of the item-level intervals of :func:`half_ensemble_variance`.
+ITEM_BOOTSTRAP_METHOD = "item-level percentile bootstrap"
+
 
 def _is_int(value: object) -> bool:
     # bool is an int subclass; True as a count or seed is a caller bug.
@@ -47,6 +64,34 @@ def _is_int(value: object) -> bool:
 
 def _is_finite_real(value: object) -> bool:
     return isinstance(value, numbers.Real) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _finite_float(value: object) -> float | None:
+    """Return a statistic value as a float, or None when it is not a finite real.
+
+    A 0-d integer or floating array, for example ``np.asarray(np.mean(x))``,
+    is coerced with ``float()`` first. Boolean, complex, string and object 0-d
+    arrays are not coerced, so they read as not real, as ``bool`` does in
+    :func:`_is_finite_real`.
+    """
+    if isinstance(value, np.ndarray) and value.ndim == 0 and value.dtype.kind in "iuf":
+        value = float(value)
+    if not _is_finite_real(value):
+        return None
+    return float(value)
+
+
+def _real_array(caller: str, name: str, values: object) -> np.ndarray:
+    """Return ``values`` as a float array, refusing non-real or non-finite input."""
+    array = np.asarray(values)
+    if array.dtype != np.bool_ and (
+        not np.issubdtype(array.dtype, np.number) or np.issubdtype(array.dtype, np.complexfloating)
+    ):
+        raise ValueError(f"{caller}: '{name}' must be boolean or real, got dtype {array.dtype}.")
+    array = array.astype(float)
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{caller}: '{name}' values must be finite.")
+    return array
 
 
 def _check_confidence(name: str, confidence: object) -> float:
@@ -188,6 +233,71 @@ def exact_binomial_greater(k: int, n: int, p: float = 0.5) -> float:
     return min(1.0, tail)
 
 
+def _moving_block_statistics(
+    caller: str,
+    stat: Callable[[np.ndarray], object],
+    blocks: np.ndarray,
+    *,
+    block_length: int,
+    n_resamples: int,
+    seed: int,
+) -> tuple[np.ndarray, int]:
+    """Validate, resample and return the kept statistics and the dropped count.
+
+    This is the resampling behind :func:`block_bootstrap` and the tests built
+    on it; see :func:`block_bootstrap` for the scheme. With ``block_length``
+    1 the starts are ``n`` uniform draws from ``0..n - 1``, which is the plain
+    item-level bootstrap. Error and warning messages start with ``caller``.
+
+    Returns:
+        The kept resample statistics in draw order, as a float array of length
+        ``n_resamples - dropped``, and the number of dropped resamples.
+
+    Raises:
+        ValueError: on an empty or zero-dimensional ``blocks``, a
+            ``block_length`` outside ``1..n``, ``n_resamples < 1``, a non-integer
+            seed, or when every resample is dropped.
+    """
+    rows = np.asarray(blocks)
+    if rows.ndim == 0 or rows.shape[0] == 0:
+        raise ValueError(f"{caller}: 'blocks' must have at least one row along axis 0.")
+    n = rows.shape[0]
+    if not _is_int(block_length) or not 1 <= block_length <= n:
+        raise ValueError(f"{caller}: 'block_length' must be an integer in 1..{n}, got {block_length!r}.")
+    if not _is_int(n_resamples) or n_resamples < 1:
+        raise ValueError(f"{caller}: 'n_resamples' must be an integer >= 1, got {n_resamples!r}.")
+    if not _is_int(seed):
+        raise ValueError(f"{caller}: 'seed' must be an integer, got {seed!r}.")
+
+    rng = np.random.default_rng(seed)
+    n_blocks = math.ceil(n / block_length)
+    offsets = np.arange(block_length)
+    kept: list[float] = []
+    dropped = 0
+    for _ in range(n_resamples):
+        starts = rng.integers(0, n - block_length + 1, size=n_blocks)
+        index = (starts[:, None] + offsets).ravel()[:n]
+        try:
+            value = _finite_float(stat(rows[index]))
+        except ValueError:
+            value = None
+        if value is None:
+            dropped += 1
+            continue
+        kept.append(value)
+
+    if dropped:
+        logger.warning(
+            "%s: dropped %d / %d resamples where the statistic raised or returned a non-finite value.",
+            caller,
+            dropped,
+            n_resamples,
+        )
+    if not kept:
+        raise ValueError(f"{caller}: every resample was dropped; the statistic is undefined on these blocks.")
+    return np.asarray(kept, dtype=float), dropped
+
+
 def block_bootstrap(
     stat: Callable[[np.ndarray], float],
     blocks: np.ndarray,
@@ -207,12 +317,14 @@ def block_bootstrap(
     applies ``stat``.
 
     Resamples on which ``stat`` raises ``ValueError`` (for example an empty
-    cell) or returns a non-finite value are dropped, with one
+    cell) or returns a value that is not a finite real are dropped, with one
     ``logging.WARNING`` per call giving the count, as in
-    :func:`recall_guard.core.bootstrap.bootstrap_ci`.
+    :func:`recall_guard.core.bootstrap.bootstrap_ci`. A 0-d real array is
+    coerced with ``float()`` and kept.
 
     Args:
-        stat: Statistic of an array shaped like ``blocks``; returns a float.
+        stat: Statistic of an array shaped like ``blocks``; returns a float
+            (or a numpy scalar or 0-d real array).
         blocks: Array with at least one axis; axis 0 is the ordered unit.
         block_length: Rows per block, an integer in ``1..n``. With n the whole
             series is one block and the interval collapses to ``stat(blocks)``.
@@ -229,45 +341,11 @@ def block_bootstrap(
             seed, ``confidence`` outside (0, 1), or when every resample is
             dropped.
     """
-    rows = np.asarray(blocks)
-    if rows.ndim == 0 or rows.shape[0] == 0:
-        raise ValueError("block_bootstrap: 'blocks' must have at least one row along axis 0.")
-    n = rows.shape[0]
-    if not _is_int(block_length) or not 1 <= block_length <= n:
-        raise ValueError(f"block_bootstrap: 'block_length' must be an integer in 1..{n}, got {block_length!r}.")
-    if not _is_int(n_resamples) or n_resamples < 1:
-        raise ValueError(f"block_bootstrap: 'n_resamples' must be an integer >= 1, got {n_resamples!r}.")
-    if not _is_int(seed):
-        raise ValueError(f"block_bootstrap: 'seed' must be an integer, got {seed!r}.")
     confidence = _check_confidence("block_bootstrap", confidence)
-
-    rng = np.random.default_rng(seed)
-    n_blocks = math.ceil(n / block_length)
-    offsets = np.arange(block_length)
-    stats: list[float] = []
-    dropped = 0
-    for _ in range(n_resamples):
-        starts = rng.integers(0, n - block_length + 1, size=n_blocks)
-        index = (starts[:, None] + offsets).ravel()[:n]
-        try:
-            value = stat(rows[index])
-        except ValueError:
-            dropped += 1
-            continue
-        if not _is_finite_real(value):
-            dropped += 1
-            continue
-        stats.append(float(value))
-
-    if dropped:
-        logger.warning(
-            "block_bootstrap: dropped %d / %d resamples where the statistic raised or returned a non-finite value.",
-            dropped,
-            n_resamples,
-        )
-    if not stats:
-        raise ValueError("block_bootstrap: every resample was dropped; the statistic is undefined on these blocks.")
-    lo, hi = _percentile_bounds(np.asarray(stats, dtype=float), confidence)
+    kept, _ = _moving_block_statistics(
+        "block_bootstrap", stat, blocks, block_length=block_length, n_resamples=n_resamples, seed=seed
+    )
+    lo, hi = _percentile_bounds(kept, confidence)
     return Interval(lo=lo, hi=hi, confidence=confidence, method=BLOCK_BOOTSTRAP_METHOD)
 
 
@@ -351,11 +429,14 @@ def random_answerer_null(
     Returns:
         A :class:`TestResult` whose interval is the central ``confidence`` range
         of the null distribution, not an interval for the observed statistic.
+        Its ``dropped_resamples`` parameter is always 0: a null sample whose
+        statistic is not a finite real is an error here, never dropped.
 
     Raises:
         ValueError: on an empty or zero-dimensional ``observed``, ``n_null < 1``,
             a non-integer seed, ``confidence`` outside (0, 1), a sampler that
-            returns the wrong number of answers, or a non-finite statistic.
+            returns the wrong number of answers, or a statistic that is not a
+            finite real (a 0-d real array is coerced with ``float()`` first).
     """
     answers = np.asarray(observed)
     if answers.ndim == 0 or answers.shape[0] == 0:
@@ -368,10 +449,11 @@ def random_answerer_null(
     n = answers.shape[0]
 
     def evaluate(sample: np.ndarray, what: str) -> float:
-        value = statistic(sample)
-        if not _is_finite_real(value):
-            raise ValueError(f"random_answerer_null: the statistic of the {what} is not finite: {value!r}.")
-        return float(value)
+        raw = statistic(sample)
+        value = _finite_float(raw)
+        if value is None:
+            raise ValueError(f"random_answerer_null: the statistic of the {what} is not a finite real: {raw!r}.")
+        return value
 
     observed_stat = evaluate(answers, "observed decisions")
     rng = np.random.default_rng(seed)
@@ -402,5 +484,258 @@ def random_answerer_null(
             "Monte Carlo random-answerer null, one-sided (greater), p = (1 + #null >= observed) / (1 + n_null); "
             f"the interval is the central {percent} range of the null distribution"
         ),
-        parameters={"n": n, "n_null": n_null, "seed": seed, "confidence": confidence, "alternative": "greater"},
+        parameters={
+            "n": n,
+            "n_null": n_null,
+            "seed": seed,
+            "confidence": confidence,
+            "alternative": "greater",
+            "dropped_resamples": 0,
+        },
     )
+
+
+def paired_loss_difference(
+    loss_a: np.ndarray,
+    loss_b: np.ndarray,
+    *,
+    block_length: int,
+    n_resamples: int,
+    seed: int,
+    confidence: float = 0.95,
+) -> TestResult:
+    """Paired difference in mean loss, with a moving-block bootstrap interval.
+
+    ``loss_a`` and ``loss_b`` are aligned: axis 0 is the ordered month unit,
+    and a 2-D array holds one row per month (for example the per-item Brier
+    scores or log losses of that month's decisions). The statistic is
+    ``mean(loss_a) - mean(loss_b)`` over all elements, so a negative value
+    means ``loss_a`` is lower. The interval is the moving-block bootstrap of
+    that difference (see :func:`block_bootstrap`), resampling the rows of both
+    arrays together so the pairing within a month survives. The two-sided
+    p-value is ``min(1, 2 min(1 + #{boot <= 0}, 1 + #{boot >= 0}) / (1 + n_kept))``.
+
+    The same test serves the negative-control change against no adjustment
+    (Req 7.2), with the outlook values in place of losses.
+
+    Args:
+        loss_a: Losses (or outlook values) of the variant, shape (n,) or (n, m).
+        loss_b: The paired values of the reference, the same shape.
+        block_length: Months per block, an integer in ``1..n``.
+        n_resamples: Number of resamples, at least 1.
+        seed: Seed for ``numpy.random.default_rng``; same seed, same result.
+        confidence: Two-sided coverage in (0, 1). Default 0.95.
+
+    Returns:
+        A :class:`TestResult` whose parameters record ``n`` (months),
+        ``n_values`` (elements per array), ``block_length``, ``n_resamples``,
+        ``seed``, ``confidence``, ``alternative`` and ``dropped_resamples``.
+
+    Raises:
+        ValueError: if the arrays are not aligned 1-D or 2-D arrays of finite
+            booleans or reals with at least one element, on an invalid
+            ``block_length``, ``n_resamples``, seed or ``confidence``, or when
+            every resample is dropped.
+    """
+    caller = "paired_loss_difference"
+    a = _real_array(caller, "loss_a", loss_a)
+    b = _real_array(caller, "loss_b", loss_b)
+    if a.ndim not in (1, 2) or a.shape != b.shape or a.size == 0:
+        raise ValueError(
+            f"{caller}: 'loss_a' and 'loss_b' must be aligned non-empty 1-D or 2-D arrays, got shapes "
+            f"{a.shape} and {b.shape}."
+        )
+    confidence = _check_confidence(caller, confidence)
+    # Axis 1 of rows is (a, b), so a resampled month keeps both of its arrays.
+    rows = np.stack([a, b], axis=1)
+
+    def difference(sample: np.ndarray) -> float:
+        return float(sample[:, 0].mean() - sample[:, 1].mean())
+
+    observed = difference(rows)
+    kept, dropped = _moving_block_statistics(
+        caller, difference, rows, block_length=block_length, n_resamples=n_resamples, seed=seed
+    )
+    n_kept = kept.size
+    at_or_below = 1 + int(np.count_nonzero(kept <= 0.0))
+    at_or_above = 1 + int(np.count_nonzero(kept >= 0.0))
+    p_value = min(1.0, 2.0 * min(at_or_below, at_or_above) / (1 + n_kept))
+    lo, hi = _percentile_bounds(kept, confidence)
+    return TestResult(
+        statistic=observed,
+        interval=Interval(lo=lo, hi=hi, confidence=confidence, method=BLOCK_BOOTSTRAP_METHOD),
+        p_value=p_value,
+        method=(
+            "paired difference in mean loss (a minus b) with a moving-block percentile bootstrap interval; "
+            "two-sided p = min(1, 2 min(1 + #boot <= 0, 1 + #boot >= 0) / (1 + n_kept))"
+        ),
+        parameters={
+            "n": a.shape[0],
+            "n_values": a.size,
+            "block_length": block_length,
+            "n_resamples": n_resamples,
+            "seed": seed,
+            "confidence": confidence,
+            "alternative": "two-sided",
+            "dropped_resamples": dropped,
+        },
+    )
+
+
+def half_ensemble_variance(
+    halves_a: np.ndarray,
+    halves_b: np.ndarray,
+    singles: np.ndarray,
+    *,
+    n_resamples: int,
+    seed: int,
+    confidence: float = 0.95,
+) -> TestResult:
+    """Ratio of half-ensemble to single-draw run-to-run variance on shared items.
+
+    Per item, ``halves_a`` and ``halves_b`` are the results (decision or
+    memorization estimate) of two disjoint half-ensembles and ``singles`` holds
+    two single draws, all from the same recorded ensemble. The run-to-run
+    variance of a pair is half the mean squared difference over items. The
+    statistic is the half-ensemble variance divided by the single-draw
+    variance: below 1 means the ensemble reduces variance, and with
+    independent draws it is about ``2 / K`` for halves of ``K / 2`` draws.
+
+    The interval is an item-level percentile bootstrap of the ratio (the
+    moving-block scheme with blocks of one item). A resample whose two single
+    draws agree on every drawn item has no ratio and is dropped. The one-sided
+    p-value for a ratio below 1 is ``(1 + #{boot >= 1}) / (1 + n_kept)``.
+
+    Args:
+        halves_a: Result of the first half-ensemble per item, shape (n_items,).
+        halves_b: Result of the second half-ensemble per item, shape (n_items,).
+        singles: Two single-draw results per item, shape (n_items, 2).
+        n_resamples: Number of resamples, at least 1.
+        seed: Seed for ``numpy.random.default_rng``; same seed, same result.
+        confidence: Two-sided coverage in (0, 1). Default 0.95.
+
+    Returns:
+        A :class:`TestResult` whose parameters record ``n_items``,
+        ``half_ensemble_variance``, ``single_draw_variance``, ``n_resamples``,
+        ``seed``, ``confidence``, ``alternative`` and ``dropped_resamples``.
+
+    Raises:
+        ValueError: if the arrays are not finite booleans or reals of the stated
+            aligned shapes with at least one item, if the single draws agree on
+            every item, on an invalid ``n_resamples``, seed or ``confidence``,
+            or when every resample is dropped.
+    """
+    caller = "half_ensemble_variance"
+    a = _real_array(caller, "halves_a", halves_a)
+    b = _real_array(caller, "halves_b", halves_b)
+    pairs = _real_array(caller, "singles", singles)
+    if a.ndim != 1 or a.shape[0] == 0 or b.shape != a.shape or pairs.shape != (a.shape[0], 2):
+        raise ValueError(
+            f"{caller}: need 'halves_a' and 'halves_b' of shape (n_items,) and 'singles' of shape (n_items, 2) "
+            f"with n_items >= 1, got {a.shape}, {b.shape} and {pairs.shape}."
+        )
+    confidence = _check_confidence(caller, confidence)
+    # Columns: half a, half b, first single draw, second single draw.
+    rows = np.column_stack([a, b, pairs])
+
+    def variances(sample: np.ndarray) -> tuple[float, float]:
+        half = 0.5 * float(np.mean((sample[:, 0] - sample[:, 1]) ** 2))
+        single = 0.5 * float(np.mean((sample[:, 2] - sample[:, 3]) ** 2))
+        return half, single
+
+    def ratio(sample: np.ndarray) -> float:
+        half, single = variances(sample)
+        if single == 0.0:
+            raise ValueError("the single draws agree on every item")
+        return half / single
+
+    half_variance, single_variance = variances(rows)
+    if single_variance == 0.0:
+        raise ValueError(
+            f"{caller}: the single draws agree on every item, so the single-draw variance is zero and the "
+            "ratio is undefined."
+        )
+    observed = _finite_float(half_variance / single_variance)
+    if observed is None:
+        raise ValueError(f"{caller}: the variance ratio is not finite.")
+    kept, dropped = _moving_block_statistics(caller, ratio, rows, block_length=1, n_resamples=n_resamples, seed=seed)
+    p_value = (1 + int(np.count_nonzero(kept >= 1.0))) / (1 + kept.size)
+    lo, hi = _percentile_bounds(kept, confidence)
+    return TestResult(
+        statistic=observed,
+        interval=Interval(lo=lo, hi=hi, confidence=confidence, method=ITEM_BOOTSTRAP_METHOD),
+        p_value=p_value,
+        method=(
+            "ratio of half-ensemble to single-draw run-to-run variance (half the mean squared pair difference) "
+            "with an item-level percentile bootstrap interval; one-sided (ratio below 1) "
+            "p = (1 + #boot >= 1) / (1 + n_kept)"
+        ),
+        parameters={
+            "n_items": a.shape[0],
+            "half_ensemble_variance": half_variance,
+            "single_draw_variance": single_variance,
+            "n_resamples": n_resamples,
+            "seed": seed,
+            "confidence": confidence,
+            "alternative": "less",
+            "dropped_resamples": dropped,
+        },
+    )
+
+
+def _t_statistics(values: np.ndarray) -> np.ndarray:
+    """One-sample t statistic of each row of ``values`` (simulations x items)."""
+    n_items = values.shape[1]
+    return values.mean(axis=1) / (values.std(axis=1, ddof=1) / math.sqrt(n_items))
+
+
+def simulated_power(effect: float, noise_sd: float, n_items: int, *, alpha: float, n_sim: int, seed: int) -> float:
+    """Power of a one-sided t test of a positive mean, by simulation.
+
+    Each simulation draws ``n_items`` independent normal(``effect``,
+    ``noise_sd``) values and forms the t statistic ``mean / (sd / sqrt(n))``
+    with the sample standard deviation. The critical value is the
+    ``1 - alpha`` quantile (numpy's linear rule) of ``n_sim`` such statistics
+    simulated under effect 0, so no t table is needed. Power is the share of
+    ``n_sim`` simulations under ``effect`` whose statistic exceeds it.
+
+    One generator seeded once from ``seed`` draws the null set first and then
+    the standard normal noise of the alternative set, which is scaled and
+    shifted by ``effect``. The noise therefore does not depend on ``effect``,
+    so for one seed the power never decreases as the effect grows.
+
+    Args:
+        effect: Pre-registered mean effect, a finite real (0 gives about alpha).
+        noise_sd: Standard deviation of each value, a finite real above 0.
+        n_items: Values per simulated study, an integer of at least 2.
+        alpha: One-sided significance level, in (0, 1).
+        n_sim: Simulations under each of the null and the effect, at least 1.
+        seed: Seed for ``numpy.random.default_rng``; same seed, same power.
+
+    Returns:
+        The simulated power in [0, 1].
+
+    Raises:
+        ValueError: on a non-finite ``effect``, a ``noise_sd`` that is not a
+            positive finite real, ``n_items < 2``, ``alpha`` outside (0, 1),
+            ``n_sim < 1`` or a non-integer seed or count.
+    """
+    caller = "simulated_power"
+    if not _is_finite_real(effect):
+        raise ValueError(f"{caller}: 'effect' must be a finite real, got {effect!r}.")
+    if not _is_finite_real(noise_sd) or noise_sd <= 0.0:
+        raise ValueError(f"{caller}: 'noise_sd' must be a finite real above 0, got {noise_sd!r}.")
+    if not _is_int(n_items) or n_items < 2:
+        raise ValueError(f"{caller}: 'n_items' must be an integer >= 2, got {n_items!r}.")
+    if not _is_finite_real(alpha) or not 0.0 < alpha < 1.0:
+        raise ValueError(f"{caller}: 'alpha' must be in (0, 1), got {alpha!r}.")
+    if not _is_int(n_sim) or n_sim < 1:
+        raise ValueError(f"{caller}: 'n_sim' must be an integer >= 1, got {n_sim!r}.")
+    if not _is_int(seed):
+        raise ValueError(f"{caller}: 'seed' must be an integer, got {seed!r}.")
+
+    rng = np.random.default_rng(seed)
+    null = _t_statistics(float(noise_sd) * rng.standard_normal((n_sim, n_items)))
+    critical = float(np.quantile(null, 1.0 - float(alpha)))
+    alternative = _t_statistics(float(effect) + float(noise_sd) * rng.standard_normal((n_sim, n_items)))
+    return float(np.count_nonzero(alternative > critical) / n_sim)

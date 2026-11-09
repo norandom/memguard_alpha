@@ -34,7 +34,7 @@
   - Unit tests match hand-computed Holm and binomial values and give identical intervals for the same seed
   - _Boundary: Significance_
   - _Requirements: 8.3, 8.7, 8.8_
-- [ ] 2.4 Significance helpers for losses, ensemble variance and power
+- [x] 2.4 Significance helpers for losses, ensemble variance and power
   - Not parallel with 2.3: both extend the same significance component
   - Paired Brier and log-loss differences with block-bootstrap intervals, half-ensemble versus single-draw variance comparison on shared items, and power by simulation for a pre-registered effect
   - Unit tests confirm a zero difference on identical inputs, the variance of a mean of K independent draws near one K-th of the single-draw variance, and power increasing with effect size

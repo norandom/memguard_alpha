@@ -516,6 +516,32 @@ class TestResult:
     len(observed) drawn by `sampler` from the supplied decision space. The
     one-sided p-value is (1 + #null >= observed) / (1 + n_null). Its interval is the
     central `confidence` range of the null distribution, and `method` says so.
+  - Statistic values that are 0-d integer or floating arrays are coerced with
+    `float()`; anything else
+    that is not a finite real is a dropped resample (bootstrap) or an error (null).
+  - Every `TestResult` built on resampling records `dropped_resamples` in its
+    `parameters`, so a conditional interval is visible in reports, not only in logs.
+  - `paired_loss_difference(loss_a, loss_b)`: aligned arrays whose first axis is the
+    ordered month unit (1-D, or 2-D with rows as months). The statistic is
+    mean(loss_a) minus mean(loss_b) over all elements. The interval is the
+    moving-block bootstrap of that difference, resampling rows of both arrays
+    together. The two-sided p-value is min(1, 2 min((1 + #boot <= 0), (1 + #boot >=
+    0)) / (1 + n_kept)). It also serves the negative-control change against no
+    adjustment (7.2), with the outlook values in place of losses.
+  - `half_ensemble_variance(halves_a, halves_b, singles)`: per item, the result of
+    each of two disjoint half-ensembles (`halves_a`, `halves_b`, shape (n_items,))
+    and two single draws (`singles`, shape (n_items, 2)), all from the same
+    recorded ensemble. Run-to-run variance is half the mean squared difference of
+    each pair. The statistic is the ratio of the half-ensemble variance to the
+    single-draw variance (below 1 means the ensemble reduces variance; about 2/K for
+    halves of K/2 draws when draws are independent). The interval is an item-level
+    percentile bootstrap of the ratio, and the one-sided p-value for a ratio below 1
+    is (1 + #boot >= 1) / (1 + n_kept).
+  - `simulated_power(effect, noise_sd, n_items, alpha)`: power of a one-sided test of
+    a positive mean on n_items independent normal(effect, noise_sd) values with the
+    t statistic. The critical value is the (1 - alpha) quantile of the same
+    statistic simulated under effect 0, so no t table is needed. Power is the share
+    of simulations under `effect` that exceed it. It is deterministic for a seed.
 
 #### FullDistributionClient
 
