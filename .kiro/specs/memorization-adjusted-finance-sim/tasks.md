@@ -82,7 +82,7 @@
   - _Requirements: 11.1, 11.2_
 
 - [ ] 4. Worked-example data
-- [ ] 4.1 (P) Point-in-time FRED loader
+- [x] 4.1 (P) Point-in-time FRED loader
   - Query each series as available on a decision date using the FRED real-time period, with a cache kept under the private runs folder and at most 120 requests per minute
   - Flag series without vintages as revised data; never print the key
   - Tests against recorded FRED responses return the vintage value for a revised CPI date, flag a series without vintages and honour the cache location
@@ -298,3 +298,4 @@
 - 9.4 smoke run: Gemma3ForConditionalGeneration also loads the vision tower; consider `--limit-mm-per-prompt` to skip image inputs. Gemma's chat_template.json is not in tokenizer_hashes (pinned only through --revision).
 - Modal serving route (3.5): `sh scripts/modal_operator.sh stage|serve|stop-serve MANIFEST STAGE_LIMITS RECEIPT` with StageLimits JSON files (deploy/modal/stage_limits.py) that 7.3 writes from the frozen plan; serve arms the auto-stop at start + max_seconds and the controller timeout at max_seconds + 150; `serve` has no readiness or 401 check, so 7.4 checks reachability and the runner checks the 7.5 approval record before any request; a failed serve reports status/cleanup honestly with a recovery command, and `unarmed_app_left_deployed` means the operator must stop by ID. The stop-serve fallback relies on Modal raising NotFoundError for a missing deployment (verified in the pinned 1.6.3 source, not live).
 - Windows-native skips (baseline 2026-11-09, 3684 passed, 20 skipped): tests/scripts/test_modal_operator.py (18, needs a POSIX `sh` on PATH; Git for Windows ships one under usr\bin), tests/deploy/test_modal_sdk_serialization.py (modal SDK not in the root env), tests/harness/test_intervention_report.py symlink test (Windows privilege). Confirm these through Dagger or CI when they change.
+- recall_guard/dataset/fred.py: `DEFAULT_CACHE_DIR` is relative; 7.1 resolves it against the repository root, not the CWD. A malformed 200 body raises ValueError (non-retryable), unlike full_distribution's `invalid_evidence` RequestError; 7.1/7.4 classify both. Optional hardening: tighten `_API_KEY` to `[a-z0-9]{32}` (FRED's key shape) so redaction can never collide with body text.

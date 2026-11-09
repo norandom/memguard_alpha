@@ -724,8 +724,12 @@ def fetch_point_in_time(series_id: str, as_of: date, *, api_key: str, cache_dir:
   vintage with `revised_data = True` on every row (6.5). Missing values (`"."`) are
   skipped. `fetch_point_in_time` is its last element, or None when empty.
 - Cache: one JSON file per request under `cache_dir`, named
-  `<series_id>_<as_of>_<sha256 of the canonical parameters without the key>[:16].json`,
-  holding the response body only. The key never enters a file name, a cache key,
+  `<series_id>_<as_of>_<sha256 of the canonical parameters without the key>[:16].json`
+  for observations and `<series_id>_vintagedates_<hash>.json` for the once-per-series
+  vintage list, holding the response body only, written atomically after the body
+  validates. A malformed 200 body raises ValueError (not retried); a corrupt cached
+  file is refused, not refetched. `DEFAULT_CACHE_DIR` is `runs/finance-sim/fred`,
+  relative to the repository root. The key never enters a file name, a cache key,
   a log line, an exception message or a repr; the module follows the redaction
   pattern of `core/full_distribution.py`.
 - Rate: a module-level limiter of at most 120 requests per rolling minute with an
@@ -854,6 +858,90 @@ def guarded_decide(prompt: str, config: GuardConfig, *, client: CompletionClient
 - Unresolved components keep `None` values in `decision` and are left unadjusted (5.7).
   A component whose split check could not run (`unresolved is None`) keeps its value
   but is flagged as not assessed in the result; it is never presented as resolved.
+- Module `recall_guard/harness/guarded_decision.py`; tests in
+  `tests/harness/test_guarded_decision.py`. Concrete contracts:
+
+```python
+@dataclass(frozen=True)
+class SourceCalibrator:
+    mcs: MCSCalibrator                 # recall_guard/mia/mcs.py
+    baseline: ControlBaseline          # recall_guard/mia/control.py
+    identity: CalibrationIdentity      # extended: estimate_source, corpus_sha256
+    fingerprint: str                   # the scorer's calibration_fingerprint
+
+    def estimate(self, features: MiaFeatures) -> float: ...   # mcs.predict_proba(features, baseline)
+    @property
+    def is_weak(self) -> bool: ...
+    def holdout_auc_interval(self) -> dict | None: ...        # held_out_discrimination over the retained holdout
+    @classmethod
+    def from_scorer(cls, scorer: MemoryGuardedScorer, *, source: EstimateSource, corpus_sha256: str | None) -> SourceCalibrator: ...
+
+@dataclass(frozen=True)
+class GuardIdentity:
+    model: str
+    protocol: str
+    endpoint: str | None
+    response_mapping: str
+    source: SourceLabel
+    settings_json: str                 # generation settings without seed keys, canonical JSON
+    temperature: float | None
+    draws: int
+    calibrator_fingerprint: str
+    prompt_sha256: str
+
+@dataclass(frozen=True)
+class GuardedRun:
+    decision: GuardedDecision
+    responses: tuple[ModelResponse | None, ...]              # by draw index, None for a failed request
+    evidence: tuple[FullDistributionEvidence | None, ...]    # by draw index, FULL_DISTRIBUTION only
+
+def guarded_run(prompt, config, *, client, calibrator, full_distribution=None) -> GuardedRun: ...
+def guarded_decide(prompt, config, *, client, calibrator, full_distribution=None) -> GuardedDecision: ...   # guarded_run(...).decision
+def decide_from_draws(draws: Sequence[RecordedDraw], config: GuardConfig, identity: GuardIdentity) -> GuardedDecision: ...
+```
+- `GuardedDecision` gains `draws: tuple[RecordedDraw, ...]` so the study recording
+  (7.4) can store what the API saw; `decide_from_draws` recomputes a decision from
+  those records and issues no request (5.8). `MemoryGuardedScorer` gains two
+  read-only properties, `mcs` and `control_baseline`, for `from_scorer`; `score`
+  and `score_many` are unchanged.
+- Identity before any request: the API builds a candidate from
+  `CalibrationIdentity.from_client(client, calibrator.identity.intervention_id)` with
+  the configured temperature applied, `estimate_source = config.source.source.value`
+  and the calibrator's `corpus_sha256`, then calls `calibrator.identity.require_match`
+  (4.2). Settings compared for identity exclude `seed` and `random_seed`
+  (`identity_settings(parameters)` in `scorer_client.py`): the seed selects a
+  sample, it does not change the distribution that was calibrated. The existing
+  adapter checks are unchanged.
+- Draw loop: the API issues its own bounded loop (not `generate_ensemble`, which
+  cannot carry seeds), `client.generate(prompt, **overrides)` with `temperature`
+  when configured and `seed = seed_base + draw_index` when `seed_base` is set,
+  at most `config.draws` requests, never a retry. Each draw becomes a `RecordedDraw`:
+  `response_sha256` of the content, `parsed` from `definition.parse_response` or a
+  `failure_code` (`request_error:<code>`, `parse_error`, `evidence_missing` with
+  `parsed` kept when only the estimate is missing is expressed as `estimate = None`),
+  `estimate` from the configured source, `evidence_ref` = SHA-256 of the evidence
+  payload (`to_dict`) or None.
+- Per-draw estimate: `TOP_K` uses `features_from_top_k(content,
+  response.to_legacy().logprobs)`; `FULL_DISTRIBUTION` calls
+  `full_distribution.evidence(prompt, content)` then `features_from_full(content, e)`;
+  a `FULL_DISTRIBUTION` config without a client is refused at call time before any
+  request. `p_memorized` is the mean over parsed draws that carry an estimate, the
+  same set `summarize_distribution` uses.
+- Consensus: per component the median of parsed values (the `reduce_draws`
+  location at its defaults), `None` where the summary marks the component
+  `unresolved is True`; the categorical decision from `definition.decide` on the
+  consensus when every component is present. `adjusted` applies `adjust` to the
+  present components and keeps `None` where the consensus is `None`.
+- Statuses: `failed` when parsed draws are below `min_parsed` (no decision, no
+  distribution, counts in `reason`); `estimate_unavailable` when no parsed draw
+  carries an estimate (decision passed through, `adjusted == decision`, `p_memorized`
+  None, reason); `adjustment_skipped_weak_calibrator` when `calibrator.is_weak`
+  (decision and `p_memorized` reported, `adjusted == decision`); otherwise `ok`.
+  When only some draws carry an estimate, `reason` states the counts.
+- `SINGLE` uses exactly one request (seed `seed_base`), `distribution` None,
+  `p_memorized` that draw's estimate, the same status rules; `GuardConfig` rejects
+  `min_parsed > draws`, `draws < 1`, and `SINGLE` with `draws != 1`, at construction.
+- `draws_sha256` is `canonical_draw_hash` over the parsed contents in draw order.
 
 #### CalibrationIdentity (extension)
 
@@ -892,6 +980,67 @@ def guarded_decide(prompt: str, config: GuardConfig, *, client: CompletionClient
 - Teacher-forces prompt plus response token by token on the pinned GGUF digest and
   returns `FullDistributionEvidence`; refuses a different digest (409).
 - Exactness check against llama-server's full-vocabulary output, as in R40.
+- Concretely (task 6.1):
+  - The ctypes bindings (`Llama`: `tokenize`, `logits`, `incremental_logits`,
+    `close`) and `token_statistics` move from `scripts/score_documents_llamacpp.py`
+    into `scripts/llamacpp_native.py`, imported by both scripts; the scoring
+    script's behaviour and its R40 receipts are unchanged.
+  - `scripts/serve_full_distribution.py` is a native Windows process (the model-host
+    exception): stdlib `http.server` bound to `127.0.0.1:11580`, one request at a
+    time, one model instance loaded at start, a warm-up decode on a fixed short
+    text, and the GGUF SHA-256 computed once at start and compared with the pinned
+    digest; a mismatch refuses to start.
+  - Tokenisation: prompt and response are tokenised separately with
+    `add_special=True, parse_special=False` for the prompt and `add_special=False`
+    for the response, and the ids are concatenated; the evidence covers the
+    response ids. The report states that this boundary can differ from the
+    generation's own tokenisation. No chat template is applied; the host scores the
+    text as sent.
+  - Per response position: the full logit row gives the actual-token logprob,
+    entropy and rank through `token_statistics` (float64 log-softmax) and the top
+    `top_k_keep` alternatives `(id, logprob)` by `argpartition`, sorted by
+    descending logprob; `n_vocab` from the model.
+  - Errors: 409 `digest_mismatch` when `model_digest` differs; 413 `oversize` when
+    prompt plus response ids exceed the context (2048) or the body exceeds 1 MiB;
+    422 `tokenisation_failed` when either text fails to tokenise or the response
+    tokenises to zero ids; 400 for a malformed body. The gateway (6.2) owns 401.
+  - Exactness: `--check-against-server` records llama-server b12199's
+    full-vocabulary logprobs (`/completion` with `n_probs` over the vocabulary) on
+    two fixed responses, then stops the server, loads the host and compares, so
+    only one model is resident at a time (the steering's sequential-load rule and
+    the two-load RAM note); agreement within 1e-4 after float64 normalisation,
+    identical ranks, and two host runs bitwise identical. The private receipt goes
+    under `runs/finance-sim/hosts/full-distribution/`.
+  - Unit tests (`tests/scripts/test_serve_full_distribution.py`) run with a fake
+    `Llama` and cover the evidence assembly, top-k ordering, boundary handling,
+    each error code, the digest refusal and the body limits; the live exactness
+    check is a receipt, not a unit test.
+- Lifecycle scripts (tasks 6.2 and 6.3) are siblings of `scripts/serve_local_flm.ps1`
+  and reuse its structure: actions `start | stop | status | gateway`, a hidden
+  `pwsh` gateway process bound only to the WSL adapter address, the bearer token
+  read from `LOCAL_MODEL_API_KEY` in the root `.env` and never printed, `-IdleMinutes`
+  idle stop, `Stop-All` verifying that no process tree and no listener remain,
+  state and logs under the private runs folder.
+  - `scripts/serve_full_distribution.ps1`: host `127.0.0.1:11580`, gateway `11581`,
+    state `runs/finance-sim/hosts/full-distribution/`; forwards only
+    `POST /v1/full_distribution`.
+  - `scripts/serve_local_llamacpp.ps1`: starts `llama-server` b12199 on the pinned
+    GGUF with `--ctx-size 2048`, `--n-gpu-layers` for the Vulkan iGPU, logprobs
+    enabled, on `127.0.0.1:11570`, gateway `11571`, state
+    `runs/finance-sim/hosts/llama-server/`; forwards `/v1/chat/completions`,
+    `/v1/models` and `/health`.
+  - RAM gate before loading: each start reads free physical memory with
+    `Get-CimInstance Win32_OperatingSystem` and requires the profile's
+    `min_free_ram_bytes` for its own load plus the same again when the sibling host
+    is not yet resident (two loads of the same GGUF); otherwise it refuses and
+    prints the Modal alternative (`--profile modal-gemma3-4b`) and the "another
+    machine" option, matching `preflight_host`'s wording.
+  - Script defaults are tested against the `llamacpp-gemma3-4b` profile URLs and the
+    gateway = loopback + 1 rule by parsing the scripts' `param` defaults in a
+    pytest test (PowerShell 7 present on the host; skipped where `pwsh` is absent).
+  - Live checks are receipts under the state folders: a request without the token
+    gets 401 and with it succeeds, from WSL or from the host against the adapter
+    address; after `stop`, `Get-NetTCPConnection` shows nothing on either port.
 
 #### StudyRunner
 
