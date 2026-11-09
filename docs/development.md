@@ -42,6 +42,17 @@ the existing [completion workflow](completion-api.md).
 
 ## Run focused checks, then the integration checks
 
+The development loop runs natively in the checkout's locked environment on any
+platform, Windows included: `uv sync --locked` once, then
+`uv run --no-sync pytest -q tests/core/test_decision.py` for a focused check,
+`uv run --no-sync pytest -q` for the full suite, and
+`uv run --no-sync ruff check .` plus
+`uv run --no-sync python scripts/check_architecture.py` before a commit. On
+Windows a few tests that need Linux-only tooling or symlink privileges skip and
+report why; the Linux CI run covers them. The container commands below give the
+same checks in the CI image, for Linux parity when a change touches
+platform-specific behaviour.
+
 Override the service command without changing its environment:
 
 ```text

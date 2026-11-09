@@ -243,11 +243,15 @@ limits and incomplete provider coverage.
 
 ## Windows
 
-On Windows, run Recall Guard, its tests, probes, measurements and notebooks in
-Linux containers only. Native Windows Python is no longer a supported route.
-Use Docker Desktop with Linux containers or Docker Engine inside WSL, then follow
-the [Docker quick start](#run-the-checkout-in-docker) and the
+On Windows, the supported way to run Recall Guard as an adopter is a Linux
+container: use Docker Desktop with Linux containers or Docker Engine inside WSL,
+then follow the [Docker quick start](#run-the-checkout-in-docker) and the
 [engineering guide](docs/development.md). No GPU is needed for the examples.
+
+Developers working on the checkout can run the test suite, ruff and the
+architecture check natively with `uv` from PowerShell (`uv sync --locked`, then
+`uv run --no-sync pytest -q`). A few tests that need Linux-only tooling or
+symlink privileges skip on Windows; the Linux CI run covers them on every push.
 
 Ollama may still run natively on Windows as an external model host
 (`scripts/start_local_ollama.ps1`). The container reaches it over the network;

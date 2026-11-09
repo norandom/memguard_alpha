@@ -1,7 +1,16 @@
 # Execution environment
 
+User instruction, 2026-11-09. The development loop runs natively on Windows: run
+tests, ruff, the architecture check and scripts that need no model hardware with
+`uv run --no-sync ...` in the checkout's locked environment from PowerShell. Dagger
+is the CI tool, not the test runner: use it for Linux parity before a push when a
+Linux-specific behaviour needs confirming, and let GitHub Actions run the gate on
+every push. The container rules below still govern the adopter delivery target,
+CI, the Modal operator tooling and anything that must behave as it does in CI.
+
 User instruction, 2026-11-08. This supersedes the November 5 native PowerShell
-Python execution policy and conflicting Windows support text elsewhere.
+Python execution policy and conflicting Windows support text elsewhere, except as
+narrowed by the 2026-11-09 instruction above.
 
 - On Windows, run Recall Guard, Python development tools, probes, measurements
   and notebooks in Linux Docker containers. Direct native Windows application
