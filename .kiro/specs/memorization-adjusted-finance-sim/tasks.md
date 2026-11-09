@@ -1,0 +1,270 @@
+# Implementation Plan
+
+- [ ] 1. Foundation: project rules, configuration and runtime prerequisites
+- [ ] 1.1 Record the ensemble-first exception and the new credential
+  - Amend the package steering so the guarded-decision API is ensemble-first while the existing scorer keeps opt-in ensembles and single-draw parity
+  - Add the FRED API key name to the environment template, empty, with a one-line comment
+  - The steering states both rules and the template lists the FRED key; the existing scorer parity test still passes
+  - _Requirements: 1.1, 1.8_
+- [ ] 1.2 Verify every external and runtime prerequisite before code depends on it
+  - Data: the FMP key returns adjusted daily closes for the world equity, tech and gold ETFs from January 2016 through July 2026, and DTB3 covers the same span (the cash leg is DTB3 from FRED, not an ETF); the FRED key works; CPI has point-in-time vintages; record the vintage status of T10Y2Y, BAA10Y and DTB3
+  - Local model host: the user-installed llama.cpp b12199 library and llama-server are present, and the Gemma 3 4B GGUF file is present for the digest that the 3.3 profile will pin
+  - Registry: Gemma 3 4B, the model of both arms, has a sourced cutoff in the cutoff registry
+  - Tooling: Node is available and the dataviz palette validator script is located, with its path recorded; Modal credentials are present, and the Hugging Face token can read the gated `google/gemma-3-4b-it` repository and resolve a revision to pin
+  - Credentials by name only: the gateway bearer (LOCAL_MODEL_API_KEY) is set, and the Modal endpoint URL and proxy bearer names (MODAL_ENDPOINT_URL, MODAL_PROXY_BEARER) are in the environment template
+  - A private receipt records each check and path; if any prerequisite fails, the receipt names it and the task stops for a decision
+  - _Requirements: 6.2, 6.5, 6.6, 10.6, 11.1, 11.2_
+
+- [ ] 2. Core: decisions, distribution, statistics and the evidence contract
+- [ ] 2.1 Decision definitions and the adjustment rule
+  - Describe a decision as named numeric components with bounds and optional grid, an optional summary value and an optional categorical decision
+  - Reject invalid definitions at construction, before any model request, naming the problem; parse responses strictly, rejecting duplicate or missing components
+  - Scale each component by one minus the clipped memorization estimate without changing its sign
+  - Unit tests show sign preservation, clipping at 0 and 1, rejection of bad bounds and duplicate names, and summary values for raw and adjusted decisions
+  - _Requirements: 1.3, 2.1, 2.2, 2.3_
+- [ ] 2.2 Recorded draws and the distribution summary
+  - Uses the decision definitions from 2.1, so it runs after 2.1
+  - Define the shared recorded-draw record (draw index, temperature, seed, response hash, parsed vector, per-draw estimate, evidence reference) that the API and the study runner both reuse
+  - Summarise parsed draws: per component quantiles, spread, sign agreement and unresolved flag; summary-value distribution; decision agreement with interval; estimate quantiles and spread; distinct answers; first-draw position per component and summary value; lag-one dependence with the statement that intervals assume independent draws
+  - Unit tests on fixed draw sets reproduce hand-computed quantiles, sign agreement, distinct-answer counts and first-draw ranks; identical draws give one distinct answer; records round-trip unchanged
+  - _Requirements: 5.2, 5.3, 5.4, 5.7, 5.8, 5.9_
+- [ ] 2.3 (P) Significance helpers for tests and multiple comparisons
+  - Holm adjustment, exact one-sided binomial test, Monte Carlo random-answerer null over a supplied decision space, moving-block bootstrap intervals over ordered items, and the difference-in-differences accuracy gap
+  - Numpy and standard library only; every result carries statistic, interval, raw p-value, method and parameters
+  - Unit tests match hand-computed Holm and binomial values and give identical intervals for the same seed
+  - _Boundary: Significance_
+  - _Requirements: 8.3, 8.7, 8.8_
+- [ ] 2.4 Significance helpers for losses, ensemble variance and power
+  - Not parallel with 2.3: both extend the same significance component
+  - Paired Brier and log-loss differences with block-bootstrap intervals, half-ensemble versus single-draw variance comparison on shared items, and power by simulation for a pre-registered effect
+  - Unit tests confirm a zero difference on identical inputs, the variance of a mean of K independent draws near one K-th of the single-draw variance, and power increasing with effect size
+  - _Requirements: 7.2, 8.4, 8.5, 8.9_
+- [ ] 2.5 (P) Full-distribution evidence contract and client
+  - Define per-position evidence for a response: actual-token log-probability, entropy, rank, kept top alternatives, vocabulary size and model digest, and let a model response optionally carry it
+  - Convert logits to log-probabilities with a float64 log-softmax per position where a host returns logits
+  - Request evidence from the host through the gateway with the bearer credential; map digest mismatch, oversize and tokenisation failures to request errors
+  - Tests against a fake host cover a successful response, a 409 digest mismatch and logit conversion summing to one
+  - _Boundary: FullDistributionClient_
+  - _Requirements: 3.2, 3.5_
+
+- [ ] 3. Estimate sources, calibration identity and profiles
+- [ ] 3.1 One feature set from top-k and from full-distribution evidence
+  - Compute the existing memorization features from top-k logprobs and, identically, from full-distribution evidence by deriving the top alternatives from the full vector
+  - Label every estimate with its source and k; truncate full evidence to any smaller k and report the probability mass covered
+  - Tests show that full evidence truncated to k gives the same features as top-k evidence carrying the same alternatives, and that mass coverage matches brute force
+  - _Depends: 2.5_
+  - _Requirements: 3.1, 3.3, 9.1, 9.2_
+- [ ] 3.2 Calibration identity binds source, settings and corpus
+  - Extend the calibration identity with estimate source and calibration-corpus hash, omitted at defaults so existing payloads still load
+  - Refuse an estimate when model identity, source or settings differ, naming the mismatch; report the calibrator's held-out AUC with an interval and the weak flag
+  - Tests load version-1 payloads unchanged, refuse a top-k calibrator on full-distribution evidence and report an AUC interval for a fitted calibrator
+  - _Requirements: 3.3, 4.1, 4.2, 4.3_
+- [ ] 3.3 Full-distribution capability and the llama.cpp profile
+  - Own the full-distribution capability in the provider configuration, and add a llama.cpp Gemma 3 4B profile whose generation and full-distribution sources share one GGUF digest
+  - Fix the ports and state folders here: llama-server on loopback 11570 with its gateway on 11571, the full-distribution host on loopback 11580 with its gateway on 11581, state under the private runs folder; none collides with Ollama (11434, 11435), FastFlowLM (11540, 11541) or the reference llama-server (11560)
+  - Refuse a configured source the selected host does not offer, before any request, naming the available sources
+  - Tests show refusal for a full-distribution request on a top-k-only profile and acceptance on the llama.cpp profile
+  - _Depends: 1.2, 2.5_
+  - _Requirements: 3.4_
+- [ ] 3.4 Serving-arm model configuration for Gemma 3 4B on Modal
+  - Add a Modal measurement manifest with the pinned `google/gemma-3-4b-it` revision, limits and cost rates, and a generic-mapping provider profile that declares the top-k source and its k (no full-distribution capability)
+  - Let the deployment code accept this manifest without a Harmony tokenizer, leaving the GPT-OSS-20B pilot manifest and its tests unchanged
+  - Offline: the measurement-plan dry run for the Gemma manifest reports requests, worst-case cost and no plan blockers; a full-distribution request on this profile is refused; the existing Modal tests still pass
+  - _Depends: 1.2, 3.3_
+  - _Requirements: 3.4, 5.1, 11.2_
+
+- [ ] 3.5 Modal serving route for the study runner
+  - Take the weight volume from the manifest (one volume per manifest, the GPT-OSS-20B volume name unchanged) and stage the pinned weights in a CPU-only step
+  - Staging and the serve mode take their stage limits as input (a plan file and its hash), enforce a hard maximum app lifetime with auto-stop, and have no approval gate of their own; the study plan's approval record stays the only approval
+  - Add a serve mode to the operator script that deploys the app, keeps it reachable for the study runner through the endpoint URL and proxy bearer passed by name, and stops it with verified cleanup
+  - Offline tests show the Gemma manifest resolves its own volume, the GPT-OSS-20B volume and tests are unchanged, the staging step refuses to start above its input limit, the serve mode auto-stops at its lifetime on a fixture plan, and the stop path reports no running app
+  - _Depends: 3.4_
+  - _Requirements: 11.1, 11.2_
+
+- [ ] 4. Worked-example data
+- [ ] 4.1 (P) Point-in-time FRED loader
+  - Query each series as available on a decision date using the FRED real-time period, with a cache kept under the private runs folder and at most 120 requests per minute
+  - Flag series without vintages as revised data; never print the key
+  - Tests against recorded FRED responses return the vintage value for a revised CPI date, flag a series without vintages and honour the cache location
+  - _Boundary: FredLoader_
+  - _Depends: 1.2_
+  - _Requirements: 6.5_
+- [ ] 4.2 (P) Macro regime example: prompts, decision and accuracy rule
+  - Render each macro row as an anonymised point-in-time prompt and as an identifying prompt that differs only by decision date, asset names and raw levels
+  - Provide the regime decision definition (five loadings in [-1, 1], grid 0.1), the frozen exposure matrix, the defensive spread and its sign as the categorical decision
+  - Define accuracy as a pure function of the realized next-month returns it is given: agreement between the spread's sign and the defensive pair minus the risk pair; no data fetching in this component
+  - Tests show the two renderings differ only in the identifying fields, the spread matches hand computation and accuracy is identical for every variant on the same returns
+  - _Boundary: MacroRegimeExample_
+  - _Depends: 2.1_
+  - _Requirements: 2.4, 6.1, 6.6_
+
+- [ ] 4.3 (P) EDGAR outlook decision and prompt
+  - Provide the one-component outlook decision definition in [-1, 1] and its prompt renderer for an SEC EDGAR press release, used by both the EDGAR calibrator and the negative-control task
+  - Tests show strict parsing of the outlook component and a stable rendering hash for a fixed release
+  - _Boundary: NegativeControlTask_
+  - _Depends: 2.1_
+  - _Requirements: 7.1_
+
+- [ ] 5. Guarded-decision API
+- [ ] 5.1 Ensemble-first guarded decision
+  - Draw the same prompt the configured number of times with the same model and settings, producing the shared recorded draws with index, temperature and seed
+  - Compute per-draw estimates from the configured source, never the direction parser; return consensus decision, mean estimate, distribution summary, adjusted decision and status
+  - Return a labelled single draw only on explicit request; never gate or zero a decision on a single-draw estimate
+  - Pass the decision through unchanged with a reason when evidence is missing or the calibrator is weak; fail with counts below the minimum parsed draws; reject a configuration whose minimum exceeds its draw count when it is built; leave unresolved components unadjusted
+  - Record model identity, source, settings, calibrator fingerprint and prompt hash on every result
+  - Compute a guarded decision from already recorded draws without new requests, for any source and draw mode
+  - Integration tests with fake clients cover ensemble default, labelled single draw, both pass-through statuses, the minimum-parsed failure, unresolved components, and recomputation from recorded draws issuing no request
+  - _Depends: 2.1, 2.2, 3.1, 3.2_
+  - _Requirements: 1.1, 1.2, 1.4, 1.5, 1.6, 1.7, 1.8, 5.1, 5.5, 5.6_
+- [ ] 5.2 Public exports and installed-package behaviour
+  - Export the guarded-decision API, decision definitions and results from the package root
+  - An installed-wheel test imports and runs the API on fake clients without research data, hosts or study code; the no-matplotlib import test stays green
+  - _Requirements: 11.6_
+
+- [ ] 6. Native model hosts (Windows side)
+- [ ] 6.1 (P) Teacher-forcing host for prompt plus response
+  - Load the pinned GGUF with the llama.cpp library natively on Windows, warm up once, and teacher-force prompt plus response token by token on loopback only
+  - Return per-position evidence with the top 100 alternatives; refuse a different model digest
+  - An exactness check on two responses matches llama-server's full-vocabulary output within 1e-4 after float64 normalisation, and two runs are identical
+  - _Boundary: FullDistributionHost_
+  - _Depends: 1.2, 2.5_
+  - _Requirements: 3.2, 3.5, 9.1_
+- [ ] 6.2 Full-distribution host lifecycle behind the bearer gateway
+  - Start the teacher-forcing host behind the bearer-token gateway pattern, bound only to the WSL adapter, with idle stop; stop verifies that no host process and no listener remain
+  - Script defaults equal the ports and state folder fixed in 3.3, checked by a test against the profile URLs
+  - From the dev container, a request without the token gets 401 and with it gets evidence; after stop nothing listens on the host or gateway ports
+  - _Requirements: 11.1_
+- [ ] 6.3 llama-server generation host behind the bearer gateway
+  - Start llama-server b12199 on the pinned GGUF with top-k logprobs on loopback, behind the bearer gateway on the WSL adapter, with idle stop and verified teardown
+  - Script defaults equal the ports and state folder fixed in 3.3, checked by a test against the profile URLs
+  - From the dev container, a request without the token gets 401 and with it returns top-k logprobs for the pinned digest; after stop nothing listens on the host or gateway ports
+  - _Depends: 3.3_
+  - _Requirements: 3.1, 11.1_
+
+- [ ] 7. Study pipeline (code, tested on fakes)
+- [ ] 7.1 Study item assembly
+  - Assemble macro items from the FRED loader and SEC EDGAR rows; fetch realized returns from FMP and DTB3 and keep them under the private runs folder
+  - Classify decision months before or after each model's sourced cutoff and exclude models without one, with the reason
+  - Tests on recorded responses produce macro items with vintage flags, EDGAR items with their split, private return files, and the exclusion of a model without cutoff
+  - _Depends: 4.1, 4.2_
+  - _Requirements: 6.2, 6.4, 6.6_
+- [ ] 7.2 Study plan splits, hashes and changed-plan refusal
+  - Split pre-cutoff months into calibration, pilot and evaluation sets (pilot months are pre-cutoff only), keeping every post-cutoff month in evaluation; freeze the EDGAR calibration rows (40 memorized, 100 control) and the negative-control items
+  - Freeze metrics, the accuracy definition, the pre-registered effect size, tolerance, seeds, resample counts, block length, significance level and power threshold, with content hashes, before any study request; refuse to run a changed plan
+  - Tests show disjoint calibration, pilot and evaluation months, pilot months all before the cutoff, disjoint EDGAR calibration and negative-control rows, and refusal after any field changes
+  - _Requirements: 4.1, 6.6, 8.2_
+- [ ] 7.3 Study plan arms, limits, pilot settings and scored probability
+  - Freeze per arm a variant set: sampling arm with the six variants, temperature and seed base; serving arm with no adjustment and top-k only, listing its full-distribution variants as missing with the reason
+  - Size request and token limits to one recorded ensemble per item and rendering (plus calibration, pilot and negative control), never one ensemble per variant
+  - Freeze the serving arm's request, token, time and cost limits per stage, in execution order (weight staging, deployment, smoke run, macro and EDGAR calibration, full run, negative control), derived from the 3.4 manifest's cost rates, with the manifest hash
+  - Freeze the pilot size (about 12 pre-cutoff months times 8 draws per rendering) with its own minimum parsed draws, and the scored probability for Brier and log loss: outcome, mapping per draw mode, clip and the shrink-toward-0.5 adjustment
+  - Tests show both arms' variant sets, request limits matching one ensemble per item and rendering, every serving-arm stage limit present with the manifest hash, a pilot minimum not above its draw count and the frozen scored-probability mapping
+  - _Depends: 3.4, 7.2_
+  - _Requirements: 8.1, 8.4, 8.10_
+- [ ] 7.4 Request recording and resume
+  - Record every study request and its outcome privately, resumable per item and never replaying a recorded request; check host reachability and model digest before admitting requests, and record the Windows-side teardown evidence
+  - Tests on fake clients show recorded requests, resume without duplicates and refusal when the host digest differs from the plan
+  - _Depends: 7.3_
+  - _Requirements: 5.8, 11.1_
+- [ ] 7.5 Limits and approval
+  - Stop admission on any request, token, time or cost limit and mark the run incomplete with partial results kept
+  - Present request count, token limits and maximum cost for the paid serving arm and refuse to start it without an approval record matching the frozen plan; this record, built with the existing approval-record helper, is the only one the serving arm checks
+  - Tests show the incomplete status on each limit and refusal of the serving arm without, or with a mismatched, approval
+  - _Requirements: 11.2, 11.3_
+- [ ] 7.6 Calibration on held-out macro months and on the EDGAR calibration split
+  - Fit one macro calibrator per model and source on the calibration months, with the identifying rendering as memorized class and the anonymised rendering as control, in the evaluation prompt format and settings, with all draws going through the recording and limits from 7.4 and 7.5
+  - Fit one EDGAR calibrator per model and source on the frozen EDGAR calibration rows in the outlook prompt format; never apply the macro calibrator to EDGAR prompts
+  - Tests on fake clients produce calibration records whose corpus hashes match the frozen plan, refuse calibration months that overlap evaluation and refuse EDGAR rows that overlap the negative-control items
+  - _Depends: 3.2, 4.3, 7.5_
+  - _Requirements: 4.1, 4.3, 6.3_
+- [ ] 7.7 Guarded execution of study items
+  - Draw one recorded ensemble per evaluation item and rendering through the guarded-decision API, storing draws, evidence and results privately through the request recording
+  - Derive all of the arm's variants from that one ensemble: the single draw is draw index 0, and each adjustment uses that source's per-draw estimates on the same draws, so the variants are paired
+  - Tests on fake clients and a fake host issue exactly one ensemble of requests per item and rendering, store results for every variant and resume an interrupted run without duplicate requests
+  - _Depends: 5.1, 7.6_
+  - _Requirements: 5.8, 8.1_
+- [ ] 7.8 Pilot and power gate
+  - Run the frozen pilot months through the guarded execution, estimate item-level variances and simulate power for the frozen effect size, applying the pilot noise to both periods with the frozen pre-cutoff and post-cutoff item counts
+  - Gates the sampling arm only: continue at power of at least 0.8; otherwise stop, report the expected power and options, and wait for a decision; exclude pilot items from confirmatory analysis
+  - The serving arm is not gated; it reports its achieved power
+  - Tests on fakes show the gate passing above and stopping below the threshold, with pilot items excluded
+  - _Depends: 2.4_
+  - _Requirements: 8.9, 11.3_
+- [ ] 7.9 (P) Negative-control decision task
+  - Only in the negative-control module: using the outlook decision from 4.3, ask for one outlook per negative-control EDGAR release and call the 7.7 execution entry point unchanged, adjusting with the EDGAR calibrator
+  - Report each variant's change against no adjustment with a block-bootstrap interval over filing quarters, and flag a variant whose interval exceeds the frozen tolerance as discounting honest answers
+  - Tests with fixed results reproduce the change interval and the tolerance flag
+  - _Boundary: NegativeControlTask_
+  - _Depends: 2.4, 7.7_
+  - _Requirements: 7.1, 7.2, 7.3_
+- [ ] 7.10 Pre-registered analysis: accuracy, losses and multiple testing
+  - Excluding pilot items: compute per variant the identifying-minus-anonymised difference in the memorization estimate and in accuracy before and after the cutoff, and the difference-in-differences accuracy gap, with block-bootstrap intervals; compute the Brier and log-loss differences of the frozen scored probability
+  - Apply Holm across variants; report raw and adjusted p-values, effect sizes with intervals and achieved power; report any uncomputable item or metric, including the serving arm's full-distribution variants, as missing with its reason
+  - Replayed from recorded fixtures with network disabled, it reproduces stored outputs; a missing metric appears as missing, never substituted
+  - _Depends: 2.3, 7.8_
+  - _Requirements: 6.3, 8.3, 8.4, 8.8, 8.9, 8.10_
+- [ ] 7.11 Pre-registered analysis: ensemble metrics
+  - Excluding pilot items: compute the half-ensemble versus single-draw variance reduction of decisions and estimates, the first-draw-versus-consensus rate per model and control with intervals, and the random-answerer null per model
+  - Replayed from recorded fixtures with network disabled, it reproduces stored outputs, and each result names its ensemble arm
+  - _Depends: 2.3, 2.4, 7.8_
+  - _Requirements: 8.5, 8.6, 8.7_
+- [ ] 7.12 (P) Top-k versus full-distribution convergence analysis
+  - In its own study module, separate from the main analysis: for the same responses and model, compare features and estimates from top-k at several k with the full distribution, reporting agreement and mass coverage per feature and k
+  - Report how the adjusted decision changes between top-k and full-distribution estimates; state that values compare only within one model and set of weights
+  - A convergence table is produced from recorded fixtures without new requests
+  - _Boundary: ConvergenceAnalysis_
+  - _Depends: 3.1, 7.7_
+  - _Requirements: 9.1, 9.2, 9.3, 9.4_
+
+- [ ] 8. Figures and worked example (on fixtures)
+- [ ] 8.1 Figure style, palette validation and reliability helper
+  - Validate the fixed-order categorical palette for light and dark surfaces with the validator at the path recorded in 1.2, and record the result
+  - Add lazily imported plot helpers with marker-shape and fill encodings so identity never depends on color alone; correct the outdated reliability-curve note
+  - The validator passes for both surfaces and the no-matplotlib import test still passes
+  - _Requirements: 10.6_
+- [ ] 8.2 Accuracy-gap and reliability figures
+  - Render the pre-cutoff minus post-cutoff gap of identifying versus anonymised prompts per variant and control with intervals, and reliability diagrams per variant with counts and ECE
+  - Each figure is written in light and dark SVG with a CSV and a markdown table of derived statistics only, and its caption states data, sample size and interval method
+  - _Depends: 7.10_
+  - _Requirements: 10.2, 10.3, 10.6_
+- [ ] 8.3 Draw-distribution and convergence figures
+  - Sequential after 8.2: both extend the shared figure helpers
+  - Render the per-draw distribution of a decision component and of the estimate against the ensemble result, marking the first draw, and top-k versus full-distribution agreement as k grows with a separate mass panel
+  - Each figure is written in light and dark SVG with a CSV and a markdown table of derived statistics only and a caption stating data, sample size and interval method
+  - _Depends: 7.11, 7.12_
+  - _Requirements: 10.4, 10.5, 10.6_
+- [ ] 8.4 Offline worked-example replay and licensing guard
+  - One replay command runs, from recorded draws and scores and with no model requests, both pre-registered analyses, the negative-control report and the convergence analysis, then the four figures and tables
+  - On fixtures with network disabled, replay reproduces the Holm-adjusted p-values, achieved power, random-answerer null, first-draw rate, half-ensemble result, negative-control flags, convergence table and all four figures identically
+  - Published tables carry only derived statistics with Moody's (BAA10Y) and FMP citations; a test fails if a published table contains a raw licensed series
+  - _Depends: 7.9, 7.10, 7.11, 7.12, 8.2, 8.3_
+  - _Requirements: 10.1, 10.7_
+
+- [ ] 9. Validation, execution and reporting
+- [ ] 9.1 End-to-end offline validation
+  - Run item assembly, plan freezing, calibration, pilot, gate, guarded execution, negative control, both analyses, convergence and figures against fake hosts and recorded fixtures in the dev container; run the full offline suite, ruff, the architecture check and the strict docs build
+  - All checks pass with no network access
+  - _Requirements: 8.2, 10.7, 11.3, 11.6_
+- [ ] 9.2 Local sampling arm: plan, calibration, pilot and gate
+  - First build and freeze the real plan for both arms from live FRED, FMP and DTB3 data with the keys passed by name, keeping the private receipt under the runs folder
+  - Start the llama-server and full-distribution hosts with their Windows-side scripts; from the dev container run macro and EDGAR calibration, then the pilot and the power gate within the frozen limits; stop the hosts and verify teardown
+  - Receipts show the frozen plan hash, calibration quality, the pilot result and the gate decision; the task stops for a recorded decision
+  - _Depends: 6.2, 6.3, 7.8, 9.1_
+  - _Requirements: 4.3, 8.2, 8.9, 11.1, 11.3_
+- [ ] 9.3 Local sampling arm: full run, negative control and convergence
+  - Only with a recorded gate decision to continue: restart the hosts with their scripts, with an idle stop longer than any gap in a continuous run, and run the full evaluation, the negative control and the convergence analysis within the frozen limits, then stop the hosts and verify teardown
+  - Expected wall clock about 13 to 15 hours: run detached and resume through the request recording after any interruption
+  - Receipts show completed or incomplete status, recorded against planned counts, and host teardown, so a later session can confirm completion from the receipt alone
+  - _Depends: 7.9, 7.12, 9.2_
+  - _Requirements: 5.1, 7.1, 9.1, 11.1, 11.3_
+- [ ] 9.4 Serving-arm execution on Modal after approval
+  - Present exactly the frozen serving-arm stage limits from the plan, in execution order (weight staging, deployment, smoke run, macro and EDGAR calibration, full run, negative control); run only with the 7.5 approval record matching the frozen plan; check that the limits passed to the operator script carry the frozen plan's hash; no pilot or power gate
+  - Stage the pinned weights in the CPU-only step within its limit, deploy through the 3.5 serve mode, then run the smoke run that confirms vLLM returns top-k logprobs for Gemma 3 4B with the declared k, then calibrate, run the full evaluation and the negative control; stop with the operator script and verify no Modal app remains
+  - A receipt shows the approved limits, the smoke result, actual usage and verified cleanup; if the arm is declined, or staging or the smoke run fails, it is recorded as an excluded run with the reason, and the verified stop still runs
+  - _Depends: 3.5, 9.2_
+  - _Requirements: 7.1, 8.5, 8.6, 8.9, 11.2, 11.3, 11.5_
+- [ ] 9.5 Dated report and register
+  - Run the replay command on the 9.3 and 9.4 records to produce the analyses (including each arm's achieved power), negative-control report, convergence table, figures and tables, and cite those outputs in the report; write the dated report with the template, including failed, excluded and missing items with causes, and register entries; link it in the docs navigation and the reports index and update the research report
+  - The strict docs build passes and the report is reachable from Research > Dated reports
+  - _Depends: 8.4, 9.3, 9.4_
+  - _Requirements: 10.1, 11.4, 11.5_
