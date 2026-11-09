@@ -16,7 +16,7 @@
   - _Requirements: 6.2, 6.5, 6.6, 10.6, 11.1, 11.2_
 
 - [ ] 2. Core: decisions, distribution, statistics and the evidence contract
-- [ ] 2.1 Decision definitions and the adjustment rule
+- [x] 2.1 Decision definitions and the adjustment rule
   - Describe a decision as named numeric components with bounds and optional grid, an optional summary value and an optional categorical decision
   - Reject invalid definitions at construction, before any model request, naming the problem; parse responses strictly, rejecting duplicate or missing components
   - Scale each component by one minus the clipped memorization estimate without changing its sign
@@ -277,3 +277,4 @@
 - Pins from the 1.2 receipt (runs/finance-sim/prerequisites/receipt.json): Gemma 3 4B GGUF `sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1` (models/blobs, q4_K_M) for 3.3; HF `google/gemma-3-4b-it` revision `093f9f388b31de276ce2de164bdc2081324b9767` for 3.4; ETFs SWDA.L, XLK, IAU with DTB3 as the cash leg.
 - FMP key naming: the design and 1.2 use `FMP_API_TOKEN`, but recall_guard/portfolio/prices.py and scripts/build_etf_eval.py read `FMP_API_KEY`. Use FMP_API_TOKEN for this feature (7.1) and do not rely on prices.py's env lookup.
 - The palette validator lives in a version-specific Claude Code temp cache (path and sha256 in the 1.2 receipt); 8.1 must re-locate it and compare the sha256.
+- recall_guard/core/decision.py: use `DecisionDefinition.parse_response` (strict) and `parse_json_components` (duplicate-key safe) for every decision parse in 4.2, 4.3 and 5.1; `adjust` takes floats only, so 5.1 must leave `None` (unresolved) components out of it.

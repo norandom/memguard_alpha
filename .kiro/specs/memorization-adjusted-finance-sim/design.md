@@ -349,13 +349,26 @@ class DecisionDefinition:
     summary: Callable[[Mapping[str, float]], float] | None = None
     decide: Callable[[Mapping[str, float]], Hashable] | None = None
 
+    def parse_response(self, text: str) -> DecisionVector: ...
+
 DecisionVector = Mapping[str, float]
 
+def parse_json_components(text: str) -> dict[str, float]: ...
 def adjust(vector: DecisionVector, p_memorized: float) -> dict[str, float]: ...
 ```
-- Preconditions: unique component names; `lower < upper`; callables are pure.
+- Preconditions: unique component names; `lower < upper`; a grid is positive and
+  finite; callables are pure.
+- Strict parsing: `parse` is the caller's raw extractor; `parse_response` is the one
+  validating entry point. It calls `parse`, then requires exactly the declared
+  component names (missing or extra keys rejected) with finite, non-boolean numbers
+  inside the declared bounds; out-of-bounds values are rejected, never clipped.
+  Duplicate keys are rejected by `parse_json_components`, a core strict JSON helper
+  (duplicate keys refused through `object_pairs_hook`) that definitions such as the
+  macro regime and EDGAR outlook use as their `parse`.
 - Postconditions: `adjust` returns values with the same signs and magnitudes scaled
-  by `1 - clip(p)`.
+  by `1 - clip(p)`. It takes floats only and rejects a non-finite estimate; the
+  guarded-decision API keeps unresolved components as `None` and never passes them
+  to `adjust` (5.7).
 - Errors: `DecisionDefinitionError` (construction), `DecisionParseError` (per response).
 
 #### DistributionSummary
