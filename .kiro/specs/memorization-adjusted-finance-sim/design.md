@@ -168,6 +168,7 @@ recall_guard/
 scripts/
 ├── serve_full_distribution.py # Native host: llama.cpp in-process teacher forcing of prompt plus response, loopback HTTP
 ├── serve_full_distribution.ps1# Starts the host behind the bearer gateway, idle stop, verified teardown
+├── serve_local_llamacpp.ps1   # Starts llama-server on the pinned GGUF (top-k logprobs) behind the bearer gateway, idle stop, verified teardown
 └── finance_sim/
     ├── build_plan.py          # Builds and freezes the study plan (items, variants, metrics, seeds, limits) with hashes
     ├── run_study.py           # Executes variants within limits, records draws and evidence, resumable, never replays
@@ -625,6 +626,11 @@ and waits for a decision. Pilot items are excluded from the confirmatory analysi
   results under `runs/container/finance-sim/` (private); summaries for analysis.
 - Idempotency: resumable per item; never replays a recorded request; refuses a
   changed plan; stops on any limit and marks the run incomplete (11.3).
+- Hosts: model hosts are native Windows processes started and stopped by the
+  Windows-side scripts (`serve_local_llamacpp.ps1`, `serve_full_distribution.ps1`,
+  `modal_operator.sh`). The containerized runner never starts them; it checks
+  reachability and the model digest before admitting requests and records the
+  scripts' teardown evidence (11.1).
 
 #### NegativeControlTask
 
