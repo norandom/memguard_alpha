@@ -57,6 +57,8 @@ nav:
     - Research register: research-register.md
     - All reports: results/index.md
     - Report template: results/template.md
+    - Research notes:
+      - "2026-11-09 Logits identify a model as much as they measure it": research-notes/2026-11-09-logits-fingerprinting.md
     - Dated reports:
       - "2026-10-30 GPT-OSS-20B calibration and ETF evaluation on NIM": results/2026-10-30-nim-measurement.md
       - "2026-10-31 Completion API pilot - rewrite mitigation and three-draw ensemble with Opus": results/2026-10-31-completion-api-pilot.md

@@ -114,7 +114,14 @@ bit-identically across processes when each document gets a fresh model load.
 
 Logits are per model: each model scores its own vocabulary, so values compare
 only within one model and tokenizer. Llama 3.2 3B and Llama 3.1 8B share a
-tokenizer and could form an older/newer pair for divergence work.
+tokenizer and could form an older/newer pair for divergence work. The same
+evidence also identifies the model: top-k logprobs were enough to recover the
+hidden dimension and output layer of OpenAI production models, which is why
+this project binds model identity explicitly instead of inferring it. See the
+research note [Logits identify a model as much as they measure
+it](research-notes/2026-11-09-logits-fingerprinting.md) for the citations
+(Morris et al. 2023; Finlayson, Swayamdipta and Ren 2024; Carlini et al. 2024;
+Gao, Liang and Guestrin 2024).
 
 All local hosts run natively on Windows behind authenticated, auto-stopping
 gateways; Recall Guard itself runs in Linux containers (R18, R20).

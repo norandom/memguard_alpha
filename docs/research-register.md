@@ -5,7 +5,7 @@ consecutively in date order. Each entry has the same six fields: question, setup
 data, result, limits, evidence. Entries are added, never rewritten; when a later
 entry changes an earlier conclusion, both say so.
 
-Last updated 2026-11-08. Release plan: [release 1.0](https://github.com/norandom/memguard_alpha/blob/main/.kiro/specs/release-1.0/tasks.md).
+Last updated 2026-11-09. Release plan: [release 1.0](https://github.com/norandom/memguard_alpha/blob/main/.kiro/specs/release-1.0/tasks.md).
 
 ## Purpose
 
@@ -567,6 +567,29 @@ track. The guard does not need it to work.
   features). No predictive capacity, as the design expects.
 - **Limits:** 73 held-out documents.
 - **Evidence:** [report](results/2026-11-08-gemma4-document-likelihood-npu.md).
+
+### R42 · 2026-11-09 · Logits as model fingerprints (literature note)
+
+- **Question:** are logits and logprobs used to fingerprint models, has it been
+  done on OpenAI or Anthropic models, and what follows for a guard that
+  calibrates on top-k logprobs?
+- **Setup:** literature review, no measurement. Morris et al. 2023 (full vectors
+  from top-k through logit bias), Finlayson, Swayamdipta and Ren 2024 (output
+  subspace as a signature), Carlini et al. 2024 (hidden dimension and output
+  layer of OpenAI production models recovered), Gao, Liang and Guestrin 2024
+  (output-only model equality testing), LLMmap 2024 and Sun et al. 2025
+  (behavioural fingerprinting, Claude included).
+- **Data:** none.
+- **Result:** logit-based fingerprinting was demonstrated on OpenAI endpoints;
+  for Anthropic models only behavioural methods exist because the API returns no
+  logprobs. The design's explicit identity binding (model digest, calibration
+  identity, within-weights comparison) is the response the literature argues
+  for. The full-distribution host could check the served weights' hidden
+  dimension (2560 for Gemma 3 4B) from a few hundred positions; proposed, not
+  run.
+- **Limits:** citations from memory, to be verified before external use; the
+  hidden-dimension check is not in the task plan.
+- **Evidence:** [note](research-notes/2026-11-09-logits-fingerprinting.md).
 
 ## How to add an entry
 
