@@ -53,6 +53,7 @@ Skills are located in `.claude/skills/kiro-*/SKILL.md`
 - 3-phase approval workflow: Requirements → Design → Tasks → Implementation
 - Human review required each phase; use `-y` only for intentional fast-track
 - Keep steering current and verify alignment with `/kiro-spec-status`
+- Research results: write every dated report with `docs/results/template.md`, register it in `docs/research-register.md`, and link it from MkDocs (Research > Dated reports and `docs/results/index.md`); see `.kiro/steering/research-reports.md`
 - Follow the user's instructions precisely, and within that scope act autonomously: gather the necessary context and complete the requested work end-to-end in this run, asking questions only when essential information is missing or the instructions are critically ambiguous.
 
 ## Steering Configuration

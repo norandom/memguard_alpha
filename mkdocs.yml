@@ -52,39 +52,42 @@ plugins:
 
 nav:
   - Home: index.md
-  - Research report: research-report.md
-  - Research register: research-register.md
+  - Research:
+    - Research report: research-report.md
+    - Research register: research-register.md
+    - All reports: results/index.md
+    - Report template: results/template.md
+    - Dated reports:
+      - "2026-10-30 GPT-OSS-20B calibration and ETF evaluation on NIM": results/2026-10-30-nim-measurement.md
+      - "2026-10-31 Completion API pilot - rewrite mitigation and three-draw ensemble with Opus": results/2026-10-31-completion-api-pilot.md
+      - "2026-11-01 Anthropic completion-reweighting prototype": results/2026-11-01-anthropic-reweighting-prototype.md
+      - "2026-11-01 FOMC statistical source - older/newer lexical signature": results/2026-11-01-fomc-statistical-signature.md
+      - "2026-11-01 NIM refresh of GPT-OSS-20B calibration and ensembles": results/2026-11-01-nim-refresh.md
+      - "2026-11-01 Lookahead evidence with ensembles": results/2026-11-01-recall-guard-ensemble.md
+      - "2026-11-01 Lookahead evidence without ensembles": results/2026-11-01-recall-guard-single.md
+      - "2026-11-05 Local provider feasibility": results/2026-11-05-local-provider-feasibility.md
+      - "2026-11-05 NIM request diagnostic - API key attachment and the 504 outside Recall Guard": results/2026-11-05-nim-request-diagnostic.md
+      - "2026-11-05 S&P 500 identity pilot, pre versus post cutoff": results/2026-11-05-sp500-pilot.md
+      - "2026-11-06 GPT-OSS response handling retest - reasoning and final tokens were mixed": results/2026-11-06-gpt-oss-response-mapping.md
+      - "2026-11-06 Five local models - aligned logprob smoke test": results/2026-11-06-local-model-smoke.md
+      - "2026-11-06 Local model storage and sequential probes": results/2026-11-06-local-model-storage.md
+      - "2026-11-06 Modal GPT-OSS-20B evidence pilot": results/2026-11-06-modal-pilot.md
+      - "2026-11-08 Gemma 3 4B document likelihood from full logits": results/2026-11-08-gemma3-document-likelihood.md
+      - "2026-11-08 Gemma 4 E4B document likelihood on the NPU": results/2026-11-08-gemma4-document-likelihood-npu.md
+      - "2026-11-08 Phase A - single-draw calibration on held-out data": results/2026-11-08-phase-a-single-draw.md
+      - "2026-11-08 Phi-4 Mini disqualified from the Phase A model set": results/2026-11-08-phi4-mini-disqualified.md
   - Docker and development: development.md
   - PIT architecture: pit-architecture.md
   - Ensemble consensus: ensemble.md
   - Completion API integration: completion-api.md
   - Local model integration: local-provider.md
-  - Report template: results/template.md
-  - Gemma 3 4B document likelihood (2026-11-08): results/2026-11-08-gemma3-document-likelihood.md
-  - Gemma 4 E4B document likelihood on the NPU (2026-11-08): results/2026-11-08-gemma4-document-likelihood-npu.md
-  - Phase A single-draw calibration (2026-11-08): results/2026-11-08-phase-a-single-draw.md
-  - Phi-4 Mini disqualified (2026-11-08): results/2026-11-08-phi4-mini-disqualified.md
-  - Five local model logprob tests (2026-11-06): results/2026-11-06-local-model-smoke.md
-  - Modal GPT-OSS evidence pilot (2026-11-06): results/2026-11-06-modal-pilot.md
-  - GPT-OSS response mapping repair (2026-11-06): results/2026-11-06-gpt-oss-response-mapping.md
   - Optional Modal hosting: modal-provider.md
   - Modal pilot cost accounting: modal-cost-report.md
-  - Local model storage tests (2026-11-06): results/2026-11-06-local-model-storage.md
-  - Local provider feasibility (2026-11-05): results/2026-11-05-local-provider-feasibility.md
   - Divergence decoding: divergence-decoding.md
   - Mitigation evaluation proposal: divergence-decoding-evaluation.md
   - Experiment track: experiment-track.md
   - S&P 500 measurement proposal: experiments/sp500-cutoff-proposal.md
   - Prepared S&P 500 pilot (2026-11-05): experiments/2026-11-05-sp500-pilot.md
-  - S&P 500 pilot results (2026-11-05): results/2026-11-05-sp500-pilot.md
-  - NIM request diagnostic (2026-11-05): results/2026-11-05-nim-request-diagnostic.md
-  - Statistical source prototype (2026-11-01): results/2026-11-01-fomc-statistical-signature.md
-  - Opus sample reweighting prototype (2026-11-01): results/2026-11-01-anthropic-reweighting-prototype.md
-  - Lookahead evidence without ensembles: results/2026-11-01-recall-guard-single.md
-  - Lookahead evidence with ensembles: results/2026-11-01-recall-guard-ensemble.md
-  - NIM measurement (2026-10-30): results/2026-10-30-nim-measurement.md
-  - NIM refresh (2026-11-01): results/2026-11-01-nim-refresh.md
-  - Completion API pilot (2026-10-31): results/2026-10-31-completion-api-pilot.md
   - Twin-strategy contrast: twin-strategy-contrast.md
   - Benchmark: benchmark.md
   - Latest run results: latest-run.md
