@@ -754,6 +754,25 @@ def guarded_decide(prompt: str, config: GuardConfig, *, client: CompletionClient
 - `validate_response` refuses a different source or settings (4.2).
 - Calibrators report `holdout_auc_interval` from the retained holdout via the
   existing stratified bootstrap; weak means the point AUC is below `min_auc` (4.3).
+- Concretely, in `recall_guard/harness/scorer_client.py`:
+  - `CalibrationIdentity` gains `estimate_source: str = "top_k"` (a value of
+    `EstimateSource`) and `corpus_sha256: str | None = None`.
+  - `to_dict` omits each field at its default; `from_dict` accepts both as optional
+    keys, so existing v1 and v2 payloads load and serialise byte-identically.
+  - The top-logprobs count stays in `parameters_json` (the configured generation
+    setting), never a per-response label.
+  - `CalibrationIdentity.mismatches(other) -> tuple[str, ...]` names the differing
+    fields (`settings` for `parameters_json`).
+  - `require_match(other)` raises `CalibrationMismatchError(ValueError)` with
+    `.fields` and a message naming them; for example, a top-k calibrator given
+    full-distribution evidence is refused naming `estimate_source`.
+  - Existing scorer checks and their messages are unchanged.
+- `MemoryGuardedScorer.holdout_auc_interval` (recall_guard/harness/scorer.py):
+  - It returns the result of `held_out_discrimination` (harness/local_reporting.py)
+    over `holdout_probabilities` and `holdout_labels`, so the interval is a seeded
+    stratified percentile bootstrap that names its method.
+  - It is None when no holdout was retained.
+  - `is_weak` keeps its meaning.
 
 ### scripts
 

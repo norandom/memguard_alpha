@@ -269,6 +269,22 @@ class MemoryGuardedScorer:
         return self._mcs.holdout_probabilities
 
     @property
+    def holdout_auc_interval(self) -> dict | None:
+        """Held-out AUC with a seeded stratified bootstrap interval (Req 4.3).
+
+        The result of ``held_out_discrimination`` over ``holdout_probabilities``
+        and ``holdout_labels``: ``auc``, ``ci_low``, ``ci_high``, ``confidence``,
+        ``method``, ``seed``, ``n_resamples`` and the class counts. None when no
+        holdout was retained. ``is_weak`` still compares the point AUC with ``min_auc``.
+        """
+        if self.holdout_labels is None or self.holdout_probabilities is None:
+            return None
+        # Import at use: local_reporting imports local_execution, which imports this module.
+        from recall_guard.harness.local_reporting import held_out_discrimination
+
+        return held_out_discrimination(self.holdout_probabilities, self.holdout_labels)
+
+    @property
     def calibration_identity(self) -> CalibrationIdentity | None:
         """Configured fit provenance; legacy calibrations retain their old contract."""
         return self._lm.identity if isinstance(self._lm, LegacyLogprobAdapter) else None

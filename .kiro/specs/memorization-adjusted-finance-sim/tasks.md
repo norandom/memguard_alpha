@@ -54,7 +54,7 @@
   - Tests show that full evidence truncated to k gives the same features as top-k evidence carrying the same alternatives, and that mass coverage matches brute force
   - _Depends: 2.5_
   - _Requirements: 3.1, 3.3, 9.1, 9.2_
-- [ ] 3.2 Calibration identity binds source, settings and corpus
+- [x] 3.2 Calibration identity binds source, settings and corpus
   - Extend the calibration identity with estimate source and calibration-corpus hash, omitted at defaults so existing payloads still load
   - Refuse an estimate when model identity, source or settings differ, naming the mismatch; report the calibrator's held-out AUC with an interval and the weak flag
   - Tests load version-1 payloads unchanged, refuse a top-k calibrator on full-distribution evidence and report an AUC interval for a fitted calibrator
@@ -288,3 +288,5 @@
 - 3.2: bind the configured top-logprobs count (generation setting) into the calibration identity, not the per-response SourceLabel k (which is None for uneven host top-k).
 - 6.1/6.2: FullDistributionClient only checks `<= top_k_keep`; the host (and ideally the client on arrival) should guarantee a uniform kept count of min(top_k_keep, n_vocab), since mia refuses uneven evidence.
 - 7.12 and the report: say that "full distribution" features use the kept top-100 alternatives plus the exact actual-token logprob; agreement at k = kept is identical by construction.
+- 5.1 SourceCalibrator: `CalibrationIdentity.mismatches` compares every field, so the evidence-side identity must copy the calibrator's `corpus_sha256` and handle `local_identity` (as LegacyLogprobAdapter.validate_response does), or the call is refused naming those fields. Corpus binding is a field only so far; 7.6 sets the hash when it fits calibrators.
+- Upstream (not this spec): intervention_metrics.py dedups `provenance.scoring` by JSON of `asdict(identity)`; a run resumed across the 3.2 change shows the same calibrator twice in `calibration_quality`. Normalise through `CalibrationIdentity.from_dict(...).to_dict()` in a separate change.

@@ -1,6 +1,7 @@
 """Calibration identity v2: calibrators never cross evidence profiles (R2.5)."""
 
 import dataclasses
+import hashlib
 import json
 from io import StringIO
 from types import SimpleNamespace
@@ -23,8 +24,9 @@ from recall_guard.harness.request_failures import (
     retained_detail,
 )
 from recall_guard.harness.scorer import MemoryGuardedScorer
-from recall_guard.harness.scorer_client import CalibrationIdentity, LegacyLogprobAdapter
-from tests.harness.test_scorer_client import IS, OOS, SETTINGS, Client, calibrate
+from recall_guard.harness.scorer_client import CalibrationIdentity, CalibrationMismatchError, LegacyLogprobAdapter
+from recall_guard.mia.estimate_source import EstimateSource
+from tests.harness.test_scorer_client import IS, OOS, SETTINGS, Client, calibrate, config
 
 IDS = dict(zip(MARKERS, (200005, 200006, 200007, 200008, 200002, 200012), strict=True))
 HARMONY_SETTINGS = SETTINGS | {"return_token_ids": True}
@@ -100,14 +102,97 @@ def test_mapping_revision_change_is_rejected(token_map):
         fit.validate_client(other)
 
 
-def test_legacy_v1_identity_dicts_still_load_and_export_unchanged():
-    legacy = {"protocol": "openai_chat", "endpoint": "https://example.test/chat", "model": "m",
+#: Version-1 identity payload as fits stored it before response mappings existed.
+V1_PAYLOAD = {"protocol": "openai_chat", "endpoint": "https://example.test/chat", "model": "m",
               "parameters_json": json.dumps(SETTINGS, sort_keys=True, separators=(",", ":")),
               "intervention_id": "original"}
+
+
+def v2_payload(token_map):
+    """Version-2 identity payload of a Harmony fit, in stored key order."""
+    return {"protocol": "openai_chat", "endpoint": "https://example.test/v1/chat/completions",
+            "model": "openai/gpt-oss-20b",
+            "parameters_json": json.dumps(HARMONY_SETTINGS, sort_keys=True, separators=(",", ":")),
+            "intervention_id": "original", "response_mapping": "harmony_vllm",
+            "mapping_revision": token_map.tokenizer_sha256}
+
+
+def test_legacy_v1_identity_dicts_still_load_and_export_unchanged():
+    legacy = dict(V1_PAYLOAD)
     identity = CalibrationIdentity.from_dict(legacy)
     assert identity.response_mapping == "generic" and identity.mapping_revision is None
     assert identity.to_dict() == legacy
     assert identity == calibrate().calibration_identity
+
+
+def test_v1_and_v2_identity_payloads_round_trip_byte_identically(token_map):
+    v2 = v2_payload(token_map)
+    assert CalibrationIdentity.from_client(real_clients(token_map)[0], "original").to_dict() == v2
+    for payload in (V1_PAYLOAD, v2):
+        identity = CalibrationIdentity.from_dict(json.loads(json.dumps(payload)))
+        assert identity.estimate_source == "top_k" and identity.corpus_sha256 is None
+        assert identity.to_dict() == payload
+        assert json.dumps(identity.to_dict()) == json.dumps(payload)
+        assert CalibrationIdentity.from_dict(identity.to_dict()) == identity
+
+
+def test_identity_binds_estimate_source_and_corpus_hash():
+    corpus = hashlib.sha256(b"calibration corpus").hexdigest()
+    identity = dataclasses.replace(CalibrationIdentity.from_dict(V1_PAYLOAD),
+                                   estimate_source=EstimateSource.FULL_DISTRIBUTION, corpus_sha256=corpus)
+    assert identity.estimate_source == "full_distribution"
+    payload = identity.to_dict()
+    assert payload == V1_PAYLOAD | {"estimate_source": "full_distribution", "corpus_sha256": corpus}
+    assert CalibrationIdentity.from_dict(json.loads(json.dumps(payload))) == identity
+    stored = dataclasses.asdict(identity)  # shape persisted in workflow/script provenance
+    assert CalibrationIdentity.from_dict(stored) == identity
+    with pytest.raises(ValueError, match="estimate_source"):
+        dataclasses.replace(identity, estimate_source="logits")
+    for bad in ("A" * 64, "a" * 63, "", 7):
+        with pytest.raises(ValueError, match="corpus_sha256"):
+            dataclasses.replace(identity, corpus_sha256=bad)
+
+
+def test_top_k_calibrator_refuses_full_distribution_evidence_naming_the_source():
+    calibrator = CalibrationIdentity.from_dict(V1_PAYLOAD)
+    full = dataclasses.replace(calibrator, estimate_source="full_distribution")
+    assert calibrator.mismatches(full) == ("estimate_source",)
+    with pytest.raises(CalibrationMismatchError, match="estimate_source") as refused:
+        calibrator.require_match(full)
+    assert refused.value.fields == ("estimate_source",) and isinstance(refused.value, ValueError)
+    calibrator.require_match(CalibrationIdentity.from_dict(V1_PAYLOAD))
+    assert calibrator.mismatches(calibrator) == ()
+
+
+def test_identity_mismatch_names_model_and_settings_including_top_logprobs_count():
+    calibrator = CalibrationIdentity.from_dict(V1_PAYLOAD)
+    other_k = CalibrationIdentity.from_config(
+        dataclasses.replace(config(), parameters=SETTINGS | {"top_logprobs": 5}), "original")
+    with pytest.raises(CalibrationMismatchError, match="settings") as refused:
+        calibrator.require_match(other_k)
+    assert refused.value.fields == ("settings",)
+    drifted = dataclasses.replace(other_k, model="other", estimate_source="full_distribution",
+                                  corpus_sha256="b" * 64)
+    assert calibrator.mismatches(drifted) == ("model", "settings", "estimate_source", "corpus_sha256")
+    with pytest.raises(TypeError):
+        calibrator.mismatches(V1_PAYLOAD)
+
+
+def test_configured_scorer_refuses_a_response_from_another_source_and_keeps_existing_checks():
+    scorer, client = calibrate(), Client()
+    response = client.generate("eval")
+    unbound = scorer.score_response("eval", response, client=client)
+    # No public API binds a source on the adapter yet; the guarded decision wraps the scorer.
+    lm = scorer._lm  # noqa: SLF001
+    lm.identity = dataclasses.replace(lm.identity, corpus_sha256="c" * 64)
+    assert scorer.score_response("eval", response, client=client) == unbound
+    drifted = dataclasses.replace(response, requested_settings=dict(response.requested_settings) | {"top_logprobs": 5})
+    with pytest.raises(ValueError, match="^Response requested settings differ from calibration identity$"):
+        scorer.score_response("eval", drifted, client=client)
+    lm.identity = dataclasses.replace(lm.identity, estimate_source="full_distribution")
+    with pytest.raises(CalibrationMismatchError) as refused:
+        scorer.score_response("eval", response, client=client)
+    assert refused.value.fields == ("estimate_source",)
 
 
 def test_stored_asdict_identity_with_local_identity_loads():

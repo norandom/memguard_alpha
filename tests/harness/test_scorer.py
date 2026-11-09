@@ -126,6 +126,31 @@ def test_calibrate_returns_scorer_with_quality_signals() -> None:
     assert scorer.is_weak is False
 
 
+def test_holdout_auc_interval_reports_the_fitted_discrimination_with_its_interval(mocker) -> None:
+    from recall_guard.harness import local_reporting
+
+    spy = mocker.spy(local_reporting, "held_out_discrimination")
+    scorer = _calibrate()
+    interval = scorer.holdout_auc_interval
+    spy.assert_called_once_with(scorer.holdout_probabilities, scorer.holdout_labels)
+    assert interval == local_reporting.held_out_discrimination(scorer.holdout_probabilities, scorer.holdout_labels)
+    assert interval["auc"] == pytest.approx(scorer.holdout_auc)
+    assert interval["ci_low"] <= interval["auc"] <= interval["ci_high"]
+    assert interval["method"] == "stratified_percentile_bootstrap" and interval["confidence"] == 0.95
+    assert interval["n_memorized"] + interval["n_control"] == len(scorer.holdout_labels)
+    assert scorer.is_weak is False
+    weak = _calibrate(min_auc=1.01)  # the point AUC cannot reach the gate
+    assert weak.is_weak is True and weak.holdout_auc_interval == interval
+
+
+def test_holdout_auc_interval_is_none_without_a_retained_holdout() -> None:
+    scorer = _calibrate()
+    scorer._mcs = dataclasses.replace(  # noqa: SLF001
+        scorer._mcs, holdout_labels=None, holdout_probabilities=None)  # noqa: SLF001
+    assert scorer.holdout_auc_interval is None
+    assert scorer.holdout_auc > 0.6 and scorer.is_weak is False
+
+
 def test_calibrate_empty_api_key_raises_configuration_error() -> None:
     with pytest.raises(ConfigurationError, match="api_key"):
         _calibrate(api_key="")

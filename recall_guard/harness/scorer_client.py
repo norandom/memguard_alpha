@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, fields, replace
 from threading import Lock
 from types import MappingProxyType
 
@@ -24,6 +25,11 @@ from recall_guard.core.profiles import ResponseMapping
 from recall_guard.core.providers import HarmonyOpenAICompatibleClient
 from recall_guard.core.request_control import BudgetExhaustedError
 from recall_guard.harness.request_failures import FATAL_FAILURES, failure_kind
+from recall_guard.mia.estimate_source import EstimateSource
+
+#: Mismatch names that differ from the field name: settings live in ``parameters_json``.
+_MISMATCH_NAMES = MappingProxyType({"parameters_json": "settings"})
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 #: Local evidence defects confined to one received response. Such a row is excluded
 #: and counted; ``min_valid`` then decides whether calibration may proceed.
@@ -44,13 +50,24 @@ class ItemEvidenceError(RuntimeError):
         self.evidence_code = code
 
 
+class CalibrationMismatchError(ValueError):
+    """Evidence identity differs from the calibrator's; ``fields`` names the differences."""
+
+    def __init__(self, fields: tuple[str, ...]) -> None:
+        super().__init__("Evidence differs from the calibration identity in: " + ", ".join(fields))
+        self.fields = fields
+
+
 @dataclass(frozen=True)
 class CalibrationIdentity:
     """Immutable fit provenance; omitted and explicitly null settings differ.
 
-    ``parameters_json`` is canonical JSON containing only generation settings.
+    ``parameters_json`` is canonical JSON containing only generation settings,
+    including the configured top-logprobs count; a per-response k is never bound.
     Credential references, resolved secrets and transport retries are excluded.
     An intervention ID names the pipeline/template used on both fit corpora.
+    ``estimate_source`` and ``corpus_sha256`` bind the evidence source and the
+    calibration corpus (v3); at their defaults they are omitted from ``to_dict``.
     """
 
     protocol: CompletionProtocol
@@ -63,6 +80,10 @@ class CalibrationIdentity:
     response_mapping: str = ResponseMapping.GENERIC.value
     #: Pinned mapping identity, e.g. the Harmony tokenizer SHA-256.
     mapping_revision: str | None = None
+    #: Evidence source of the fit: an ``EstimateSource`` value.
+    estimate_source: str = EstimateSource.TOP_K.value
+    #: SHA-256 hex digest of the calibration corpus, or None when not recorded.
+    corpus_sha256: str | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -74,6 +95,13 @@ class CalibrationIdentity:
             raise ValueError("mapping_revision must be nonempty text or null")
         if self.response_mapping != ResponseMapping.GENERIC.value and self.mapping_revision is None:
             raise ValueError("A non-generic response mapping requires its pinned mapping_revision")
+        try:
+            object.__setattr__(self, "estimate_source", EstimateSource(self.estimate_source).value)
+        except (TypeError, ValueError):
+            raise ValueError("estimate_source must be top_k or full_distribution") from None
+        if self.corpus_sha256 is not None and (
+                not isinstance(self.corpus_sha256, str) or not _SHA256_HEX.fullmatch(self.corpus_sha256)):
+            raise ValueError("corpus_sha256 must be a lowercase SHA-256 hex digest or null")
 
     @property
     def reuse_scope(self) -> str:
@@ -93,13 +121,21 @@ class CalibrationIdentity:
         if self.response_mapping == ResponseMapping.GENERIC.value and self.mapping_revision is None:
             result.pop("response_mapping")
             result.pop("mapping_revision")
+        if self.estimate_source == EstimateSource.TOP_K.value:
+            result.pop("estimate_source")
+        if self.corpus_sha256 is None:
+            result.pop("corpus_sha256")
         return result
 
     @classmethod
     def from_dict(cls, data: Mapping) -> CalibrationIdentity:
-        """Load v1 (legacy) and v2 identity payloads; absent mapping means generic."""
+        """Load v1 (legacy), v2 and v3 payloads; absent keys take their defaults.
+
+        An absent mapping means generic, an absent source ``top_k`` and an
+        absent corpus hash null.
+        """
         required = {"protocol", "endpoint", "model", "parameters_json", "intervention_id"}
-        optional = {"local_identity", "response_mapping", "mapping_revision"}
+        optional = {"local_identity", "response_mapping", "mapping_revision", "estimate_source", "corpus_sha256"}
         if not isinstance(data, Mapping) or required - data.keys() or data.keys() - required - optional:
             raise ValueError("Invalid calibration identity fields")
         values = dict(data)
@@ -111,6 +147,29 @@ class CalibrationIdentity:
         values["protocol"] = CompletionProtocol(values["protocol"])
         values.setdefault("response_mapping", ResponseMapping.GENERIC.value)
         return cls(**values)
+
+    def mismatches(self, other: CalibrationIdentity) -> tuple[str, ...]:
+        """Name the fields in which ``other`` differs, in declaration order.
+
+        ``settings`` stands for ``parameters_json``. An empty tuple means the
+        identities are equal.
+        """
+        if not isinstance(other, CalibrationIdentity):
+            raise TypeError("other must be a CalibrationIdentity")
+        return tuple(_MISMATCH_NAMES.get(field.name, field.name) for field in fields(self)
+                     if getattr(self, field.name) != getattr(other, field.name))
+
+    def require_match(self, other: CalibrationIdentity) -> None:
+        """Refuse evidence of another identity, naming every differing field.
+
+        Raises
+        ------
+        CalibrationMismatchError
+            If any field differs; ``fields`` lists them as :meth:`mismatches` does.
+        """
+        differing = self.mismatches(other)
+        if differing:
+            raise CalibrationMismatchError(differing)
 
     @classmethod
     def from_config(
@@ -183,7 +242,9 @@ class LegacyLogprobAdapter:
         expected = self._client_identity if client is self.client else self.identity
         if client is not self.client and self.identity.reuse_scope == "within_run":
             raise ValueError("Unknown local provenance permits within-run calibration reuse on the original client only")
-        current = CalibrationIdentity.from_client(client, intervention_id)
+        # A client carries no estimate source or corpus; both are the calibrator's own.
+        fit = {"estimate_source": expected.estimate_source, "corpus_sha256": expected.corpus_sha256}
+        current = replace(CalibrationIdentity.from_client(client, intervention_id), **fit)
         if (current.response_mapping, current.mapping_revision) != (expected.response_mapping, expected.mapping_revision):
             raise ValueError("Client response mapping differs from calibration; calibrators are not reused "
                              "across evidence profiles")
@@ -191,7 +252,7 @@ class LegacyLogprobAdapter:
             raise ValueError("Client model/endpoint/protocol/settings/intervention identity differs from calibration")
         config = replace(client.config, parameters=dict(client.config.parameters) | parameters)
         mapping = {"response_mapping": current.response_mapping, "mapping_revision": current.mapping_revision}
-        if CalibrationIdentity.from_config(config, intervention_id, **mapping) != expected:
+        if replace(CalibrationIdentity.from_config(config, intervention_id, **mapping), **fit) != expected:
             raise ValueError("Client model/endpoint/protocol/settings/intervention identity differs from calibration")
 
     def validate_response(self, response: ModelResponse) -> CompletionResult:
@@ -199,10 +260,17 @@ class LegacyLogprobAdapter:
             raise ValueError("Configured MIA scoring requires a ModelResponse with genuine token evidence")
         settings = ModelConfig(self.identity.protocol, self.identity.endpoint, self.identity.model,
                                parameters=response.requested_settings, local_identity=response.local_identity)
-        candidate = CalibrationIdentity.from_config(settings, self.identity.intervention_id,
-                                                    response_mapping=self.identity.response_mapping,
-                                                    mapping_revision=self.identity.mapping_revision)
-        if replace(candidate, local_identity=None) != replace(self.identity, local_identity=None):
+        # The adapter admits top-k token evidence only (to_legacy), so the response's
+        # source is top_k; the corpus hash is calibrator provenance.
+        candidate = replace(
+            CalibrationIdentity.from_config(settings, self.identity.intervention_id,
+                                            response_mapping=self.identity.response_mapping,
+                                            mapping_revision=self.identity.mapping_revision),
+            corpus_sha256=self.identity.corpus_sha256)
+        differing = replace(self.identity, local_identity=None).mismatches(replace(candidate, local_identity=None))
+        if "estimate_source" in differing:
+            raise CalibrationMismatchError(differing)
+        if differing:
             raise ValueError("Response requested settings differ from calibration identity")
         local = self.identity.local_identity is not None or response.local_identity is not None
         if local:
