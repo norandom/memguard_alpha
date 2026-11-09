@@ -35,7 +35,7 @@ SourceDirectory = Annotated[
         "**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/.aws", "**/.ssh",
         "**/.venv", "**/venv", "**/.git", ".agent", ".agents", ".claude",
         ".codex", ".kiro", "HANDOFF.md", "ci/sdk", "runs", "site", "dist",
-        "build", "wheels", "models", "**/__pycache__", "data/lookaheadbench",
+        "build", "wheels", "models", "tools", "**/__pycache__", "data/lookaheadbench",
     ]),
 ]
 
