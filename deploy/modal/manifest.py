@@ -87,13 +87,39 @@ def _typed(cls, raw):
 
 PILOT_MANIFEST = "configs/modal/gpt-oss-20b-pilot.json"
 MEASUREMENT_MANIFEST = "configs/modal/gpt-oss-20b-measurement.json"
+GEMMA_MANIFEST = "configs/modal/gemma-3-4b-measurement.json"
 _SOURCES = ("deploy/modal/serve.py", "deploy/modal/manifest.py")
-# Reviewed bounds per serving manifest. The pilot entry is pinned by existing
-# approval records; the measurement entry covers M4 Phase A (321 requests,
-# 1,024 output tokens per request with reasoning_effort low, USD 2.00 cap). A new manifest needs its own reviewed entry here.
+# Reviewed bounds per serving manifest, as (limits, reviewed cost.target_usd); load_plan
+# requires the manifest's target_usd to equal the second element. The pilot entry is pinned
+# by existing approval records; the measurement entry covers M4 Phase A (321 requests,
+# 1,024 output tokens per request with reasoning_effort low, USD 2.00 cap). The Gemma entry
+# is the serving-arm ceiling of the finance study (13,857 requests, 256 output tokens per
+# request, 86,142 s GPU phase, USD 34.34 target; arithmetic in that manifest's caveats).
+# A new manifest needs its own reviewed entry here.
 REVIEWED_LIMITS = {
     PILOT_MANIFEST: (Limits(8, 1, 7, 0, 512, 4096, 120, 1200, 600, 120, 0, 1, True, 5), 5),
     MEASUREMENT_MANIFEST: (Limits(321, 1, 320, 0, 1024, 328704, 120, 2700, 600, 120, 0, 1, True, 5), 2),
+    GEMMA_MANIFEST: (Limits(13857, 1, 13856, 0, 256, 3547392, 120, 86142, 600, 120, 0, 1, True, 5), 34.34),
+}
+_GPT_OSS_ARTIFACTS = ("openai/gpt-oss-20b", "openai/gpt-oss-20b", "mxfp4", "vllm==0.17.0", "1.6.3", "linux/amd64",
+                      "natural_log_probabilities", "TRITON_ATTN", "marlin")
+_GPT_OSS_RESOURCES = Resources("A100-40GB", 1, 4, 32, 4096, 1, 1, 1, 0, 1, 0, 60)
+# Dense bf16 model: no quantization method and no MoE kernel (moe_backend "none").
+_GEMMA_ARTIFACTS = ("google/gemma-3-4b-it", "google/gemma-3-4b-it", "bf16", "vllm==0.17.0", "1.6.3", "linux/amd64",
+                    "natural_log_probabilities", "FLASH_ATTN", "none")
+_GEMMA_RESOURCES = Resources("A10", 1, 4, 16, 4096, 1, 1, 1, 0, 1, 0, 60)
+
+
+def _cache(volume: str) -> dict:
+    return {"volume": volume, "mount_path": "/cache/huggingface", "staging_gpu_count": 0,
+            "stage_separately": True, "retain_after_cleanup": True}
+
+
+# Reviewed serving candidate per manifest: artifacts, resources and weight cache.
+_REVIEWED_CANDIDATES = {
+    PILOT_MANIFEST: (_GPT_OSS_ARTIFACTS, _GPT_OSS_RESOURCES, _cache("recall-guard-gpt-oss-20b-weights")),
+    MEASUREMENT_MANIFEST: (_GPT_OSS_ARTIFACTS, _GPT_OSS_RESOURCES, _cache("recall-guard-gpt-oss-20b-weights")),
+    GEMMA_MANIFEST: (_GEMMA_ARTIFACTS, _GEMMA_RESOURCES, _cache("recall-guard-gemma-3-4b-weights")),
 }
 
 
@@ -165,7 +191,7 @@ def load_plan(path: str | Path) -> Plan:
             raise ValueError("Artifact revisions must be commits")
     if not re.fullmatch(r"vllm/vllm-openai@sha256:[0-9a-f]{64}", artifacts.image):
         raise ValueError("Serving image must be a digest")
-    if (
+    configuration = (
         artifacts.model,
         artifacts.tokenizer,
         artifacts.quantization,
@@ -175,36 +201,25 @@ def load_plan(path: str | Path) -> Plan:
         artifacts.score_semantics,
         artifacts.attention_backend,
         artifacts.moe_backend,
-    ) != (
-        "openai/gpt-oss-20b",
-        "openai/gpt-oss-20b",
-        "mxfp4",
-        "vllm==0.17.0",
-        "1.6.3",
-        "linux/amd64",
-        "natural_log_probabilities",
-        "TRITON_ATTN",
-        "marlin",
-    ):
+    )
+    if configuration not in {candidate[0] for candidate in _REVIEWED_CANDIDATES.values()}:
         raise ValueError("Unsupported artifact configuration; requires revalidation")
-    if resources != Resources("A100-40GB", 1, 4, 32, 4096, 1, 1, 1, 0, 1, 0, 60):
+    if resources not in {candidate[1] for candidate in _REVIEWED_CANDIDATES.values()}:
         raise ValueError("Resources differ from the reviewed candidate or units")
     allowlist = raw["upload_allowlist"]
     if (not isinstance(allowlist, list) or len(allowlist) != 3 or tuple(allowlist[:2]) != _SOURCES
-            or allowlist[2] not in REVIEWED_LIMITS):
+            or allowlist[2] not in REVIEWED_LIMITS or allowlist[2] not in _REVIEWED_CANDIDATES):
         raise ValueError("Upload allowlist differs from the reviewed files")
     serving_manifest = allowlist[2]
+    reviewed_artifacts, reviewed_resources, reviewed_cache = _REVIEWED_CANDIDATES[serving_manifest]
+    # Each manifest serves only its own reviewed candidate; no mixing across models.
+    if (configuration, resources) != (reviewed_artifacts, reviewed_resources):
+        raise ValueError("Unsupported artifact configuration; requires revalidation")
     reviewed_limits, reviewed_target_usd = REVIEWED_LIMITS[serving_manifest]
     if limits != reviewed_limits:
         raise ValueError("Pilot limits differ from the reviewed bounds" if serving_manifest == PILOT_MANIFEST
                          else "Measurement limits differ from the reviewed bounds")
-    if raw["cache"] != {
-        "volume": "recall-guard-gpt-oss-20b-weights",
-        "mount_path": "/cache/huggingface",
-        "staging_gpu_count": 0,
-        "stage_separately": True,
-        "retain_after_cleanup": True,
-    }:
+    if raw["cache"] != reviewed_cache:
         raise ValueError("Cache staging must be separate and CPU-only")
     cost = raw["cost"]
     expected_cost_fields = {

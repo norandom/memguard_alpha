@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "profile_id": "modal-gemma3-4b",
+  "display_name": "Modal vLLM google/gemma-3-4b-it (remote A10, bf16)",
+  "hosting_mode": "remote_gpu",
+  "model_config": {
+    "protocol": "openai_chat",
+    "endpoint": "https://YOUR-HOST.modal.run/v1/chat/completions",
+    "model": "google/gemma-3-4b-it",
+    "provider": "modal",
+    "parameters": {
+      "temperature": 0,
+      "top_p": 1,
+      "max_tokens": 256,
+      "logprobs": true,
+      "top_logprobs": 5
+    },
+    "capabilities": {},
+    "timeout_s": 120,
+    "max_retries": 0,
+    "retry_backoff_s": 2.0,
+    "min_call_interval_s": 0.0,
+    "local_identity": {
+      "version": 1,
+      "declared": {
+        "artifact_digest": null,
+        "artifact_revision": "093f9f388b31de276ce2de164bdc2081324b9767",
+        "quantization": null,
+        "tokenizer": "093f9f388b31de276ce2de164bdc2081324b9767",
+        "template": null,
+        "runtime": "vllm",
+        "runtime_version": "0.17.0",
+        "backend": "GPU",
+        "driver_version": null,
+        "context_length": 4096,
+        "score_semantics": {
+          "normalization": null,
+          "log_base": null,
+          "sampling_stage": null
+        }
+      },
+      "observed": {
+        "artifact_digest": null,
+        "artifact_revision": null,
+        "quantization": null,
+        "tokenizer": null,
+        "template": null,
+        "runtime": null,
+        "runtime_version": null,
+        "backend": null,
+        "driver_version": null,
+        "context_length": null,
+        "score_semantics": {
+          "normalization": null,
+          "log_base": null,
+          "sampling_stage": null
+        }
+      }
+    }
+  },
+  "credential_ref": "env:MODAL_PROXY_BEARER",
+  "endpoint_ref": "env:MODAL_ENDPOINT_URL",
+  "response_mapping": "generic",
+  "harmony": null,
+  "host_requirements": {
+    "min_free_ram_bytes": null,
+    "recommended_ram_bytes": null,
+    "context_tokens": 4096,
+    "fallback_profile_ids": []
+  },
+  "allow_unauthenticated": false,
+  "notes": "Serving arm of the finance study: vLLM 0.17.0 on one Modal A10 serving the gated Gemma 3 4B instruction model in bf16 at Hugging Face revision 093f9f388b31de276ce2de164bdc2081324b9767, pinned by configs/modal/gemma-3-4b-measurement.json (Gemma Terms of Use; HF_TOKEN is needed only to stage the weights). Generic response mapping with top-k logprobs (k 5, the manifest's top_logprobs) at temperature 0; no full-distribution source, because the full-distribution host serves different weights (the local GGUF) and values from different builds are not comparable. Set MODAL_ENDPOINT_URL to the deployed app's registered full https://<host>.modal.run/v1/chat/completions URL; the placeholder endpoint is refused at connect time. quantization stays null because a bf16 checkpoint reports no quantization method."
+}

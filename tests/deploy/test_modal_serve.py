@@ -173,6 +173,54 @@ def test_runtime_command_keeps_real_partial_logprobs():
     assert "--speculative-config" not in command
 
 
+GEMMA = ROOT / "configs/modal/gemma-3-4b-measurement.json"
+#: The GPT-OSS-20B vLLM command before task 3.4, element for element.
+GPT_OSS_COMMAND = [
+    "--host", "0.0.0.0", "--port", "8000", "--model", "openai/gpt-oss-20b",
+    "--revision", "6cee5e81ee83917806bbde320786a8fb61efebee", "--tokenizer", "openai/gpt-oss-20b",
+    "--tokenizer-revision", "6cee5e81ee83917806bbde320786a8fb61efebee", "--served-model-name", "openai/gpt-oss-20b",
+    "--quantization", "mxfp4", "--attention-backend", "TRITON_ATTN", "--moe-backend", "marlin",
+    "--tensor-parallel-size", "1", "--max-model-len", "4096", "--max-num-seqs", "1", "--max-logprobs", "5",
+    "--logprobs-mode", "raw_logprobs", "--generation-config", "vllm", "--no-enable-log-requests",
+    "--disable-uvicorn-access-log",
+]
+
+
+def test_gpt_oss_command_is_unchanged():
+    for manifest in (MANIFEST, ROOT / "configs/modal/gpt-oss-20b-measurement.json"):
+        command = serve.server_command(load_plan(manifest))
+        assert command[:3] == [sys.executable, "-m", "vllm.entrypoints.openai.api_server"]
+        assert command[3:] == GPT_OSS_COMMAND
+
+
+def test_gemma_command_serves_dense_bf16_without_quantization_or_moe_flags():
+    plan = load_plan(GEMMA)
+    command = serve.server_command(plan)
+    assert command[command.index("--model") + 1] == command[command.index("--tokenizer") + 1] == "google/gemma-3-4b-it"
+    assert command[command.index("--revision") + 1] == plan.artifacts.model_revision
+    assert command[command.index("--tokenizer-revision") + 1] == plan.artifacts.tokenizer_revision
+    assert command[command.index("--dtype") + 1] == "bfloat16"
+    assert command[command.index("--attention-backend") + 1] == "FLASH_ATTN"
+    assert "--quantization" not in command and "--moe-backend" not in command
+    assert command[command.index("--max-logprobs") + 1] == str(plan.limits.top_logprobs) == "5"
+    assert command[command.index("--logprobs-mode") + 1] == "raw_logprobs"
+    assert command[command.index("--max-num-seqs") + 1] == "1"
+    assert command[command.index("--generation-config") + 1] == "vllm"
+    assert "--no-enable-log-requests" in command and "--enable-log-outputs" not in command
+
+
+def test_gemma_recipe_selects_its_manifest_without_a_harmony_tokenizer(monkeypatch):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
+    sdk = FakeSDK()
+    serve.create_app(sdk=sdk, manifest="configs/modal/gemma-3-4b-measurement.json")
+    calls = {name: kwargs for name, _, kwargs in sdk.calls}
+    assert calls["cls"]["gpu"] == "A10:1" and calls["cls"]["memory"] == 16384
+    assert calls["web_server"]["label"] == load_plan(GEMMA).target.app
+    uploads = [args for name, args, _ in sdk.calls if name == "upload"]
+    assert [args[1] for args in uploads][-1] == "/root/configs/modal/gemma-3-4b-measurement.json"
+    assert all("models" not in Path(args[0]).parts for args in uploads)
+
+
 def test_control_plane_retrieval_never_calls_gpu_and_checks_identity():
     sdk = FakeSDK()
     plan = load_plan(MANIFEST)

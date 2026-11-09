@@ -287,6 +287,23 @@ def require_remote_expiry(plan: Plan, app_id: str, store):
         raise RuntimeError("Remote expiry is not armed; serving admission closed")
 
 
+def _weight_format(artifacts) -> list[str]:
+    """Quantized checkpoints name their method; a dense bf16 checkpoint names its dtype.
+
+    vLLM 0.17.0 has no "bf16" quantization method and no "none" MoE backend
+    (vllm/config/model.py ModelDType, vllm/config/kernel.py MoEBackend), so the
+    generic-mapping Gemma manifest passes ``--dtype bfloat16`` and no MoE flag.
+    """
+    if artifacts.quantization == "bf16":
+        options = ["--dtype", "bfloat16"]
+    else:
+        options = ["--quantization", artifacts.quantization]
+    options += ["--attention-backend", artifacts.attention_backend]
+    if artifacts.moe_backend != "none":
+        options += ["--moe-backend", artifacts.moe_backend]
+    return options
+
+
 def server_command(plan: Plan) -> list[str]:
     """Pass through native completion evidence; never normalize a top-k subset."""
     a, r = plan.artifacts, plan.resources
@@ -308,12 +325,7 @@ def server_command(plan: Plan) -> list[str]:
         a.tokenizer_revision,
         "--served-model-name",
         a.model,
-        "--quantization",
-        a.quantization,
-        "--attention-backend",
-        a.attention_backend,
-        "--moe-backend",
-        a.moe_backend,
+        *_weight_format(a),
         "--tensor-parallel-size",
         str(r.tensor_parallel_size),
         "--max-model-len",

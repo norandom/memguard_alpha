@@ -67,6 +67,7 @@
     "recommended_ram_bytes": null,
     "context_tokens": 2048,
     "fallback_profile_ids": [
+      "modal-gemma3-4b",
       "modal-gpt-oss-20b"
     ]
   },

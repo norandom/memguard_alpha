@@ -1,4 +1,4 @@
-"""Run a frozen measurement plan against the deployed Modal GPT-OSS-20B endpoint.
+"""Run a frozen measurement plan against a deployed Modal serving manifest's endpoint.
 
 Default is a dry run: it reads only local files (no credentials, no SDK, no
 network) and prints planned counts, the cost estimate and blockers. Execution
@@ -6,7 +6,9 @@ requires ``--execute`` with a reviewed approval record, a new journal and a new
 receipt, and runs inside the shared pilot lifecycle (deploy, armed expiry,
 endpoint identity, 401 guard, readiness, provenance, verified stop of the model
 app and the expiry controller). Requests use the local measurement journal,
-execution and report code with the ``modal-gpt-oss-20b`` Harmony profile.
+execution and report code with the serving manifest's provider profile: the
+``modal-gpt-oss-20b`` Harmony profile for the GPT-OSS-20B manifests and the
+generic-mapping ``modal-gemma3-4b`` profile for the Gemma 3 4B manifest.
 
 Operator container: sh scripts/modal_operator.sh measure-plan PLAN MANIFEST CORPUS [APPROVAL]
 """
@@ -24,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from deploy.modal import serve
-from deploy.modal.manifest import MEASUREMENT_MANIFEST, load_plan
+from deploy.modal.manifest import GEMMA_MANIFEST, MEASUREMENT_MANIFEST, PILOT_MANIFEST, load_plan
 from recall_guard.core.local_evidence import LocalModelProvenance
 from recall_guard.core.profiles import connect, load_profile
 from recall_guard.core.request_control import BudgetExhaustedError, CallBudget
@@ -42,10 +44,17 @@ from scripts.probe_modal_model import (
 )
 
 PROFILE_ID = "modal-gpt-oss-20b"
+#: Provider profile per reviewed serving manifest; each manifest has exactly one.
+PROFILES = {PILOT_MANIFEST: PROFILE_ID, MEASUREMENT_MANIFEST: PROFILE_ID, GEMMA_MANIFEST: "modal-gemma3-4b"}
 MODAL_MANIFEST = Path(MEASUREMENT_MANIFEST)
 # Expiry controller request (serve.create_expiry_app): 0.125 core, 128 MiB,
 # running for the GPU phase plus its 150 s stop/verification allowance.
 CONTROLLER_CORES, CONTROLLER_GIB, CONTROLLER_EXTRA_SECONDS = 0.125, 0.125, 150
+
+
+def profile_id(modal_plan):
+    """The provider profile reviewed for this serving manifest."""
+    return PROFILES[modal_plan.serving_manifest]
 
 
 def compute_rate(cost, resources):
@@ -87,7 +96,11 @@ def plan_blockers(modal_plan, local_plan, profile, hashes, estimate, cost):
         blockers.append("plan_endpoint_differs_from_manifest")
     if config.model != modal_plan.artifacts.model:
         blockers.append("plan_model_differs_from_manifest")
-    if replace(config, local_identity=None, endpoint=profile.model_config.endpoint) != profile.model_config:
+    # A profile that declares a model identity (the Gemma revision) binds the plan to it.
+    declared = profile.model_config.local_identity
+    if (replace(config, local_identity=declared, endpoint=profile.model_config.endpoint) != profile.model_config
+            or (declared is not None and (config.local_identity is None
+                                          or config.local_identity.declared != declared.declared))):
         blockers.append("plan_config_differs_from_profile")
     if config.credential_ref != "env:" + modal_plan.target.credential_env:
         blockers.append("plan_credential_reference_differs_from_manifest")
@@ -110,7 +123,8 @@ def plan_blockers(modal_plan, local_plan, profile, hashes, estimate, cost):
     settings = {key: config.parameters.get(key) for key in ("temperature", "top_p", "logprobs", "top_logprobs")}
     if settings != {key: getattr(modal_limits, key) for key in settings}:
         blockers.append("generation_settings_differ_from_manifest")
-    if not profile.harmony.resolve_path().is_file():
+    # Only the Harmony mapping needs the pinned Harmony tokenizer; the generic mapping has none.
+    if profile.harmony is not None and not profile.harmony.resolve_path().is_file():
         blockers.append("pinned_harmony_tokenizer_unavailable")
     if hashes is None:
         blockers.append("pinned_tokenizer_unavailable")
@@ -124,7 +138,8 @@ def measurement_planning(plan_path, manifest_path, corpus_path, *, modal_manifes
     """Offline dry run: local files only; no credential, SDK or network access."""
     modal_plan = load_plan(modal_manifest)
     local_plan = load_measurement_plan(plan_path, manifest_path, corpus_path)
-    profile = load_profile(PROFILE_ID)
+    selected = profile_id(modal_plan)
+    profile = load_profile(selected)
     cost = json.loads(Path(modal_manifest).read_text(encoding="utf-8"))["cost"]
     hashes = tokenizer_hashes(modal_plan, tokenizer_root)
     estimate = cost_estimate(cost, modal_plan)
@@ -133,7 +148,7 @@ def measurement_planning(plan_path, manifest_path, corpus_path, *, modal_manifes
               for split in ("is_memorized", "oos_control", "held_out")}
     limits = local_plan.limits
     frozen = {
-        "mode": "measurement_plan", "profile": PROFILE_ID,
+        "mode": "measurement_plan", "profile": selected,
         "manifest_sha256": digest(Path(modal_manifest).read_bytes()),
         "plan_sha256": digest(Path(plan_path).read_bytes()),
         "measurement_manifest_sha256": local_plan.manifest_sha256, "corpus_sha256": local_plan.corpus_sha256,
@@ -187,17 +202,20 @@ class ModalAttemptBudget(LocalAttemptBudget):
 
     Admission closes when the lifecycle lease closes or when a full request
     timeout no longer fits before the deadline; nothing is ever replayed.
-    The client is built with ``connect`` semantics from the Harmony profile, its
-    endpoint taken from the deployed URL, which must equal the plan endpoint.
+    The client is built with ``connect`` semantics from the serving manifest's
+    profile (Harmony for GPT-OSS-20B by default), its endpoint taken from the
+    deployed URL, which must equal the plan endpoint.
     """
 
-    def __init__(self, plan, path, *, deadline_unix_s, lease, endpoint, wall_clock=time.time, **options):
+    def __init__(self, plan, path, *, deadline_unix_s, lease, endpoint, wall_clock=time.time,
+                 profile_id=PROFILE_ID, **options):
         self.deadline_unix_s, self.lease, self.endpoint, self._wall_clock = deadline_unix_s, lease, endpoint, wall_clock
+        self.profile_id = profile_id
         super().__init__(plan, path, **options)
 
     def client(self, *, environment=None):
         environment = dict(os.environ if environment is None else environment)
-        profile = load_profile(PROFILE_ID)
+        profile = load_profile(self.profile_id)
         environment[profile.endpoint_ref.removeprefix("env:")] = self.endpoint
         client = connect(replace(profile, model_config=self.plan.config), self, environment=environment)
         if client.config.endpoint != self.plan.config.endpoint:
@@ -279,7 +297,7 @@ async def execute_measurement(plan_path, manifest_path, corpus_path, approval, j
         window = receipt["budget_review"]["cost_estimate"]["admission_window_seconds"]
         deadline = min(receipt["lifecycle"]["deadline_unix_s"], receipt["gpu_started_at_unix_s"] + window)
         budget = ModalAttemptBudget(local_plan, journal, deadline_unix_s=deadline, lease=receipt["lifecycle"],
-                                    endpoint=endpoint + "/v1/chat/completions")
+                                    endpoint=endpoint + "/v1/chat/completions", profile_id=frozen["profile"])
         receipt["measurement"] = {"status": "executing", "admission_deadline_unix_s": deadline}
         persist(receipt_path, receipt)
         observer = modal_observer(modal_plan, app.app_id, local_plan.config.model, sdk)
@@ -305,7 +323,7 @@ async def execute_measurement(plan_path, manifest_path, corpus_path, approval, j
     def preflight():
         review = measurement_approval(approval, frozen, modal_plan)
         # Credential and pinned tokenizer presence through the profile; no request.
-        profile = load_profile(PROFILE_ID)
+        profile = load_profile(frozen["profile"])
         environment = dict(os.environ)
         environment[profile.endpoint_ref.removeprefix("env:")] = local_plan.config.endpoint
         connect(replace(profile, model_config=local_plan.config), CallBudget(0), environment=environment)

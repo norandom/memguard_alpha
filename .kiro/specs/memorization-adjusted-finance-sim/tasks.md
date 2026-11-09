@@ -66,7 +66,7 @@
   - Tests show refusal for a full-distribution request on a top-k-only profile and acceptance on the llama.cpp profile
   - _Depends: 1.2, 2.5_
   - _Requirements: 3.4_
-- [ ] 3.4 Serving-arm model configuration for Gemma 3 4B on Modal
+- [x] 3.4 Serving-arm model configuration for Gemma 3 4B on Modal
   - Add a Modal measurement manifest with the pinned `google/gemma-3-4b-it` revision, limits and cost rates, and a generic-mapping provider profile that declares the top-k source and its k (no full-distribution capability)
   - Let the deployment code accept this manifest without a Harmony tokenizer, leaving the GPT-OSS-20B pilot manifest and its tests unchanged
   - Offline: the measurement-plan dry run for the Gemma manifest reports requests, worst-case cost and no plan blockers; a full-distribution request on this profile is refused; the existing Modal tests still pass
@@ -293,3 +293,6 @@
 - 6.2/6.3: the start scripts must check free RAM for BOTH resident llama.cpp loads (llama-server plus the full-distribution host, same GGUF) before loading, and otherwise propose Modal or another machine. `connect()` preflight cannot see an already-resident llama-server model (llama.cpp is not in profiles._PS_PROVIDERS), so 9.2/9.3 rely on the script gate, not on connect().
 - 6.2/6.3 ports: test script defaults against the llamacpp-gemma3-4b profile's loopback URL ports (11570, 11580) and the gateway = loopback + 1 rule (11571, 11581). Gateway URLs come from LLAMACPP_ENDPOINT_URL and FULL_DISTRIBUTION_ENDPOINT_URL; nothing resolves `full_distribution.endpoint_ref` yet, so 5.1/7.4 must. Start llama-server with a 2048-token context to match the declared context_length.
 - Gateway port rule (+1) is only a test-local helper in tests/core/test_profiles.py; 6.2/6.3 may add a shared core helper rather than restating it.
+- Modal cost exposure: serve.py arms EACH GPU lifecycle with the manifest's full `gpu_phase_seconds` (86,142 s for Gemma), so target_usd 34.34 is a per-lifecycle exposure until 3.5 bounds the app lifetime by the stage's time limit and 7.3 freezes per-stage limits. 3.5 must arm the expiry controller with the stage limit, never the manifest ceiling, and state this in the manifest caveats.
+- 3.5: add a `--modal-manifest` pass-through to `modal_operator.sh measure-plan`; serve.create_app, probe.verify_weight_cache and stop_experiment still name the GPT-OSS volume, so do not deploy the Gemma app before 3.5 lands. Replace the two remaining literal em-dash glyphs in tests/deploy/test_modal_manifest.py and tests/core/test_profiles.py with "—".
+- 9.4 smoke run: Gemma3ForConditionalGeneration also loads the vision tower; consider `--limit-mm-per-prompt` to skip image inputs. Gemma's chat_template.json is not in tokenizer_hashes (pinned only through --revision).

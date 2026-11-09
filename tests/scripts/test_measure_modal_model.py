@@ -12,9 +12,10 @@ import pytest
 import requests
 
 from deploy.modal import serve
-from deploy.modal.manifest import MEASUREMENT_MANIFEST, PILOT_MANIFEST, load_plan
+from deploy.modal.manifest import GEMMA_MANIFEST, MEASUREMENT_MANIFEST, PILOT_MANIFEST, load_plan
 from recall_guard.core.completion import HARMONY_ONLY_PARAMETERS
 from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProvenance
+from recall_guard.core.profiles import ProfileError
 from recall_guard.core.providers import OpenAICompatibleClient
 from recall_guard.harness.local_execution import HostObservation, execute_plan
 from scripts import measure_modal_model as measure
@@ -449,3 +450,146 @@ def test_serving_and_expiry_recipes_follow_selected_manifest(monkeypatch):
     assert options["timeout"] == 1350 and uploads[-1] == "/root/" + PILOT_MANIFEST
     with pytest.raises(ValueError, match="Unreviewed"):
         serve.create_expiry_app(sdk=sdk, manifest="configs/modal/other.json")
+
+
+# --- Serving-arm Gemma 3 4B manifest and generic-mapping profile (task 3.4) ---
+
+GEMMA_PROFILE = "modal-gemma3-4b"
+GEMMA_REVISION = "093f9f388b31de276ce2de164bdc2081324b9767"
+
+
+def gemma_inputs(tmp_path, endpoint, *, sizes=(40, 100, 40), draws=32, identity=None):
+    """A frozen local plan in the generic-mapping Gemma profile's settings (256 output tokens)."""
+    profile = measure.load_profile(GEMMA_PROFILE)
+    config = profile.model_config.to_dict() | {"endpoint": endpoint + "/chat/completions"}
+    if identity is not None:
+        config["local_identity"] = identity
+    manifest = write_json(tmp_path / "gemma-measurement-manifest.json", {
+        "config": config, "authentication": "environment", "credential_ref": "env:MODAL_PROXY_BEARER",
+        "requested_execution_mode": "GPU"})
+    corpus = write_json(tmp_path / "gemma-corpus.json", {
+        split: [{"item_id": f"{split}-{i}", "prompt": f"{split}-{i} private", "input_tokens": 900}
+                for i in range(count)]
+        for split, count in zip(("is_memorized", "oos_control", "held_out"), sizes, strict=True)})
+    logical = 1 + sizes[0] + 2 * sizes[1] + sizes[2] * (1 + draws)
+    plan = write_json(tmp_path / "gemma-plan.json", {
+        "schema_version": 1, "manifest_sha256": sha(manifest), "corpus_sha256": sha(corpus),
+        "prompt_template": "{prompt}", "selected_features": ["mia", "mcs"], "ensemble_draws": draws,
+        "min_valid": 4, "seed": 0, "min_auc": 0.6, "ensemble_min_parsed": 16,
+        "limits": {"max_requests": logical, "context_tokens": 4096, "max_input_tokens": 3840,
+                   "max_output_tokens": 256, "max_total_tokens": logical * 4096, "max_elapsed_s": 86142}})
+    return plan, manifest, corpus
+
+
+@pytest.fixture
+def gemma(tmp_path):
+    raw = json.loads((ROOT / GEMMA_MANIFEST).read_text(encoding="utf-8"))
+    raw["target"].update(workspace="test", endpoint="https://test.modal.run/v1")
+    modal_manifest = write_json(tmp_path / "gemma-modal.json", raw)
+    tokenizer = tmp_path / "models/hub/models--google--gemma-3-4b-it/snapshots" / GEMMA_REVISION
+    tokenizer.mkdir(parents=True)
+    (tokenizer / "tokenizer.json").write_text("{}")
+    (tokenizer / "tokenizer_config.json").write_text("{}")
+    return SimpleNamespace(tmp=tmp_path, modal_manifest=modal_manifest,
+                           options={"modal_manifest": modal_manifest, "tokenizer_root": tmp_path / "models"})
+
+
+def test_gemma_dry_run_reports_requests_worst_case_cost_and_no_plan_blockers(gemma, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("dry run must not touch the SDK, network or credentials")
+
+    monkeypatch.setattr(serve, "_sdk", forbidden)
+    monkeypatch.setattr(requests, "Session", forbidden)
+    monkeypatch.delenv("MODAL_PROXY_BEARER", raising=False)
+    profile = measure.load_profile(GEMMA_PROFILE)
+    assert profile.harmony is None  # No Harmony tokenizer exists or is needed for the generic mapping.
+    frozen = measure.measurement_planning(*gemma_inputs(gemma.tmp, "https://test.modal.run/v1"), **gemma.options)
+    assert frozen["profile"] == GEMMA_PROFILE and frozen["serving_manifest"] == GEMMA_MANIFEST
+    assert frozen["logical_requests"] == frozen["physical_requests"] == 1 + 40 + 200 + 40 * 33
+    assert frozen["max_output_tokens"] == 256
+    assert frozen["plan_blockers"] == []
+    assert "pinned_harmony_tokenizer_unavailable" not in frozen["execution_blockers"]
+    assert frozen["inference_posts"] == frozen["cloud_mutations"] == 0
+    estimate = frozen["cost_estimate"]
+    # A10 USD 0.000306 + 4 cores x 0.0000131 + 16 GiB x 0.00000222 per second over 86,142 + 120 s,
+    # plus the expiry controller over 86,142 + 150 s.
+    assert estimate["gpu_phase_seconds"] == 86142 and estimate["cleanup_seconds"] == 120
+    assert estimate["rate_usd_per_second"] == pytest.approx(0.00039392)
+    assert estimate["worst_case_total_usd"] == pytest.approx(34.1456, abs=1e-3)
+    assert estimate["worst_case_total_usd"] <= frozen["cost_review"]["target_usd"] == 34.34
+    assert frozen["manifest_limits"] == {"inference_posts": 13857, "total_output_tokens": 3547392,
+                                         "gpu_phase_seconds": 86142}
+    assert "private" not in json.dumps(frozen)
+
+
+def test_gemma_cli_dry_run_selects_the_generic_profile(gemma, capsys):
+    plan, manifest, corpus = gemma_inputs(gemma.tmp, "https://test.modal.run/v1")
+    code = measure.main(["--plan", str(plan), "--manifest", str(manifest), "--corpus", str(corpus),
+                         "--modal-manifest", str(gemma.modal_manifest),
+                         "--tokenizer-root", str(gemma.options["tokenizer_root"])])
+    assert code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert (output["mode"], output["profile"], output["plan_blockers"]) == ("measurement_plan", GEMMA_PROFILE, [])
+
+
+def test_gemma_dry_run_blocks_a_plan_that_differs_from_the_manifest_or_declared_identity(gemma):
+    identity = measure.load_profile(GEMMA_PROFILE).model_config.local_identity.to_dict()
+    identity["declared"]["artifact_revision"] = "0" * 40
+    other = gemma.tmp / "identity"
+    other.mkdir()
+    blockers = measure.measurement_planning(*gemma_inputs(other, "https://test.modal.run/v1", identity=identity),
+                                            **gemma.options)["plan_blockers"]
+    assert blockers == ["plan_config_differs_from_profile"]
+    unknown = gemma.tmp / "unknown"
+    unknown.mkdir()
+    blockers = measure.measurement_planning(*gemma_inputs(unknown, "https://test.modal.run/v1",
+                                                          identity=LocalModelIdentity().to_dict()),
+                                            **gemma.options)["plan_blockers"]
+    assert blockers == ["plan_config_differs_from_profile"]
+    missing = gemma.tmp / "missing"
+    missing.mkdir()
+    options = gemma.options | {"tokenizer_root": missing}
+    blockers = measure.measurement_planning(*gemma_inputs(missing, "https://elsewhere.modal.run/v1"),
+                                            **options)["plan_blockers"]
+    assert blockers == ["plan_endpoint_differs_from_manifest", "pinned_tokenizer_unavailable"]
+
+
+def test_gemma_profile_matches_the_manifest_and_refuses_full_distribution():
+    plan = load_plan(ROOT / GEMMA_MANIFEST)
+    profile = measure.load_profile(GEMMA_PROFILE)
+    assert profile.response_mapping.value == "generic" and profile.harmony is None
+    assert profile.full_distribution is None and profile.estimate_sources == ("top_k",)
+    profile.require_source("top_k")
+    with pytest.raises(ProfileError, match=r"'full_distribution'; available: top_k$"):
+        profile.require_source("full_distribution")
+    config = profile.model_config
+    assert config.model == plan.artifacts.model
+    assert config.credential_ref == "env:" + plan.target.credential_env
+    assert profile.endpoint_ref == "env:MODAL_ENDPOINT_URL" and not profile.allow_unauthenticated
+    settings = {key: config.parameters[key] for key in ("temperature", "top_p", "logprobs", "top_logprobs")}
+    assert settings == {key: getattr(plan.limits, key) for key in settings}
+    assert config.parameters["max_tokens"] == plan.limits.output_tokens_per_post
+    assert config.timeout_s == plan.limits.request_seconds and config.max_retries == plan.limits.retries
+    assert profile.host_requirements.context_tokens == plan.resources.context_tokens
+    declared = config.local_identity.declared
+    assert declared.artifact_revision == declared.tokenizer == plan.artifacts.model_revision == GEMMA_REVISION
+    assert (declared.runtime, declared.runtime_version, declared.backend, declared.context_length) == (
+        "vllm", "0.17.0", "GPU", plan.resources.context_tokens)
+    assert measure.PROFILES[GEMMA_MANIFEST] == GEMMA_PROFILE
+    assert measure.profile_id(plan) == GEMMA_PROFILE
+    assert measure.profile_id(load_plan(ROOT / MEASUREMENT_MANIFEST)) == measure.PROFILE_ID
+    assert measure.profile_id(load_plan(ROOT / PILOT_MANIFEST)) == measure.PROFILE_ID
+
+
+def test_gemma_client_is_generic_and_needs_no_harmony_tokenizer(tmp_path, monkeypatch):
+    monkeypatch.setenv("MODAL_PROXY_BEARER", SECRET)
+    endpoint = "https://test.modal.run/v1"
+    plan = measure.load_measurement_plan(*gemma_inputs(tmp_path, endpoint))
+    budget = measure.ModalAttemptBudget(plan, tmp_path / "gemma.json", deadline_unix_s=time.time() + 3000,
+                                        lease={"admission_open": True}, endpoint=endpoint + "/chat/completions",
+                                        profile_id=GEMMA_PROFILE)
+    client = budget.client()
+    assert isinstance(client, OpenAICompatibleClient)
+    assert not isinstance(client, probe.HarmonyOpenAICompatibleClient)
+    assert client.config.endpoint == endpoint + "/chat/completions"
+    assert client.config.model == "google/gemma-3-4b-it" and client.budget is budget

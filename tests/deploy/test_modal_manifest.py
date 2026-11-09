@@ -3,6 +3,7 @@
 import copy
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -131,6 +132,95 @@ def test_missing_or_unsafe_setup_rejected(tmp_path, mutate):
     path.write_text(json.dumps(raw), encoding="utf-8")
     with pytest.raises(ValueError):
         load_plan(path)
+
+
+GEMMA = ROOT / "configs/modal/gemma-3-4b-measurement.json"
+GEMMA_REVISION = "093f9f388b31de276ce2de164bdc2081324b9767"
+#: Modal's maximum function timeout (https://modal.com/docs/guide/timeouts).
+MODAL_MAX_TIMEOUT_SECONDS = 86400
+
+
+def test_gemma_manifest_loads_without_a_harmony_tokenizer():
+    from deploy.modal.manifest import GEMMA_MANIFEST, REVIEWED_LIMITS
+
+    plan = load_plan(GEMMA)
+    raw = json.loads(GEMMA.read_text(encoding="utf-8"))
+    assert plan.serving_manifest == GEMMA_MANIFEST and raw["upload_allowlist"][2] == GEMMA_MANIFEST
+    a = plan.artifacts
+    assert (a.model, a.tokenizer, a.model_revision, a.tokenizer_revision) == (
+        "google/gemma-3-4b-it", "google/gemma-3-4b-it", GEMMA_REVISION, GEMMA_REVISION)
+    assert (a.quantization, a.moe_backend, a.attention_backend, a.runtime) == (
+        "bf16", "none", "FLASH_ATTN", "vllm==0.17.0")
+    assert (plan.resources.gpu, plan.resources.gpu_count, plan.memory_mib) == ("A10", 1, 16384)
+    assert raw["cache"]["volume"] == "recall-guard-gemma-3-4b-weights" and raw["cache"]["staging_gpu_count"] == 0
+    assert (plan.limits, raw["cost"]["target_usd"]) == REVIEWED_LIMITS[GEMMA_MANIFEST]
+    assert "paid_execution_not_authorized" in plan.execution_blockers
+    provenance = raw["provenance"]
+    assert provenance["license"] != "Apache-2.0" and "Gemma Terms of Use" in provenance["license"]
+    assert "gated=manual" in provenance["access"] and "HF_TOKEN" in provenance["access"]
+    # Credentials by name only: no token value, and the HF credential is never a deployment input.
+    assert "HF_TOKEN" not in json.dumps(raw["target"]) and not re.search(r"hf_[A-Za-z0-9]{20,}", json.dumps(raw))
+    assert "—" not in GEMMA.read_text(encoding="utf-8")  # No em dash.
+
+
+def test_gemma_ceiling_covers_the_serving_arm_and_fits_modal_timeouts():
+    limits = load_plan(GEMMA).limits
+    draws, renderings, macro_months, edgar_calibration, negative_control, smoke = 32, 2, 126, 40 + 100, 40, 32
+    measurement = macro_months * renderings * draws + edgar_calibration * draws + negative_control * draws + smoke
+    assert (limits.eligibility_posts, limits.measurement_posts) == (1, measurement) == (1, 13856)
+    assert limits.inference_posts == limits.eligibility_posts + limits.measurement_posts
+    assert limits.total_output_tokens == limits.inference_posts * limits.output_tokens_per_post
+    assert limits.retries == 0 and limits.temperature == 0 and limits.top_logprobs == 5
+    # Six seconds per worst-case post plus five GPU lifecycles' startup allowance.
+    assert limits.gpu_phase_seconds == limits.inference_posts * 6 + 5 * limits.startup_seconds
+    # The expiry controller's timeout is the GPU phase plus 150 s and must fit Modal's maximum.
+    assert limits.gpu_phase_seconds + 150 <= MODAL_MAX_TIMEOUT_SECONDS
+
+
+def test_gpt_oss_manifests_keep_their_reviewed_candidate():
+    from deploy.modal.manifest import MEASUREMENT_MANIFEST, PILOT_MANIFEST, REVIEWED_LIMITS
+
+    for path in (MANIFEST, ROOT / MEASUREMENT_MANIFEST):
+        plan = load_plan(path)
+        assert plan.artifacts.model == "openai/gpt-oss-20b" and plan.artifacts.moe_backend == "marlin"
+        assert plan.resources.gpu == "A100-40GB"
+        assert json.loads(path.read_text(encoding="utf-8"))["cache"]["volume"] == "recall-guard-gpt-oss-20b-weights"
+    assert REVIEWED_LIMITS[PILOT_MANIFEST][1] == 5 and REVIEWED_LIMITS[MEASUREMENT_MANIFEST][1] == 2
+
+
+@pytest.mark.parametrize(
+    "source,mutate,message",
+    [
+        # A manifest serves only its own reviewed candidate: no mixing of models, resources or volumes.
+        ("gemma", lambda raw, other: raw.update(artifacts=other["artifacts"]), "Unsupported artifact"),
+        ("gemma", lambda raw, other: raw.update(resources=other["resources"]), "Unsupported artifact"),
+        ("gemma", lambda raw, other: raw.update(cache=other["cache"]), "Cache staging"),
+        ("gemma", lambda raw, other: raw["limits"].update(inference_posts=13858), "Measurement limits"),
+        ("gemma", lambda raw, other: raw["cost"].update(target_usd=40), "reviewed USD target"),
+        ("gemma", lambda raw, other: raw["artifacts"].update(moe_backend="marlin"), "Unsupported artifact"),
+        ("gemma", lambda raw, other: raw["cache"].update(staging_gpu_count=1), "Cache staging"),
+        ("pilot", lambda raw, other: raw.update(artifacts=other["artifacts"]), "Unsupported artifact"),
+        ("pilot", lambda raw, other: raw.update(cache=other["cache"]), "Cache staging"),
+        ("pilot", lambda raw, other: raw.update(resources=other["resources"]), "Unsupported artifact"),
+    ],
+)
+def test_reviewed_candidates_cannot_be_mixed_or_raised(tmp_path, source, mutate, message):
+    pilot = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    gemma = json.loads(GEMMA.read_text(encoding="utf-8"))
+    raw, other = (gemma, pilot) if source == "gemma" else (pilot, gemma)
+    mutate(raw, copy.deepcopy(other))
+    path = tmp_path / "mixed.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        load_plan(path)
+
+
+def test_gemma_cli_plan_is_offline():
+    result = subprocess.run([sys.executable, str(ROOT / "deploy/modal/manifest.py"), str(GEMMA)],
+                            capture_output=True, text=True, check=True)
+    output = json.loads(result.stdout)
+    assert output["mode"] == "plan" and output["memory_mib"] == 16384
+    assert output["cloud_mutations"] == output["inference_posts"] == 0
 
 
 def test_isolated_sdk_lock():

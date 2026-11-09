@@ -31,10 +31,11 @@ from recall_guard.core.provider_anthropic import AnthropicClient
 from recall_guard.core.providers import HarmonyOpenAICompatibleClient, OpenAICompatibleClient
 from recall_guard.core.request_control import CallBudget
 
-#: Profiles that predate the full-distribution capability; they offer the top-k source only.
+#: Profiles without the full-distribution capability (older profiles and the Modal Gemma 3 4B serving arm);
+#: they offer the top-k source only.
 TOP_K_ONLY = ("ollama-gemma3-4b", "ollama-phi4-mini", "ollama-llama3.2-3b", "ollama-llama3.1-8b",
               "ollama-llava-llama3-ctx2048", "ollama-gpt-oss-20b", "modal-gpt-oss-20b", "nim-llama3.1-70b",
-              "flm-llama3.2-3b", "flm-gemma3-4b", "flm-gemma4-e4b")
+              "flm-llama3.2-3b", "flm-gemma3-4b", "flm-gemma4-e4b", "modal-gemma3-4b")
 SHIPPED = (*TOP_K_ONLY, "llamacpp-gemma3-4b")
 GIB = 1024 ** 3
 REVISION = "a" * 40
@@ -484,6 +485,25 @@ def test_full_distribution_request_is_refused_on_a_top_k_only_profile_and_accept
         llamacpp.require_source("full_logits")
 
 
+def test_modal_gemma_profile_is_generic_top_k_only_and_refuses_full_distribution():
+    profile = load_profile("modal-gemma3-4b")
+    assert profile.hosting_mode == HostingMode.REMOTE_GPU and profile.response_mapping == ResponseMapping.GENERIC
+    assert profile.harmony is None and profile.full_distribution is None
+    assert profile.estimate_sources == ("top_k",)
+    with pytest.raises(ProfileError, match=r"'full_distribution'; available: top_k$"):
+        profile.require_source("full_distribution")
+    assert profile.model_config.credential_ref == "env:MODAL_PROXY_BEARER"
+    assert profile.endpoint_ref == "env:MODAL_ENDPOINT_URL"
+    assert profile.model_config.parameters["top_logprobs"] == 5 and profile.model_config.parameters["temperature"] == 0
+    assert profile.model_config.local_identity.declared.artifact_revision == "093f9f388b31de276ce2de164bdc2081324b9767"
+    assert "—" not in profile.notes  # No em dash.
+    client = connect(profile, CallBudget(1), environment=MODAL_ENV)
+    assert isinstance(client, OpenAICompatibleClient) and not isinstance(client, HarmonyOpenAICompatibleClient)
+    assert client.budget.used == 0
+    with pytest.raises(ProfileError, match="placeholder endpoint"):
+        connect(profile, CallBudget(1), environment={"MODAL_PROXY_BEARER": "test-bearer"})
+
+
 def test_profile_without_logprobs_offers_no_source():
     config = ModelConfig("anthropic_messages", "https://api.anthropic.com/v1/messages", "claude-test",
                          credential_ref="env:TEST_ANTHROPIC_KEY", parameters={"max_tokens": 16})
@@ -550,11 +570,13 @@ def test_llamacpp_ports_follow_the_gateway_rule_and_do_not_collide():
 
 def test_llamacpp_ram_refusal_proposes_modal_and_notes_cover_the_second_load():
     profile = load_profile(LLAMACPP)
-    assert profile.host_requirements.fallback_profile_ids == ("modal-gpt-oss-20b",)
+    # Modal Gemma 3 4B serves the same model family first; GPT-OSS-20B stays the second fallback.
+    assert profile.host_requirements.fallback_profile_ids == ("modal-gemma3-4b", "modal-gpt-oss-20b")
     report = preflight_host(profile, environment={"LOCAL_MODEL_API_KEY": "test-key"}, in_container=False,
                             memory_reader=reader(2 * GIB), http_get=FakeOllama())
     assert not report.passed and report.reason == "insufficient_free_ram"
-    assert "--profile modal-" in report.recommendation and "test-key" not in report.recommendation
+    assert "--profile modal-gemma3-4b or --profile modal-gpt-oss-20b" in report.recommendation
+    assert "test-key" not in report.recommendation
     assert "generation process only" in profile.notes
 
 
