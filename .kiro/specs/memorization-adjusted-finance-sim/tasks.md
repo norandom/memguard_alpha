@@ -89,7 +89,7 @@
   - _Boundary: FredLoader_
   - _Depends: 1.2_
   - _Requirements: 6.5_
-- [ ] 4.2 (P) Macro regime example: prompts, decision and accuracy rule
+- [x] 4.2 (P) Macro regime example: prompts, decision and accuracy rule
   - Render each macro row as an anonymised point-in-time prompt and as an identifying prompt that differs only by decision date, asset names and raw levels
   - Provide the regime decision definition (five loadings in [-1, 1], grid 0.1), the frozen exposure matrix, the defensive spread and its sign as the categorical decision
   - Define accuracy as a pure function of the realized next-month returns it is given: agreement between the spread's sign and the defensive pair minus the risk pair; no data fetching in this component
@@ -299,3 +299,4 @@
 - Modal serving route (3.5): `sh scripts/modal_operator.sh stage|serve|stop-serve MANIFEST STAGE_LIMITS RECEIPT` with StageLimits JSON files (deploy/modal/stage_limits.py) that 7.3 writes from the frozen plan; serve arms the auto-stop at start + max_seconds and the controller timeout at max_seconds + 150; `serve` has no readiness or 401 check, so 7.4 checks reachability and the runner checks the 7.5 approval record before any request; a failed serve reports status/cleanup honestly with a recovery command, and `unarmed_app_left_deployed` means the operator must stop by ID. The stop-serve fallback relies on Modal raising NotFoundError for a missing deployment (verified in the pinned 1.6.3 source, not live).
 - Windows-native skips (baseline 2026-11-09, 3684 passed, 20 skipped): tests/scripts/test_modal_operator.py (18, needs a POSIX `sh` on PATH; Git for Windows ships one under usr\bin), tests/deploy/test_modal_sdk_serialization.py (modal SDK not in the root env), tests/harness/test_intervention_report.py symlink test (Windows privilege). Confirm these through Dagger or CI when they change.
 - recall_guard/dataset/fred.py: `DEFAULT_CACHE_DIR` is relative; 7.1 resolves it against the repository root, not the CWD. A malformed 200 body raises ValueError (non-retryable), unlike full_distribution's `invalid_evidence` RequestError; 7.1/7.4 classify both. Optional hardening: tighten `_API_KEY` to `[a-z0-9]{32}` (FRED's key shape) so redaction can never collide with body text.
+- recall_guard/dataset/macro_regime.py: `EXPOSURE` is a MappingProxyType of proxies (json.dumps, deepcopy and pickle fail); 7.2 converts with `{c: dict(r) for c, r in EXPOSURE.items()}` before hashing the plan. `MacroRow.raw`/`zscores` are plain dicts, so do not mutate rows after rendering (the prompt hash would change). Sign tests round to 9 decimals; the prompt text is the adopter's byte for byte (verified on 501 rows), including one em dash stored as an escape.

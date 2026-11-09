@@ -749,8 +749,8 @@ def fetch_point_in_time(series_id: str, as_of: date, *, api_key: str, cache_dir:
 | Intent | The worked example's prompts, decision and spread |
 | Requirements | 2.4, 6.1, 6.6 |
 
-- `render_anonymised(row)` and `render_identifying(row, decision_date, asset_names)`
-  differ only in date, asset names and raw levels (6.1).
+- `render_anonymised(row)` and `render_identifying(row)` differ only in date, asset
+  names and raw levels (6.1); the row carries the date and `ASSETS` the identities.
 - `regime_definition`: components inflation, growth, credit_stress, policy,
   risk_appetite in [-1, 1], grid 0.1; summary = defensive spread
   `(tilt_gold + tilt_cash) - (tilt_equity + tilt_tech)` from the frozen exposure
@@ -803,6 +803,16 @@ regime_definition: DecisionDefinition
   risk-on, as in the adopter). `is_correct` is `(spread > 0) == (realized defensive
   minus risk > 0)`, where the realized difference is `(gold + cash) - (equity +
   tech)`. No data fetching in this module: 7.1 supplies the row and the returns.
+- Sign tests use the spread rounded to nine decimals (`round(spread, 9)`), so a
+  spread that is zero in decimal arithmetic on the 0.1 grid is zero in the test,
+  whatever its floating-point residue. Measured over the whole grid: 0.12 percent of
+  vectors have an exact-zero spread, and the rule changes the adopter's decision on
+  the 0.05 percent of them whose float residue is positive, by design. `render_identifying(row)` takes only the
+  row, because `MacroRow` carries the date and `ASSETS` the identities. The prompt
+  text is the adopter's, including its one em dash, kept for comparability and
+  stored as an escape. The 0.1 grid drives snapping and adherence statistics and is
+  not requested in the prompt, as in the adopter. `EXPOSURE` is read-only; the
+  plan hash (7.2) converts it to plain dicts first.
 - The macro state in the prompt uses the three z-scores; DTB3 is only the cash
   return leg. `parse` is `parse_json_components`; values are formatted `+.2f` for
   z-scores and `:g` for raw levels, sorted by key, as in the adopter.
