@@ -31,15 +31,17 @@ visualization with one clear worked example published in the docs.
 This feature turns Recall Guard's calibrated memorization estimate into an
 importable tool for finance simulations, and tests whether it earns its place.
 
-An adopter calls one function with a prompt. Recall Guard returns the model's
-answer as a structured decision, together with a memorization estimate for that
-answer and a memorization-adjusted version of the decision. The adjustment
+An adopter calls one function with a prompt. Recall Guard does not accept the
+first answer: by default it draws the same prompt many times on the same model
+and returns the distribution of answers and memorization estimates, together
+with a consensus decision, a point estimate and a memorization-adjusted
+decision. The ensemble is what reveals the statistical properties of the
+model's answer; a single draw is one sample of it. In the adopter project, the
+one answer that was deployed was a minority answer (growth +0.40 against an
+ensemble median of -0.60), and nothing recorded that. The adjustment
 scales the decision's magnitude by one minus the estimate, the rule already used
 by the adopter project Global_Macro_AI_Factors (`guarded_tilt = raw_tilt ·
-(1 − p_memorized)`). The ensemble mode samples the same prompt many times on the
-same model and reduces the draws to one consensus decision and one point
-estimate, because both the answer and the estimate vary between calls even at
-temperature 0: in that project, 100 scorings of one prompt gave a mean
+(1 − p_memorized)`). Both the answer and the estimate vary between calls even at temperature 0: in that project, 100 scorings of one prompt gave a mean
 `p_memorized` of 0.211 with a standard deviation of 0.218 and a range of 0.00 to
 0.76.
 
@@ -79,17 +81,18 @@ tilts on four anonymised assets.
 
 ## Requirements
 
-### Requirement 1: Guarded decision for a single call
-**Objective:** As a quant researcher, I want one call that returns the model's decision together with a memorization estimate and an adjusted decision, so that I can use LLM outputs in a simulation without hand-wiring the guard.
+### Requirement 1: Guarded decision
+**Objective:** As a quant researcher, I want one call that returns the model's decision distribution, a memorization estimate and an adjusted decision, so that I can use LLM outputs in a simulation without accepting the first answer or hand-wiring the guard.
 
 #### Acceptance Criteria
-1. When an adopter submits a prompt with a configured model and decision definition, Recall Guard shall return the raw decision, the memorization estimate, the adjusted decision and a status in one result.
-2. The Recall Guard adjustment shall scale each component of the decision's magnitude by one minus the memorization estimate, clipped to the range 0 to 1, and shall leave the decision's sign unchanged.
-3. If the response carries no usable token evidence, Recall Guard shall return the raw decision unchanged, mark the estimate as unavailable and state the reason.
-4. If the calibrator for the configured model and estimate source is marked weak, Recall Guard shall return the raw decision unchanged and state that the adjustment was skipped because of calibrator quality.
-5. If the response cannot be parsed into the decision definition, Recall Guard shall return a failure status with the reason and no decision.
-6. The Recall Guard result shall record the model identity, estimate source, generation settings, calibrator identity and a hash of the prompt.
-7. The Recall Guard shall not withhold or zero a decision on the basis of a single-draw memorization estimate.
+1. When an adopter submits a prompt with a configured model and decision definition, Recall Guard shall run the ensemble by default and return the consensus decision, the point memorization estimate, the adjusted decision, the distribution summary of Requirement 5 and a status in one result.
+2. Where an adopter explicitly requests a single draw, Recall Guard shall return the raw decision, its memorization estimate, the adjusted decision and a status, and shall label the result as a single draw that is not a distribution estimate.
+3. The Recall Guard adjustment shall scale each component of the decision's magnitude by one minus the memorization estimate, clipped to the range 0 to 1, and shall leave the decision's sign unchanged.
+4. If the response carries no usable token evidence, Recall Guard shall return the raw decision unchanged, mark the estimate as unavailable and state the reason.
+5. If the calibrator for the configured model and estimate source is marked weak, Recall Guard shall return the raw decision unchanged and state that the adjustment was skipped because of calibrator quality.
+6. If the response cannot be parsed into the decision definition, Recall Guard shall return a failure status with the reason and no decision.
+7. The Recall Guard result shall record the model identity, estimate source, generation settings, calibrator identity and a hash of the prompt.
+8. The Recall Guard shall not withhold or zero a decision on the basis of a single-draw memorization estimate, and shall not report a single draw as the model's decision without the single-draw label.
 
 ### Requirement 2: Decision definitions
 **Objective:** As an adopter, I want to describe what my simulation asks the model for, so that the same API serves different finance tasks.
@@ -118,16 +121,19 @@ tilts on four anonymised assets.
 2. If an adopter applies a calibrator to a response with a different model identity, estimate source or generation settings, Recall Guard shall refuse to compute the estimate and state the mismatch.
 3. When a calibrator is fitted, Recall Guard shall report its held-out discrimination with an interval and mark it weak when the discrimination is below the configured threshold.
 
-### Requirement 5: Ensemble mode
-**Objective:** As a quant researcher, I want the ensemble to give me the calibrated model's decision and estimate with less serving nondeterminism, so that a simulation does not depend on one lucky or unlucky draw.
+### Requirement 5: Ensemble and answer distribution
+**Objective:** As a quant researcher, I want the ensemble to reveal the statistical properties of the model's answer and of its memorization estimate, so that a simulation does not depend on one lucky or unlucky draw.
 
 #### Acceptance Criteria
-1. Where ensemble mode is selected, Recall Guard shall draw the same prompt the configured number of times with the same model and settings.
-2. Where ensemble mode is selected, Recall Guard shall return one consensus decision, one point memorization estimate as the mean of the per-draw estimates, the per-component spread, the decision agreement and the counts of requested, parsed and failed draws.
-3. Where ensemble mode is selected, Recall Guard shall compute the adjusted decision from the consensus decision and the point estimate.
-4. If fewer draws parse than the configured minimum, Recall Guard shall return a failure status with the counts and no decision.
-5. If a decision component is split into separated clusters across draws, Recall Guard shall report that component as unresolved and shall not report a single value for it.
-6. The Recall Guard shall record the draws so that the ensemble result can be recomputed without new model requests.
+1. While the ensemble runs, Recall Guard shall draw the same prompt the configured number of times with the same model and settings.
+2. When the ensemble completes, Recall Guard shall return one consensus decision, one point memorization estimate as the mean of the per-draw estimates, and the counts of requested, parsed and failed draws.
+3. When the ensemble completes, Recall Guard shall return the distribution summary: per component the quantiles, spread and sign agreement; the decision agreement with an interval; the spread and quantiles of the per-draw memorization estimates; and the number of distinct answers.
+4. When the ensemble completes, Recall Guard shall report where the first draw falls within the distribution of each component and of the summary decision value.
+5. When the ensemble completes, Recall Guard shall compute the adjusted decision from the consensus decision and the point estimate.
+6. If fewer draws parse than the configured minimum, Recall Guard shall return a failure status with the counts and no decision.
+7. If a decision component is split into separated clusters across draws, Recall Guard shall report that component as unresolved and shall not report a single value for it.
+8. The Recall Guard shall record the draws so that the ensemble result and its distribution summary can be recomputed without new model requests.
+9. The Recall Guard shall report the measured dependence between draws alongside every interval, and shall state that intervals assume independent draws.
 
 ### Requirement 6: Positive control (identifying versus anonymised prompts)
 **Objective:** As a researcher, I want a setting where memorization is known to exist, so that the study can show whether the adjustment removes it.
@@ -152,15 +158,16 @@ tilts on four anonymised assets.
 **Objective:** As a principal investigator, I want pre-registered paired tests of each variant, so that a significant result is not a product of choosing the analysis after seeing the data.
 
 #### Acceptance Criteria
-1. The Study shall compare four variants on the same items: no adjustment, adjustment from top-k logprobs, adjustment from full logits, and ensemble with adjustment.
+1. The Study shall compare, on the same items, two draw modes (single first draw and ensemble) crossed with three adjustment settings (none, from top-k logprobs, from full logits), six variants in all.
 2. The Study shall freeze the items, variants, metrics, tolerance, seeds, resample counts, significance level and decision rule in a dated plan with content hashes before it sends any study request.
 3. The Study shall test, per variant, the change in the pre-cutoff minus post-cutoff accuracy gap of identifying prompts, with a paired bootstrap interval.
 4. The Study shall test, per variant, the difference in Brier score or log loss against no adjustment on realized outcomes, with a paired bootstrap interval.
 5. The Study shall test whether ensemble mode reduces the run-to-run variance of the decision and of the memorization estimate, by comparing two independent half-ensembles of each prompt with single draws.
-6. The Study shall test each model's decisions against a random-answerer null over the same decision space and report the test statistic and p-value.
-7. The Study shall adjust p-values across variants with the Holm method and report raw and adjusted values.
-8. The Study shall report effect sizes with intervals and the achieved power for the pre-registered effect size.
-9. If a pre-registered item or metric cannot be computed, the Study shall report it as missing with the reason and shall not substitute another.
+6. The Study shall report how often the first draw differs from the ensemble consensus in sign or lies outside the central half of the ensemble distribution, with an interval, for every model and control.
+7. The Study shall test each model's decisions against a random-answerer null over the same decision space and report the test statistic and p-value.
+8. The Study shall adjust p-values across variants with the Holm method and report raw and adjusted values.
+9. The Study shall report effect sizes with intervals and the achieved power for the pre-registered effect size.
+10. If a pre-registered item or metric cannot be computed, the Study shall report it as missing with the reason and shall not substitute another.
 
 ### Requirement 9: Top-k versus full-logit convergence
 **Objective:** As a researcher, I want to know how far top-k logprob estimates are from full-logit estimates within one model, so that I can judge when top-k is good enough.
@@ -175,10 +182,10 @@ tilts on four anonymised assets.
 **Objective:** As an adopter, I want one clear worked example with figures, so that I can see the effect, or its absence, at a glance.
 
 #### Acceptance Criteria
-1. The Study shall publish one worked example in the docs: a monthly macro rebalance with FRED rows, run through all four variants for the positive and the negative control.
+1. The Study shall publish one worked example in the docs: a monthly macro rebalance with FRED rows, run through all six variants for the positive and the negative control.
 2. The Study shall include in the worked example a figure of the pre-cutoff versus post-cutoff accuracy gap of identifying and anonymised prompts before and after adjustment, with intervals.
 3. The Study shall include in the worked example reliability diagrams of the memorization estimate per variant.
-4. The Study shall include in the worked example a figure of the per-draw spread of decisions and estimates against the ensemble result.
+4. The Study shall include in the worked example a figure of the per-draw distribution of decisions and estimates against the ensemble result, marking where the first draw falls.
 5. The Study shall include in the worked example a figure of top-k versus full-distribution agreement as k grows.
 6. The Study shall state each figure's data, sample size and interval method in its caption, and shall make each figure readable without color alone.
 7. The Study shall make the worked example reproducible offline from recorded draws and scores, without new model requests.
