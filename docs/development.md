@@ -150,6 +150,9 @@ dagger --mod ci call build --source=. export --path=dist
 dagger --mod ci call docs --source=. export --path=site
 ```
 
+`--paths="tests/core tests/test_packaging.py"` narrows `test` to space-separated
+pytest targets; without it the whole suite runs.
+
 The Python selector remains `--python=3.12` or `--python=3.14`; the Dockerfile owns
 the base-image version and default. Dagger consumes its `dev` target rather than
 maintaining another dependency-install recipe. Build and docs functions return

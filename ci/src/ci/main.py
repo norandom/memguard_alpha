@@ -58,10 +58,14 @@ class Ci:
         )
 
     @function
-    async def test(self, source: SourceDirectory, python: str = "3.12") -> str:
-        """Run the test suite for one Python version (Req 6.2)."""
+    async def test(self, source: SourceDirectory, python: str = "3.12", paths: str = "") -> str:
+        """Run the test suite for one Python version (Req 6.2).
+
+        ``paths`` optionally narrows the run to space-separated pytest targets
+        (files, directories or node ids); empty runs the whole suite.
+        """
         container = await self.base(source, python)
-        return await container.with_exec(["uv", "run", "--no-sync", "pytest", "-q"]).stdout()
+        return await container.with_exec(["uv", "run", "--no-sync", "pytest", "-q", *paths.split()]).stdout()
 
     @function
     async def test_matrix(self, source: SourceDirectory) -> str:
