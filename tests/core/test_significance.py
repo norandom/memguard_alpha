@@ -795,6 +795,128 @@ def test_half_ensemble_variance_validates_its_arguments(halves_a, halves_b, sing
         half_ensemble_variance(halves_a, halves_b, singles, **arguments)
 
 
+def _replayed_ratios(halves_a, halves_b, singles, *, n_resamples: int, seed: int) -> list[float | None]:
+    """Replay the item-level resamples: the ratio, inf for x/0, or None for 0/0."""
+    n = len(halves_a)
+    rng = np.random.default_rng(seed)
+    ratios: list[float | None] = []
+    for _ in range(n_resamples):
+        index = rng.integers(0, n, size=n)
+        half = 0.5 * float(np.mean((halves_a[index] - halves_b[index]) ** 2))
+        single = 0.5 * float(np.mean((singles[index, 0] - singles[index, 1]) ** 2))
+        if single == 0.0:
+            ratios.append(math.inf if half > 0.0 else None)
+        else:
+            ratios.append(half / single)
+    return ratios
+
+
+def test_half_ensemble_variance_counts_unbounded_resamples_against_the_ensemble() -> None:
+    # Single draws differ only on item 0; the halves differ on items 0 and 1.
+    # A resample without item 0 but with item 1 has ratio x/0 (unbounded); one
+    # with only item 2 is 0/0 (dropped).
+    halves_a = np.array([0.0, 1.0, 2.0])
+    halves_b = np.array([0.5, 2.0, 2.0])
+    singles = np.array([[0.0, 1.0], [2.0, 2.0], [3.0, 3.0]])
+    result = half_ensemble_variance(halves_a, halves_b, singles, n_resamples=400, seed=5)
+
+    ratios = _replayed_ratios(halves_a, halves_b, singles, n_resamples=400, seed=5)
+    finite = [r for r in ratios if r is not None and math.isfinite(r)]
+    unbounded = sum(1 for r in ratios if r == math.inf)
+    dropped = sum(1 for r in ratios if r is None)
+    assert unbounded > 0 and dropped > 0
+
+    finite_at_least_one = sum(1 for r in finite if r >= 1.0)
+    counted = (1 + finite_at_least_one + unbounded) / (1 + len(finite) + unbounded)
+    dropped_unbounded = (1 + finite_at_least_one) / (1 + len(finite))
+    assert result.p_value > dropped_unbounded
+    assert result.p_value == pytest.approx(counted)
+
+    # About 7/27 of the kept resamples are unbounded, above (1 - 0.95) / 2.
+    assert result.interval is None
+    assert result.parameters["unbounded_resamples"] == unbounded
+    assert result.parameters["dropped_resamples"] == dropped
+    assert result.parameters["interval_note"] == "upper bound unbounded"
+
+
+def test_half_ensemble_variance_interval_ranks_a_few_unbounded_resamples_highest() -> None:
+    # 40 items, single draws differ on 4 of them: about 0.9^40 = 1.5 percent of
+    # resamples miss all 4 and are unbounded, below the 2.5 percent tail.
+    rng = np.random.default_rng(20)
+    halves_a = rng.normal(0.0, 1.0, size=40)
+    halves_b = rng.normal(0.0, 1.0, size=40)
+    first = rng.normal(0.0, 1.0, size=40)
+    second = first.copy()
+    second[:4] += rng.normal(0.0, 3.0, size=4)
+    singles = np.column_stack([first, second])
+    result = half_ensemble_variance(halves_a, halves_b, singles, n_resamples=2000, seed=3)
+
+    ratios = np.array(_replayed_ratios(halves_a, halves_b, singles, n_resamples=2000, seed=3), dtype=float)
+    unbounded = np.isposinf(ratios)
+    assert 0 < int(unbounded.sum()) < 0.025 * ratios.size
+
+    assert result.interval is not None
+    assert math.isfinite(result.interval.lo) and math.isfinite(result.interval.hi)
+    # Dropping the unbounded resamples would pull the upper bound down.
+    assert result.interval.hi > float(np.percentile(ratios[~unbounded], 97.5))
+    ranked_highest = np.where(unbounded, ratios[~unbounded].max(), ratios)
+    assert result.interval.lo == pytest.approx(float(np.percentile(ranked_highest, 2.5)))
+    assert result.interval.hi == pytest.approx(float(np.percentile(ranked_highest, 97.5)))
+    expected_p = (1 + int(np.count_nonzero(ratios >= 1.0))) / (1 + ratios.size)
+    assert result.p_value == pytest.approx(expected_p)
+
+    assert result.parameters["unbounded_resamples"] == int(unbounded.sum())
+    assert result.parameters["dropped_resamples"] == 0
+    assert result.parameters["interval_note"] is None
+
+
+def test_half_ensemble_variance_still_drops_and_counts_0_over_0_resamples() -> None:
+    # Only item 0 has any spread, in both pairs, so a resample without it is 0/0.
+    halves_a = np.array([0.0, 1.0, 2.0])
+    halves_b = np.array([0.5, 1.0, 2.0])
+    singles = np.array([[0.0, 1.0], [2.0, 2.0], [3.0, 3.0]])
+    result = half_ensemble_variance(halves_a, halves_b, singles, n_resamples=200, seed=5)
+    ratios = _replayed_ratios(halves_a, halves_b, singles, n_resamples=200, seed=5)
+    assert result.parameters["dropped_resamples"] == sum(1 for r in ratios if r is None) > 0
+    assert result.parameters["unbounded_resamples"] == 0
+    assert result.parameters["interval_note"] is None
+    assert result.interval is not None
+
+
+def test_half_ensemble_variance_records_no_unbounded_resamples_on_ordinary_data() -> None:
+    draws = _independent_draws(200, 8, seed=6)
+    result = half_ensemble_variance(
+        draws[:, :4].mean(axis=1), draws[:, 4:].mean(axis=1), draws[:, [0, 4]], n_resamples=100, seed=0
+    )
+    assert result.parameters["unbounded_resamples"] == 0
+    assert result.parameters["interval_note"] is None
+    assert result.interval is not None
+
+
+@pytest.mark.parametrize("halves_b", [np.zeros(3), np.ones(3)])
+def test_half_ensemble_variance_keeps_the_observed_statistic_finite(halves_b) -> None:
+    # Zero single-draw variance on the original data raises for x/0 and 0/0 alike.
+    with pytest.raises(ValueError, match="single-draw variance is zero"):
+        half_ensemble_variance(np.zeros(3), halves_b, np.ones((3, 2)), n_resamples=10, seed=0)
+
+
+def test_unbounded_percentile_bounds_follow_the_linear_rule() -> None:
+    from recall_guard.core.significance import _percentile_bounds_ranking_unbounded_highest as bounds
+
+    finite = np.arange(1.0, 80.0)
+    # No unbounded values: the ordinary percentile bounds.
+    assert bounds(finite, 0.95) == pytest.approx((float(np.percentile(finite, 2.5)), float(np.percentile(finite, 97.5))))
+    # 1 of 80 unbounded: h = 79 * 0.975 = 77.025 reads ranks 77 and 78, both finite.
+    eighty = np.append(finite, math.inf)
+    proxy = np.append(finite, finite.max())
+    assert bounds(eighty, 0.95) == pytest.approx((float(np.percentile(proxy, 2.5)), float(np.percentile(proxy, 97.5))))
+    # 1 of 40 unbounded: the share 0.025 is not above 0.025, but h = 38.025
+    # reads rank 39, the unbounded one, so the upper bound is not finite.
+    assert bounds(np.append(np.arange(1.0, 40.0), math.inf), 0.95) is None
+    # 3 of 40 unbounded: the share 0.075 is above 0.025.
+    assert bounds(np.append(np.arange(1.0, 38.0), [math.inf] * 3), 0.95) is None
+
+
 # ---------------------------------------------------------------------------
 # Simulated power
 # ---------------------------------------------------------------------------

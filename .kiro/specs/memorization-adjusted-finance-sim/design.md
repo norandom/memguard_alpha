@@ -537,6 +537,14 @@ class TestResult:
     halves of K/2 draws when draws are independent). The interval is an item-level
     percentile bootstrap of the ratio, and the one-sided p-value for a ratio below 1
     is (1 + #boot >= 1) / (1 + n_kept).
+    A resample with zero single-draw variance but positive half-ensemble variance
+    has an unbounded ratio: it is kept and counted as >= 1 for the p-value (the
+    conservative direction), never dropped. Only 0/0 resamples are dropped. If the
+    upper percentile reaches an unbounded rank (the unbounded share exceeds
+    (1 - confidence) / 2, or linear interpolation puts positive weight on an
+    unbounded rank), the upper bound is not finite, so `interval` is None and
+    `parameters` records `unbounded_resamples` and the reason; otherwise the interval uses the percentile over all kept resamples with
+    the unbounded ones ranked highest.
   - `simulated_power(effect, noise_sd, n_items, alpha)`: power of a one-sided test of
     a positive mean on n_items independent normal(effect, noise_sd) values with the
     t statistic. The critical value is the (1 - alpha) quantile of the same

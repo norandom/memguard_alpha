@@ -56,6 +56,10 @@ BLOCK_BOOTSTRAP_METHOD = "moving-block percentile bootstrap"
 #: Method label of the item-level intervals of :func:`half_ensemble_variance`.
 ITEM_BOOTSTRAP_METHOD = "item-level percentile bootstrap"
 
+#: ``interval_note`` of :func:`half_ensemble_variance` when the upper
+#: percentile falls on unbounded resamples and no interval is reported.
+UNBOUNDED_UPPER_NOTE = "upper bound unbounded"
+
 
 def _is_int(value: object) -> bool:
     # bool is an int subclass; True as a count or seed is a caller bug.
@@ -105,6 +109,32 @@ def _percentile_bounds(values: np.ndarray, confidence: float) -> tuple[float, fl
     lo = float(np.percentile(values, (alpha / 2.0) * 100.0))
     hi = float(np.percentile(values, (1.0 - alpha / 2.0) * 100.0))
     return lo, hi
+
+
+def _percentile_bounds_ranking_unbounded_highest(values: np.ndarray, confidence: float) -> tuple[float, float] | None:
+    """Percentile bounds with ``+inf`` values ranked highest, or None when the upper one is not finite.
+
+    The bounds follow :func:`_percentile_bounds` over all of ``values``. The
+    upper bound is not finite when the unbounded share exceeds
+    ``(1 - confidence) / 2``, or when numpy's linear rule would interpolate
+    towards an unbounded rank at that percentile. Otherwise only finite ranks
+    are read, so replacing each ``+inf`` by the largest finite value gives the
+    same bounds as ranking it highest.
+    """
+    unbounded = np.isposinf(values)
+    n_unbounded = int(np.count_nonzero(unbounded))
+    if n_unbounded == 0:
+        return _percentile_bounds(values, confidence)
+    n = values.size
+    alpha = 1.0 - confidence
+    if n_unbounded / n > alpha / 2.0:
+        return None
+    # numpy's linear rule reads ranks floor(h) and ceil(h), h = (n - 1) * q.
+    upper_index = (n - 1) * (((1.0 - alpha / 2.0) * 100.0) / 100.0)
+    if math.ceil(upper_index) > n - n_unbounded - 1:
+        return None
+    finite_max = float(values[~unbounded].max())
+    return _percentile_bounds(np.where(unbounded, finite_max, values), confidence)
 
 
 @dataclass(frozen=True)
@@ -241,6 +271,7 @@ def _moving_block_statistics(
     block_length: int,
     n_resamples: int,
     seed: int,
+    keep_positive_infinity: bool = False,
 ) -> tuple[np.ndarray, int]:
     """Validate, resample and return the kept statistics and the dropped count.
 
@@ -248,6 +279,11 @@ def _moving_block_statistics(
     on it; see :func:`block_bootstrap` for the scheme. With ``block_length``
     1 the starts are ``n`` uniform draws from ``0..n - 1``, which is the plain
     item-level bootstrap. Error and warning messages start with ``caller``.
+
+    With ``keep_positive_infinity``, a statistic that returns the float
+    ``math.inf`` (an unbounded value, such as a ratio over a zero denominator)
+    is kept as ``inf`` instead of dropped. Every other value that is not a
+    finite real is still dropped.
 
     Returns:
         The kept resample statistics in draw order, as a float array of length
@@ -278,9 +314,12 @@ def _moving_block_statistics(
         starts = rng.integers(0, n - block_length + 1, size=n_blocks)
         index = (starts[:, None] + offsets).ravel()[:n]
         try:
-            value = _finite_float(stat(rows[index]))
+            raw = stat(rows[index])
         except ValueError:
-            value = None
+            raw = None
+        value = _finite_float(raw)
+        if value is None and keep_positive_infinity and isinstance(raw, float) and raw == math.inf:
+            value = math.inf
         if value is None:
             dropped += 1
             continue
@@ -602,9 +641,20 @@ def half_ensemble_variance(
     independent draws it is about ``2 / K`` for halves of ``K / 2`` draws.
 
     The interval is an item-level percentile bootstrap of the ratio (the
-    moving-block scheme with blocks of one item). A resample whose two single
-    draws agree on every drawn item has no ratio and is dropped. The one-sided
-    p-value for a ratio below 1 is ``(1 + #{boot >= 1}) / (1 + n_kept)``.
+    moving-block scheme with blocks of one item). The one-sided p-value for a
+    ratio below 1 is ``(1 + #{boot >= 1}) / (1 + n_kept)``.
+
+    A resample whose two single draws agree on every drawn item has a zero
+    single-draw variance. When its half-ensemble variance is positive, the
+    ratio is unbounded: the resample is kept, counts as ``>= 1`` in the
+    p-value (the conservative direction) and is never dropped. Only a 0/0
+    resample is dropped. The interval ranks unbounded resamples highest; when
+    the upper percentile falls on them (their share of the kept resamples
+    exceeds ``(1 - confidence) / 2``, or the linear rule would interpolate
+    towards one) the interval is None and ``interval_note`` says why.
+
+    On the original data a zero single-draw variance raises ``ValueError``,
+    whatever the half-ensemble variance, so ``statistic`` is always finite.
 
     Args:
         halves_a: Result of the first half-ensemble per item, shape (n_items,).
@@ -617,7 +667,10 @@ def half_ensemble_variance(
     Returns:
         A :class:`TestResult` whose parameters record ``n_items``,
         ``half_ensemble_variance``, ``single_draw_variance``, ``n_resamples``,
-        ``seed``, ``confidence``, ``alternative`` and ``dropped_resamples``.
+        ``seed``, ``confidence``, ``alternative``, ``dropped_resamples`` (0/0
+        resamples), ``unbounded_resamples`` (kept resamples with an unbounded
+        ratio) and ``interval_note`` (None, or ``"upper bound unbounded"``
+        when ``interval`` is None).
 
     Raises:
         ValueError: if the arrays are not finite booleans or reals of the stated
@@ -646,7 +699,9 @@ def half_ensemble_variance(
     def ratio(sample: np.ndarray) -> float:
         half, single = variances(sample)
         if single == 0.0:
-            raise ValueError("the single draws agree on every item")
+            if half > 0.0:
+                return math.inf
+            raise ValueError("0/0: the single draws and the half-ensembles agree on every item")
         return half / single
 
     half_variance, single_variance = variances(rows)
@@ -658,17 +713,32 @@ def half_ensemble_variance(
     observed = _finite_float(half_variance / single_variance)
     if observed is None:
         raise ValueError(f"{caller}: the variance ratio is not finite.")
-    kept, dropped = _moving_block_statistics(caller, ratio, rows, block_length=1, n_resamples=n_resamples, seed=seed)
+    kept, dropped = _moving_block_statistics(
+        caller,
+        ratio,
+        rows,
+        block_length=1,
+        n_resamples=n_resamples,
+        seed=seed,
+        keep_positive_infinity=True,
+    )
+    # Unbounded (inf) resamples compare >= 1, so they count against the ensemble.
     p_value = (1 + int(np.count_nonzero(kept >= 1.0))) / (1 + kept.size)
-    lo, hi = _percentile_bounds(kept, confidence)
+    bounds = _percentile_bounds_ranking_unbounded_highest(kept, confidence)
+    interval = (
+        None
+        if bounds is None
+        else Interval(lo=bounds[0], hi=bounds[1], confidence=confidence, method=ITEM_BOOTSTRAP_METHOD)
+    )
     return TestResult(
         statistic=observed,
-        interval=Interval(lo=lo, hi=hi, confidence=confidence, method=ITEM_BOOTSTRAP_METHOD),
+        interval=interval,
         p_value=p_value,
         method=(
             "ratio of half-ensemble to single-draw run-to-run variance (half the mean squared pair difference) "
             "with an item-level percentile bootstrap interval; one-sided (ratio below 1) "
-            "p = (1 + #boot >= 1) / (1 + n_kept)"
+            "p = (1 + #boot >= 1) / (1 + n_kept); a resample with zero single-draw and positive half-ensemble "
+            "variance is unbounded, kept, counted >= 1 and ranked highest, and only 0/0 resamples are dropped"
         ),
         parameters={
             "n_items": a.shape[0],
@@ -679,6 +749,8 @@ def half_ensemble_variance(
             "confidence": confidence,
             "alternative": "less",
             "dropped_resamples": dropped,
+            "unbounded_resamples": int(np.count_nonzero(np.isposinf(kept))),
+            "interval_note": UNBOUNDED_UPPER_NOTE if interval is None else None,
         },
     )
 
