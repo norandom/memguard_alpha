@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 1. Foundation: project rules, configuration and runtime prerequisites
-- [ ] 1.1 Record the ensemble-first exception and the new credential
+- [x] 1.1 Record the ensemble-first exception and the new credential
   - Amend the package steering so the guarded-decision API is ensemble-first while the existing scorer keeps opt-in ensembles and single-draw parity
   - Add the FRED API key name to the environment template, empty, with a one-line comment
   - The steering states both rules and the template lists the FRED key; the existing scorer parity test still passes
@@ -268,3 +268,8 @@
   - The strict docs build passes and the report is reachable from Research > Dated reports
   - _Depends: 8.4, 9.3, 9.4_
   - _Requirements: 10.1, 11.4, 11.5_
+
+## Implementation Notes
+
+- Validation runs only through Dagger in WSL Debian, started from PowerShell: `wsl -d Debian --cd /mnt/d/Source/memguard_alpha --exec /home/mc/.local/bin/dagger -m ci call test --source=. --python=3.12 [--paths="..."]` and `... call lint --source=.`; logs go under runs/finance-sim/validation/. Native Windows Python and dagger.exe are not used.
+- The Dagger and Docker context excludes .kiro, .env.*, runs, models and tools, so container tests cannot read steering, the env template or private runs; verify those on the host.

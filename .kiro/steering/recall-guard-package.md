@@ -97,6 +97,14 @@ accuracy.
 - `ensemble-consensus` shipped: an **opt-in, per-call** N-draw path. No implicit default
   config, no env var, no process-wide toggle. Without an `EnsembleSpec` every existing
   surface is byte-for-byte unchanged.
+- **Exception: the guarded-decision API is ensemble-first** (spec
+  `memorization-adjusted-finance-sim`). `guarded_decide` runs the ensemble by default and
+  draws once only on explicit request (`DrawMode.SINGLE`); such a result is labelled a single
+  draw, carries no distribution and is not reported as the model's decision without that
+  label. It never withholds or zeroes a decision on a single-draw estimate.
+- The exception covers only that API. `MemoryGuardedScorer.score` and `score_many` stay
+  single-draw, `score_ensemble` stays opt-in per call, and the scorer's single-draw
+  `p_memorized` parity with the batch harness is unchanged (keep the parity test green).
 - New `core` modules: `consensus.py` (pure statistics, stdlib only -- no numpy, no scipy)
   and `ensemble.py` (spec, wave executor, reduction, hashing). `MemoryGuardedScorer.score_ensemble`
   returns `EnsembledScore`.
