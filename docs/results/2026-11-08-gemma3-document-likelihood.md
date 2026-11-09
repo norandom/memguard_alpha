@@ -1,5 +1,7 @@
 # Gemma 3 4B document likelihood from full logits, 2026-11-08
 
+> Register: R40 · Status: measured · Track: Local
+
 Scoring the press-release text itself, from the full 262,145-entry next-token
 distribution at every position, gives the same answer as the single-draw
 measurement: Gemma 3 4B shows no predictive capacity on held-out data. That is
@@ -26,13 +28,12 @@ documents?
 The scorer calls the llama.cpp library from the project's native Python on the
 model-host side. Features and evaluation run in the dev container, offline.
 
-## Features and calibrator
-
-Per document: mean negative log-likelihood, Min-K % probability (k = 10 %, 20 %),
-zlib ratio (NLL sum over compressed length), mean entropy and mean log rank.
-Logistic regression, class-balanced, seed 0, fitted on the calibration split
-only. The feature list, seed, feature signs and coefficients were frozen in
-`frozen.json` before any held-out feature was computed.
+Features and calibrator: per document, mean negative log-likelihood, Min-K %
+probability (k = 10 %, 20 %), zlib ratio (NLL sum over compressed length), mean
+entropy and mean log rank. Logistic regression, class-balanced, seed 0, fitted
+on the calibration split only. The feature list, seed, feature signs and
+coefficients were frozen in `frozen.json` before any held-out feature was
+computed.
 
 ## Data
 

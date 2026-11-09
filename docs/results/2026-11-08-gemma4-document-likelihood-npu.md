@@ -1,9 +1,11 @@
 # Gemma 4 E4B document likelihood on the NPU, 2026-11-08
 
-The same full-logit document-likelihood method as for Gemma 3 4B
-([report](2026-11-08-gemma3-document-likelihood.md)), run on the AMD Ryzen AI NPU
-for Gemma 4 E4B. Gemma 4 shows no predictive capacity on held-out documents
-either, as the study design expects.
+> Register: R41 · Status: measured · Track: NPU
+
+Gemma 4 E4B shows no predictive capacity on held-out documents, as the study
+design expects. This is the same full-logit document-likelihood method as for
+Gemma 3 4B ([report](2026-11-08-gemma3-document-likelihood.md)), run on the AMD
+Ryzen AI NPU. One method, two models, two kinds of hardware: the same null.
 
 ## Question
 
@@ -50,14 +52,12 @@ and 33. Memorized rows all predate 2023-03.
   one interval in four is expected to miss 0.5 by chance. It is not a usable
   signal.
 
-## Comparison with Gemma 3 4B
+Comparison with Gemma 3 4B:
 
 | Model, hardware | Held-out calibrator AUC [95 %] | Brier | Reference |
 | --- | --- | ---: | ---: |
 | Gemma 3 4B, iGPU (llama.cpp) | 0.562 [0.439, 0.693] | 0.255 | 0.250 |
 | Gemma 4 E4B, NPU (OGA) | 0.470 [0.338, 0.608] | 0.259 | 0.248 |
-
-One method, two models, two kinds of hardware: the same null.
 
 ## Limits
 

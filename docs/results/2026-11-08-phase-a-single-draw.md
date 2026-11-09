@@ -1,5 +1,7 @@
 # Phase A: single-draw calibration on held-out data, 2026-11-08
 
+> Register: R26, R30, R38 · Status: measured · Track: Local, Modal, NPU
+
 Five models (six runs) were calibrated on one clean corpus and scored on 80 labeled rows
 they never saw. None of them separates memorized from unseen press releases on
 those rows, and none beats predicting the base rate. This is the expected result:
@@ -50,16 +52,16 @@ held-out 40 + 40, disjoint.
 Intervals are seeded 1,000-resample stratified bootstraps. The no-skill Brier is
 that of always predicting the held-out base rate.
 
-- **Discrimination:** every held-out interval includes 0.5, as expected.
-- **Calibration:** mean predictions sit within 0.06 of the base rate, but almost
+- Discrimination: every held-out interval includes 0.5, as expected.
+- Calibration: mean predictions sit within 0.06 of the base rate, but almost
   all estimates fall between 0.3 and 0.7, so the Brier score does not beat the
   no-skill reference.
-- **Transfer:** Gemma's calibrator looked strong on its own holdout (0.812) and
+- Transfer: Gemma's calibrator looked strong on its own holdout (0.812) and
   did not carry over to new rows.
-- **NPU:** Gemma 3 4B on the NPU agrees with its iGPU run across runtime and
+- NPU: Gemma 3 4B on the NPU agrees with its iGPU run across runtime and
   quantisation. Gemma 4 E4B uses only control rows filed after its January 2025
   cutoff (74 calibration, 33 held-out).
-- **GPT-OSS-20B:** 44 of 321 responses had no final answer even at low reasoning
+- GPT-OSS-20B: 44 of 321 responses had no final answer even at low reasoning
   effort, and 27 rows had duplicate top-5 alternatives; both were counted as
   failed items.
 
@@ -80,5 +82,5 @@ that of always predicting the held-out base rate.
 ## Evidence
 
 Private journals and reports under `runs/container/phase-a/` (not published).
-Register entries [R26 and R30](../research-register.md); attempts that stopped
+Register entries [R26, R30 and R38](../research-register.md); attempts that stopped
 early are R21 and R22.

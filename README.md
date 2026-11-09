@@ -17,7 +17,7 @@ different answer and score than the next. The [ensemble](docs/ensemble.md) draws
 the same prompt many times and returns one consensus answer and one
 `p_memorized_point`, which makes the calibrated result reproducible. Reducing
 memorization (rewriting, divergence decoding) is a separate, optional track. The
-[research register](docs/research-register.md) lists what each claim rests on.
+[research report](docs/research-report.md) sums up the results so far.
 
 ## Choose where your model runs
 
@@ -335,6 +335,7 @@ the Jane Street feature.
 
 ## Further reading
 
+- [Research report](docs/research-report.md): what has been measured so far, in one place
 - [Research register](docs/research-register.md): every dated decision, experiment and result
 - [Engineering guide and API reference](https://norandom.github.io/memguard_alpha/)
 - [Point-in-time architecture](docs/pit-architecture.md)

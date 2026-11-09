@@ -1,16 +1,40 @@
-# A dated corpus produces a measurable lexical signature
+# FOMC statistical source: older/newer lexical signature, 2026-11-01
 
-Date: 2026-11-01. This CPU-only prototype fits two statistical references from
-Federal Reserve statements and compares their continuation probabilities over
-12 fixed diagnostic prompts. It makes zero model API calls.
+> Register: R04 · Status: feasibility · Track: Divergence
 
-The older/newer signature exists: the two rate probes favor the later zero-rate
-continuation more strongly after adding the 2020 statements, including against a
-matched-token-count old-only control. This supports further investigation of the
-statistical source. It does not establish target-model mitigation or justify
-building out the endpoint correction workflow.
+A dated corpus produces a measurable lexical signature: the two rate probes favor
+the later zero-rate continuation more strongly after adding the 2020 statements,
+including against a matched-token-count old-only control. This supports further
+investigation of the statistical source. It does not establish target-model
+mitigation or justify building out the endpoint correction workflow.
 
-## What the statistical source contains
+## Question
+
+Do two statistical references fitted from older and newer Federal Reserve
+statements give a measurable older/newer signature over fixed diagnostic prompts?
+
+## Setup
+
+This CPU-only prototype fits two statistical references from Federal Reserve
+statements and compares their continuation probabilities over 12 fixed
+diagnostic prompts. It makes zero model API calls.
+
+The existing sparse trigram scorer estimates each next word/punctuation token
+from the previous two, with fixed interpolation and smoothing. Both references
+use the same vocabulary and score the same candidate continuation.
+
+For a continuation, we sum its conditional log probabilities. The correction
+signal is older score minus newer score. The diagnostic below uses the opposite
+sign to show which candidate became more associated with later data:
+
+    exposure shift = log(P_newer(candidate 1) / P_newer(candidate 2))
+                   - log(P_older(candidate 1) / P_older(candidate 2))
+
+These are natural-log units, not confidence percentages or contamination scores.
+Long candidates accumulate multiple token-level effects. Large shifts can arise
+from near-zero smoothed probabilities in a tiny corpus.
+
+## Data
 
 | Reference | Documents | Word/punctuation tokens |
 | --- | --- | --- |
@@ -33,22 +57,7 @@ and [March 2020 statement](https://www.federalreserve.gov/newsevents/pressreleas
 document different policy-rate regimes. This source contrast was deliberately
 selected to make a small lexical feasibility check possible.
 
-## How prompts probe the signature
-
-The existing sparse trigram scorer estimates each next word/punctuation token
-from the previous two, with fixed interpolation and smoothing. Both references
-use the same vocabulary and score the same candidate continuation.
-
-For a continuation, we sum its conditional log probabilities. The correction
-signal is older score minus newer score. The diagnostic below uses the opposite
-sign to show which candidate became more associated with later data:
-
-    exposure shift = log(P_newer(candidate 1) / P_newer(candidate 2))
-                   - log(P_older(candidate 1) / P_older(candidate 2))
-
-These are natural-log units, not confidence percentages or contamination scores.
-Long candidates accumulate multiple token-level effects. Large shifts can arise
-from near-zero smoothed probabilities in a tiny corpus.
+## Results
 
 | Probe | Exposure shift | Shift relative to old-only volume control | Interpretation |
 | --- | ---: | ---: | --- |
@@ -57,15 +66,17 @@ from near-zero smoothed probabilities in a tiny corpus.
 | Coronavirus wording | +18.67 | +18.67 | Positive, but comparison candidate contains an unknown token |
 | Risk wording | +11.04 | +11.04 | Positive, but comparison candidate contains an unknown token |
 
-The two rate candidates are both fully represented in the shared vocabulary.
-All four predeclared later-exposure probes shift positively beyond the volume
-control, but the two unknown-token comparisons are weaker evidence.
+- The two rate candidates are both fully represented in the shared vocabulary.
+- All four predeclared later-exposure probes shift positively beyond the volume
+  control, but the two unknown-token comparisons are weaker evidence.
+- Across all 12 probes, full next-token probabilities were finite and normalized.
+  Identical-reference differentials were exactly zero. Fitted artifacts reloaded
+  with matching scores.
 
-Across all 12 probes, full next-token probabilities were finite and normalized.
-Identical-reference differentials were exactly zero. Fitted artifacts reloaded
-with matching scores.
+We now have actual older/newer fitted references, source provenance and a
+replayable prompt-level signature. The statistical-source gap is partially filled.
 
-## What prevents a stronger conclusion
+## Limits
 
 - These are deliberate lexical diagnostics, not 12 independent blinded test cases.
   Prompts were frozen before fitting; source inspection informed their selection.
@@ -86,11 +97,6 @@ with matching scores.
   isolated prototype constructs diagnostic count tables and reuses the existing
   scorer; it does not claim formal study admission.
 
-## What this enables next
-
-We now have actual older/newer fitted references, source provenance and a
-replayable prompt-level signature. The statistical-source gap is partially filled.
-
 Before calibration for an endpoint, validate a broader reference corpus against
 matched, previously unused questions with known vocabulary and utility controls.
 Separately establish the endpoint mechanism that applies a correction. Neither
@@ -102,7 +108,7 @@ This prototype follows the auxiliary-contrast idea in
 and the [divergence-decoding formulation](https://arxiv.org/html/2605.31293v1#S3).
 It is limited to lexical statistical sourcing, not a replication of their results.
 
-## Evidence and reproduction
+## Evidence
 
 - [Source manifest](2026-11-01-fomc-statistical-signature/sources/sources.json)
 - [Frozen sources, tokenizer and prompts](2026-11-01-fomc-statistical-signature/plan.json)
