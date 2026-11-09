@@ -28,7 +28,7 @@
   - Summarise parsed draws: per component quantiles, spread, sign agreement and unresolved flag; summary-value distribution; decision agreement with interval; estimate quantiles and spread; distinct answers; first-draw position per component and summary value; lag-one dependence with the statement that intervals assume independent draws
   - Unit tests on fixed draw sets reproduce hand-computed quantiles, sign agreement, distinct-answer counts and first-draw ranks; identical draws give one distinct answer; records round-trip unchanged
   - _Requirements: 5.2, 5.3, 5.4, 5.7, 5.8, 5.9_
-- [ ] 2.3 (P) Significance helpers for tests and multiple comparisons
+- [x] 2.3 (P) Significance helpers for tests and multiple comparisons
   - Holm adjustment, exact one-sided binomial test, Monte Carlo random-answerer null over a supplied decision space, moving-block bootstrap intervals over ordered items, and the difference-in-differences accuracy gap
   - Numpy and standard library only; every result carries statistic, interval, raw p-value, method and parameters
   - Unit tests match hand-computed Holm and binomial values and give identical intervals for the same seed
@@ -280,3 +280,4 @@
 - recall_guard/core/decision.py: use `DecisionDefinition.parse_response` (strict) and `parse_json_components` (duplicate-key safe) for every decision parse in 4.2, 4.3 and 5.1; `adjust` takes floats only, so 5.1 must leave `None` (unresolved) components out of it.
 - recall_guard/core/distribution.py: `ComponentDistribution.unresolved` is `bool | None`; None (not assessed) must never be shown as resolved (5.1, figures, report). Estimate statistics use parsed draws that carry an estimate; 5.1's point-estimate mean must use the same set. The agreement interval is one-sided 95 percent (90 percent two-sided) via AGREEMENT_CONFIDENCE and AGREEMENT_TAIL; state that in reports. Serialise RecordedDraw only with to_dict/from_dict (parsed is a MappingProxyType; asdict, deepcopy and pickle fail).
 - Upstream (not this spec): consensus.py `detect_multimodal` docstring still says thin clusters return None, but `_search_split` returns `_unseparated()` (separated=False) when the density guard skips a split. Fix the docstring, or change the behaviour, in a separate upstream change.
+- recall_guard/core/significance.py: `block_bootstrap` drops resamples whose statistic raises ValueError or is non-finite (WARNING only, like bootstrap_ci). 2.4 adds the dropped count to the reported results; study tasks should still keep did_gap cells non-empty by construction (e.g. check up front), since a conditional interval can be biased near the ends of the month series.

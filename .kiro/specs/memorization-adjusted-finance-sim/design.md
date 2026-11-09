@@ -466,11 +466,11 @@ def summarize_distribution(draws: Sequence[RecordedDraw], definition: DecisionDe
 
 ```python
 def holm(p_values: Mapping[str, float]) -> dict[str, float]: ...
-def block_bootstrap(stat: Callable[[np.ndarray], float], blocks: np.ndarray, *, block_length: int, n_resamples: int, seed: int) -> Interval: ...
+def block_bootstrap(stat: Callable[[np.ndarray], float], blocks: np.ndarray, *, block_length: int, n_resamples: int, seed: int, confidence: float = 0.95) -> Interval: ...
 def did_gap(correct: np.ndarray, identifying: np.ndarray, pre_cutoff: np.ndarray) -> float: ...
 def paired_loss_difference(loss_a: np.ndarray, loss_b: np.ndarray, *, block_length: int, n_resamples: int, seed: int) -> TestResult: ...
 def half_ensemble_variance(halves_a: np.ndarray, halves_b: np.ndarray, singles: np.ndarray, *, n_resamples: int, seed: int) -> TestResult: ...
-def random_answerer_null(observed: np.ndarray, sampler: Callable[[np.random.Generator, int], np.ndarray], *, statistic: Callable[[np.ndarray], float], n_null: int, seed: int) -> TestResult: ...
+def random_answerer_null(observed: np.ndarray, sampler: Callable[[np.random.Generator, int], np.ndarray], *, statistic: Callable[[np.ndarray], float], n_null: int, seed: int, confidence: float = 0.95) -> TestResult: ...
 def exact_binomial_greater(k: int, n: int, p: float = 0.5) -> float: ...
 def simulated_power(effect: float, noise_sd: float, n_items: int, *, alpha: float, n_sim: int, seed: int) -> float: ...
 ```
@@ -478,6 +478,44 @@ def simulated_power(effect: float, noise_sd: float, n_items: int, *, alpha: floa
 - Block bootstrap resamples contiguous blocks of decision months, keeping the
   identifying/anonymised and variant pairing within each month (Bertrand, Duflo and
   Mullainathan 2004).
+
+```python
+@dataclass(frozen=True)
+class Interval:
+    lo: float
+    hi: float
+    confidence: float            # two-sided coverage, e.g. 0.95
+    method: str                  # e.g. "moving-block percentile bootstrap"
+
+@dataclass(frozen=True)
+class TestResult:
+    statistic: float
+    interval: Interval | None
+    p_value: float | None        # raw, before Holm
+    method: str
+    parameters: Mapping[str, object]   # n, seeds, resamples, block length, ...
+```
+- Module `recall_guard/core/significance.py`; numpy and the standard library only.
+  `block_bootstrap` and the functions built on it take `confidence: float = 0.95`.
+- Semantics:
+  - `holm` is the step-down adjustment: sort ascending, multiply the i-th smallest
+    (1-based) by m - i + 1, enforce monotonicity with a running maximum, cap at 1.
+    Ties keep a stable order by key. It returns the same keys.
+  - `exact_binomial_greater(k, n, p)` is P(X >= k) for X ~ Binomial(n, p), summed
+    exactly (log-space terms for stability); it validates 0 <= k <= n and 0 < p < 1.
+  - `block_bootstrap`: the first axis of `blocks` is the ordered unit (decision
+    months), each row holding everything paired within that month. Each resample
+    draws ceil(n / L) start indices uniformly from 0..n-L (non-circular moving
+    blocks), concatenates L consecutive rows each, truncates to n rows and applies
+    `stat`. It returns a two-sided percentile interval and is deterministic for a
+    seed (`numpy.random.default_rng`).
+  - `did_gap(correct, identifying, pre_cutoff)` is (accuracy of identifying minus
+    anonymised before the cutoff) minus (the same after the cutoff), over aligned
+    per-item arrays. It raises ValueError when any of the four cells is empty.
+  - `random_answerer_null` evaluates `statistic` on `n_null` samples of size
+    len(observed) drawn by `sampler` from the supplied decision space. The
+    one-sided p-value is (1 + #null >= observed) / (1 + n_null). Its interval is the
+    central `confidence` range of the null distribution, and `method` says so.
 
 #### FullDistributionClient
 
