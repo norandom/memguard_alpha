@@ -160,3 +160,65 @@ new API has a clean, importable surface.
   Bertrand, Duflo and Mullainathan (2004); Holm (1979); DeLong, DeLong and
   Clarke-Pearson (1988); Obuchowski and McClish (1997); Diebold and Mariano
   (1995); Pitman (1939); Morgan (1939).
+
+---
+
+# Design discovery and decisions (2026-11-09)
+
+## Summary
+- **Feature**: `memorization-adjusted-finance-sim`
+- **Discovery Scope**: Complex integration (extension of the scorer and ensemble, new data and statistics components, native host)
+- **Key Findings**:
+  - BAA10Y (the user-chosen HY OAS substitute) has full history on FRED from 1986 but carries a Moody's copyright that prohibits reproduction ("Copyrighted: Citation Required"). It is used internally; only derived statistics are published, with citation. CPIAUCSL and DTB3 are public domain (citation requested); T10Y2Y is "Citation Required" and built from US Treasury data.
+  - Realized returns use the existing FMP key (`portfolio/prices.py`), publishing aggregates only; coverage back to 2016 is verified in the first implementation task.
+  - The ensemble-default requirement conflicts with the package invariant only for the existing scorer; a separate guarded-decision API resolves it without touching scorer parity.
+
+## Consulted skills and guidance
+- **dataviz**: form by job (interval dot plot, reliability diagram, strip plot, lines), one axis per chart with small multiples instead of dual axes, fixed-order categorical palette validated with `validate_palette.js` for light and dark surfaces, identity never by color alone (marker shape and fill), a data table beside every figure, dark mode as its own validated render.
+
+## Design Decisions
+
+### Decision: Separate ensemble-first API next to the unchanged scorer
+- **Context**: R1.1 requires the ensemble by default; the package invariant says the ensemble is opt-in and the single-draw scorer must stay byte-identical (parity test).
+- **Alternatives Considered**: 1. Flip the scorer's default; 2. New `guarded_decide` API, scorer unchanged.
+- **Selected Approach**: 2. Steering amendment: the guarded-decision API is ensemble-first; `MemoryGuardedScorer` keeps opt-in ensembles.
+- **Rationale**: keeps parity and existing adopters unaffected; one clear entry point for finance simulations.
+- **Trade-offs**: two entry points; the docs must say which to use.
+
+### Decision: Per-draw estimates from features, not the direction parser
+- **Context**: the scorer's per-draw path requires `Direction:` / `Confidence:`; JSON decisions fail.
+- **Selected Approach**: estimates from `MiaFeatures` computed per source (top-k or full distribution), independent of parsing; decisions parsed by the `DecisionDefinition`.
+- **Rationale**: decouples decision format from memorization scoring (generalisation: any decision definition).
+
+### Decision: One feature set for both sources
+- **Context**: R9 compares top-k and full-distribution features; the document-likelihood features differ from `MiaFeatures`.
+- **Selected Approach**: compute `MiaFeatures` from full-distribution evidence by deriving top-k alternatives from the full vector; keep the top 100 per position for truncation.
+- **Rationale**: identical features make convergence measurable and allow one calibrator type.
+
+### Decision: Full distribution of generated answers by teacher forcing on the same weights
+- **Context**: no host returns full distributions while generating through an OpenAI-compatible endpoint.
+- **Alternatives Considered**: 1. Extend llama-server; 2. A native host that teacher-forces prompt plus response with the llama.cpp library (verified exact in R40); 3. OGA only.
+- **Selected Approach**: 2, behind the existing gateway pattern; generation through llama-server on the same GGUF digest.
+- **Trade-offs**: two passes per draw; exactness already established.
+
+### Decision: Statistics without scipy
+- **Selected Approach**: `core/significance.py` with Holm, block bootstrap over months, exact binomial, Monte Carlo random-answerer null, paired loss difference, half-ensemble variance comparison and simulated power, numpy and stdlib only.
+- **Rationale**: runtime dependency set unchanged; methods per Efron and Tibshirani 1993, Bertrand, Duflo and Mullainathan 2004, Holm 1979, Diebold and Mariano 1995, Pitman 1939.
+
+### Decision: Negative control as a sentiment-tilt decision on SEC EDGAR releases
+- **Context**: R7 needs a decision task where nothing should be detectable.
+- **Selected Approach**: one component `outlook` in [-1, 1] per release; measure the change against no adjustment and flag variants above the frozen tolerance.
+
+### Decision: Figures rendered offline and committed
+- **Context**: matplotlib is not in the `docs` extra; strict builds should not depend on it.
+- **Selected Approach**: render SVG light and dark variants from recorded results; commit them with CSV tables; docs build only links them.
+
+## Simplifications
+- No new model runtime; no generic workflow engine; the study runner reuses the frozen-plan and approval-record pattern.
+- One calibrator type for both sources; one distribution summary function shared by API, study and figures.
+
+## Risks and Mitigations
+- Study duration (about 13 to 15 hours per model locally): resumable runner, one model loaded at a time, idle-stop hosts.
+- Licensing of BAA10Y and FMP data: private raw values, published aggregates, citations.
+- First-draw position depends on draw order: record `draw_index` from generation time; never reorder.
+- Serial correlation across months: block bootstrap with a frozen block length.
