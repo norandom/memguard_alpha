@@ -39,7 +39,7 @@
   - Paired Brier and log-loss differences with block-bootstrap intervals, half-ensemble versus single-draw variance comparison on shared items, and power by simulation for a pre-registered effect
   - Unit tests confirm a zero difference on identical inputs, the variance of a mean of K independent draws near one K-th of the single-draw variance, and power increasing with effect size
   - _Requirements: 7.2, 8.4, 8.5, 8.9_
-- [ ] 2.5 (P) Full-distribution evidence contract and client
+- [x] 2.5 (P) Full-distribution evidence contract and client
   - Define per-position evidence for a response: actual-token log-probability, entropy, rank, kept top alternatives, vocabulary size and model digest, and let a model response optionally carry it
   - Convert logits to log-probabilities with a float64 log-softmax per position where a host returns logits
   - Request evidence from the host through the gateway with the bearer credential; map digest mismatch, oversize and tokenisation failures to request errors
@@ -282,3 +282,6 @@
 - Upstream (not this spec): consensus.py `detect_multimodal` docstring still says thin clusters return None, but `_search_split` returns `_unseparated()` (separated=False) when the density guard skips a split. Fix the docstring, or change the behaviour, in a separate upstream change.
 - recall_guard/core/significance.py: `block_bootstrap` drops resamples whose statistic raises ValueError or is non-finite (WARNING only, like bootstrap_ci). 2.4 adds the dropped count to the reported results; study tasks should still keep did_gap cells non-empty by construction (e.g. check up front), since a conditional interval can be biased near the ends of the month series.
 - significance.half_ensemble_variance: x/0 resamples count against the ensemble (conservative) and the interval is None when unbounded; 0/0 resamples are still dropped and reported in `dropped_resamples`. 7.11 must report `dropped_resamples`, `unbounded_resamples` and `interval_note`, and check the 0/0 share up front for mostly identical items.
+- recall_guard/core/full_distribution.py: bearer handling refuses non-visible-ASCII credentials before any request, redacts before truncating, maps UnicodeError to a context-free transport_error, never follows redirects (trust_env=False, max_retries=0). Reuse this pattern for every new gateway client (6.2, 6.3, 3.5, 7.4).
+- Upstream (not this spec): recall_guard/core/providers.py validates credentials only with `.strip()`, so a credential with an embedded newline or a non-Latin-1 character can leak the bearer via requests' InvalidHeader repr or a raw UnicodeEncodeError. Apply the full_distribution.py checks there in a separate upstream change.
+- Probes during review run only through Dagger. Because ci/src/ci/main.py excludes runs/ from the upload, a reviewer probe uses a minimal source copy in the session scratchpad passed as --source.

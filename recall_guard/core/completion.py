@@ -10,12 +10,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
 from recall_guard.core.local_evidence import LocalModelIdentity
 from recall_guard.core.nvidia_lm import CompletionResult, TokenLogprob
 from recall_guard.core.readiness_types import ReadinessObservation, ReadinessPolicy, _fields
+
+if TYPE_CHECKING:
+    from recall_guard.core.full_distribution import FullDistributionEvidence
 
 type ParameterValue = str | int | float | bool | None | list[ParameterValue] | tuple[ParameterValue, ...] | Mapping[str, ParameterValue]
 
@@ -105,6 +108,13 @@ def _parameters(values: Mapping[str, ParameterValue]) -> Mapping[str, ParameterV
         elif name == "logprobs" and not isinstance(value, bool):
             raise TypeError("logprobs must be boolean")
     return _freeze(values)
+
+
+def _full_distribution_type() -> type:
+    """Import at use: full_distribution imports request_control, which imports this module."""
+    from recall_guard.core.full_distribution import FullDistributionEvidence
+
+    return FullDistributionEvidence
 
 
 def _plain(value):
@@ -374,7 +384,9 @@ class ModelResponse:
     reported token counters; absent counters and usage remain unknown. Requested
     settings do not become confirmed settings merely because a call succeeded.
     Raw token values retain censoring markers; inspect availability before
-    treating them as measured log probabilities.
+    treating them as measured log probabilities. ``full_distribution`` is
+    optional per-position evidence from a full-distribution host; None means
+    it was not requested or not obtained, never that it was empty.
     """
 
     content: str
@@ -386,11 +398,14 @@ class ModelResponse:
     request_id: str | None = None
     readiness_trace: tuple[ReadinessObservation, ...] | None = None
     local_identity: LocalModelIdentity | None = None
+    full_distribution: "FullDistributionEvidence | None" = None
 
     def __post_init__(self) -> None:
         _text(self.content, "content", allow_empty=True)
         if self.local_identity is not None and not isinstance(self.local_identity, LocalModelIdentity):
             raise TypeError("local_identity must be LocalModelIdentity or None")
+        if self.full_distribution is not None and not isinstance(self.full_distribution, _full_distribution_type()):
+            raise TypeError("full_distribution must be FullDistributionEvidence or None")
         if self.readiness_trace is not None:
             trace = tuple(self.readiness_trace)
             if not all(isinstance(item, ReadinessObservation) for item in trace):
@@ -480,12 +495,17 @@ class ModelResponse:
             result["readiness_trace"] = [item.to_dict() for item in self.readiness_trace]
         if self.local_identity is not None:
             result["local_identity"] = self.local_identity.to_dict()
+        if self.full_distribution is not None:
+            result["full_distribution"] = self.full_distribution.to_dict()
         return result
 
     @classmethod
     def from_dict(cls, data):
         values = _fields(data, {"content", "token_evidence", "usage", "finish_reason", "requested_settings",
-                               "confirmed_settings", "request_id", "readiness_trace", "local_identity"})
+                               "confirmed_settings", "request_id", "readiness_trace", "local_identity",
+                               "full_distribution"})
+        if values.get("full_distribution") is not None:
+            values["full_distribution"] = _full_distribution_type().from_dict(values["full_distribution"])
         if values.get("token_evidence") is not None:
             tokens = []
             for entry in values["token_evidence"]:

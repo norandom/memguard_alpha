@@ -578,6 +578,34 @@ class FullDistributionEvidence:
 - Log-probabilities are computed from logits by a float64 log-softmax per position (3.5).
 - `top_k_keep` (default 100) enables truncation to any smaller k for convergence (9.1).
 
+```python
+def logprobs_from_logits(logits: np.ndarray) -> np.ndarray: ...   # float64 log-softmax per row
+
+class FullDistributionClient:
+    def __init__(self, base_url: str, *, model_digest: str, credential_ref: str,
+                 timeout_s: float = 120.0, environment: Mapping[str, str] | None = None) -> None: ...
+    def evidence(self, prompt_text: str, response_text: str, *, top_k_keep: int = 100) -> FullDistributionEvidence: ...
+```
+- Module `recall_guard/core/full_distribution.py`. `credential_ref` follows the
+  existing `env:NAME` convention (for example `env:LOCAL_MODEL_API_KEY`); the
+  bearer value is read from `environment` (default `os.environ`) at request time
+  and never stored, logged or echoed in errors.
+- The host returns the evidence fields as JSON. The client validates them:
+  - equal per-position lengths;
+  - logprob <= 0, entropy >= 0, rank >= 1;
+  - alternatives sorted by descending logprob, at most `top_k_keep`;
+  - n_vocab > 0;
+  - the digest equals the requested one.
+- Errors are `RequestError` (core/request_control.py) with `status_code` and
+  `code`: 401 `auth_failed`, 409 `digest_mismatch`, 413 `oversize`, 422
+  `tokenisation_failed`; another HTTP status is `http_error`, a network failure
+  `transport_error` (retryable), a request that cannot be encoded `transport_error`
+  (not retryable, no header value in the error), and invalid evidence
+  `invalid_evidence`. Credentials must be visible ASCII (RFC 6750) and are refused
+  before any request otherwise, without echoing the value.
+- `ModelResponse` gains `full_distribution: FullDistributionEvidence | None = None`.
+  The provider capability `full_distribution` belongs to task 3.3.
+
 ### mia
 
 #### EstimateSources

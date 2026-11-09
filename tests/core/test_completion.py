@@ -336,3 +336,21 @@ def test_synchronous_client_contract_is_structural():
         "temperature": 0.5, "max_tokens": 128,
     }
     assert dict(client.config.parameters) == {}
+
+
+def test_response_optionally_carries_full_distribution_evidence():
+    from recall_guard.core.full_distribution import FullDistributionEvidence
+
+    evidence = FullDistributionEvidence(
+        model_digest="sha256:" + "a" * 64, n_vocab=4, response_token_ids=(2,), logprob=(-0.1,), entropy=(0.4,),
+        rank=(1,), top_logprobs=(((2, -0.1), (0, -2.5)),))
+    plain = c.ModelResponse("answer")
+    assert plain.full_distribution is None
+    assert "full_distribution" not in plain.to_dict()
+    carried = c.ModelResponse("answer", full_distribution=evidence)
+    assert carried.full_distribution is evidence
+    restored = c.ModelResponse.from_dict(json.loads(json.dumps(carried.to_dict())))
+    assert restored.full_distribution == evidence
+    assert restored == carried
+    with pytest.raises(TypeError, match="full_distribution"):
+        c.ModelResponse("answer", full_distribution=evidence.to_dict())
