@@ -10,7 +10,10 @@ import requests
 from recall_guard.core.completion import FeatureChoices, ModelConfig
 from recall_guard.core.harmony_evidence import MARKERS
 from recall_guard.core.profiles import (
+    FULL_DISTRIBUTION_SOURCE,
     PROFILE_DIRECTORY,
+    TOP_K_SOURCE,
+    FullDistributionHostConfig,
     HarmonyMappingConfig,
     HostingMode,
     HostMemorySnapshot,
@@ -28,9 +31,11 @@ from recall_guard.core.provider_anthropic import AnthropicClient
 from recall_guard.core.providers import HarmonyOpenAICompatibleClient, OpenAICompatibleClient
 from recall_guard.core.request_control import CallBudget
 
-SHIPPED = ("ollama-gemma3-4b", "ollama-phi4-mini", "ollama-llama3.2-3b", "ollama-llama3.1-8b",
-           "ollama-llava-llama3-ctx2048", "ollama-gpt-oss-20b", "modal-gpt-oss-20b", "nim-llama3.1-70b",
-           "flm-llama3.2-3b", "flm-gemma3-4b", "flm-gemma4-e4b")
+#: Profiles that predate the full-distribution capability; they offer the top-k source only.
+TOP_K_ONLY = ("ollama-gemma3-4b", "ollama-phi4-mini", "ollama-llama3.2-3b", "ollama-llama3.1-8b",
+              "ollama-llava-llama3-ctx2048", "ollama-gpt-oss-20b", "modal-gpt-oss-20b", "nim-llama3.1-70b",
+              "flm-llama3.2-3b", "flm-gemma3-4b", "flm-gemma4-e4b")
+SHIPPED = (*TOP_K_ONLY, "llamacpp-gemma3-4b")
 GIB = 1024 ** 3
 REVISION = "a" * 40
 IDS = dict(zip(MARKERS, (200005, 200006, 200007, 200008, 200002, 200012), strict=True))
@@ -422,3 +427,139 @@ def test_generic_clients_never_send_reasoning_effort(tokenizer):
         AnthropicClient(anthropic, CallBudget(1), environment={"TEST_ANTHROPIC_KEY": "sk-test"})
     harmony = connect(harmony_profile(tokenizer), CallBudget(1), environment=MODAL_ENV)
     assert harmony.config.parameters["reasoning_effort"] == "low"
+
+
+# --- Estimate sources and the llama.cpp full-distribution profile (Requirement 3.4) ---
+
+LLAMACPP = "llamacpp-gemma3-4b"
+GGUF_DIGEST = "sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1"
+#: Loopback ports fixed by task 3.3; each gateway listens on its loopback port plus one.
+LLAMA_SERVER_PORT, FULL_DISTRIBUTION_PORT = 11570, 11580
+#: Ollama, its gateway, FastFlowLM, its gateway and the reference llama-server.
+RESERVED_PORTS = frozenset({11434, 11435, 11540, 11541, 11560})
+STATE_FOLDERS = ("runs/finance-sim/hosts/llama-server", "runs/finance-sim/hosts/full-distribution")
+
+
+def test_source_names_match_the_mia_estimate_source_values():
+    from recall_guard.mia.estimate_source import EstimateSource
+
+    assert (TOP_K_SOURCE, FULL_DISTRIBUTION_SOURCE) == (EstimateSource.TOP_K.value,
+                                                        EstimateSource.FULL_DISTRIBUTION.value)
+
+
+@pytest.mark.parametrize("profile_id", TOP_K_ONLY)
+def test_existing_profiles_load_unchanged_with_the_top_k_source_only(profile_id):
+    profile = load_profile(profile_id)
+    assert profile.full_distribution is None
+    assert profile.estimate_sources == ("top_k",)
+    assert "full_distribution" not in profile.to_dict()
+    profile.require_source("top_k")
+
+
+def test_llamacpp_profile_offers_both_sources_on_one_gguf_digest():
+    profile = load_profile(LLAMACPP)
+    assert profile.estimate_sources == ("top_k", "full_distribution")
+    host = profile.full_distribution
+    assert isinstance(host, FullDistributionHostConfig)
+    declared = profile.model_config.local_identity.declared
+    assert host.model_digest == declared.artifact_digest == GGUF_DIGEST
+    assert (declared.runtime, declared.runtime_version, declared.backend, declared.quantization) == (
+        "llama.cpp", "b12199", "Vulkan (iGPU)", "Q4_K_M")
+    assert host.top_k_keep == 100 and host.credential_ref == "env:LOCAL_MODEL_API_KEY"
+    assert host.endpoint_ref == "env:FULL_DISTRIBUTION_ENDPOINT_URL"
+    assert profile.model_config.credential_ref == "env:LOCAL_MODEL_API_KEY"
+    assert profile.endpoint_ref == "env:LLAMACPP_ENDPOINT_URL" and not profile.allow_unauthenticated
+    ollama = load_profile("ollama-gemma3-4b").model_config.parameters
+    assert profile.model_config.parameters["top_logprobs"] == ollama["top_logprobs"]
+    assert ProviderProfile.from_dict(profile.to_dict()) == profile
+
+
+def test_full_distribution_request_is_refused_on_a_top_k_only_profile_and_accepted_on_llamacpp():
+    with pytest.raises(ProfileError, match=r"'full_distribution'; available: top_k$"):
+        load_profile("ollama-gemma3-4b").require_source("full_distribution")
+    llamacpp = load_profile(LLAMACPP)
+    llamacpp.require_source("full_distribution")
+    llamacpp.require_source("top_k")
+    with pytest.raises(ProfileError, match="available: top_k, full_distribution"):
+        llamacpp.require_source("full_logits")
+
+
+def test_profile_without_logprobs_offers_no_source():
+    config = ModelConfig("anthropic_messages", "https://api.anthropic.com/v1/messages", "claude-test",
+                         credential_ref="env:TEST_ANTHROPIC_KEY", parameters={"max_tokens": 16})
+    profile = ProviderProfile("anthropic-test", "Anthropic test", HostingMode.MANAGED_API, config)
+    assert profile.estimate_sources == ()
+    with pytest.raises(ProfileError, match="available: none"):
+        profile.require_source("top_k")
+
+
+def _write_profile(tmp_path, data):
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def test_digest_mismatch_between_sources_is_refused_at_load(tmp_path):
+    data = json.loads((PROFILE_DIRECTORY / f"{LLAMACPP}.json").read_text(encoding="utf-8"))
+    data["full_distribution"]["model_digest"] = "sha256:" + "0" * 64
+    with pytest.raises(ProfileError, match="differs from the declared artifact_digest"):
+        load_profile(_write_profile(tmp_path, data))
+    data["full_distribution"]["model_digest"] = GGUF_DIGEST
+    data["model_config"]["local_identity"]["declared"]["artifact_digest"] = None
+    with pytest.raises(ProfileError, match="artifact_digest None"):
+        load_profile(_write_profile(tmp_path, data))
+    gemma = load_profile("ollama-gemma3-4b")
+    with pytest.raises(ProfileError, match="artifact_digest"):
+        replace(gemma, full_distribution=FullDistributionHostConfig("http://127.0.0.1:11580", GGUF_DIGEST,
+                                                                    "env:LOCAL_MODEL_API_KEY"))
+
+
+@pytest.mark.parametrize("change", [
+    {"endpoint": "http://host.docker.internal:11581"}, {"endpoint": "http://user:pw@127.0.0.1:11580"},
+    {"endpoint": "http://127.0.0.1:11580?x=1"}, {"model_digest": "f06e" * 16}, {"credential_ref": "Bearer abc"},
+    {"endpoint_ref": "https://example.test"}, {"top_k_keep": 0}, {"top_k_keep": True}, {"top_k_keep": 100.0},
+    {"api_key": "x"},
+])
+def test_invalid_full_distribution_host_config_is_refused(tmp_path, change):
+    data = json.loads((PROFILE_DIRECTORY / f"{LLAMACPP}.json").read_text(encoding="utf-8"))
+    data["full_distribution"] |= change
+    with pytest.raises(ProfileError) as caught:
+        load_profile(_write_profile(tmp_path, data))
+    assert "pw" not in str(caught.value) and "Bearer" not in str(caught.value)
+
+
+def gateway_port(loopback_port: int) -> int:
+    """Repository convention: a bearer gateway listens on its host's loopback port plus one."""
+    return loopback_port + 1
+
+
+def test_llamacpp_ports_follow_the_gateway_rule_and_do_not_collide():
+    from urllib.parse import urlsplit
+
+    profile = load_profile(LLAMACPP)
+    generation = urlsplit(profile.model_config.endpoint)
+    host = urlsplit(profile.full_distribution.endpoint)
+    assert (generation.hostname, generation.port) == ("127.0.0.1", LLAMA_SERVER_PORT)
+    assert (host.hostname, host.port) == ("127.0.0.1", FULL_DISTRIBUTION_PORT)
+    assert (gateway_port(generation.port), gateway_port(host.port)) == (11571, 11581)
+    # The rule holds for the existing local hosts too (Ollama 11434/11435, FastFlowLM 11540/11541).
+    assert (gateway_port(11434), gateway_port(11540)) == (11435, 11541)
+    ports = {generation.port, gateway_port(generation.port), host.port, gateway_port(host.port)}
+    assert len(ports) == 4 and not ports & RESERVED_PORTS
+
+
+def test_llamacpp_ram_refusal_proposes_modal_and_notes_cover_the_second_load():
+    profile = load_profile(LLAMACPP)
+    assert profile.host_requirements.fallback_profile_ids == ("modal-gpt-oss-20b",)
+    report = preflight_host(profile, environment={"LOCAL_MODEL_API_KEY": "test-key"}, in_container=False,
+                            memory_reader=reader(2 * GIB), http_get=FakeOllama())
+    assert not report.passed and report.reason == "insufficient_free_ram"
+    assert "--profile modal-" in report.recommendation and "test-key" not in report.recommendation
+    assert "generation process only" in profile.notes
+
+
+def test_llamacpp_notes_record_state_folders_and_pins():
+    profile = load_profile(LLAMACPP)
+    for folder in STATE_FOLDERS:
+        assert folder in profile.notes
+    assert GGUF_DIGEST in profile.notes and "b12199" in profile.notes and "\u2014" not in profile.notes  # No em dash.

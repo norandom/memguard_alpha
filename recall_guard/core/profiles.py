@@ -48,7 +48,12 @@ PLACEHOLDER_MARKER = "your-host"
 _PROFILE_ID = re.compile(r"[a-z0-9][a-z0-9.\-]*")
 _REVISION = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 _ENV_REF = re.compile(r"(?:env:)?[A-Za-z_][A-Za-z0-9_]*")
+#: Estimate source names, the same strings as ``recall_guard.mia.estimate_source.EstimateSource``
+#: (core cannot import mia).
+TOP_K_SOURCE = "top_k"
+FULL_DISTRIBUTION_SOURCE = "full_distribution"
 
 
 class ProfileError(ValueError):
@@ -123,9 +128,58 @@ class HarmonyMappingConfig:
                 "tokenizer_sha256": self.tokenizer_sha256}
 
 
+def _is_loopback_url(value) -> bool:
+    """True for a credential-free loopback HTTP(S) URL without query or fragment."""
+    try:
+        parsed = urlsplit(value) if isinstance(value, str) else None
+        if parsed is None or parsed.scheme not in {"http", "https"} or parsed.query or parsed.fragment:
+            return False
+        _ = parsed.port  # Validate a supplied port without echoing malformed input.
+    except ValueError:
+        return False
+    return (parsed.username is None and parsed.password is None
+            and (parsed.hostname or "").lower() in LOOPBACK_HOSTS)
+
+
+@dataclass(frozen=True)
+class FullDistributionHostConfig:
+    """Full-distribution host that teacher-forces the profile's own model artifact (Requirement 3.4).
+
+    ``endpoint`` is the host's loopback base URL (the client appends its route).
+    ``endpoint_ref`` optionally names an environment variable holding the bearer
+    gateway's base URL, and ``credential_ref`` names the gateway bearer, both as
+    environment-variable names only. ``model_digest`` is the GGUF the host loads;
+    a profile requires it to equal its declared ``artifact_digest``.
+    ``top_k_keep`` is the number of alternatives the host keeps per position.
+    """
+
+    endpoint: str
+    model_digest: str
+    credential_ref: str
+    endpoint_ref: str | None = None
+    top_k_keep: int = 100
+
+    def __post_init__(self) -> None:
+        if not _is_loopback_url(self.endpoint):
+            raise ProfileError("full_distribution.endpoint must be a credential-free loopback HTTP(S) URL")
+        if not isinstance(self.model_digest, str) or not _DIGEST.fullmatch(self.model_digest):
+            raise ProfileError("full_distribution.model_digest must be sha256: and 64 lowercase hex characters")
+        if not isinstance(self.credential_ref, str) or not _ENV_REF.fullmatch(self.credential_ref):
+            raise ProfileError("full_distribution.credential_ref must name an environment variable")
+        if self.endpoint_ref is not None and (
+                not isinstance(self.endpoint_ref, str) or not _ENV_REF.fullmatch(self.endpoint_ref)):
+            raise ProfileError("full_distribution.endpoint_ref must name an environment variable")
+        if type(self.top_k_keep) is not int or self.top_k_keep < 1:
+            raise ProfileError("full_distribution.top_k_keep must be a positive integer")
+
+    def to_dict(self) -> dict:
+        return {"endpoint": self.endpoint, "endpoint_ref": self.endpoint_ref, "credential_ref": self.credential_ref,
+                "model_digest": self.model_digest, "top_k_keep": self.top_k_keep}
+
+
 _PROFILE_FIELDS = frozenset({"schema_version", "profile_id", "display_name", "hosting_mode", "model_config",
                              "credential_ref", "endpoint_ref", "response_mapping", "harmony", "host_requirements",
-                             "allow_unauthenticated", "notes", "logprob_mass_tolerance"})
+                             "allow_unauthenticated", "notes", "logprob_mass_tolerance", "full_distribution"})
 #: Upper bound for a profile's ``logprob_mass_tolerance`` (absorbs rounding, never real mass).
 MAX_LOGPROB_MASS_TOLERANCE = 1e-3
 
@@ -140,6 +194,9 @@ class ProviderProfile:
     ``logprob_mass_tolerance`` (default ``None``: no mass check) lets evidence
     validation require each position's top-k probability mass to be at most
     ``1 + tolerance``, for runtimes whose float32 rounding exceeds 1 slightly.
+    ``full_distribution`` (default ``None``) declares a full-distribution host
+    on the same model artifact; it owns the capability because core cannot
+    import mia. :attr:`estimate_sources` lists the sources the profile offers.
     """
 
     profile_id: str
@@ -153,6 +210,7 @@ class ProviderProfile:
     endpoint_ref: str | None = None
     notes: str = ""
     logprob_mass_tolerance: float | None = None
+    full_distribution: FullDistributionHostConfig | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.profile_id, str) or not _PROFILE_ID.fullmatch(self.profile_id):
@@ -178,6 +236,7 @@ class ProviderProfile:
                                       or not 0 <= tolerance < MAX_LOGPROB_MASS_TOLERANCE):
             raise ProfileError("logprob_mass_tolerance must be a number in [0, 1e-3) or null")
         self._check_mapping()
+        self._check_full_distribution()
         if self.allow_unauthenticated and (
                 self.hosting_mode != HostingMode.LOCAL or self.model_config.credential_ref is not None):
             raise ProfileError("allow_unauthenticated requires a local profile without a credential reference")
@@ -195,6 +254,34 @@ class ProviderProfile:
                 raise ProfileError("harmony metadata is only valid with the harmony_vllm mapping")
             if only := sorted(self.model_config.parameters.keys() & HARMONY_ONLY_PARAMETERS):
                 raise ProfileError(f"{', '.join(only)} is only valid with the harmony_vllm mapping")
+
+    def _check_full_distribution(self) -> None:
+        host = self.full_distribution
+        if host is None:
+            return
+        if not isinstance(host, FullDistributionHostConfig):
+            raise ProfileError("full_distribution must be FullDistributionHostConfig or null")
+        identity = self.model_config.local_identity
+        declared = None if identity is None else identity.declared.artifact_digest
+        if host.model_digest != declared:
+            # Generation and full distribution must score the same GGUF.
+            raise ProfileError(f"full_distribution.model_digest {host.model_digest} differs from the declared "
+                               f"artifact_digest {declared}; both sources must use the same model artifact")
+
+    @property
+    def estimate_sources(self) -> tuple[str, ...]:
+        """Estimate sources this profile offers: top-k when it requests logprobs, plus full distribution."""
+        sources = (TOP_K_SOURCE,) if self.model_config.parameters.get("logprobs") is True else ()
+        if self.full_distribution is not None:
+            sources += (FULL_DISTRIBUTION_SOURCE,)
+        return sources
+
+    def require_source(self, name: str) -> None:
+        """Refuse an estimate source this profile does not offer, before any request (Requirement 3.4)."""
+        available = self.estimate_sources
+        if name not in available:
+            raise ProfileError(f"Profile {self.profile_id!r} does not offer estimate source {name!r}; "
+                               f"available: {', '.join(available) or 'none'}")
 
     @property
     def mapping_revision(self) -> str | None:
@@ -216,6 +303,7 @@ class ProviderProfile:
             # Emitted only when set, so profiles without a mass check export unchanged.
             **({} if self.logprob_mass_tolerance is None else
                {"logprob_mass_tolerance": self.logprob_mass_tolerance}),
+            **({} if self.full_distribution is None else {"full_distribution": self.full_distribution.to_dict()}),
         }
 
     @classmethod
@@ -229,6 +317,7 @@ class ProviderProfile:
             config = replace(config, credential_ref=data.get("credential_ref"))
             harmony = data.get("harmony")
             requirements = data.get("host_requirements") or {}
+            full_distribution = data.get("full_distribution")
             return cls(
                 profile_id=data["profile_id"], display_name=data["display_name"],
                 hosting_mode=data["hosting_mode"], model_config=config,
@@ -238,6 +327,8 @@ class ProviderProfile:
                 allow_unauthenticated=data.get("allow_unauthenticated", False),
                 endpoint_ref=data.get("endpoint_ref"), notes=data.get("notes", ""),
                 logprob_mass_tolerance=data.get("logprob_mass_tolerance"),
+                full_distribution=(None if full_distribution is None
+                                   else FullDistributionHostConfig(**full_distribution)),
             )
         except ProfileError:
             raise
@@ -308,7 +399,6 @@ def _token_map(profile: ProviderProfile) -> HarmonyTokenMap:
 GIB = 1024 ** 3
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 _SEMVER = re.compile(r"\d+\.\d+\.\d+")
-_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 #: A host memory snapshot older than this is refused as stale (C21).
 SNAPSHOT_MAX_AGE = timedelta(minutes=10)
 #: A snapshot stamped further in the future than this is refused (clock skew allowance).
@@ -905,6 +995,7 @@ def connect(
 
 
 __all__ = [
+    "FULL_DISTRIBUTION_SOURCE", "TOP_K_SOURCE", "FullDistributionHostConfig",
     "HarmonyMappingConfig", "HostMemorySnapshot", "HostPreflightReport", "HostResourceRequirement", "HostingMode",
     "PreflightError", "ProfileError", "ProviderProfile", "ResponseMapping", "available_profiles", "connect",
     "load_profile", "metadata_headers", "observe_fastflowlm_host", "observe_ollama_host", "preflight_host",

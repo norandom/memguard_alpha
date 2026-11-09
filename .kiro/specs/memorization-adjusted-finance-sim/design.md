@@ -201,6 +201,37 @@ tests/
 - `recall_guard/core/profiles.py` and `provider_profiles/`: profile
   `llamacpp-gemma3-4b` (generation through llama-server, full distribution through
   the new host, same GGUF digest).
+  - The capability lives on the profile, because core cannot import mia.
+    `ProviderProfile` gains `full_distribution: FullDistributionHostConfig | None =
+    None`, where `FullDistributionHostConfig` holds `endpoint` (loopback URL),
+    `endpoint_ref` (environment variable for the gateway URL), `credential_ref`
+    (`env:LOCAL_MODEL_API_KEY`), `model_digest` and `top_k_keep` (100). Older
+    profiles omit the key and load unchanged.
+  - `ProviderProfile.estimate_sources` is a tuple of source names, using the same
+    strings as `EstimateSource`: `"top_k"` when the generation parameters request
+    logprobs, and `"full_distribution"` when `full_distribution` is set.
+  - `require_source(name)` raises `ProfileError` before any request, naming the
+    available sources.
+  - Load-time check: `full_distribution.model_digest` must equal the generation
+    profile's declared `artifact_digest` (the shared GGUF).
+  - Ports and state:
+    - llama-server on loopback 11570, with its gateway on 11571;
+    - the full-distribution host on loopback 11580, with its gateway on 11581;
+    - state under `runs/finance-sim/hosts/llama-server` and
+      `runs/finance-sim/hosts/full-distribution`, as recorded in the profile notes.
+    - Tasks 6.2 and 6.3 test their script defaults against these values.
+    - Gateway port is loopback port plus one, the repository convention (Ollama
+      11434/11435, FastFlowLM 11540/11541), so the profile's loopback URLs fix both
+      ports; 6.2 and 6.3 test their defaults against the profile URL ports and this
+      rule. The gateway URL variables `LLAMACPP_ENDPOINT_URL` and
+      `FULL_DISTRIBUTION_ENDPOINT_URL` are listed, empty, in `.env.sample`.
+  - RAM: `min_free_ram_bytes` covers the generation process only. The local
+    sampling arm runs two resident llama.cpp loads of the same GGUF; the 6.2 and 6.3
+    start scripts check free RAM for both before loading and otherwise propose Modal
+    or another machine. The profile's fallback is a Modal profile, never a same-host
+    profile with the same requirement.
+  - Pins: GGUF `sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1`
+    (q4_K_M, `models/blobs`), runtime llama.cpp b12199 (Vulkan iGPU).
 - `configs/modal/gemma-3-4b-measurement.json` (new) and
   `recall_guard/core/provider_profiles/modal-gemma3-4b.json` (new): the serving
   arm's pinned Gemma 3 4B revision, limits and generic-mapping profile.

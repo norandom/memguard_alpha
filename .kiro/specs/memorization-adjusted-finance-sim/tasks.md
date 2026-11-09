@@ -59,7 +59,7 @@
   - Refuse an estimate when model identity, source or settings differ, naming the mismatch; report the calibrator's held-out AUC with an interval and the weak flag
   - Tests load version-1 payloads unchanged, refuse a top-k calibrator on full-distribution evidence and report an AUC interval for a fitted calibrator
   - _Requirements: 3.3, 4.1, 4.2, 4.3_
-- [ ] 3.3 Full-distribution capability and the llama.cpp profile
+- [x] 3.3 Full-distribution capability and the llama.cpp profile
   - Own the full-distribution capability in the provider configuration, and add a llama.cpp Gemma 3 4B profile whose generation and full-distribution sources share one GGUF digest
   - Fix the ports and state folders here: llama-server on loopback 11570 with its gateway on 11571, the full-distribution host on loopback 11580 with its gateway on 11581, state under the private runs folder; none collides with Ollama (11434, 11435), FastFlowLM (11540, 11541) or the reference llama-server (11560)
   - Refuse a configured source the selected host does not offer, before any request, naming the available sources
@@ -290,3 +290,6 @@
 - 7.12 and the report: say that "full distribution" features use the kept top-100 alternatives plus the exact actual-token logprob; agreement at k = kept is identical by construction.
 - 5.1 SourceCalibrator: `CalibrationIdentity.mismatches` compares every field, so the evidence-side identity must copy the calibrator's `corpus_sha256` and handle `local_identity` (as LegacyLogprobAdapter.validate_response does), or the call is refused naming those fields. Corpus binding is a field only so far; 7.6 sets the hash when it fits calibrators.
 - Upstream (not this spec): intervention_metrics.py dedups `provenance.scoring` by JSON of `asdict(identity)`; a run resumed across the 3.2 change shows the same calibrator twice in `calibration_quality`. Normalise through `CalibrationIdentity.from_dict(...).to_dict()` in a separate change.
+- 6.2/6.3: the start scripts must check free RAM for BOTH resident llama.cpp loads (llama-server plus the full-distribution host, same GGUF) before loading, and otherwise propose Modal or another machine. `connect()` preflight cannot see an already-resident llama-server model (llama.cpp is not in profiles._PS_PROVIDERS), so 9.2/9.3 rely on the script gate, not on connect().
+- 6.2/6.3 ports: test script defaults against the llamacpp-gemma3-4b profile's loopback URL ports (11570, 11580) and the gateway = loopback + 1 rule (11571, 11581). Gateway URLs come from LLAMACPP_ENDPOINT_URL and FULL_DISTRIBUTION_ENDPOINT_URL; nothing resolves `full_distribution.endpoint_ref` yet, so 5.1/7.4 must. Start llama-server with a 2048-token context to match the declared context_length.
+- Gateway port rule (+1) is only a test-local helper in tests/core/test_profiles.py; 6.2/6.3 may add a shared core helper rather than restating it.
