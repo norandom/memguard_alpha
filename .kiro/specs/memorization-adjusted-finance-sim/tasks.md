@@ -48,7 +48,7 @@
   - _Requirements: 3.2, 3.5_
 
 - [ ] 3. Estimate sources, calibration identity and profiles
-- [ ] 3.1 One feature set from top-k and from full-distribution evidence
+- [x] 3.1 One feature set from top-k and from full-distribution evidence
   - Compute the existing memorization features from top-k logprobs and, identically, from full-distribution evidence by deriving the top alternatives from the full vector
   - Label every estimate with its source and k; truncate full evidence to any smaller k and report the probability mass covered
   - Tests show that full evidence truncated to k gives the same features as top-k evidence carrying the same alternatives, and that mass coverage matches brute force
@@ -285,3 +285,6 @@
 - recall_guard/core/full_distribution.py: bearer handling refuses non-visible-ASCII credentials before any request, redacts before truncating, maps UnicodeError to a context-free transport_error, never follows redirects (trust_env=False, max_retries=0). Reuse this pattern for every new gateway client (6.2, 6.3, 3.5, 7.4).
 - Upstream (not this spec): recall_guard/core/providers.py validates credentials only with `.strip()`, so a credential with an embedded newline or a non-Latin-1 character can leak the bearer via requests' InvalidHeader repr or a raw UnicodeEncodeError. Apply the full_distribution.py checks there in a separate upstream change.
 - Probes during review run only through Dagger. Because ci/src/ci/main.py excludes runs/ from the upload, a reviewer probe uses a minimal source copy in the session scratchpad passed as --source.
+- 3.2: bind the configured top-logprobs count (generation setting) into the calibration identity, not the per-response SourceLabel k (which is None for uneven host top-k).
+- 6.1/6.2: FullDistributionClient only checks `<= top_k_keep`; the host (and ideally the client on arrival) should guarantee a uniform kept count of min(top_k_keep, n_vocab), since mia refuses uneven evidence.
+- 7.12 and the report: say that "full distribution" features use the kept top-100 alternatives plus the exact actual-token logprob; agreement at k = kept is identical by construction.

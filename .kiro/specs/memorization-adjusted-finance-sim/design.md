@@ -625,15 +625,39 @@ class SourceLabel:
     source: EstimateSource
     k: int | None
 
-def features_from_top_k(content: str, logprobs: Sequence[TokenLogprob]) -> MiaFeatures: ...
-def features_from_full(evidence: FullDistributionEvidence) -> MiaFeatures: ...
-def truncate_to_top_k(evidence: FullDistributionEvidence, k: int) -> Sequence[TokenLogprob]: ...
+@dataclass(frozen=True)
+class SourcedFeatures:
+    features: MiaFeatures
+    label: SourceLabel
+
+def features_from_top_k(content: str, logprobs: Sequence[TokenLogprob]) -> SourcedFeatures: ...
+def features_from_full(content: str, evidence: FullDistributionEvidence) -> SourcedFeatures: ...
+def truncate_to_top_k(evidence: FullDistributionEvidence, k: int) -> list[TokenLogprob]: ...
 def top_k_mass(evidence: FullDistributionEvidence, k: int) -> np.ndarray: ...
 ```
-- Both paths produce the existing `MiaFeatures`, so one calibrator type serves both
-  sources, and a calibrator is fitted per source (3.3, 4.1).
-- Convergence compares `features_from_top_k(truncate_to_top_k(e, k))` with
-  `features_from_full(e)` on the same responses and weights only (9.4).
+- Module `recall_guard/mia/estimate_source.py` (mia may import core).
+- Both paths produce the existing `MiaFeatures` through `compute_mia_features`, so
+  one calibrator type serves both sources, and a calibrator is fitted per source
+  (3.3, 4.1). `content` is the response text, needed for `zlib_ratio`.
+- `truncate_to_top_k(e, k)` builds `TokenLogprob` entries from the evidence: the
+  actual-token logprob and the first k kept alternatives (k <= `top_k_keep`); token
+  strings are the ids rendered as `"<id>"`, since the features use only the numbers
+  and `content`. `features_from_full(content, e)` is the same computation with all
+  kept alternatives, labelled `FULL_DISTRIBUTION` with k = the kept count;
+  `features_from_top_k` is labelled `TOP_K` with k = the alternatives per position.
+- `top_k_mass(e, k)` is, per position, the sum of exp of the first k kept
+  alternatives' logprobs.
+- Convergence compares `features_from_top_k(content, truncate_to_top_k(e, k))` with
+  `features_from_full(content, e)` on the same responses and weights only (9.4).
+- Scope of "full distribution" here: the full-distribution features are the existing
+  features computed on the kept alternatives (top 100) taken from the full vector,
+  plus the exact actual-token logprob. Agreement at k = kept is identical by
+  construction, and Min-K%++ uses moments of the kept alternatives, not of the whole
+  vocabulary. The convergence study and the report state this.
+- Full evidence must keep the same number of alternatives at every position; uneven
+  evidence is refused. Host top-k evidence with uneven alternatives is labelled
+  `TOP_K` with k None. The calibration identity (3.2) binds the configured
+  top-logprobs count from the generation settings, never a per-response label.
 
 ### dataset
 
