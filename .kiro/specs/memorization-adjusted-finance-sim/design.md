@@ -57,7 +57,9 @@ point-in-time FRED loader, significance helpers and four documentation figures.
   harness; `RecallWorkflow` and the completion-only workflow.
 - Global_Macro_AI_Factors code and data.
 - Model hosts' own lifecycle scripts (`serve_local_ollama.ps1`,
-  `serve_local_flm.ps1`, `modal_operator.sh`), used as they are.
+  `serve_local_flm.ps1`), used as they are. `modal_operator.sh` and
+  `deploy/modal/` are extended only for the serving route below; their GPT-OSS-20B
+  paths stay unchanged.
 - Publication of raw licensed values (BAA10Y, FMP prices): only derived
   statistics and figures are published.
 - Fine-tuning, rewriting, divergence decoding.
@@ -204,7 +206,10 @@ tests/
   arm's pinned Gemma 3 4B revision, limits and generic-mapping profile.
 - `deploy/modal/manifest.py` and `deploy/modal/serve.py`: accept the Gemma manifest
   (generic mapping, no Harmony tokenizer) alongside the unchanged GPT-OSS-20B
-  pilot manifest.
+  pilot manifest, with the weight volume taken from the manifest and a CPU-only
+  staging step.
+- `scripts/modal_operator.sh`: a serve mode (deploy, reachable for the study runner,
+  verified stop) for the serving route; existing modes unchanged.
 - `recall_guard/harness/plots.py`: four lazy plot functions; the outdated
   "reliability curve not constructible" note is corrected.
 - `recall_guard/__init__.py`: exports `guarded_decide`, `DecisionDefinition`,
@@ -598,7 +603,15 @@ def guarded_decide(prompt: str, config: GuardConfig, *, client: CompletionClient
   different weights from the local GGUF, so the two arms are reported separately.
   Its variant set is no adjustment and top-k only, with its own calibrator for the
   Modal model fitted on the calibration months within the approved limits. The arm
-  also runs the negative control within the same limits. The
+  also runs the negative control within the same limits. The serving arm has no
+  pilot or power gate: it runs the frozen size within its approved limits and
+  reports its achieved power (8.9); the sampling arm is the confirmatory, gated arm.
+- *Serving route*: the Modal deployment takes its weight volume from the manifest
+  (one volume per manifest; the GPT-OSS-20B volume name is unchanged), stages the
+  pinned weights in a CPU-only step with its own frozen limit, and gains a serve mode
+  in `modal_operator.sh` that deploys the app, keeps it reachable for the study
+  runner through `MODAL_ENDPOINT_URL` and `MODAL_PROXY_BEARER` within the approved
+  limits, and stops it with verified cleanup. Credentials pass by name only. The
   full-distribution variants are reported as missing for this arm (8.10), because
   the full-distribution host serves different weights and values from different
   builds are not comparable (9.4).
@@ -617,6 +630,15 @@ item-level variances. `simulated_power` then evaluates the pre-registered effect
 the planned size. The full run starts only when power is at least 0.8; otherwise the
 runner stops, reports the expected power and the options (wider window, more draws),
 and waits for a decision. Pilot items are excluded from the confirmatory analysis.
+
+**Scored probability** (8.4). The forecast scored by Brier and log loss is the
+probability that the defensive pair beats the risk pair over the next month (the
+outcome, from FMP adjusted closes with DTB3 as the cash leg). For an ensemble it is
+the share of parsed draws with a positive defensive spread; for a single draw it is
+that draw's sign as 0 or 1. Both are clipped to [0.01, 0.99]. Adjustment shrinks
+the probability toward 0.5 by the same factor as the components:
+`p_adj = 0.5 + (1 - p_memorized) * (p_raw - 0.5)`. The mapping, outcome and clip
+are frozen in the plan before any request.
 
 **Contracts**: Batch [x]
 - Trigger: `build_plan.py` then `run_study.py --plan --approval?`.
