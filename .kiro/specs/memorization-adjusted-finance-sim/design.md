@@ -388,14 +388,25 @@ def adjust(vector: DecisionVector, p_memorized: float) -> dict[str, float]: ...
 
 ```python
 @dataclass(frozen=True)
+class RecordedDraw:
+    draw_index: int
+    temperature: float | None
+    seed: int | None
+    response_sha256: str
+    parsed: Mapping[str, float] | None   # None when the response did not parse
+    failure_code: str | None             # set exactly when parsed is None
+    estimate: float | None               # per-draw memorization estimate, if any
+    evidence_ref: str | None
+
+@dataclass(frozen=True)
 class ComponentDistribution:
     name: str
     quantiles: Mapping[int, float]
     sd: float
     iqr: float
     sign_agreement: float
-    unresolved: bool
-    first_draw_rank: float
+    unresolved: bool | None              # None when the split check could not run
+    first_draw_rank: float | None        # None when draw 0 did not parse
 
 @dataclass(frozen=True)
 class DistributionSummary:
@@ -414,6 +425,35 @@ class DistributionSummary:
 
 def summarize_distribution(draws: Sequence[RecordedDraw], definition: DecisionDefinition) -> DistributionSummary: ...
 ```
+- `RecordedDraw` is the shared record that the guarded-decision API and the study
+  runner both write. Item and variant keys belong to the study recording, because
+  one ensemble per item and rendering feeds every variant.
+- Semantics:
+  - Quantiles use linear interpolation over the parsed values.
+  - `sd` uses ddof 1, and is 0.0 for a single value. `iqr` is q75 minus q25.
+  - `sign_agreement` is the share of parsed values with the median's sign, where
+    zero counts as its own sign.
+  - `unresolved` comes from the per-component verdicts of `reduce_draws`
+    (`component_verdicts`), with the definition's grid. It is True when separated
+    clusters were found, False when the check ran and found none, and None when the
+    check could not run (no grid, or too few parsed draws). A split skipped by the
+    existing density guard in `consensus.py` reads as False, as `reduce_draws`
+    reports it; this spec does not change that guard. None is never reported as
+    resolved. For the summary value, which has no grid,
+    `unresolved` is True when any component is True and None otherwise.
+  - `decision_agreement` and its Wilson interval come from `reduce_draws` when the
+    definition has `decide`; otherwise they are None. The interval follows the
+    package convention, one-sided at 95 percent, set from explicit exported
+    constants: the lower bound is the 95 percent lower bound, and the pair covers
+    90 percent two-sided. Reports state this.
+  - `distinct_answers` counts distinct parsed vectors in declared order.
+  - `first_draw_rank` is the mid-rank of draw index 0 among the parsed values: the
+    share strictly below plus half the share tied.
+  - `lag1_dependence` is the lag-one Pearson autocorrelation over parsed draws
+    (failed draws skipped), ordered by draw index, of the summary value (or of the first component when there is no
+    summary). It is None with fewer than three parsed draws or zero variance.
+  - `independence_note` states that intervals assume independent draws and that
+    the dependence is reported, not corrected.
 
 #### Significance
 
@@ -580,6 +620,8 @@ def guarded_decide(prompt: str, config: GuardConfig, *, client: CompletionClient
   `harness/guarded_decision.py` together with `GuardIdentity` (model, source,
   settings, calibrator fingerprint, prompt hash).
 - Unresolved components keep `None` values in `decision` and are left unadjusted (5.7).
+  A component whose split check could not run (`unresolved is None`) keeps its value
+  but is flagged as not assessed in the result; it is never presented as resolved.
 
 #### CalibrationIdentity (extension)
 

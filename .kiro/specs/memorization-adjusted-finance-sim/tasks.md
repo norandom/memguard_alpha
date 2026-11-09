@@ -22,7 +22,7 @@
   - Scale each component by one minus the clipped memorization estimate without changing its sign
   - Unit tests show sign preservation, clipping at 0 and 1, rejection of bad bounds and duplicate names, and summary values for raw and adjusted decisions
   - _Requirements: 1.3, 2.1, 2.2, 2.3_
-- [ ] 2.2 Recorded draws and the distribution summary
+- [x] 2.2 Recorded draws and the distribution summary
   - Uses the decision definitions from 2.1, so it runs after 2.1
   - Define the shared recorded-draw record (draw index, temperature, seed, response hash, parsed vector, per-draw estimate, evidence reference) that the API and the study runner both reuse
   - Summarise parsed draws: per component quantiles, spread, sign agreement and unresolved flag; summary-value distribution; decision agreement with interval; estimate quantiles and spread; distinct answers; first-draw position per component and summary value; lag-one dependence with the statement that intervals assume independent draws
@@ -278,3 +278,5 @@
 - FMP key naming: the design and 1.2 use `FMP_API_TOKEN`, but recall_guard/portfolio/prices.py and scripts/build_etf_eval.py read `FMP_API_KEY`. Use FMP_API_TOKEN for this feature (7.1) and do not rely on prices.py's env lookup.
 - The palette validator lives in a version-specific Claude Code temp cache (path and sha256 in the 1.2 receipt); 8.1 must re-locate it and compare the sha256.
 - recall_guard/core/decision.py: use `DecisionDefinition.parse_response` (strict) and `parse_json_components` (duplicate-key safe) for every decision parse in 4.2, 4.3 and 5.1; `adjust` takes floats only, so 5.1 must leave `None` (unresolved) components out of it.
+- recall_guard/core/distribution.py: `ComponentDistribution.unresolved` is `bool | None`; None (not assessed) must never be shown as resolved (5.1, figures, report). Estimate statistics use parsed draws that carry an estimate; 5.1's point-estimate mean must use the same set. The agreement interval is one-sided 95 percent (90 percent two-sided) via AGREEMENT_CONFIDENCE and AGREEMENT_TAIL; state that in reports. Serialise RecordedDraw only with to_dict/from_dict (parsed is a MappingProxyType; asdict, deepcopy and pickle fail).
+- Upstream (not this spec): consensus.py `detect_multimodal` docstring still says thin clusters return None, but `_search_split` returns `_unseparated()` (separated=False) when the density guard skips a split. Fix the docstring, or change the behaviour, in a separate upstream change.
