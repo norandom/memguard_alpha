@@ -98,7 +98,7 @@
   - _Depends: 2.1_
   - _Requirements: 2.4, 6.1, 6.6_
 
-- [ ] 4.3 (P) EDGAR outlook decision and prompt
+- [x] 4.3 (P) EDGAR outlook decision and prompt
   - Provide the one-component outlook decision definition in [-1, 1] and its prompt renderer for an SEC EDGAR press release, used by both the EDGAR calibrator and the negative-control task
   - Tests show strict parsing of the outlook component and a stable rendering hash for a fixed release
   - _Boundary: NegativeControlTask_
@@ -300,3 +300,4 @@
 - Windows-native skips (baseline 2026-11-09, 3684 passed, 20 skipped): tests/scripts/test_modal_operator.py (18, needs a POSIX `sh` on PATH; Git for Windows ships one under usr\bin), tests/deploy/test_modal_sdk_serialization.py (modal SDK not in the root env), tests/harness/test_intervention_report.py symlink test (Windows privilege). Confirm these through Dagger or CI when they change.
 - recall_guard/dataset/fred.py: `DEFAULT_CACHE_DIR` is relative; 7.1 resolves it against the repository root, not the CWD. A malformed 200 body raises ValueError (non-retryable), unlike full_distribution's `invalid_evidence` RequestError; 7.1/7.4 classify both. Optional hardening: tighten `_API_KEY` to `[a-z0-9]{32}` (FRED's key shape) so redaction can never collide with body text.
 - recall_guard/dataset/macro_regime.py: `EXPOSURE` is a MappingProxyType of proxies (json.dumps, deepcopy and pickle fail); 7.2 converts with `{c: dict(r) for c, r in EXPOSURE.items()}` before hashing the plan. `MacroRow.raw`/`zscores` are plain dicts, so do not mutate rows after rendering (the prompt hash would change). Sign tests round to 9 decimals; the prompt text is the adopter's byte for byte (verified on 501 rows), including one em dash stored as an escape.
+- recall_guard/dataset/edgar_outlook.py: the prompt wording is pinned by hash in its tests (changing it changes the 7.5/7.8 prompt format and the digest). Replies wrapped in prose or code fences are rejected by the strict parser, as for the macro prompt; 5.1 handles unparsed draws.

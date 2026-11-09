@@ -1171,7 +1171,10 @@ are frozen in the plan before any request.
   the business outlook the release conveys as one number, the release text exactly
   as stored in the EDGAR corpus (`prompt` field, title plus body, at most 1500
   characters), and a JSON example `{"outlook": 0.2}`. `prompt_sha256(text)` is the
-  SHA-256 of the UTF-8 prompt and is stable for a fixed release.
+  SHA-256 of the UTF-8 prompt and is stable for a fixed release. `decide` applies the
+  same nine-decimal sign rule as the macro definition. The example value is a mild
+  positive anchor, constant across arms and variants, so it cancels in the per-item
+  change against no adjustment; the report states this.
 - Calibrator: an EDGAR calibrator per model and source, fitted on the EDGAR
   calibration split (40 memorized, 100 control) in the same outlook prompt format
   and settings; the held-out EDGAR rows are the negative-control items. The macro
