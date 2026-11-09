@@ -172,6 +172,7 @@ scripts/
     ├── build_plan.py          # Builds and freezes the study plan (items, variants, metrics, seeds, limits) with hashes
     ├── run_study.py           # Executes variants within limits, records draws and evidence, resumable, never replays
     ├── analyze.py             # Pre-registered statistics from recorded results
+    ├── convergence.py         # Top-k versus full-distribution convergence (ConvergenceAnalysis), from recorded evidence
     ├── figures.py             # Renders the four figures and their data tables
     └── negative_control.py    # EDGAR sentiment-tilt decision task for the negative control
 docs/
@@ -197,6 +198,12 @@ tests/
 - `recall_guard/core/profiles.py` and `provider_profiles/`: profile
   `llamacpp-gemma3-4b` (generation through llama-server, full distribution through
   the new host, same GGUF digest).
+- `configs/modal/gemma-3-4b-measurement.json` (new) and
+  `recall_guard/core/provider_profiles/modal-gemma3-4b.json` (new): the serving
+  arm's pinned Gemma 3 4B revision, limits and generic-mapping profile.
+- `deploy/modal/manifest.py` and `deploy/modal/serve.py`: accept the Gemma manifest
+  (generic mapping, no Harmony tokenizer) alongside the unchanged GPT-OSS-20B
+  pilot manifest.
 - `recall_guard/harness/plots.py`: four lazy plot functions; the outdated
   "reliability curve not constructible" note is corrected.
 - `recall_guard/__init__.py`: exports `guarded_decide`, `DecisionDefinition`,
@@ -256,7 +263,7 @@ graph LR
 ```
 
 - `Freeze` writes the plan with content hashes before any request (8.2).
-- `PowerGate` continues only at simulated power of at least 0.8 (8.8); otherwise
+- `PowerGate` continues only at simulated power of at least 0.8 (8.9); otherwise
   `StopForDecision` reports the expected power and waits.
 - `Approval` is required for paid runs only (11.2), including the Modal serving arm;
   local runs check limits.
@@ -583,6 +590,17 @@ def guarded_decide(prompt: str, config: GuardConfig, *, client: CompletionClient
   temperature 0 (R35, R40), so temperature 0 would give identical draws.
 - *Serving arm*: Modal vLLM at temperature 0, measuring serving nondeterminism as in
   the adopter's 1,000-draw study. Paid; it has its own frozen limits and approval.
+  The serving model is Gemma 3 4B (`google/gemma-3-4b-it`, a gated Hugging Face
+  licence accepted with `HF_TOKEN`) on vLLM with the generic response mapping. It
+  needs its own Modal measurement manifest, pinned weight revision, staged weights
+  and provider profile; the GPT-OSS-20B pilot manifest stays unchanged. These are
+  different weights from the local GGUF, so the two arms are reported separately.
+  Its variant set is no adjustment and top-k only, with its own calibrator for the
+  Modal model fitted on the calibration months within the approved limits. The arm
+  also runs the negative control within the same limits. The
+  full-distribution variants are reported as missing for this arm (8.10), because
+  the full-distribution host serves different weights and values from different
+  builds are not comparable (9.4).
 
 **Calibration set** (4.1, 6.3). The macro calibrator follows the adopter's
 `_build_corpus`: a frozen set of pre-cutoff decision months, disjoint from the
@@ -592,7 +610,7 @@ settings as evaluation. Every post-cutoff month stays in evaluation. The frozen 
 records the month split and its hash. Limitation stated in the report: the control
 class is anonymised rather than truly unseen.
 
-**Pilot and power gate** (8.8, 11.3). Before the full run, a pilot (about 12
+**Pilot and power gate** (8.9, 11.3). Before the full run, a pilot (about 12
 evaluation months times 8 draws per rendering, frozen in the plan) estimates the
 item-level variances. `simulated_power` then evaluates the pre-registered effect at
 the planned size. The full run starts only when power is at least 0.8; otherwise the
@@ -610,8 +628,12 @@ and waits for a decision. Pilot items are excluded from the confirmatory analysi
 
 #### NegativeControlTask
 
-- Decision: one component `outlook` in [-1, 1] for each SEC EDGAR press release
-  (calibration and held-out rows), using the same six variants.
+- Decision: one component `outlook` in [-1, 1] for each SEC EDGAR press release,
+  using each arm's variant set.
+- Calibrator: an EDGAR calibrator per model and source, fitted on the EDGAR
+  calibration split (40 memorized, 100 control) in the same outlook prompt format
+  and settings; the held-out EDGAR rows are the negative-control items. The macro
+  calibrator is never applied to EDGAR prompts.
 - Metric: per-item change `|adjusted - raw|` against no adjustment, with a block
   bootstrap interval over filing quarters; a variant whose upper interval exceeds the
   frozen tolerance is reported as discounting honest answers (7.2, 7.3).
@@ -699,7 +721,7 @@ Captions state data, sample size and interval method (10.6).
 - **Study**: plan freezing refuses changed hashes (8.2); limits stop admission and
   keep partial results (11.3); negative-control tolerance flag (7.3); calibration
   months are disjoint from evaluation and pilot months (4.1); the power gate stops
-  below 0.8 (8.8); per-draw seeds and temperatures are recorded, and a
+  below 0.8 (8.9); per-draw seeds and temperatures are recorded, and a
   deterministic temperature-0 host yields one distinct answer (5.3).
 - **Docs**: strict MkDocs build and `tests/docs`; installed-wheel import test without
   research data (11.6); the `import recall_guard` no-matplotlib test stays green.
