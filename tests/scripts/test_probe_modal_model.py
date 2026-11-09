@@ -320,6 +320,33 @@ def test_cpu_cache_inventory_rejects_config_without_weights():
         asyncio.run(probe.verify_weight_cache(load_plan(MANIFEST), sdk))
 
 
+@pytest.mark.parametrize("relative,volume", [
+    ("configs/modal/gpt-oss-20b-pilot.json", "recall-guard-gpt-oss-20b-weights"),
+    ("configs/modal/gemma-3-4b-measurement.json", "recall-guard-gemma-3-4b-weights"),
+])
+def test_cpu_cache_inventory_reads_the_manifest_volume_and_never_creates_it(relative, volume):
+    plan = load_plan(MANIFEST.parents[2] / relative)
+    base = f"hub/models--{plan.artifacts.model.replace('/', '--')}/snapshots/{plan.artifacts.model_revision}"
+    names = ("model.safetensors.index.json", "model-00001-of-00001.safetensors", "config.json", "tokenizer.json",
+             "tokenizer_config.json")
+    opened = []
+
+    async def entries(path, recursive):
+        assert path == base and recursive
+        return [SimpleNamespace(path="/" + base + "/" + name, size=10) for name in names]
+
+    async def read_file(path):
+        yield json.dumps({"weight_map": {"layer": "model-00001-of-00001.safetensors"}}).encode()
+
+    def from_name(*args, **kwargs):
+        opened.append((args, kwargs))
+        return SimpleNamespace(listdir=SimpleNamespace(aio=entries), read_file=SimpleNamespace(aio=read_file))
+
+    result = asyncio.run(probe.verify_weight_cache(plan, SimpleNamespace(Volume=SimpleNamespace(from_name=from_name))))
+    assert result == {"status": "verified_inventory", "shards": 1, "model_revision": plan.artifacts.model_revision}
+    assert opened == [((volume,), {"environment_name": plan.target.environment, "create_if_missing": False})]
+
+
 def test_insufficient_monthly_headroom_stops_before_cloud(configured, monkeypatch):
     manifest, approval, path = configured
     record = json.loads(approval.read_text())

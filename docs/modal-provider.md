@@ -125,7 +125,10 @@ The script mounts the checkout at `/app`, syncs the locked `deploy/modal`
 environment into the Docker volume `rg-modal-venv`, prints the Modal and
 Transformers versions, and runs the offline plan. Its other modes are `apps`,
 `lock`, `execute RECEIPT APPROVAL` and `stop APP_ID`. `plan` and `lock` read no
-credentials.
+credentials. The finance study's serving arm adds `stage MANIFEST STAGE_LIMITS
+RECEIPT`, `serve MANIFEST STAGE_LIMITS RECEIPT` and `stop-serve MANIFEST RECEIPT`
+(`scripts/serve_modal_model.py`), and `measure-plan` accepts a trailing
+`--modal-manifest PATH`.
 
 The isolated lock includes Modal 1.6.3, the editable local Recall Guard package,
 Transformers 4.55.4, Hugging Face Hub 0.34.4 and Jinja2 3.1.6 for chat templates.
@@ -219,8 +222,9 @@ is unknown until these additional costs are reviewed. Recheck
 
 ## Stage pinned weights separately, without a GPU
 
-No staging command has been executed or automated by the runner. This manual
-strategy is for a separately approved setup window and needs disk/network and
+No staging command has been executed or automated by the GPT-OSS-20B runner.
+The `stage` mode above exists for the finance study's Gemma 3 4B weights; this
+manual strategy remains the GPT-OSS-20B route. It is for a separately approved setup window and needs disk/network and
 storage cost review. Local Ollama GGUF blobs are incompatible with this vLLM
 MXFP4/safetensors recipe. Do not upload the Ollama store or the checkout.
 

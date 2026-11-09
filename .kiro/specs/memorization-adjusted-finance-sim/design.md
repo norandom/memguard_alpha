@@ -164,7 +164,8 @@ recall_guard/
 │   └── estimate_source.py     # EstimateSource label; features from top-k evidence and from full-distribution evidence; truncate full to top-k
 ├── dataset/
 │   ├── fred.py                # FRED API client with point-in-time (vintage) queries, local cache
-│   └── macro_regime.py        # Macro row model, identifying and anonymised prompt renderers, regime decision definition, defensive spread
+│   ├── macro_regime.py        # Macro row model, identifying and anonymised prompt renderers, regime decision definition, defensive spread
+│   └── edgar_outlook.py       # EDGAR outlook decision definition and prompt renderer (EDGAR calibrator and negative control)
 ├── harness/
 │   └── guarded_decision.py    # guarded_decide: ensemble-first API, per-draw estimates, adjustment, policy, identity record
 scripts/
@@ -700,12 +701,40 @@ def top_k_mass(evidence: FullDistributionEvidence, k: int) -> np.ndarray: ...
 | Requirements | 6.5 |
 
 ```python
+@dataclass(frozen=True)
+class Observation:
+    series_id: str
+    observation_date: date        # the period the value describes
+    value: float
+    as_of: date                   # the decision date the query was made for
+    vintage_start: date | None    # realtime_start of the returned row; None when revised
+    revised_data: bool            # True when no vintage existed on as_of
+
+def vintage_available(series_id: str, as_of: date, *, api_key: str, cache_dir: Path) -> bool: ...
+def fetch_series_as_of(series_id: str, as_of: date, *, api_key: str, cache_dir: Path) -> tuple[Observation, ...]: ...
 def fetch_point_in_time(series_id: str, as_of: date, *, api_key: str, cache_dir: Path) -> Observation | None: ...
-def vintage_available(series_id: str, *, api_key: str, cache_dir: Path) -> bool: ...
 ```
-- Uses `series/observations` with `realtime_start = realtime_end = as_of`; series
-  without vintages are returned with `revised_data = True` (6.5).
-- At most 120 requests per minute, cached responses, key from `FRED_API_KEY`.
+- Module `recall_guard/dataset/fred.py` (dataset may import core; stdlib, numpy,
+  requests only).
+- `vintage_available` reads `series/vintagedates` once per series (cached) and
+  returns True when the earliest vintage date is on or before `as_of`.
+- `fetch_series_as_of` returns every observation dated on or before `as_of` as it
+  stood on `as_of`: `series/observations` with `realtime_start = realtime_end =
+  as_of` and `observation_end = as_of` when a vintage exists, otherwise the current
+  vintage with `revised_data = True` on every row (6.5). Missing values (`"."`) are
+  skipped. `fetch_point_in_time` is its last element, or None when empty.
+- Cache: one JSON file per request under `cache_dir`, named
+  `<series_id>_<as_of>_<sha256 of the canonical parameters without the key>[:16].json`,
+  holding the response body only. The key never enters a file name, a cache key,
+  a log line, an exception message or a repr; the module follows the redaction
+  pattern of `core/full_distribution.py`.
+- Rate: a module-level limiter of at most 120 requests per rolling minute with an
+  injectable clock and sleep, so tests run without waiting. HTTP errors become
+  `RequestError` with `status_code` and code `fred_http_error`; a network failure
+  is `transport_error`.
+- Tests use recorded response bodies as fixtures (shape of the FRED JSON API: a
+  top-level `observations` list of `{realtime_start, realtime_end, date, value}`;
+  `vintage_dates` as a list of ISO dates) served by a fake transport; no network.
 - Series: CPIAUCSL (CPI, vintages), T10Y2Y, BAA10Y (substitute for HY OAS; Moody's
   copyright, cite and do not publish raw values), DTB3 (cash leg).
 
@@ -725,6 +754,54 @@ def vintage_available(series_id: str, *, api_key: str, cache_dir: Path) -> bool:
 - Accuracy (6.6): a decision is correct when the sign of the spread matches the sign
   of the realized next-month return of the defensive pair (gold, cash) minus the
   risk pair (world equity, tech), from FMP adjusted closes and DTB3.
+- Module `recall_guard/dataset/macro_regime.py`. The renderer mirrors the adopter's
+  `render_regime_loadings_prompt` (Global_Macro_AI_Factors
+  `macro_framework/factor_scoring.py`): the anonymised form is built first, line by
+  line, and the identifying form reproduces every base line verbatim and appends
+  three blocks (`As-of date: <date>`, `Real asset identities:` with the four
+  tickers, `Raw (non-normalized) macro levels:`). Token identity except the
+  additions is tested by prefix comparison.
+
+```python
+@dataclass(frozen=True)
+class MacroRow:
+    decision_date: date
+    raw: Mapping[str, float]        # cpi_yoy, t10y2y, baa10y (percent)
+    zscores: Mapping[str, float]    # cpi_yoy_z, t10y2y_z, baa10y_z (60-month rolling, ddof 1, min 30)
+    revised: Mapping[str, bool]     # per series, from Observation.revised_data
+
+ASSETS = (("Asset_A", "world_equity", "SWDA.L"), ("Asset_B", "tech_sector", "XLK"),
+          ("Asset_C", "gold_commodity", "IAU"), ("Asset_D", "short_treasury_cash", "DTB3 (3-month US Treasury bill)"))
+
+EXPOSURE = {  # loading -> tilt, per asset category; frozen, from the adopter's REGIME_ASSET_EXPOSURE
+    "world_equity":        {"inflation": -0.3, "growth": 1.0, "credit_stress": -0.8, "policy": -0.3, "risk_appetite": 0.6},
+    "tech_sector":         {"inflation": -0.6, "growth": 1.0, "credit_stress": -0.7, "policy": -0.5, "risk_appetite": 0.8},
+    "gold_commodity":      {"inflation": 0.8, "growth": -0.4, "credit_stress": 0.7, "policy": 0.1, "risk_appetite": -0.5},
+    "short_treasury_cash": {"inflation": 0.3, "growth": -0.6, "credit_stress": 0.6, "policy": 0.8, "risk_appetite": -0.6},
+}
+
+@dataclass(frozen=True)
+class RealizedReturns:          # simple next-month returns, decimal
+    world_equity: float
+    tech_sector: float
+    gold_commodity: float
+    short_treasury_cash: float
+
+def tilts(loadings: Mapping[str, float]) -> dict[str, float]: ...
+def defensive_spread(loadings: Mapping[str, float]) -> float: ...
+def is_correct(spread: float, realized: RealizedReturns) -> bool: ...
+regime_definition: DecisionDefinition
+```
+- The spread weight per axis (defensive minus risk column sums) is inflation 2.0,
+  growth -3.0, credit_stress 2.8, policy 1.7, risk_appetite -2.5, matching the
+  adopter's appendix I; a test pins these.
+- `decide` returns 1 when the spread is above 0 and -1 otherwise (zero counts as
+  risk-on, as in the adopter). `is_correct` is `(spread > 0) == (realized defensive
+  minus risk > 0)`, where the realized difference is `(gold + cash) - (equity +
+  tech)`. No data fetching in this module: 7.1 supplies the row and the returns.
+- The macro state in the prompt uses the three z-scores; DTB3 is only the cash
+  return leg. `parse` is `parse_json_components`; values are formatted `+.2f` for
+  z-scores and `:g` for raw levels, sorted by key, as in the adopter.
 
 ### harness
 
@@ -840,7 +917,48 @@ def guarded_decide(prompt: str, config: GuardConfig, *, client: CompletionClient
   pinned weights in a CPU-only step with its own frozen limit, and gains a serve mode
   in `modal_operator.sh` that deploys the app, keeps it reachable for the study
   runner through `MODAL_ENDPOINT_URL` and `MODAL_PROXY_BEARER` within the approved
-  limits, and stops it with verified cleanup. Credentials pass by name only. The
+  limits, and stops it with verified cleanup. Credentials pass by name only.
+  - Stage limits are a small JSON file, validated by the pure module
+    `deploy/modal/stage_limits.py` (no SDK, no network):
+
+    ```python
+    @dataclass(frozen=True)
+    class StageLimits:
+        plan_sha256: str      # 64 lowercase hex, hash of the frozen study plan file
+        stage: str            # weight_staging | deployment | smoke_run | calibration | full_run | negative_control
+        max_requests: int
+        max_output_tokens: int
+        max_seconds: int      # hard app lifetime (serve) or function timeout (staging)
+        max_usd: float
+    ```
+
+    Each limit must fit inside the manifest's reviewed ceiling (`inference_posts`,
+    `total_output_tokens`, `gpu_phase_seconds`, `cost.target_usd`), or loading
+    refuses. Task 7.3 writes these files from the frozen plan; task 9.4 checks
+    `plan_sha256` against the frozen plan before any stage.
+  - Volume per manifest: `Plan` exposes `volume_name` from the reviewed cache entry;
+    `create_app`, the weight-cache check and `stop_experiment` use it. The GPT-OSS
+    name `recall-guard-gpt-oss-20b-weights` is unchanged.
+  - Staging (`stage`): a CPU-only Modal function (0 GPUs, `timeout=max_seconds`)
+    downloads the pinned revision into the manifest's volume with `HF_TOKEN` passed
+    as a Modal secret by name. It refuses to start when the worst-case CPU cost of
+    running to its timeout exceeds `max_usd`, or when `max_seconds` exceeds the
+    manifest ceiling. Its receipt records the volume, revision, bytes and duration,
+    never the token.
+  - Serve (`serve`): deploys the expiry app and the serving app, arms the expiry
+    controller with `deadline = gpu_started_at + max_seconds` (the stage limit,
+    never `gpu_phase_seconds`), writes the registered endpoint URL and the
+    deadline to a private receipt, and exits leaving the app reachable. Stop
+    (`stop-serve`) runs `stop_experiment` and `stop_expiry_controller` and reports
+    `verified_stopped` or `unverified`; the receipt records which. No approval gate
+    of its own: the study plan's approval record (7.5) is the only approval, checked
+    by the runner before it sends requests.
+  - Entry point `scripts/serve_modal_model.py {stage|serve|stop-serve} --manifest
+    --stage-limits --receipt`, run through `modal_operator.sh stage|serve|stop-serve`
+    with the root `.env` passed to the container as the other credentialed modes do.
+    `measure-plan` gains an optional trailing `--modal-manifest PATH`.
+  - The Gemma manifest caveats state that `gpu_phase_seconds` is applied per
+    lifecycle by `serve.py` and that stage limits bound the arm. The
   full-distribution variants are reported as missing for this arm (8.10), because
   the full-distribution host serves different weights and values from different
   builds are not comparable (9.4).
@@ -887,6 +1005,14 @@ are frozen in the plan before any request.
 
 - Decision: one component `outlook` in [-1, 1] for each SEC EDGAR press release,
   using each arm's variant set.
+- `recall_guard/dataset/edgar_outlook.py` (task 4.3) owns `outlook_definition`
+  (one component `outlook`, bounds [-1, 1], grid 0.1, summary = the outlook itself,
+  `decide` = 1 when above 0 and -1 otherwise, `parse` = `parse_json_components`) and
+  `render_outlook_prompt(release_text: str) -> str`: a fixed instruction asking for
+  the business outlook the release conveys as one number, the release text exactly
+  as stored in the EDGAR corpus (`prompt` field, title plus body, at most 1500
+  characters), and a JSON example `{"outlook": 0.2}`. `prompt_sha256(text)` is the
+  SHA-256 of the UTF-8 prompt and is stable for a fixed release.
 - Calibrator: an EDGAR calibrator per model and source, fitted on the EDGAR
   calibration split (40 memorized, 100 control) in the same outlook prompt format
   and settings; the held-out EDGAR rows are the negative-control items. The macro

@@ -1,7 +1,8 @@
 """Optional, explicitly constructed Modal Web Function; importing is offline.
 
 Only the separately approved operator runner may deploy the returned App. Weights
-must already be staged in the retained volume; serving cannot download them.
+must already be staged in the manifest's retained volume; serving cannot download
+them. ``create_staging_app`` stages them in a separate CPU-only run.
 SDK contract: Modal 1.6.3 (_partial_function.py, app.py, image.py, dict.py).
 https://modal.com/docs/guide/webhook-proxy-auth documents the existing client's
 Bearer <proxy-token-id>.<proxy-token-secret> credential; never inject it here.
@@ -21,7 +22,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -31,6 +32,16 @@ ROOT = Path(__file__).resolve().parents[2]
 CACHE = "/cache/huggingface"
 CONTROL_TIMEOUT_SECONDS = 5
 ARM_TIMEOUT_SECONDS = 30
+#: Staging image client, at the versions deploy/modal/uv.lock pins.
+STAGING_PACKAGES = ("huggingface_hub==0.34.4", "hf-xet==1.8.0")
+STAGING_STARTUP_SECONDS = 60
+#: Non-weight snapshot files staged when the revision has them; weights come from the index.
+STAGED_FILES = ("config.json", "generation_config.json", "tokenizer.json", "tokenizer_config.json",
+                "tokenizer.model", "special_tokens_map.json", "added_tokens.json", "chat_template.json",
+                "chat_template.jinja", "preprocessor_config.json", "processor_config.json", "LICENSE", "NOTICE")
+WEIGHT_INDEX = "model.safetensors.index.json"
+#: Required in addition when config.json declares a vision_config (Gemma 3 4B does).
+VISION_PROCESSOR_FILES = ("preprocessor_config.json", "processor_config.json")
 
 
 def require_operator_python():
@@ -95,7 +106,7 @@ async def stop_experiment(plan: Plan, app_id: str, *, sdk=None, app_name: str | 
     sdk = _sdk(sdk)
     result = {
         "category": "control", "app_id": app_id, "cleanup": "unverified", "control_calls": 0,
-        "retained_cache": "recall-guard-gpt-oss-20b-weights", "observed_usd": None,
+        "retained_cache": plan.volume_name, "observed_usd": None,
         "recovery_command": f"sh scripts/modal_operator.sh stop {app_id}",
         "verification_budget_seconds": plan.limits.cleanup_seconds,
         "estimated_usd": None,
@@ -187,52 +198,78 @@ async def expire_experiment(plan: Plan, app_id: str, deadline_unix_s: float, arm
     return result
 
 
+def app_lifetime_seconds(plan: Plan, lifetime_seconds: int | None = None) -> int:
+    """Hard app lifetime: the manifest's GPU phase by default, or a shorter stage limit."""
+    if lifetime_seconds is None:
+        return plan.limits.gpu_phase_seconds
+    if type(lifetime_seconds) is not int or not 0 < lifetime_seconds <= plan.limits.gpu_phase_seconds:
+        raise ValueError("App lifetime must be whole seconds within the manifest's GPU phase")
+    return lifetime_seconds
+
+
+async def arm_expiry(plan: Plan, app_id: str, *, gpu_started_at_unix_s: float, lease: dict,
+                     lifetime_seconds: int | None = None, sdk=None) -> dict:
+    """Arm the remote controller at ``gpu_started_at_unix_s`` plus the app lifetime.
+
+    The lifetime is the manifest's GPU phase unless the caller passes a stage limit.
+    Opens ``lease["admission_open"]`` only on the controller's acknowledgment; stops
+    nothing itself, so a caller that leaves the app running relies on the controller.
+    """
+    _app_identity(app_id)
+    sdk = _sdk(sdk)
+    lease.update({
+        "app_id": app_id, "admission_open": False,
+        "arming": {"category": "control", "control_calls": 0, "estimated_usd": None, "observed_usd": None},
+    })
+    deadline = gpu_started_at_unix_s + app_lifetime_seconds(plan, lifetime_seconds)
+    if not math.isfinite(deadline) or not gpu_started_at_unix_s <= time.time() < deadline:
+        raise ValueError("GPU phase has no remaining time")
+    arm_id = uuid.uuid4().hex
+    function = sdk.Function.from_name(
+        plan.target.app + "-expiry", "expire", environment_name=plan.target.environment
+    )
+    try:
+        async with asyncio.timeout(ARM_TIMEOUT_SECONDS):
+            # Explicit creation precedes controller spawn: its first write
+            # must find the store, even before a serving container exists.
+            store = _expiry_store(plan, sdk, create_if_missing=True)
+            lease["arming"]["control_calls"] += 1
+            await asyncio.wait_for(store.hydrate.aio(), CONTROL_TIMEOUT_SECONDS)
+            lease["arming"]["control_calls"] += 1
+            call = await asyncio.wait_for(function.spawn.aio(app_id, deadline, arm_id), CONTROL_TIMEOUT_SECONDS)
+            lease.update(expiry_call_id=call.object_id, deadline_unix_s=deadline)
+            store = _expiry_store(plan, sdk)
+            while time.time() < deadline:
+                lease["arming"]["control_calls"] += 1
+                armed = await asyncio.wait_for(store.get.aio((app_id, "expiry")), CONTROL_TIMEOUT_SECONDS)
+                if armed == {"app_id": app_id, "arm_id": arm_id, "deadline_unix_s": deadline}:
+                    lease["admission_open"] = True
+                    break
+                await asyncio.sleep(0.25)
+            if not lease["admission_open"]:
+                raise RuntimeError("Remote expiry not armed")
+    except TimeoutError as exc:
+        raise RuntimeError("Remote expiry acknowledgment timed out; admission closed") from exc
+    return lease
+
+
 @asynccontextmanager
-async def experiment_lifecycle(plan: Plan, app_id: str, *, gpu_started_at_unix_s: float, receipt=None, sdk=None):
+async def experiment_lifecycle(plan: Plan, app_id: str, *, gpu_started_at_unix_s: float, receipt=None, sdk=None,
+                               lifetime_seconds: int | None = None):
     """Future runner must enter before inference and persist the mutable receipt.
 
     Capture gpu_started_at_unix_s BEFORE GPU deployment/startup, never at readiness.
     Acknowledgment proves the remote CPU input is executing, rather than merely
     queued. Pass receipt={} to retain cleanup even when __aenter__ fails. Exit
-    closes admission before bounded cleanup on every Python exit.
+    closes admission before bounded cleanup on every Python exit. Without
+    ``lifetime_seconds`` the deadline is the manifest's full GPU phase.
     """
     _app_identity(app_id)
     sdk = _sdk(sdk)
     lease = receipt if receipt is not None else {}
-    lease.update({
-        "app_id": app_id, "admission_open": False,
-        "arming": {"category": "control", "control_calls": 0, "estimated_usd": None, "observed_usd": None},
-    })
     try:
-        deadline = gpu_started_at_unix_s + plan.limits.gpu_phase_seconds
-        if not math.isfinite(deadline) or not gpu_started_at_unix_s <= time.time() < deadline:
-            raise ValueError("GPU phase has no remaining time")
-        arm_id = uuid.uuid4().hex
-        function = sdk.Function.from_name(
-            plan.target.app + "-expiry", "expire", environment_name=plan.target.environment
-        )
-        try:
-            async with asyncio.timeout(ARM_TIMEOUT_SECONDS):
-                # Explicit creation precedes controller spawn: its first write
-                # must find the store, even before a serving container exists.
-                store = _expiry_store(plan, sdk, create_if_missing=True)
-                lease["arming"]["control_calls"] += 1
-                await asyncio.wait_for(store.hydrate.aio(), CONTROL_TIMEOUT_SECONDS)
-                lease["arming"]["control_calls"] += 1
-                call = await asyncio.wait_for(function.spawn.aio(app_id, deadline, arm_id), CONTROL_TIMEOUT_SECONDS)
-                lease.update(expiry_call_id=call.object_id, deadline_unix_s=deadline)
-                store = _expiry_store(plan, sdk)
-                while time.time() < deadline:
-                    lease["arming"]["control_calls"] += 1
-                    armed = await asyncio.wait_for(store.get.aio((app_id, "expiry")), CONTROL_TIMEOUT_SECONDS)
-                    if armed == {"app_id": app_id, "arm_id": arm_id, "deadline_unix_s": deadline}:
-                        lease["admission_open"] = True
-                        break
-                    await asyncio.sleep(0.25)
-                if not lease["admission_open"]:
-                    raise RuntimeError("Remote expiry not armed")
-        except TimeoutError as exc:
-            raise RuntimeError("Remote expiry acknowledgment timed out; admission closed") from exc
+        await arm_expiry(plan, app_id, gpu_started_at_unix_s=gpu_started_at_unix_s, lease=lease,
+                         lifetime_seconds=lifetime_seconds, sdk=sdk)
         yield lease
     finally:
         lease["admission_open"] = False
@@ -241,11 +278,13 @@ async def experiment_lifecycle(plan: Plan, app_id: str, *, gpu_started_at_unix_s
             lease["expiry_cleanup"] = await stop_expiry_controller(plan, sdk=sdk)
 
 
-def create_expiry_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANIFEST):
+def create_expiry_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANIFEST,
+                      lifetime_seconds: int | None = None):
     """Construct only: operator must separately deploy this CPU app before GPU startup.
 
-    ``manifest`` selects a reviewed serving manifest; its GPU phase bounds the
-    controller's own timeout (phase plus 150 s for the stop and verification).
+    ``manifest`` selects a reviewed serving manifest. The app lifetime bounds the
+    controller's own timeout (lifetime plus 150 s for the stop and verification):
+    the manifest's GPU phase by default, or the stage limit passed as ``lifetime_seconds``.
     """
     require_operator_python()
     sdk = _sdk(sdk)
@@ -253,6 +292,7 @@ def create_expiry_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANI
     plan = load_plan(root / manifest)
     if plan.serving_manifest != manifest:
         raise ValueError("Serving manifest differs from its reviewed upload allowlist")
+    lifetime = app_lifetime_seconds(plan, lifetime_seconds)
     app = sdk.App(plan.target.app + "-expiry")
     image = sdk.Image.debian_slim(python_version="3.12")
     for relative in allowlist:
@@ -264,7 +304,7 @@ def create_expiry_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANI
     @app.function(
         name="expire", image=image, gpu=None, cpu=0.125, memory=128,
         min_containers=0, max_containers=1, buffer_containers=0, scaledown_window=2,
-        retries=0, timeout=plan.limits.gpu_phase_seconds + 150, startup_timeout=30, include_source=False,
+        retries=0, timeout=lifetime + 150, startup_timeout=30, include_source=False,
         serialized=True,
     )
     @sdk.concurrent(max_inputs=1)
@@ -272,6 +312,93 @@ def create_expiry_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANI
         return await expire_experiment(plan, app_id, deadline_unix_s, arm_id)
 
     return app
+
+
+def stage_weights(plan: Plan, *, cache: Path = Path(CACHE), hub=None, commit=None) -> dict:
+    """Runs in the CPU-only staging container, never on the operator's machine.
+
+    Downloads the pinned revision's indexed weight shards plus its config and
+    tokenizer files into the mounted volume's Hugging Face cache, the layout that
+    serving reads offline, and commits the volume. The Hub client reads HF_TOKEN
+    from the container's secret by name; this code never reads it. Returns sizes only.
+    """
+    started = time.monotonic()
+    if hub is None:
+        import huggingface_hub as hub
+    a = plan.artifacts
+    hub_cache = str(cache / "hub")
+    index = Path(hub.hf_hub_download(a.model, WEIGHT_INDEX, revision=a.model_revision, cache_dir=hub_cache))
+    if index.stat().st_size > 8 * 1024 * 1024:
+        raise ValueError("Weight index too large")
+    shards = set(json.loads(index.read_text(encoding="utf-8"))["weight_map"].values())
+    if not shards or any(PurePosixPath(shard).name != shard for shard in shards):
+        raise ValueError("Weight index names no plain shard files")
+    model = Path(hub.snapshot_download(a.model, revision=a.model_revision, cache_dir=hub_cache,
+                                       allow_patterns=sorted(shards | {WEIGHT_INDEX, *STAGED_FILES})))
+    tokenizer = model
+    if (a.tokenizer, a.tokenizer_revision) != (a.model, a.model_revision):
+        tokenizer = Path(hub.snapshot_download(a.tokenizer, revision=a.tokenizer_revision, cache_dir=hub_cache,
+                                               allow_patterns=list(STAGED_FILES)))
+    if (model.name, tokenizer.name) != (a.model_revision, a.tokenizer_revision):
+        raise ValueError("Staged snapshot differs from the pinned revision")
+    required = [model / name for name in sorted(shards | {WEIGHT_INDEX, "config.json"})]
+    required += [tokenizer / name for name in ("tokenizer.json", "tokenizer_config.json")]
+    config = model / "config.json"
+    if config.is_file() and "vision_config" in json.loads(config.read_text(encoding="utf-8")):
+        # A multimodal checkpoint's processor files: a pattern miss fails here, not at the paid smoke run.
+        required += [model / name for name in VISION_PROCESSOR_FILES]
+    if any(not path.is_file() or path.stat().st_size <= 0 for path in required):
+        raise ValueError("Staged snapshot misses a required file")
+    files = sorted({path for directory in {model, tokenizer} for path in directory.rglob("*") if path.is_file()})
+    if commit is None:
+        commit = _sdk(None).Volume.from_name(plan.volume_name, environment_name=plan.target.environment).commit
+    commit()
+    return {"volume": plan.volume_name, "model_revision": a.model_revision, "tokenizer_revision": a.tokenizer_revision,
+            "files": len(files), "bytes": sum(path.stat().st_size for path in files),
+            "duration_seconds": time.monotonic() - started}
+
+
+def create_staging_app(*, max_seconds: int, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANIFEST):
+    """Construct only: a CPU-only weight staging run into the manifest's own volume.
+
+    No GPU; CPU and memory are capped at the manifest's request, the timeout is the
+    stage limit ``max_seconds`` and nothing retries, so a run that reaches its timeout
+    stops. HF_TOKEN reaches the container as an ephemeral Secret built from the
+    operator process's variable by name; no named Modal secret is created. Returns
+    the App and its ``stage`` Function, for one ephemeral ``app.run``.
+    """
+    require_operator_python()
+    sdk = _sdk(sdk)
+    allowlist = upload_allowlist(manifest)
+    plan = load_plan(root / manifest)
+    if plan.serving_manifest != manifest:
+        raise ValueError("Serving manifest differs from its reviewed upload allowlist")
+    if type(max_seconds) is not int or not 0 < max_seconds <= plan.limits.gpu_phase_seconds:
+        raise ValueError("Staging timeout must be whole seconds within the manifest's GPU phase")
+    app = sdk.App(plan.target.app + "-staging")
+    image = sdk.Image.debian_slim(python_version="3.12").pip_install(*STAGING_PACKAGES)
+    image = image.env({"HF_HOME": CACHE, "HF_HUB_DISABLE_TELEMETRY": "1", "HF_HUB_DISABLE_PROGRESS_BARS": "1",
+                       "DO_NOT_TRACK": "1"})
+    for relative in allowlist:
+        path = root / relative
+        if not path.is_file() or any(p.is_symlink() or p.is_junction() for p in (path, *path.parents)):
+            raise ValueError("Unsafe staging upload")
+        image = image.add_local_file(path, "/root/" + relative)
+    weights = sdk.Volume.from_name(plan.volume_name, environment_name=plan.target.environment,
+                                   create_if_missing=True)
+    cores, mib = plan.resources.cpu_physical_cores, plan.memory_mib
+
+    @app.function(
+        name="stage", image=image, gpu=None, cpu=(cores, cores), memory=(mib, mib), volumes={CACHE: weights},
+        secrets=[sdk.Secret.from_local_environ(["HF_TOKEN"])],
+        min_containers=0, max_containers=1, buffer_containers=0, scaledown_window=2,
+        retries=0, timeout=max_seconds, startup_timeout=STAGING_STARTUP_SECONDS, include_source=False,
+        serialized=True,
+    )
+    def stage():
+        return stage_weights(plan)
+
+    return app, stage
 
 
 def require_remote_expiry(plan: Plan, app_id: str, store):
@@ -475,7 +602,7 @@ def create_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANIFEST):
     # Deferred local files must follow all image build operations, including env.
     for path, relative in zip(files, allowlist, strict=True):
         image = image.add_local_file(path, "/root/" + relative)
-    weights = sdk.Volume.from_name("recall-guard-gpt-oss-20b-weights", environment_name=plan.target.environment,
+    weights = sdk.Volume.from_name(plan.volume_name, environment_name=plan.target.environment,
                                    create_if_missing=False)
     @app.cls(
         image=image,

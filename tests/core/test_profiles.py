@@ -496,7 +496,7 @@ def test_modal_gemma_profile_is_generic_top_k_only_and_refuses_full_distribution
     assert profile.endpoint_ref == "env:MODAL_ENDPOINT_URL"
     assert profile.model_config.parameters["top_logprobs"] == 5 and profile.model_config.parameters["temperature"] == 0
     assert profile.model_config.local_identity.declared.artifact_revision == "093f9f388b31de276ce2de164bdc2081324b9767"
-    assert "—" not in profile.notes  # No em dash.
+    assert "\u2014" not in profile.notes  # No em dash.
     client = connect(profile, CallBudget(1), environment=MODAL_ENV)
     assert isinstance(client, OpenAICompatibleClient) and not isinstance(client, HarmonyOpenAICompatibleClient)
     assert client.budget.used == 0

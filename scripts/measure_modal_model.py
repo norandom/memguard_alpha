@@ -10,7 +10,7 @@ execution and report code with the serving manifest's provider profile: the
 ``modal-gpt-oss-20b`` Harmony profile for the GPT-OSS-20B manifests and the
 generic-mapping ``modal-gemma3-4b`` profile for the Gemma 3 4B manifest.
 
-Operator container: sh scripts/modal_operator.sh measure-plan PLAN MANIFEST CORPUS [APPROVAL]
+Operator container: sh scripts/modal_operator.sh measure-plan PLAN MANIFEST CORPUS [APPROVAL] [--modal-manifest PATH]
 """
 
 import argparse

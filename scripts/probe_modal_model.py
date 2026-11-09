@@ -254,7 +254,7 @@ async def verify_weight_cache(plan, sdk):
     Weight staging is a separate paid prerequisite. Require the pinned index and
     every indexed shard with nonzero size, rather than mistaking config for weights.
     """
-    volume = sdk.Volume.from_name("recall-guard-gpt-oss-20b-weights", environment_name=plan.target.environment,
+    volume = sdk.Volume.from_name(plan.volume_name, environment_name=plan.target.environment,
                                   create_if_missing=False)
     base = "hub/models--" + plan.artifacts.model.replace("/", "--") + "/snapshots/" + plan.artifacts.model_revision
     entries = await asyncio.wait_for(volume.listdir.aio(base, recursive=True), 30)

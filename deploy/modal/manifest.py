@@ -144,6 +144,14 @@ class Plan:
         """Modal's memory argument uses MiB, while the manifest uses GiB."""
         return self.resources.memory_gib * 1024
 
+    @property
+    def volume_name(self) -> str:
+        """The weight volume reviewed for this serving manifest (one volume per manifest).
+
+        load_plan requires the manifest's ``cache`` to equal this reviewed entry.
+        """
+        return _REVIEWED_CANDIDATES[self.serving_manifest][2]["volume"]
+
     def upload_allowed(self, relative_path: str) -> bool:
         """Exact file allowlist; callers must also reject symlinks before upload."""
         path = PurePosixPath(relative_path)

@@ -291,6 +291,107 @@ def test_cpu_recipe_has_no_gpu_or_cache_and_bounded_runtime(monkeypatch):
     assert options["max_containers"] == 1
 
 
+def expiry_recipe(monkeypatch, apps=None, **kwargs):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
+    options, apps = {}, [] if apps is None else apps
+
+    def function(**values):
+        options.update(values)
+        return lambda fn: fn
+
+    image = SimpleNamespace(add_local_file=lambda *a, **k: image)
+    sdk = SimpleNamespace(
+        App=lambda name: apps.append(name) or SimpleNamespace(name=name, function=function),
+        Image=SimpleNamespace(debian_slim=lambda **k: image),
+        concurrent=lambda **k: lambda fn: fn,
+    )
+    serve.create_expiry_app(sdk=sdk, **kwargs)
+    return options, apps
+
+
+@pytest.mark.parametrize("manifest,lifetime,timeout", [
+    ("configs/modal/gpt-oss-20b-pilot.json", None, 1200 + 150),
+    ("configs/modal/gpt-oss-20b-pilot.json", 300, 300 + 150),
+    ("configs/modal/gemma-3-4b-measurement.json", None, 86142 + 150),
+    ("configs/modal/gemma-3-4b-measurement.json", 300, 300 + 150),
+])
+def test_controller_timeout_follows_the_stage_lifetime_when_one_is_passed(monkeypatch, manifest, lifetime, timeout):
+    options = {} if lifetime is None else {"lifetime_seconds": lifetime}
+    recipe, _ = expiry_recipe(monkeypatch, manifest=manifest, **options)
+    assert recipe["timeout"] == timeout and recipe["gpu"] is None
+
+
+@pytest.mark.parametrize("lifetime", [0, 1201, True])
+def test_controller_refuses_an_invalid_lifetime_before_creating_its_app(monkeypatch, lifetime):
+    apps = []
+    with pytest.raises(ValueError, match="lifetime"):
+        expiry_recipe(monkeypatch, apps=apps, lifetime_seconds=lifetime)
+    assert apps == []
+
+
+@pytest.mark.parametrize("lifetime,expected", [(None, 1200), (300, 300), (1200, 1200)])
+def test_deadline_is_the_gpu_phase_unless_a_stage_lifetime_is_passed(monkeypatch, lifetime, expected):
+    sdk = Control()
+    now = serve.time.time()
+    monkeypatch.setattr(serve.time, "time", lambda: now)
+    options = {} if lifetime is None else {"lifetime_seconds": lifetime}
+    spawned = []
+    original = sdk.spawn
+
+    async def spawn(app_id, deadline_unix_s, arm_id):
+        spawned.append(deadline_unix_s)
+        return await original(app_id, deadline_unix_s, arm_id)
+
+    sdk.Function.from_name = lambda *a, **k: SimpleNamespace(spawn=aio(spawn))
+
+    async def run():
+        async with serve.experiment_lifecycle(PLAN, sdk.app_id, gpu_started_at_unix_s=now, sdk=sdk,
+                                              **options) as lease:
+            return dict(lease)
+
+    lease = asyncio.run(run())
+    assert lease["deadline_unix_s"] == spawned[0] == now + expected
+    assert lease["admission_open"] is True
+
+
+@pytest.mark.parametrize("lifetime", [0, -1, 1201, True, 300.0])
+def test_invalid_stage_lifetime_never_arms_and_still_cleans(lifetime):
+    sdk = Control()
+
+    async def run():
+        lease = {}
+        with pytest.raises(ValueError, match="lifetime"):
+            async with serve.experiment_lifecycle(PLAN, sdk.app_id, gpu_started_at_unix_s=serve.time.time(),
+                                                  receipt=lease, sdk=sdk, lifetime_seconds=lifetime):
+                pytest.fail("Admission opened with an invalid app lifetime")
+        return lease
+
+    lease = asyncio.run(run())
+    assert "spawn" not in sdk.events and "stop" in sdk.events
+    assert lease["admission_open"] is False and lease["cleanup"]["cleanup"] == "verified_stopped"
+
+
+def test_armed_stage_lifetime_is_where_the_remote_controller_stops_the_app(monkeypatch):
+    """Arm with a 300 s stage lifetime, then run the controller from the spawned arguments."""
+    sdk = Control()
+    start = serve.time.time()
+    clock = {"now": start}
+    monkeypatch.setattr(serve.time, "time", lambda: clock["now"])
+    lease = asyncio.run(serve.arm_expiry(PLAN, sdk.app_id, gpu_started_at_unix_s=start, lease={},
+                                         lifetime_seconds=300, sdk=sdk))
+    assert lease["deadline_unix_s"] == start + 300 and lease["admission_open"] is True
+    assert "stop" not in sdk.events  # Arming alone leaves the app running.
+    armed = sdk.store.pop((sdk.app_id, "expiry"))  # The fake spawn wrote the controller's own acknowledgment.
+
+    async def sleep(seconds):
+        clock["now"] += seconds
+
+    monkeypatch.setattr(serve.asyncio, "sleep", sleep)
+    receipt = asyncio.run(serve.expire_experiment(PLAN, sdk.app_id, armed["deadline_unix_s"], armed["arm_id"], sdk=sdk))
+    assert clock["now"] == start + 300
+    assert receipt["cleanup"] == "verified_stopped" and sdk.state == "stopped"
+
+
 def test_verified_cleanup_also_stops_the_armed_expiry_controller(monkeypatch):
     monkeypatch.setattr(serve.asyncio, "sleep", lambda *_: asyncio.sleep(0))
     sdk = Control()

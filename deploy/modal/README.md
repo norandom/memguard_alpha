@@ -38,11 +38,18 @@ installs the local Recall Guard package. It adds no model framework to either
 environment and no hosting dependency to the core library. The serving image
 contains vLLM/CUDA; it is never installed locally by these commands.
 
-No weight staging is automated. The runner requires the pinned snapshot in the
-dedicated retained volume, checks its index and all indexed shards before GPU
-deployment, and never creates that volume itself. Upload only reviewed weight
-files separately; serving-source uploads use the manifest's exact three-file
-allowlist. Never upload the checkout, Ollama store, `.env` or credentials.
+Each serving manifest names its own retained weight volume (`Plan.volume_name`;
+the GPT-OSS-20B volume is `recall-guard-gpt-oss-20b-weights`). The serving
+runner requires the pinned snapshot in that volume, checks its index and all
+indexed shards before GPU deployment, and never creates the volume
+(`create_if_missing=False`). Only the CPU-only staging recipe,
+`create_staging_app`, creates it (`create_if_missing=True`). For the finance
+study's serving arm, `scripts/serve_modal_model.py` (through
+`modal_operator.sh stage | serve | stop-serve`) stages the pinned revision in
+that CPU-only run, bounded by a stage limits file (`stage_limits.py`), serves
+the app with its expiry at the stage's `max_seconds`, and stops it with
+verification; `HF_TOKEN` passes by name only. Serving-source uploads use the manifest's exact
+three-file allowlist. Never upload the checkout, Ollama store, `.env` or credentials.
 
 The A100/MXFP4 host remains a candidate. Offline construction is verified; live
 account access, weight loading, token evidence, cost and shutdown are unverified.

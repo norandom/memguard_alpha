@@ -160,7 +160,7 @@ def test_gemma_manifest_loads_without_a_harmony_tokenizer():
     assert "gated=manual" in provenance["access"] and "HF_TOKEN" in provenance["access"]
     # Credentials by name only: no token value, and the HF credential is never a deployment input.
     assert "HF_TOKEN" not in json.dumps(raw["target"]) and not re.search(r"hf_[A-Za-z0-9]{20,}", json.dumps(raw))
-    assert "—" not in GEMMA.read_text(encoding="utf-8")  # No em dash.
+    assert "\u2014" not in GEMMA.read_text(encoding="utf-8")  # No em dash.
 
 
 def test_gemma_ceiling_covers_the_serving_arm_and_fits_modal_timeouts():
@@ -186,6 +186,39 @@ def test_gpt_oss_manifests_keep_their_reviewed_candidate():
         assert plan.resources.gpu == "A100-40GB"
         assert json.loads(path.read_text(encoding="utf-8"))["cache"]["volume"] == "recall-guard-gpt-oss-20b-weights"
     assert REVIEWED_LIMITS[PILOT_MANIFEST][1] == 5 and REVIEWED_LIMITS[MEASUREMENT_MANIFEST][1] == 2
+
+
+#: The GPT-OSS-20B manifests as committed before task 3.5 (sha256 of the LF-normalized bytes).
+GPT_OSS_MANIFEST_SHA256 = {
+    "configs/modal/gpt-oss-20b-pilot.json": "cf656468675ecd2dbf39e4586e419a1681db32808d0eb5b923298485bd71fc12",
+    "configs/modal/gpt-oss-20b-measurement.json": "316fb1c91db3afd2403253b189282680d88fa600e15659bbe4bf0ad20ad5b545",
+}
+
+
+def test_gpt_oss_manifests_are_byte_identical():
+    import hashlib
+
+    for relative, expected in GPT_OSS_MANIFEST_SHA256.items():
+        data = (ROOT / relative).read_bytes().replace(b"\r\n", b"\n")
+        assert hashlib.sha256(data).hexdigest() == expected, relative
+
+
+@pytest.mark.parametrize("relative,volume", [
+    ("configs/modal/gpt-oss-20b-pilot.json", "recall-guard-gpt-oss-20b-weights"),
+    ("configs/modal/gpt-oss-20b-measurement.json", "recall-guard-gpt-oss-20b-weights"),
+    ("configs/modal/gemma-3-4b-measurement.json", "recall-guard-gemma-3-4b-weights"),
+])
+def test_each_manifest_resolves_its_own_weight_volume(relative, volume):
+    plan = load_plan(ROOT / relative)
+    assert plan.volume_name == volume
+    assert json.loads((ROOT / relative).read_text(encoding="utf-8"))["cache"]["volume"] == volume
+
+
+def test_gemma_caveats_bound_the_arm_by_stage_limits_not_the_per_lifecycle_phase():
+    caveats = json.loads(GEMMA.read_text(encoding="utf-8"))["cost"]["caveats"]
+    assert "applies the full gpu_phase_seconds to every GPU lifecycle it arms without a stage limit" in caveats
+    assert "the per-stage limits (task 7.3) bound the arm" in caveats
+    assert "arms each lifecycle's expiry at its stage's max_seconds, never at gpu_phase_seconds" in caveats
 
 
 @pytest.mark.parametrize(

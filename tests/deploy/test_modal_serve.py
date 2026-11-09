@@ -221,6 +221,185 @@ def test_gemma_recipe_selects_its_manifest_without_a_harmony_tokenizer(monkeypat
     assert all("models" not in Path(args[0]).parts for args in uploads)
 
 
+@pytest.mark.parametrize("manifest,volume", [
+    ("configs/modal/gpt-oss-20b-pilot.json", "recall-guard-gpt-oss-20b-weights"),
+    ("configs/modal/gpt-oss-20b-measurement.json", "recall-guard-gpt-oss-20b-weights"),
+    ("configs/modal/gemma-3-4b-measurement.json", "recall-guard-gemma-3-4b-weights"),
+])
+def test_each_manifest_mounts_its_own_reviewed_volume(monkeypatch, manifest, volume):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
+    sdk = FakeSDK()
+    serve.create_app(sdk=sdk, manifest=manifest)
+    volumes = [(args, kwargs) for name, args, kwargs in sdk.calls if name == "volume"]
+    plan = load_plan(ROOT / manifest)
+    assert plan.volume_name == volume == json.loads((ROOT / manifest).read_text(encoding="utf-8"))["cache"]["volume"]
+    assert volumes == [((volume,), {"environment_name": plan.target.environment, "create_if_missing": False})]
+
+
+class StagingSDK:
+    """Records the staging recipe; never reads the environment or builds anything."""
+
+    def __init__(self):
+        self.calls = []
+        self.Image = SimpleNamespace(debian_slim=lambda **kwargs: self.image("debian_slim", (), kwargs))
+        self.Volume = SimpleNamespace(from_name=lambda *args, **kwargs: self.record("volume", args, kwargs))
+        self.Secret = SimpleNamespace(from_local_environ=lambda env_keys: self.record("secret", (env_keys,), {}))
+        self.App = lambda name: self.record("app", (name,), {}, SimpleNamespace(function=self.function))
+
+    def record(self, name, args, kwargs, value=None):
+        self.calls.append((name, args, kwargs))
+        return value if value is not None else (name, args)
+
+    def image(self, name, args, kwargs):
+        self.calls.append((name, args, kwargs))
+        return SimpleNamespace(pip_install=lambda *packages: self.image("pip_install", packages, {}),
+                               env=lambda settings: self.image("env", (), settings),
+                               add_local_file=lambda *a, **k: self.image("upload", a, k))
+
+    def function(self, **options):
+        self.calls.append(("function", (), options))
+
+        def wrap(fn):
+            self.body = fn
+            return SimpleNamespace(remote=SimpleNamespace(aio=None))
+
+        return wrap
+
+
+def test_staging_recipe_is_cpu_only_bounded_and_names_hf_token_only(monkeypatch):
+    import tomllib
+
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
+    sdk = StagingSDK()
+    app, function = serve.create_staging_app(max_seconds=300, sdk=sdk, manifest="configs/modal/gemma-3-4b-measurement.json")
+    plan = load_plan(GEMMA)
+    calls = {name: (args, kwargs) for name, args, kwargs in sdk.calls}
+    assert calls["app"][0] == (plan.target.app + "-staging",)
+    options = calls["function"][1]
+    assert options["gpu"] is None and "gpu" in options
+    assert options["cpu"] == (4, 4) and options["memory"] == (16384, 16384)
+    assert options["timeout"] == 300 and options["retries"] == 0
+    assert options["max_containers"] == 1 and options["min_containers"] == options["buffer_containers"] == 0
+    assert options["include_source"] is False and options["serialized"] is True
+    assert options["volumes"] == {"/cache/huggingface": ("volume", ("recall-guard-gemma-3-4b-weights",))}
+    assert calls["volume"][1] == {"environment_name": plan.target.environment, "create_if_missing": True}
+    # HF_TOKEN by name only: the recipe passes the variable name, never a value.
+    assert options["secrets"] == [("secret", (["HF_TOKEN"],))]
+    lock = tomllib.loads((ROOT / "deploy/modal/uv.lock").read_text(encoding="utf-8"))
+    locked = {package["name"]: package["version"] for package in lock["package"]}
+    assert calls["pip_install"][0] == (f"huggingface_hub=={locked['huggingface-hub']}", f"hf-xet=={locked['hf-xet']}")
+    assert calls["env"][1]["HF_HOME"] == "/cache/huggingface" and "HF_HUB_OFFLINE" not in calls["env"][1]
+    uploads = [args[1] for name, args, _ in sdk.calls if name == "upload"]
+    assert uploads == ["/root/deploy/modal/serve.py", "/root/deploy/modal/manifest.py",
+                       "/root/configs/modal/gemma-3-4b-measurement.json"]
+    assert function.remote is not None and sdk.body.__name__ == "stage"
+
+
+@pytest.mark.parametrize("max_seconds", [0, -1, 86143, True, 300.0])
+def test_staging_recipe_refuses_a_timeout_outside_the_gpu_phase(monkeypatch, max_seconds):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
+    sdk = StagingSDK()
+    with pytest.raises(ValueError, match="Staging timeout"):
+        serve.create_staging_app(max_seconds=max_seconds, sdk=sdk, manifest="configs/modal/gemma-3-4b-measurement.json")
+    assert sdk.calls == []
+
+
+class FakeHub:
+    """Pinned-revision Hub listing with an extra unindexed weight copy that is never fetched."""
+
+    def __init__(self, plan, *, shards=("model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors")):
+        self.revision = plan.artifacts.model_revision
+        self.shards = shards
+        self.files = {**dict.fromkeys(shards, b"w" * 32), "config.json": b"{}", "tokenizer.json": b"{}",
+                      "tokenizer_config.json": b"{}", "chat_template.json": b"{}", "README.md": b"r",
+                      "original/model.safetensors": b"x" * 64}
+        self.requests = []
+
+    def snapshot(self, cache_dir, repo):
+        return Path(cache_dir) / ("models--" + repo.replace("/", "--")) / "snapshots" / self.revision
+
+    def hf_hub_download(self, repo, filename, *, revision, cache_dir):
+        self.requests.append(("file", repo, filename, revision))
+        path = self.snapshot(cache_dir, repo) / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"weight_map": {f"layer.{i}": shard for i, shard in enumerate(self.shards)}}))
+        return str(path)
+
+    def snapshot_download(self, repo, *, revision, cache_dir, allow_patterns):
+        self.requests.append(("snapshot", repo, tuple(allow_patterns), revision))
+        directory = self.snapshot(cache_dir, repo)
+        for name, data in self.files.items():
+            if name in allow_patterns:
+                (directory / name).parent.mkdir(parents=True, exist_ok=True)
+                (directory / name).write_bytes(data)
+        return str(directory)
+
+
+def test_staging_body_fetches_the_indexed_shards_into_the_serving_layout_and_commits(tmp_path):
+    plan = load_plan(GEMMA)
+    hub, commits = FakeHub(plan), []
+    result = serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=lambda: commits.append("commit"))
+    snapshot = tmp_path / "hub/models--google--gemma-3-4b-it/snapshots" / plan.artifacts.model_revision
+    assert commits == ["commit"]
+    assert (snapshot / "model-00002-of-00002.safetensors").is_file()
+    assert not (snapshot / "original").exists() and not (snapshot / "README.md").exists()
+    assert [request[0] for request in hub.requests] == ["file", "snapshot"]
+    assert all(request[3] == plan.artifacts.model_revision for request in hub.requests)
+    assert result["volume"] == "recall-guard-gemma-3-4b-weights"
+    assert (result["model_revision"], result["tokenizer_revision"]) == (plan.artifacts.model_revision,) * 2
+    files = [path for path in snapshot.rglob("*") if path.is_file()]
+    assert result["files"] == len(files) == 7
+    assert result["bytes"] == sum(path.stat().st_size for path in files)
+    assert result["duration_seconds"] >= 0
+    # The serving snapshot reads this layout offline.
+    observed = serve.snapshot(plan, "ap-test", "ready", cache=tmp_path)
+    assert observed["resolved_model_revision"] == plan.artifacts.model_revision
+
+
+@pytest.mark.parametrize("shards", [("../escape.safetensors",), ()])
+def test_staging_body_refuses_an_index_without_plain_shards(tmp_path, shards):
+    plan = load_plan(GEMMA)
+    with pytest.raises(ValueError, match="shard"):
+        serve.stage_weights(plan, cache=tmp_path, hub=FakeHub(plan, shards=shards), commit=lambda: None)
+
+
+VISION_CONFIG = json.dumps({"architectures": ["Gemma3ForConditionalGeneration"],
+                            "vision_config": {"model_type": "siglip_vision_model"}}).encode()
+
+
+@pytest.mark.parametrize("processor_files", [False, True])
+def test_staging_body_requires_processor_files_for_a_vision_config(tmp_path, processor_files):
+    plan = load_plan(GEMMA)
+    hub, commits = FakeHub(plan), []
+    hub.files["config.json"] = VISION_CONFIG
+    if processor_files:
+        hub.files.update({"preprocessor_config.json": b"{}", "processor_config.json": b"{}"})
+        result = serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=lambda: commits.append("commit"))
+        assert result["files"] == 9 and commits == ["commit"]
+    else:
+        # A silent pattern miss fails here, before the volume commit, not at the paid smoke run.
+        with pytest.raises(ValueError, match="required file"):
+            serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=lambda: commits.append("commit"))
+        assert commits == []
+
+
+def test_staging_body_needs_no_processor_files_without_a_vision_config(tmp_path):
+    plan = load_plan(GEMMA)
+    hub, commits = FakeHub(plan), []
+    hub.files["config.json"] = json.dumps({"architectures": ["Gemma3ForCausalLM"]}).encode()
+    result = serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=lambda: commits.append("commit"))
+    assert result["files"] == 7 and commits == ["commit"]
+
+
+def test_staging_body_refuses_a_snapshot_missing_required_files(tmp_path):
+    plan = load_plan(GEMMA)
+    hub, commits = FakeHub(plan), []
+    del hub.files["tokenizer.json"]
+    with pytest.raises(ValueError, match="required file"):
+        serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=lambda: commits.append("commit"))
+    assert commits == []
+
+
 def test_control_plane_retrieval_never_calls_gpu_and_checks_identity():
     sdk = FakeSDK()
     plan = load_plan(MANIFEST)

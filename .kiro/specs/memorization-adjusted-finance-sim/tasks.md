@@ -73,7 +73,7 @@
   - _Depends: 1.2, 3.3_
   - _Requirements: 3.4, 5.1, 11.2_
 
-- [ ] 3.5 Modal serving route for the study runner
+- [x] 3.5 Modal serving route for the study runner
   - Take the weight volume from the manifest (one volume per manifest, the GPT-OSS-20B volume name unchanged) and stage the pinned weights in a CPU-only step
   - Staging and the serve mode take their stage limits as input (a plan file and its hash), enforce a hard maximum app lifetime with auto-stop, and have no approval gate of their own; the study plan's approval record stays the only approval
   - Add a serve mode to the operator script that deploys the app, keeps it reachable for the study runner through the endpoint URL and proxy bearer passed by name, and stops it with verified cleanup
@@ -296,3 +296,5 @@
 - Modal cost exposure: serve.py arms EACH GPU lifecycle with the manifest's full `gpu_phase_seconds` (86,142 s for Gemma), so target_usd 34.34 is a per-lifecycle exposure until 3.5 bounds the app lifetime by the stage's time limit and 7.3 freezes per-stage limits. 3.5 must arm the expiry controller with the stage limit, never the manifest ceiling, and state this in the manifest caveats.
 - 3.5: add a `--modal-manifest` pass-through to `modal_operator.sh measure-plan`; serve.create_app, probe.verify_weight_cache and stop_experiment still name the GPT-OSS volume, so do not deploy the Gemma app before 3.5 lands. Replace the two remaining literal em-dash glyphs in tests/deploy/test_modal_manifest.py and tests/core/test_profiles.py with "—".
 - 9.4 smoke run: Gemma3ForConditionalGeneration also loads the vision tower; consider `--limit-mm-per-prompt` to skip image inputs. Gemma's chat_template.json is not in tokenizer_hashes (pinned only through --revision).
+- Modal serving route (3.5): `sh scripts/modal_operator.sh stage|serve|stop-serve MANIFEST STAGE_LIMITS RECEIPT` with StageLimits JSON files (deploy/modal/stage_limits.py) that 7.3 writes from the frozen plan; serve arms the auto-stop at start + max_seconds and the controller timeout at max_seconds + 150; `serve` has no readiness or 401 check, so 7.4 checks reachability and the runner checks the 7.5 approval record before any request; a failed serve reports status/cleanup honestly with a recovery command, and `unarmed_app_left_deployed` means the operator must stop by ID. The stop-serve fallback relies on Modal raising NotFoundError for a missing deployment (verified in the pinned 1.6.3 source, not live).
+- Windows-native skips (baseline 2026-11-09, 3684 passed, 20 skipped): tests/scripts/test_modal_operator.py (18, needs a POSIX `sh` on PATH; Git for Windows ships one under usr\bin), tests/deploy/test_modal_sdk_serialization.py (modal SDK not in the root env), tests/harness/test_intervention_report.py symlink test (Windows privilege). Confirm these through Dagger or CI when they change.
