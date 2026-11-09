@@ -6,7 +6,7 @@
   - Add the FRED API key name to the environment template, empty, with a one-line comment
   - The steering states both rules and the template lists the FRED key; the existing scorer parity test still passes
   - _Requirements: 1.1, 1.8_
-- [ ] 1.2 Verify every external and runtime prerequisite before code depends on it
+- [x] 1.2 Verify every external and runtime prerequisite before code depends on it
   - Data: the FMP key returns adjusted daily closes for the world equity, tech and gold ETFs from January 2016 through July 2026, and DTB3 covers the same span (the cash leg is DTB3 from FRED, not an ETF); the FRED key works; CPI has point-in-time vintages; record the vintage status of T10Y2Y, BAA10Y and DTB3
   - Local model host: the user-installed llama.cpp b12199 library and llama-server are present, and the Gemma 3 4B GGUF file is present for the digest that the 3.3 profile will pin
   - Registry: Gemma 3 4B, the model of both arms, has a sourced cutoff in the cutoff registry
@@ -273,3 +273,7 @@
 
 - Validation runs only through Dagger in WSL Debian, started from PowerShell: `wsl -d Debian --cd /mnt/d/Source/memguard_alpha --exec /home/mc/.local/bin/dagger -m ci call test --source=. --python=3.12 [--paths="..."]` and `... call lint --source=.`; logs go under runs/finance-sim/validation/. Native Windows Python and dagger.exe are not used.
 - The Dagger and Docker context excludes .kiro, .env.*, runs, models and tools, so container tests cannot read steering, the env template or private runs; verify those on the host.
+- Credentialed live runs use the Dagger function `run-with-secrets` (ci/src/ci/main.py) through `scripts/finance_sim/check_prerequisites.ps1` as the pattern: load only named keys from the root .env into the process, forward them via process-only WSLENV, pass `--name=env://NAME`, then scan logs and receipts for values. The wrapper exits 0 even on `stop_for_decision`, so read `outcome.decision` in the receipt.
+- Pins from the 1.2 receipt (runs/finance-sim/prerequisites/receipt.json): Gemma 3 4B GGUF `sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1` (models/blobs, q4_K_M) for 3.3; HF `google/gemma-3-4b-it` revision `093f9f388b31de276ce2de164bdc2081324b9767` for 3.4; ETFs SWDA.L, XLK, IAU with DTB3 as the cash leg.
+- FMP key naming: the design and 1.2 use `FMP_API_TOKEN`, but recall_guard/portfolio/prices.py and scripts/build_etf_eval.py read `FMP_API_KEY`. Use FMP_API_TOKEN for this feature (7.1) and do not rely on prices.py's env lookup.
+- The palette validator lives in a version-specific Claude Code temp cache (path and sha256 in the 1.2 receipt); 8.1 must re-locate it and compare the sha256.

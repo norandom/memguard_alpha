@@ -14,11 +14,15 @@ Functions:
                     complexity and cycles are reviewed locally without a Sentrux requirement.
 - ``build``       — build the wheel + sdist; returns ``dist/`` (Req 6.1, 6.5).
 - ``docs``        — strict-build the documentation site; returns ``site/``.
+- ``run_with_secrets`` — run one command in the dev image with network access and
+                    optional named secrets; returns ``/outputs`` (live checks and study runs).
 
 Distribution (the "publish" pipeline op) is a GitHub Release built from ``build``
 output, created by the release workflow; there is no PyPI publish.
 """
 
+import shlex
+from datetime import UTC, datetime
 from typing import Annotated
 
 import dagger
@@ -96,6 +100,53 @@ class Ci:
             container
             .with_exec(["uv", "build", "--out-dir", "/outputs/dist"])
             .directory("/outputs/dist")
+        )
+
+    @function(cache="never")
+    async def run_with_secrets(
+        self,
+        source: SourceDirectory,
+        command: str,
+        python: str = "3.12",
+        inputs: dagger.Directory | None = None,
+        fmp_api_token: dagger.Secret | None = None,
+        fred_api_key: dagger.Secret | None = None,
+        hf_token: dagger.Secret | None = None,
+        modal_token_id: dagger.Secret | None = None,
+        modal_token_secret: dagger.Secret | None = None,
+        modal_proxy_bearer: dagger.Secret | None = None,
+        modal_endpoint_url: dagger.Secret | None = None,
+        local_model_api_key: dagger.Secret | None = None,
+    ) -> dagger.Directory:
+        """Run ``command`` in the dev image with network access and named secrets; returns ``/outputs``.
+
+        Each secret is injected under its upper-case environment name (for example
+        ``--fred-api-key=env://FRED_API_KEY`` becomes ``FRED_API_KEY``) and is
+        scrubbed from logs by the engine. ``inputs`` is mounted at ``/inputs``
+        for host-side facts the filtered source cannot carry. The call is
+        never cached, so every invocation is a fresh live run.
+        """
+        secrets = {
+            "FMP_API_TOKEN": fmp_api_token,
+            "FRED_API_KEY": fred_api_key,
+            "HF_TOKEN": hf_token,
+            "MODAL_TOKEN_ID": modal_token_id,
+            "MODAL_TOKEN_SECRET": modal_token_secret,
+            "MODAL_PROXY_BEARER": modal_proxy_bearer,
+            "MODAL_ENDPOINT_URL": modal_endpoint_url,
+            "LOCAL_MODEL_API_KEY": local_model_api_key,
+        }
+        container = await self.base(source, python)
+        for name, secret in secrets.items():
+            if secret is not None:
+                container = container.with_secret_variable(name, secret)
+        if inputs is not None:
+            container = container.with_mounted_directory("/inputs", inputs)
+        return (
+            container
+            .with_env_variable("RUN_WITH_SECRETS_STARTED_AT", datetime.now(UTC).isoformat())
+            .with_exec(shlex.split(command))
+            .directory("/outputs")
         )
 
     @function
