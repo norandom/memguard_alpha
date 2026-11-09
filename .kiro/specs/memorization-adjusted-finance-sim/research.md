@@ -222,3 +222,15 @@ new API has a clean, importable surface.
 - Licensing of BAA10Y and FMP data: private raw values, published aggregates, citations.
 - First-draw position depends on draw order: record `draw_index` from generation time; never reorder.
 - Serial correlation across months: block bootstrap with a frozen block length.
+
+## Design validation amendments (2026-11-09, user decisions)
+
+- **Ensemble arms**: local llama.cpp is bitwise deterministic at temperature 0, so
+  local ensembles use a frozen sampling temperature (default 0.7) with recorded
+  per-draw seeds (sampling distribution); a Modal vLLM arm at temperature 0 measures
+  serving nondeterminism. Claims name their arm.
+- **Calibration set**: pre-cutoff macro months disjoint from evaluation, identifying
+  rendering as memorized class and anonymised rendering as control (the adopter's
+  `_build_corpus`), so all scarce post-cutoff months stay in evaluation.
+- **Power gate**: pilot of about 12 months times 8 draws; full run only at simulated
+  power of at least 0.8; pilot items excluded from confirmatory analysis.

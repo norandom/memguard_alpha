@@ -242,7 +242,10 @@ sequenceDiagram
 ```mermaid
 graph LR
     BuildPlan --> Freeze
-    Freeze --> Approval
+    Freeze --> Pilot
+    Pilot --> PowerGate
+    PowerGate --> Approval
+    PowerGate --> StopForDecision
     Approval --> Run
     Run --> Record
     Record --> Analyze
@@ -253,7 +256,10 @@ graph LR
 ```
 
 - `Freeze` writes the plan with content hashes before any request (8.2).
-- `Approval` is required for paid runs only (11.2); local runs check limits.
+- `PowerGate` continues only at simulated power of at least 0.8 (8.8); otherwise
+  `StopForDecision` reports the expected power and waits.
+- `Approval` is required for paid runs only (11.2), including the Modal serving arm;
+  local runs check limits.
 - `Stop` closes admission on any frozen limit and keeps partial results (11.3).
 - `Analyze`, `Figures` and `Report` replay recorded data offline (10.7).
 
@@ -520,6 +526,8 @@ class GuardConfig:
     draws: int = 32
     min_parsed: int = 24
     mode: DrawMode = DrawMode.ENSEMBLE
+    temperature: float | None = None   # None keeps the profile's setting
+    seed_base: int | None = None       # per-draw seed = seed_base + draw_index, recorded
 
 @dataclass(frozen=True)
 class GuardedDecision:
@@ -537,6 +545,9 @@ def guarded_decide(prompt: str, config: GuardConfig, *, client: CompletionClient
 ```
 - Per-draw estimates use features from the configured source, never the direction
   parser.
+- Each draw records its temperature and seed; a deterministic host at temperature 0
+  yields identical draws, which the distribution summary reports as one distinct
+  answer rather than as agreement evidence.
 - `SINGLE` results carry `mode = SINGLE` and no distribution (1.2, 1.8).
 - `SourceCalibrator` is the existing MCS calibrator wrapped with its extended
   `CalibrationIdentity` (source, settings, corpus hash); it is defined in
@@ -564,6 +575,29 @@ def guarded_decide(prompt: str, config: GuardConfig, *, client: CompletionClient
 - Exactness check against llama-server's full-vocabulary output, as in R40.
 
 #### StudyRunner
+
+**Ensemble arms** (5.1, 8.5, 8.6). Every ensemble claim names its arm:
+- *Sampling arm*: local Gemma 3 4B through llama.cpp at a frozen sampling
+  temperature (default 0.7) with seed `seed_base + draw_index` per draw. It measures
+  the model's sampling distribution. Local llama.cpp is bitwise deterministic at
+  temperature 0 (R35, R40), so temperature 0 would give identical draws.
+- *Serving arm*: Modal vLLM at temperature 0, measuring serving nondeterminism as in
+  the adopter's 1,000-draw study. Paid; it has its own frozen limits and approval.
+
+**Calibration set** (4.1, 6.3). The macro calibrator follows the adopter's
+`_build_corpus`: a frozen set of pre-cutoff decision months, disjoint from the
+evaluation months, rendered as the identifying prompt (memorized class) and as the
+token-identical anonymised prompt (control class), in the same prompt format and
+settings as evaluation. Every post-cutoff month stays in evaluation. The frozen plan
+records the month split and its hash. Limitation stated in the report: the control
+class is anonymised rather than truly unseen.
+
+**Pilot and power gate** (8.8, 11.3). Before the full run, a pilot (about 12
+evaluation months times 8 draws per rendering, frozen in the plan) estimates the
+item-level variances. `simulated_power` then evaluates the pre-registered effect at
+the planned size. The full run starts only when power is at least 0.8; otherwise the
+runner stops, reports the expected power and the options (wider window, more draws),
+and waits for a decision. Pilot items are excluded from the confirmatory analysis.
 
 **Contracts**: Batch [x]
 - Trigger: `build_plan.py` then `run_study.py --plan --approval?`.
@@ -604,8 +638,10 @@ Captions state data, sample size and interval method (10.6).
 
 ### Domain Model
 
-- **StudyPlan** (aggregate root): items (decision dates or EDGAR rows), variants
-  (draw mode times source), metrics, seeds, limits, hashes. Immutable once frozen.
+- **StudyPlan** (aggregate root): items (decision dates or EDGAR rows), the
+  calibration-month and pilot-month sets, variants (draw mode times source), ensemble
+  arms (sampling, serving) with temperature and seed base, metrics, power threshold,
+  seeds, limits, hashes. Immutable once frozen.
 - **RecordedDraw**: item, variant, draw index, response text hash, parsed vector,
   evidence reference, per-draw estimate.
 - **GuardedDecision**: as above; derived, recomputable from recorded draws.
@@ -661,14 +697,18 @@ Captions state data, sample size and interval method (10.6).
 - **Replay**: distribution summary, statistics and figures recomputed from recorded
   draws with network disabled match stored results (5.8, 10.7).
 - **Study**: plan freezing refuses changed hashes (8.2); limits stop admission and
-  keep partial results (11.3); negative-control tolerance flag (7.3).
+  keep partial results (11.3); negative-control tolerance flag (7.3); calibration
+  months are disjoint from evaluation and pilot months (4.1); the power gate stops
+  below 0.8 (8.8); per-draw seeds and temperatures are recorded, and a
+  deterministic temperature-0 host yields one distinct answer (5.3).
 - **Docs**: strict MkDocs build and `tests/docs`; installed-wheel import test without
   research data (11.6); the `import recall_guard` no-matplotlib test stays green.
 
 ## Performance and Scalability
 
-- Study size per model: 126 monthly decision dates (2016-01 to 2026-06) times two
-  renderings times 32 draws, about 8,064 generations, each also teacher-forced for
+- Study size per model (sampling arm): up to 126 monthly decision dates (2016-01 to
+  2026-06), less the calibration and pilot months, times two renderings times 32
+  draws, at most 8,064 generations, each also teacher-forced for
   the full-distribution source. At about 6 s per generation on the iGPU this is
   about 13 to 15 hours per model locally, at no cost; the plan states the exact
   limits and is approved before running.
