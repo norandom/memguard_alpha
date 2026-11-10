@@ -1063,7 +1063,13 @@ def decide_from_draws(draws: Sequence[RecordedDraw], config: GuardConfig, identi
     GGUF with `--ctx-size 2048`, `--n-gpu-layers` for the Vulkan iGPU, logprobs
     enabled, on `127.0.0.1:11570`, gateway `11571`, state
     `runs/finance-sim/hosts/llama-server/`; forwards `/v1/chat/completions`,
-    `/v1/models` and `/health`.
+    `/v1/models`, `/health` and `/props` (the runner's digest check reads
+    `model_path` from `/props`). Shared gateway helpers may be factored out of
+    `serve_full_distribution.ps1` into `scripts/host_gateway_common.ps1` and
+    dot-sourced by both scripts, provided the 6.2 tests stay green; the FLM script
+    is not touched. After an idle or host-exit stop the gateway logs the same
+    leftover check `stop` runs, and the listener's process id is recorded at
+    readiness so a stop can reach the python child even if its launcher died.
   - RAM gate before loading: each start reads free physical memory with
     `Get-CimInstance Win32_OperatingSystem` and requires the profile's
     `min_free_ram_bytes` for its own load plus the same again when the sibling host

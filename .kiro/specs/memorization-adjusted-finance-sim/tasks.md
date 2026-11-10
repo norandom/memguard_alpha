@@ -129,15 +129,15 @@
   - _Boundary: FullDistributionHost_
   - _Depends: 1.2, 2.5_
   - _Requirements: 3.2, 3.5, 9.1_
-- [ ] 6.2 Full-distribution host lifecycle behind the bearer gateway
-  - Start the teacher-forcing host behind the bearer-token gateway pattern, bound only to the WSL adapter, with idle stop; stop verifies that no host process and no listener remain
+- [x] 6.2 Full-distribution host lifecycle behind the bearer gateway
+  - Start the teacher-forcing host behind the bearer-token gateway pattern, bound to loopback by default or to one adapter address, with idle stop; stop verifies that no host process and no listener remain
   - Script defaults equal the ports and state folder fixed in 3.3, checked by a test against the profile URLs
-  - From the dev container, a request without the token gets 401 and with it gets evidence; after stop nothing listens on the host or gateway ports
+  - From the host (or a container against an adapter address), a request without the token gets 401 and with it gets evidence; after stop nothing listens on the host or gateway ports
   - _Requirements: 11.1_
 - [ ] 6.3 llama-server generation host behind the bearer gateway
-  - Start llama-server b12199 on the pinned GGUF with top-k logprobs on loopback, behind the bearer gateway on the WSL adapter, with idle stop and verified teardown
+  - Start llama-server b12199 on the pinned GGUF with top-k logprobs on loopback, behind the bearer gateway bound to loopback by default or to one adapter address, with idle stop and verified teardown
   - Script defaults equal the ports and state folder fixed in 3.3, checked by a test against the profile URLs
-  - From the dev container, a request without the token gets 401 and with it returns top-k logprobs for the pinned digest; after stop nothing listens on the host or gateway ports
+  - From the host (or a container against an adapter address), a request without the token gets 401 and with it returns top-k logprobs for the pinned digest; after stop nothing listens on the host or gateway ports
   - _Depends: 3.3_
   - _Requirements: 3.1, 11.1_
 
@@ -307,3 +307,4 @@
 - 6.1 host (scripts/serve_full_distribution.py): start with `uv run --no-sync python scripts/serve_full_distribution.py --port 11580`; it hashes the GGUF, binds the port before loading, and listens only after warm-up, so "port listening" is readiness (6.2). Serial, loopback only, SO_REUSEADDR off (a rebind after TIME_WAIT works on Windows); suggestion for 6.2 or a follow-up: set SO_EXCLUSIVEADDRUSE in server_bind. Extra codes 404 `not_found` and 500 `internal_error` map to the client's `http_error`. `top_k_keep` is unbounded beyond n_vocab; refuse k above about 1024 (or an entries budget) in a follow-up before any untrusted caller exists.
 - Teacher-forcing throughput on the iGPU: 15 to 17 tokens per second, one decode per token, prompt included. Measured on the real renderers: macro identifying prompt plus a JSON loadings answer is about 534 decodes (about 33 s), anonymised 413 (26 s), EDGAR outlook with a 1500-character release 420 (26 s). 7.x must pass `timeout_s` of about 300 to `FullDistributionClient`, send host requests sequentially, and not run them while a 6.3 llama-server is generating on the same GPU. At study scale (8,064 draws) per-draw evidence requests would take about 67 hours, far beyond the 13 to 15 hour estimate; see the proposal in the handover (prompt processed once per item and rendering, responses teacher-forced against the cached prefix).
 - The exactness check's RAM gate (3 samples at or above the profile minimum, bounded 600 s) worked under memory contention from other sessions; print a progress line while waiting in 6.2's start script.
+- 6.2 lifecycle (scripts/serve_full_distribution.ps1): `start | stop | status | gateway`, loopback by default, `-BindAddress <adapter IP>` otherwise; the caller's stdout and stderr inherit flags are cleared before launching (otherwise a caller that captures output blocks until the host exits; `scripts/serve_local_flm.ps1` has the same defect, upstream, untouched). The first live attempt's host self-exit (about 25 s after readiness) stayed unexplained after three clean runs including a 120 s hold; WER is disabled on this host, so a native crash leaves no event. Follow-ups: launch the host with `python -X faulthandler`; refuse IPv4-mapped any-address spellings (`::ffff:0.0.0.0`) explicitly; log the leftover check after an idle or host-exit stop and record the listener's pid at readiness (6.3 does both from the start). llama.cpp writes about 245 KB of stderr per request shape to host.log; 7.x should set a quieter log level or rotate.
