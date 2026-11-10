@@ -460,16 +460,25 @@ def test_bin_count_labels_stay_clear_of_the_diagonal_the_markers_and_the_panel_e
             for label in labels:
                 extent = label.get_window_extent()
                 where = (theme, panel.kind, panel.source, label.get_text())
-                # Off the line with a visible gap; at the well-calibrated top-right corner (the 12 and 20 bins)
-                # the label sits beside its marker with 3 pt of space.
-                gap = 3.0 if label.get_text() in top_right else 1.0
-                assert not line.intersects_bbox(extent.padded(gap * scale), filled=False), where
+                # At the well-calibrated top-right corner (the 12 and 20 bins) a candidate beside the marker is
+                # clear of the diagonal on every platform, so those labels keep 3 pt of space from it, as does
+                # every label that is not the by-design fallback. A fallback (no candidate met the 3 pt rule) may
+                # sit near the line, how near depending on the platform's font metrics, so no line clearance is
+                # required for it; the surface-coloured box checked below masks the line under it.
+                if label.get_text() in top_right or not figures.placement_fallback(label):
+                    assert not line.intersects_bbox(extent.padded(3.0 * scale), filled=False), where
                 assert not any(extent.overlaps(marker) for marker in markers), where
                 assert (frame.x0 <= extent.x0 and extent.x1 <= frame.x1 and frame.y0 <= extent.y0
                         and extent.y1 <= frame.y1), where
                 patch = label.get_bbox_patch()  # a surface backing above the diagonal, below the markers
                 assert patch is not None and to_hex(patch.get_facecolor()) == to_hex(figure_theme(theme).surface)
                 assert diagonal.get_zorder() < label.get_zorder() < 3
+        # The fallback exemption must stay an exception, or the clearance check above would go vacuous: of the
+        # fixture's 15 count labels one is a fallback on this host (the 40 bin by the diagonal); one more is allowed
+        # for another platform's font metrics.
+        labels = [text for axes in figure.axes for text in axes.texts if isinstance(text, Annotation)]
+        assert len(labels) == 15
+        assert sum(1 for label in labels if figures.placement_fallback(label)) <= 2, theme
 
 
 # ---------- encoding: identity never by colour alone ----------

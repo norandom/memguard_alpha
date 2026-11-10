@@ -51,8 +51,10 @@ identity never by colour alone: marker shape and fill from
 the panel titles of F2), at most ``ALL_PAIRS_SLOT_CAP`` colours where marks sit
 side by side, and the ``muted`` token applied explicitly to the zero line and the
 diagonal. The design places ``plot_gap`` and ``plot_reliability`` in plots.py;
-this module holds them instead, beside their data, because plots.py is extended
-by task 8.3.
+this module holds them instead, beside their data, as the sibling modules
+``figures_draws`` (F3) and ``figures_convergence`` (F4) of task 8.3 hold theirs,
+built on the shared helpers here: the chrome (``_RC``, ``_style_axes``), the
+label placement after layout (:func:`_place_text`), the table and the outputs.
 
 Matplotlib is imported inside the functions that draw, so importing this module
 (or ``recall_guard``) never imports it.
@@ -118,8 +120,13 @@ ROOT = Path(__file__).resolve().parents[2]
 #: The docs figure folder (design: Figures layout); tests write under tmp_path instead.
 FIGURES_DIR = ROOT / "docs" / "assets" / "finance-sim"
 GAP, RELIABILITY = "gap", "reliability"
-#: The figures this module renders, in render order (task 8.3 adds ``draws`` and ``convergence``).
+#: The figures this module renders, in render order.
 FIGURE_NAMES: tuple[str, ...] = (GAP, RELIABILITY)
+#: The draw-distribution and convergence figures of task 8.3, rendered by the sibling modules
+#: ``figures_draws`` and ``figures_convergence`` with these helpers.
+DRAWS, CONVERGENCE = "draws", "convergence"
+#: Every figure of the worked example (design: Figures layout), each with its four files in ``FIGURES_DIR``.
+PUBLISHED_FIGURES: tuple[str, ...] = (GAP, RELIABILITY, DRAWS, CONVERGENCE)
 #: Panel order: the primary (serving) arm first, then the probe (sampling) arm.
 DEFAULT_ARMS: tuple[str, ...] = (SERVING_ARM, SAMPLING_ARM)
 #: Figure themes in render order, as ``recall_guard.harness.plots.THEMES`` (not imported: matplotlib stays lazy).
@@ -991,17 +998,121 @@ def _count_candidates(x: float, y: float, offset: float) -> list[tuple[float, fl
     return [*vertical, away, away_diagonally, other]
 
 
+#: One candidate label position: offset in points from the anchor, then horizontal and vertical alignment.
+Candidate = tuple[float, float, str, str]
+#: A candidate with its anchor in data coordinates: ``(anchor, dx, dy, ha, va)``.
+Placement = tuple[tuple[float, float], float, float, str, str]
+
+
+def _place_text(axes: Axes, text: str, candidates: Iterable[Placement], renderer: Any, *,
+                paths: Sequence[Any], boxes: Sequence[Any], clearance_pt: float = _LINE_CLEARANCE_PT,
+                **style: Any) -> Any:
+    """Annotate ``text`` in the first candidate position clear of every obstacle.
+
+    Runs after the layout is fixed. Each candidate of ``candidates`` (in order
+    of preference: an anchor in data coordinates and an offset in points) is
+    drawn, measured in display coordinates with 1 pt of padding and checked
+    against the display-space line ``paths``, the frame of ``axes`` and the
+    display-space ``boxes`` (markers, labels placed before). The first one
+    clear of all three, with ``clearance_pt`` of space from every line, is
+    kept. Where none is, the candidate kept is off the lines by 1 pt, then
+    inside, then off the boxes, and only then away from the lines, in that
+    order. The label is left out of the layout (placing it moves no panel);
+    ``style`` holds the remaining ``Axes.annotate`` keywords. Returns the
+    annotation kept; :func:`placement_fallback` tells whether it is such a
+    fallback (whether a fallback is needed can depend on the platform's font
+    metrics, so tests require full clearance only of the other labels).
+    """
+    scale = axes.figure.dpi / 72.0
+    frame = axes.bbox
+    best: tuple[tuple[bool, bool, bool, bool], Any] | None = None
+    for xy, dx, dy, ha, va in candidates:
+        label = axes.annotate(text, xy, xytext=(dx, dy), textcoords="offset points", ha=ha, va=va,
+                              annotation_clip=False, in_layout=False, **style)
+        measured = label.get_window_extent(renderer)
+        extent = measured.padded(scale)
+        inside = (frame.x0 <= extent.x0 and extent.x1 <= frame.x1 and frame.y0 <= extent.y0
+                  and extent.y1 <= frame.y1)
+        on_line = any(bool(path.intersects_bbox(extent, filled=False)) for path in paths)
+        near_line = any(bool(path.intersects_bbox(measured.padded(clearance_pt * scale), filled=False))
+                        for path in paths)
+        violations = (on_line, not inside, any(extent.overlaps(box) for box in boxes), near_line)
+        if best is None or violations < best[0]:
+            if best is not None:
+                best[1].remove()
+            best = (violations, label)
+        else:
+            label.remove()
+        if not any(violations):
+            break
+    if best is None:
+        raise FigureError(f"no candidate position for the label {text!r}")
+    # A plain attribute of the artist: it is not drawn and leaves the SVG unchanged.
+    best[1].placement_fallback = any(best[0])
+    return best[1]
+
+
+def placement_fallback(label: Any) -> bool:
+    """Whether a label placed by :func:`_place_text` is the fallback (no candidate was clear of everything)."""
+    return bool(getattr(label, "placement_fallback", False))
+
+
+def _obstacles(axes: Axes) -> tuple[list[Any], list[Any]]:
+    """The drawn lines of ``axes`` as display-space paths and its markers as display-space boxes.
+
+    Lines are every visible ``Line2D`` with a line style; markers are the points
+    of every visible ``Line2D`` with a marker (half the marker size plus half
+    its edge) and of every scatter collection (from its areas in points
+    squared). Call after the layout is fixed.
+    """
+    from matplotlib.collections import PathCollection
+    from matplotlib.transforms import Bbox
+
+    scale = axes.figure.dpi / 72.0
+    paths: list[Any] = []
+    boxes: list[Any] = []
+    for line in axes.lines:
+        if not line.get_visible():
+            continue
+        if line.get_linestyle() not in ("None", "none", "", " "):
+            paths.append(line.get_path().transformed(line.get_transform()))
+        if line.get_marker() not in (None, "None", "none", "", " "):
+            half = (line.get_markersize() + line.get_markeredgewidth()) / 2.0 * scale
+            for cx, cy in line.get_transform().transform(line.get_xydata()):
+                boxes.append(Bbox.from_extents(cx - half, cy - half, cx + half, cy + half))
+    for collection in axes.collections:
+        if not isinstance(collection, PathCollection) or not collection.get_visible():
+            continue
+        sizes = collection.get_sizes()
+        centres = collection.get_offset_transform().transform(collection.get_offsets())
+        for index, (cx, cy) in enumerate(centres):
+            area = float(sizes[index % len(sizes)]) if len(sizes) else 36.0
+            half = (math.sqrt(area) / 2.0 + _MARKER_RING_PT) * scale
+            boxes.append(Bbox.from_extents(cx - half, cy - half, cx + half, cy + half))
+    return paths, boxes
+
+
+def _around(xy: tuple[float, float], offset: float) -> list[Placement]:
+    """Candidates around one anchor, in order: right, above, below, left, then the four diagonals."""
+    lean = 0.75 * offset
+    return [(xy, offset, 0.0, "left", "center"), (xy, 0.0, offset, "center", "bottom"),
+            (xy, 0.0, -offset, "center", "top"), (xy, -offset, 0.0, "right", "center"),
+            (xy, lean, lean, "left", "bottom"), (xy, lean, -lean, "left", "top"),
+            (xy, -lean, lean, "right", "bottom"), (xy, -lean, -lean, "right", "top")]
+
+
 def _place_counts(axes: Axes, panel: ReliabilityPanel, style: FigureTheme, largest: int, renderer: Any) -> None:
     """Print each bin's count beside its marker, clear of the diagonal, of every marker and of the panel edge.
 
     Runs after the layout is fixed: each candidate position of
     :func:`_count_candidates` is measured in display coordinates and the first
     one clear of all three, with ``_LINE_CLEARANCE_PT`` of space from the
-    diagonal, is kept. Where none is (a bin in the frame's corner), the
-    candidate kept is off the diagonal by 1 pt, then inside, then off the
-    markers, and only then near the diagonal, in that order. The labels
-    are left out of the layout, so placing them moves no panel, and each sits on
-    a surface-coloured backing above the diagonal and below the markers.
+    diagonal, is kept (:func:`_place_text`). Where none is (a bin in the
+    frame's corner), the candidate kept is off the diagonal by 1 pt, then
+    inside, then off the markers, and only then near the diagonal, in that
+    order. The labels are left out of the layout, so placing them moves no
+    panel, and each sits on a surface-coloured backing above the diagonal and
+    below the markers.
     """
     from matplotlib.transforms import Bbox
 
@@ -1013,30 +1124,13 @@ def _place_counts(axes: Axes, panel: ReliabilityPanel, style: FigureTheme, large
     halves = [(math.sqrt(_area(bin_.count, largest)) / 2.0 + _MARKER_RING_PT) * scale for bin_ in panel.bins]
     markers = [Bbox.from_extents(cx - half, cy - half, cx + half, cy + half)
                for (cx, cy), half in zip(centres, halves, strict=True)]
-    frame = axes.bbox
     for index, (bin_, (x, y)) in enumerate(zip(panel.bins, points, strict=True)):
         offset = math.sqrt(_area(bin_.count, largest)) / 2.0 + _COUNT_GAP_PT
-        best: tuple[tuple[bool, bool, bool, bool], Any] | None = None
-        for dx, dy, ha, va in _count_candidates(x, y, offset):
-            label = axes.annotate(str(bin_.count), (x, y), xytext=(dx, dy), textcoords="offset points", ha=ha,
-                                  va=va, fontsize=6.5, color=style.secondary_ink, annotation_clip=False,
-                                  in_layout=False, zorder=_COUNT_ZORDER, gid=f"reliability-count-{panel.key}-{index}",
-                                  bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 1.0})
-            text = label.get_window_extent(renderer)
-            extent = text.padded(scale)
-            inside = (frame.x0 <= extent.x0 and extent.x1 <= frame.x1 and frame.y0 <= extent.y0
-                      and extent.y1 <= frame.y1)
-            on_line = bool(path.intersects_bbox(extent, filled=False))
-            near_line = bool(path.intersects_bbox(text.padded(_LINE_CLEARANCE_PT * scale), filled=False))
-            violations = (on_line, not inside, any(extent.overlaps(marker) for marker in markers), near_line)
-            if best is None or violations < best[0]:
-                if best is not None:
-                    best[1].remove()
-                best = (violations, label)
-            else:
-                label.remove()
-            if not any(violations):
-                break
+        candidates = [((x, y), dx, dy, ha, va) for dx, dy, ha, va in _count_candidates(x, y, offset)]
+        _place_text(axes, str(bin_.count), candidates, renderer, paths=(path,), boxes=markers, fontsize=6.5,
+                    color=style.secondary_ink, zorder=_COUNT_ZORDER,
+                    gid=f"reliability-count-{panel.key}-{index}",
+                    bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 1.0})
 
 
 def _draw_reliability_panel(axes: Axes, panel: ReliabilityPanel, style: FigureTheme, theme: str,
@@ -1134,10 +1228,42 @@ def _checked_arms(arms: Sequence[str]) -> tuple[str, ...]:
     return arms
 
 
+#: Decimals of the figure fraction kept when the layout is frozen (about 1e-9 of the figure).
+_LAYOUT_DECIMALS = 9
+
+
+def freeze_layout(figure: Figure) -> Figure:
+    """Fix the last layout of ``figure``: positions rounded, layout engine off; returns the same figure.
+
+    The constrained layout can return axes positions that differ in their last
+    bits from one process to the next, and the SVG clip-path ids hash the
+    unrounded clip rectangles, so the same figure would not be byte-identical
+    across processes. After the final layout pass every axes position and
+    every figure-level text position is rounded to ``_LAYOUT_DECIMALS``
+    decimals of the figure (a shift far below a point) and the layout engine
+    is switched off, so saving draws exactly these positions.
+    """
+    for axes in figure.axes:
+        bounds = [round(float(value), _LAYOUT_DECIMALS) for value in axes.get_position().bounds]
+        axes.set_position(bounds, which="both")
+    texts = [*figure.texts, *(text for text in (getattr(figure, name, None) for name in (
+        "_suptitle", "_supxlabel", "_supylabel")) if text is not None)]
+    for text in texts:
+        x, y = text.get_position()
+        text.set_position((round(float(x), _LAYOUT_DECIMALS), round(float(y), _LAYOUT_DECIMALS)))
+    figure.set_layout_engine("none")
+    return figure
+
+
 def figure_svg(figure: Figure) -> str:
-    """The SVG text of ``figure``: glyphs as paths, a fixed id salt and no timestamp, so it is byte-stable."""
+    """The SVG text of ``figure``: glyphs as paths, a fixed id salt and no timestamp, so it is byte-stable.
+
+    The figure's layout is frozen first (:func:`freeze_layout`), so the bytes
+    do not depend on the process that renders it.
+    """
     import matplotlib
 
+    freeze_layout(figure)
     buffer = io.StringIO()
     with matplotlib.rc_context({"svg.hashsalt": SVG_HASH_SALT, "svg.fonttype": "path"}):
         figure.savefig(buffer, format="svg", metadata={"Date": None}, facecolor=figure.get_facecolor(),
@@ -1147,8 +1273,8 @@ def figure_svg(figure: Figure) -> str:
 
 def figure_paths(name: str, out_dir: str | Path = FIGURES_DIR) -> dict[str, Path]:
     """The four files of figure ``name`` in ``out_dir``: light and dark SVG, CSV and markdown, in that order."""
-    if name not in FIGURE_NAMES:
-        raise FigureError(f"unknown figure {name!r}; expected one of {list(FIGURE_NAMES)}")
+    if name not in PUBLISHED_FIGURES:
+        raise FigureError(f"unknown figure {name!r}; expected one of {list(PUBLISHED_FIGURES)}")
     out = Path(out_dir)
     return {"light": out / f"{name}-light.svg", "dark": out / f"{name}-dark.svg", "csv": out / f"{name}.csv",
             "markdown": out / f"{name}.md"}
@@ -1256,15 +1382,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "ADJUSTMENT_NAMES",
+    "CONVERGENCE",
     "DEFAULT_ARMS",
     "DERIVED_ONLY",
     "DRAWN",
+    "DRAWS",
     "FIGURES_DIR",
     "FIGURE_NAMES",
     "GAP",
     "GAP_COLUMNS",
     "INSUFFICIENT",
     "MISSING",
+    "PUBLISHED_FIGURES",
     "RELIABILITY",
     "RELIABILITY_COLUMNS",
     "ROLE_PURPOSE",
@@ -1276,11 +1405,13 @@ __all__ = [
     "ReliabilityPanel",
     "figure_paths",
     "figure_svg",
+    "freeze_layout",
     "figure_texts",
     "gap_panel",
     "gap_table",
     "held_out_reliability",
     "main",
+    "placement_fallback",
     "plot_gap",
     "plot_reliability",
     "read_gap_panel",
