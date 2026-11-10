@@ -1046,6 +1046,32 @@ def decide_from_draws(draws: Sequence[RecordedDraw], config: GuardConfig, identi
     `Llama` and cover the evidence assembly, top-k ordering, boundary handling,
     each error code, the digest refusal and the body limits; the live exactness
     check is a receipt, not a unit test.
+- Batch evidence and memory guard (task 6.4, user decision 2026-11-10):
+  - `POST /v1/full_distribution_batch` with `{model_digest, prompt_text,
+    response_texts[], top_k_keep}` returns `{"evidence": [...]}`, one
+    `FullDistributionEvidence` per response in order. The host tokenises the prompt
+    once, decodes it with the logits of the last prompt token requested, then for
+    each response teacher-forces its tokens one decode at a time (the response
+    positions keep the exactness of the single route) and rolls the KV cache back to
+    the prompt length with `llama_memory_seq_rm` before the next response. Errors as
+    for the single route; 413 applies to the prompt plus the longest response. Per
+    item and rendering this costs one prompt evaluation plus about 32 times the
+    response length in decodes (about 100 s at 16 tokens/s), against about 33 s per
+    draw before.
+  - `FullDistributionClient.evidence_batch(prompt_text, response_texts, *, top_k_keep=100)`
+    with `timeout_s` passed from the plan (the study uses about 600 s per batch).
+  - Memory guard: the host samples free physical memory every 5 s; below
+    `memory_floor_bytes` (profile `host_requirements`, default one quarter of
+    `min_free_ram_bytes`) it answers 503 `{"error": {"code": "memory_low"}}` and
+    logs the sample; the gateway logs the same samples and refusals; the client
+    maps 503 to a retryable `host_busy` RequestError; the runner (7.4) waits and
+    retries a bounded number of times, then marks the stage incomplete. The host is
+    launched with `python -X faulthandler`. No automatic restart: a dead host ends
+    the stage with its exit code in the receipt.
+  - The exactness check gains `--batch`: the two single pairs plus one pair whose
+    prompt carries two responses, compared against llama-server as before; plus a
+    30-minute soak (a batch request every 30 s, memory samples) written as a receipt
+    under `runs/finance-sim/hosts/full-distribution/soak/`.
 - Lifecycle scripts (tasks 6.2 and 6.3) are siblings of `scripts/serve_local_flm.ps1`
   and reuse its structure: actions `start | stop | status | gateway`, a hidden
   `pwsh` gateway process bound to `127.0.0.1` by default (the study runner is native
@@ -1380,9 +1406,13 @@ use the frozen seeds, `n_resamples`, `block_length` and `alpha`:
   changed plan; stops on any limit and marks the run incomplete (11.3).
 - Hosts: model hosts are native Windows processes started and stopped by the
   Windows-side scripts (`serve_local_llamacpp.ps1`, `serve_full_distribution.ps1`,
-  `modal_operator.sh`). The runner (native on Windows since 2026-11-10, or in a
-  container) never starts them; it checks reachability and the model digest before
-  admitting requests and records the scripts' teardown evidence (11.1).
+  `modal_operator.sh`). The model hosts run natively, and must (iGPU, NPU); the
+  runner runs in Compose (user decision 2026-11-10: Compose for runs, native uv for
+  unit tests) and reaches the hosts through the gateways on an adapter address
+  (`-BindAddress`; from a Podman container `host.containers.internal`), which 9.1
+  verifies before 9.2 relies on it. The runner never starts the hosts; it checks
+  reachability, the model digest and the memory floor before admitting requests
+  and records the scripts' teardown evidence (11.1).
 
 #### NegativeControlTask
 

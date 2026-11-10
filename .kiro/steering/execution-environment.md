@@ -5,7 +5,11 @@ User instruction, 2026-11-10. Containers on Windows come from Podman Desktop: th
 Compose provider, run natively from PowerShell, and Compose is the preferred way to
 run a containerised command (`docker compose run --rm dev uv run --no-sync ...`).
 Dagger is a native CLI whose engine runs as a container in the Podman Desktop VM.
-WSL is no longer part of the container or CI route.
+WSL is no longer part of the container or CI route. Split of 2026-11-10: Compose
+for runs (study scripts, the runner, anything touching data or hosts), native
+`uv` for the unit-test loop, Dagger as the CI gate. Model hosts run natively and
+must (iGPU, NPU); never start one without the free RAM it needs plus headroom,
+and never beside another heavy job, because an exhausted machine kills the host.
 
 User instruction, 2026-11-09. The development loop runs natively on Windows: run
 tests, ruff, the architecture check and scripts that need no model hardware with
