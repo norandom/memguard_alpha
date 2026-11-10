@@ -44,10 +44,23 @@ Outcome (Requirement 7.3), against the plan's frozen ``tolerance``:
 ``no material change`` when the interval's upper bound is below the tolerance;
 ``discounting honest answers`` (the flag) when its lower bound is above it;
 ``inconclusive`` otherwise.
+
+Report files (task 8.4, Requirement 10.1). :func:`negative_control_from_records`
+rebuilds the report from the stored ``negative_control`` results alone, and
+:func:`write_report` writes it once as ``negative-control-<arm>.json`` (private:
+it carries the per-release rows) and ``negative-control-<arm>.md`` beside it,
+the derived table the worked example publishes: per variant the mean absolute
+change, the signed mean change, the sign-flip share, the block-bootstrap
+intervals, the three-outcome flag and the status counts, with the sources
+cited and no release, reply or raw licensed value. The design's figure set has
+no negative-control panel (F1 is the positive control only), so the table is
+the published form.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import time
 from collections import Counter
@@ -76,9 +89,11 @@ from scripts.finance_sim.execute import (
     ItemResult,
     execute_items,
     load_calibrators,
+    load_result,
+    result_path,
 )
 from scripts.finance_sim.items import EdgarItem
-from scripts.finance_sim.limits import ARMS, BudgetLedger
+from scripts.finance_sim.limits import ARMS, RUNS_ROOT, BudgetLedger
 from scripts.finance_sim.plan import (
     NO_ADJUSTMENT,
     VARIANTS,
@@ -116,6 +131,21 @@ METHOD = (
 )
 NO_RESULT = "no result: the negative-control stage holds no result for this release, so the stage is incomplete"
 NO_CHANGE = "no release has a computable change for this variant"
+#: Analysis outputs (design: ``runs/finance-sim/analysis/*.json``); the markdown beside each JSON is the published table.
+REPORT_DIR = RUNS_ROOT / "analysis"
+#: Columns of the published table, one row per variant with an adjustment (derived statistics only).
+REPORT_COLUMNS: tuple[str, ...] = (
+    "variant", "draw_mode", "adjustment", "reference", "outcome", "flagged", "releases", "mean_absolute_change",
+    "interval_low", "interval_high", "signed_mean_change", "signed_interval_low", "signed_interval_high",
+    "sign_flips", "sign_flip_share", "dropped_resamples", "statuses", "missing")
+DATA_STATEMENT = (
+    "Data: the held-out control releases of the SEC EDGAR corpus rendered as outlook prompts (public filings); no "
+    "FRED series, FMP price or BAA10Y value enters the negative control. The study's positive-control outcomes come "
+    "from Financial Modeling Prep (FMP) end-of-day adjusted closes (licensed, not published) and its macro rows from "
+    "FRED including BAA10Y (Moody's Seasoned Baa Corporate Bond Yield Relative to Yield on 10-Year Treasury Constant "
+    "Maturity, copyright Moody's, cited and not reproduced); no such value is listed here.")
+DERIVED_ONLY = ("Derived statistics only: no release text, no reply text, no per-release row and no raw licensed "
+                "series (the per-release rows stay in the private JSON).")
 _EXAMPLE = re.search(r"e\.g\. (\{[^}]*\})", render_outlook_prompt("release"))
 if _EXAMPLE is None:
     raise ImportError("the outlook prompt of recall_guard.dataset.edgar_outlook no longer shows a JSON example")
@@ -147,6 +177,22 @@ def _quarter_key(label: str) -> tuple[int, int]:
 def _sign(value: float) -> int:
     """The outlook definition's decision: 1 above zero after rounding to nine decimals, else -1."""
     return int(outlook_definition.decide({OUTLOOK_COMPONENT: value}))
+
+
+def _percent(confidence: float) -> str:
+    return f"{confidence * 100:g}"
+
+
+def _number(value: float | int | None) -> str:
+    if value is None:
+        return ""
+    return str(value) if isinstance(value, int) else f"{value:.6g}"
+
+
+def _cell(value: object) -> str:
+    """One markdown cell: pipes escaped, line breaks flattened, None empty."""
+    text = "" if value is None else str(value)
+    return " ".join(text.split()).replace("|", "\\|")
 
 
 # ---------- releases ----------
@@ -307,6 +353,60 @@ class NegativeControlReport:
                 "complete": self.complete, "missing_results": dict(self.missing_results),
                 "flagged": list(self.flagged), "outcome_rule": self.outcome_rule, "method": self.method,
                 "anchor_note": self.anchor_note, "variants": [variant.to_dict() for variant in self.variants]}
+
+    def _row(self, variant: VariantChange) -> list[str]:
+        interval, signed = variant.interval, variant.signed_interval
+        statuses = "; ".join(f"{status} {count}" for status, count in variant.statuses.items())
+        values = {
+            "variant": variant.variant, "draw_mode": variant.mode, "adjustment": variant.adjustment,
+            "reference": variant.reference, "outcome": variant.outcome,
+            "flagged": "" if variant.outcome is None else str(variant.flagged).lower(), "releases": variant.n_items,
+            "mean_absolute_change": _number(variant.mean_absolute_change),
+            "interval_low": _number(None if interval is None else interval.lo),
+            "interval_high": _number(None if interval is None else interval.hi),
+            "signed_mean_change": _number(variant.signed_mean_change),
+            "signed_interval_low": _number(None if signed is None else signed.lo),
+            "signed_interval_high": _number(None if signed is None else signed.hi),
+            "sign_flips": _number(variant.sign_flips), "sign_flip_share": _number(variant.sign_flip_share),
+            "dropped_resamples": _number(variant.dropped_resamples), "statuses": statuses, "missing": variant.missing,
+        }
+        return [_cell(values[column]) for column in REPORT_COLUMNS]
+
+    def to_markdown(self) -> str:
+        """The published table: the frozen settings, one row per variant and the sources, derived values only.
+
+        Release ids, release text and the per-release changes are not listed
+        (they stay in the JSON of :meth:`to_dict`); the missing results appear
+        as a count.
+        """
+        per_quarter = ", ".join(f"{quarter} {count}" for quarter, count in self.releases_per_quarter.items())
+        stored = self.planned - len(self.missing_results)
+        lines = [
+            "# Negative control: the change each adjustment makes against no adjustment", "",
+            f"Arm {self.arm}, stage {self.stage}, plan {self.plan_sha256}.", "",
+            f"Releases: {self.planned} frozen held-out control releases over {len(self.quarters)} filing quarters "
+            f"(releases per quarter: {per_quarter}); results stored: {stored}; planned results missing: "
+            f"{len(self.missing_results)}; stage {'complete' if self.complete else 'incomplete'}.", "",
+            f"Tolerance {self.tolerance:g}. Intervals: {_percent(self.confidence)} percent non-circular "
+            f"moving-block percentile bootstrap over filing quarters, block length {self.block_length} quarters, "
+            f"{self.n_resamples} resamples, seed {self.seed}; the statistic's interval and the signed interval come "
+            "from the same resamples.", "",
+            f"Outcome rule: {self.outcome_rule}. Variants flagged as discounting honest answers: "
+            f"{', '.join(self.flagged) or 'none'}.", "",
+            "| " + " | ".join(REPORT_COLUMNS) + " |",
+            "|" + "---|" * len(REPORT_COLUMNS),
+        ]
+        lines += ["| " + " | ".join(self._row(variant)) + " |" for variant in self.variants]
+        lines += [
+            "",
+            f"Method: {self.method}. Statuses count the guarded statuses of the variant over the releases with a "
+            "result; a weak calibrator or unavailable estimate leaves the raw outlook unchanged (change 0), so the "
+            "counts stand beside every outcome.", "",
+            self.anchor_note, "",
+            DATA_STATEMENT, "",
+            DERIVED_ONLY, "",
+        ]
+        return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -475,6 +575,66 @@ def negative_control_change(plan: StudyPlan, results: Iterable[ItemResult] | Map
         variants=variants)
 
 
+def negative_control_from_records(plan: StudyPlan, releases: Iterable[EdgarItem], *, arm: str,
+                                  results_dir: str | Path = RESULTS_DIR) -> NegativeControlReport:
+    """The report from the stored ``negative_control`` result of every frozen release alone; nothing is requested.
+
+    A frozen release without a stored result is reported as missing with
+    :data:`NO_RESULT`; a stored result that is malformed or belongs elsewhere
+    is refused (see :func:`negative_control_change`).
+    """
+    ordered = _releases(plan, releases)
+    if arm not in ARMS:
+        raise NegativeControlError(f"arm must be one of {list(ARMS)}; got {arm!r}")
+    results = []
+    for release in ordered:
+        path = result_path(arm, STAGE, release.item_id, OUTLOOK, results_dir)
+        if path.exists():
+            results.append(load_result(path))
+    return negative_control_change(plan, results, ordered, arm=arm)
+
+
+# ---------- the written report ----------
+
+def report_path(arm: str, out_dir: str | Path = REPORT_DIR) -> Path:
+    """``<out_dir>/negative-control-<arm>.json``; the published markdown table sits beside it with ``.md``."""
+    if arm not in ARMS:
+        raise NegativeControlError(f"unknown arm {arm!r} for the negative-control report")
+    return Path(out_dir) / f"negative-control-{arm}.json"
+
+
+def _write_text(path: Path, text: str) -> None:
+    """Write atomically: a crash leaves the previous file or the new one, never half of one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def write_report(report: NegativeControlReport, out_dir: str | Path = REPORT_DIR) -> tuple[Path, Path]:
+    """Write the report as JSON (private, per-release rows) and markdown (the published table) once.
+
+    The same outputs again are a no-op; different ones are refused, never
+    replaced (remove the old files first).
+    """
+    if not isinstance(report, NegativeControlReport):
+        raise TypeError(f"report must be a NegativeControlReport; got {type(report).__name__}")
+    json_path = report_path(report.arm, out_dir)
+    markdown_path = json_path.with_suffix(".md")
+    texts = {json_path: json.dumps(report.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n",
+             markdown_path: report.to_markdown()}
+    for path, text in texts.items():
+        if path.exists() and path.read_text(encoding="utf-8") != text:
+            raise NegativeControlError(f"refusing to replace the different negative-control report at {path}")
+    for path, text in texts.items():
+        if not path.exists():
+            _write_text(path, text)
+    return json_path, markdown_path
+
+
 # ---------- the run ----------
 
 @dataclass(frozen=True)
@@ -536,6 +696,8 @@ def run_negative_control(
 __all__ = [
     "ADJUSTED_VARIANTS",
     "ANCHOR_NOTE",
+    "DATA_STATEMENT",
+    "DERIVED_ONLY",
     "DISCOUNTING_HONEST_ANSWERS",
     "INCONCLUSIVE",
     "METHOD",
@@ -544,6 +706,8 @@ __all__ = [
     "NO_RESULT",
     "OUTCOMES",
     "OUTCOME_RULE",
+    "REPORT_COLUMNS",
+    "REPORT_DIR",
     "REPORT_SCHEMA",
     "STAGE",
     "ItemChange",
@@ -552,6 +716,9 @@ __all__ = [
     "NegativeControlRun",
     "VariantChange",
     "negative_control_change",
+    "negative_control_from_records",
     "negative_control_items",
+    "report_path",
     "run_negative_control",
+    "write_report",
 ]
