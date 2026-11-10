@@ -6,13 +6,17 @@ The stubs never read the root .env; the tests check only that its path is passed
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/modal_operator.sh"
-pytestmark = pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX sh")
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32" or shutil.which("sh") is None,
+    reason="the operator script runs in a Linux container and is tested on POSIX hosts",
+)
 
 # Records the docker arguments, then runs the container command line locally.
 DOCKER = """#!/bin/sh

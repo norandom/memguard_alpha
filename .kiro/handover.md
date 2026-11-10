@@ -28,8 +28,8 @@ Phase B and the parked items (P1 to P7); nothing there changed.
    `docker compose run --rm dev uv run --no-sync ...`); `dagger` v0.21.11 is a
    native CLI whose engine runs as a Podman container; WSL is no longer used. The
    steering and README say so. Re-verify `run-with-secrets` on the Podman engine
-   before the next credentialed run. Windows CI test fixes stay paused until the
-   user says otherwise (see "Open follow-ups").
+   before the next credentialed run. The Windows CI test fixes were applied on
+   2026-11-10 (see "Open follow-ups").
 2. **Finish task 5.1 (ensemble-first guarded decision).** State in the tree:
    - new: `recall_guard/harness/guarded_decision.py` (644 lines),
      `tests/harness/test_guarded_decision.py` (712 lines, 54 tests);
@@ -166,16 +166,13 @@ re-locate it). FMP key name is `FMP_API_TOKEN`. The real `.env` still carries
 
 ## Open follow-ups
 
-- **GitHub Actions Windows jobs fail on every commit since 2026-11-09** (Linux
-  `test` and `lint` pass). Five tests: `tests/scripts/test_modal_operator.py`
-  (four tests compare the Git Bash `/d/a/...` form of the `--env-file` path with a
-  Windows path; fix: compare as paths, mapping `/x/...` to `X:/...` on Windows) and
-  `tests/scripts/test_npu_phase_a.py::test_gateway_synthesizes_installed_only_tags_with_catalog_digest`
-  (the runner has no `models/flm`; fix: skip when the store is absent, with the
-  reason). A test-only patch script exists at
-  `D:\BuildArtifacts\Temp\claude\a68d445fc1ecc2f1\455d3037-9369-433a-9812-04fcc4b116ca\scratchpad\fix_windows_ci_tests.py`
-  (unapplied; the folder is session temp and may be gone). **Paused by the user**
-  until the Podman move is done.
+- **Windows CI (fixed 2026-11-10 on the user's direction):** the POSIX operator
+  tool is not ported to Windows; it is tested in the Linux container, PowerShell
+  pieces on Windows. `tests/scripts/test_modal_operator.py` is marked Linux-only
+  (Compose parity: 18 passed), and the FLM gateway test in
+  `tests/scripts/test_npu_phase_a.py` skips without the untracked `models/flm`
+  store and retries one `pwsh` launch refused by the Store alias. Confirm the
+  Windows jobs are green on the next CI run.
 - **Host flake (2026-11-10):** Python launching the Store-installed `pwsh`
   app-execution alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\...\pwsh.exe`)
   intermittently fails with `PermissionError: [WinError 5]` at CreateProcess

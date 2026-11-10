@@ -4,6 +4,7 @@ import math
 import shutil
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -236,7 +237,24 @@ def test_flm_smoke_refuses_when_the_model_is_not_served(flm_rig, tmp_path):
 # --- gateway tag synthesis (PowerShell; Windows host only) ----------------------------------------
 
 
+def _pwsh(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run PowerShell 7; retry once when the Store app-execution alias refuses the launch.
+
+    On hosts where ``pwsh`` resolves to the WindowsApps alias, CreateProcess intermittently
+    fails with ``PermissionError`` (WinError 5). A real permission problem fails twice.
+    """
+    for attempt in (1, 2):
+        try:
+            return subprocess.run(["pwsh", "-NoProfile", *args], capture_output=True, text=True, timeout=120)
+        except PermissionError:
+            if attempt == 2:
+                raise
+            time.sleep(1.0)
+    raise AssertionError("unreachable")
+
+
 @pytest.mark.skipif(sys.platform != "win32" or shutil.which("pwsh") is None, reason="needs Windows PowerShell 7")
+@pytest.mark.skipif(not (ROOT / "models/flm").is_dir(), reason="needs the untracked FLM model store at models/flm (host only)")
 def test_gateway_synthesizes_installed_only_tags_with_catalog_digest(tmp_path):
     fake = tmp_path / "flm"
     fake.mkdir()
@@ -251,14 +269,12 @@ def test_gateway_synthesizes_installed_only_tags_with_catalog_digest(tmp_path):
         {"path": "config.json"}, {"path": "model.q4nx", "lfs": {"oid": DIGEST.removeprefix("sha256:")}}]}),
         encoding="utf-8")
     script = ROOT / "scripts/serve_local_flm.ps1"
-    result = subprocess.run(["pwsh", "-NoProfile", "-File", str(script), "tags", "gemma3:4b", "-FlmPath",
-                             str(fake / "flm.cmd")], capture_output=True, text=True, timeout=120)
+    result = _pwsh("-File", str(script), "tags", "gemma3:4b", "-FlmPath", str(fake / "flm.cmd"))
     assert result.returncode == 0, result.stderr
     tags = json.loads(result.stdout)
     assert tags["source"] == FLM_INSTALLED_TAGS_SOURCE and tags["runtime"] == "fastflowlm"
     assert [m["name"] for m in tags["models"]] == ["gemma3:4b"] and tags["models"][0]["digest"] == DIGEST
     assert tags["serving"] == {"model": "gemma3:4b", "context_length": 2048,
                                "source": "flm serve --ctx-len (process start)"}
-    refused = subprocess.run(["pwsh", "-NoProfile", "-File", str(script), "tags", "qwen3:8b", "-FlmPath",
-                              str(fake / "flm.cmd")], capture_output=True, text=True, timeout=120)
+    refused = _pwsh("-File", str(script), "tags", "qwen3:8b", "-FlmPath", str(fake / "flm.cmd"))
     assert refused.returncode != 0 and "not installed" in (refused.stdout + refused.stderr)
