@@ -1,12 +1,12 @@
 # Handover: memorization-adjusted-finance-sim
 
-State as of 2026-11-10, 21:12 local time (system clock). Repository `norandom/recall_guard`
-(local folder `D:\Source\memguard_alpha`, branch `main`). Last code commit: `cb177f2` (task 8.4). CI is green on every commit since the 8.3c fix (`9f8a75a`); the 8.4 push is being watched.
+State as of 2026-11-10, 22:44 local time (system clock); the overnight live run is in progress. Repository `norandom/recall_guard`
+(local folder `D:\Source\memguard_alpha`, branch `main`). Last code commit: `657a015` (task 9.1, the study runner). CI is green on every commit since the 8.3c fix (`9f8a75a`).
 
 ## Where the spec stands
 
-- 38 of 42 sub-tasks are `[x]`: groups 1 to 8 complete (the whole study pipeline on fakes, the four figures and the offline replay with its licensing guard), plus the follow-ups 7.3b and 8.3c.
-- Open: 9.1 (end-to-end offline validation through one runner, in progress on Fable), 9.2 to 9.5 (the live study: plan build, probe-arm calibration and gate, probe stages, Modal, report) and 10.x (docs).
+- 39 of 42 sub-tasks are `[x]`: groups 1 to 8 complete plus 9.1 (the study runner, validated end to end on fakes), with the follow-ups 7.3b and 8.3c.
+- Open: 9.2 to 9.5 (the live study) and 10.x (docs). The overnight run (user go at about 21:30) covers 9.2 and 9.3 on the probe arm, then analyses, replay, a draft 9.5 and the docs; Modal (9.4) waits for the approval record.
 - `tasks.md` ends with "## Implementation Notes": one entry per task with the
   reviewer's forward notes. Read 7.3b, 7.4, 7.7, 7.8, 7.10, 7.11, 7.12, 8.2 before
   writing the 9.1 runner. `design.md` carries dated amendment paragraphs
@@ -14,9 +14,9 @@ State as of 2026-11-10, 21:12 local time (system clock). Repository `norandom/re
 - Last local full suite (wave 3, before 8.2 and 8.3): 5,071 passed, 20 skipped,
   one known pwsh launch flake (`runs/finance-sim/validation/wave-3-full.log`).
 
-## Working tree
+## Working tree and the live run
 
-Task 9.1 (the study runner, probably `scripts/finance_sim/run_study.py`, tests `test_run_study*.py`) may be present, written by a Fable implementer and not yet reviewed: treat it as a draft (inspect, review with kiro-review on Opus medium, then commit, or discard). Nothing else is uncommitted; no host is running.
+Nothing is uncommitted. The real plan is frozen under `runs/finance-sim/plan/` (hash `f7603eeb8efdbf74645d658f2bd733a35b3834ba7c90b74d00c6ac2e6b5332fe`, built natively with the keys by name; 126 months, none excluded; probe subset 20 months). The live stages run natively (decision recorded in the notes) through a detached driver in the session scratchpad (`scratchpad\live\run_stage.ps1`, status files `<stage>.status`, logs `<stage>.out.log`): each stage starts llama-server, runs the generation pass, stops it, starts the full-distribution host, runs the evidence pass, stops it, records the teardown; one restart and resume on a host failure, stop on a second. Receipts land under `runs/finance-sim/records/sampling/<stage>/`. If this session died mid-stage: check `Get-NetTCPConnection` for 11570/11571/11580/11581 and the lifecycle scripts' `status`; a host left running stops itself after 180 idle minutes; rerun the same runner command to resume (only unrecorded draws or missing batches are sent). The operator sequence and exit codes are in the 9.1 review notes in tasks.md and in `run_study --help`.
 
 ## Decisions of 2026-11-10 (user; all in design.md and the notes)
 
