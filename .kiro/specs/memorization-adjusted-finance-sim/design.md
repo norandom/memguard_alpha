@@ -1211,6 +1211,8 @@ the probability toward 0.5 by the same factor as the components:
 `p_adj = 0.5 + (1 - p_memorized) * (p_raw - 0.5)`. The mapping, outcome and clip
 are frozen in the plan before any request.
 
+Amendments after 7.1 and 7.2 (2026-11-10): the CPI year-over-year base is the same calendar month one year earlier, not "twelve observations earlier"; the z-score window is the 60 calendar months ending with the current month (at least 30 values); a month-end close or DTB3 value more than 7 days before its month end yields no realized outcome, with the reason; "next month complete" means it ends on or before min(price window end, today minus 1 day); the FRED cache is `fred/` under the private root (fred.DEFAULT_CACHE_DIR, DTB3 included), FMP bodies `data/fmp/`, returns `data/realized_returns.json`, items `plan/items.json`, all private; cutoffs come from the sourced registry keyed by registry id, and the plan freezes an arm-to-registry-id map (`google/gemma-3-4b-it` for both arms; the llama.cpp profile names the model `gemma3:4b`); every recording, StageLimits JSON and approval record carries `StudyPlan.plan_sha256` (canonical JSON), never a raw file hash.
+
 **Study plan** (tasks 7.1 to 7.3). Modules under `scripts/finance_sim/`: `items.py`
 (7.1), `plan.py` (7.2 and 7.3), `build_plan.py` (the CLI that runs both and writes
 the frozen plan). Private storage root `runs/finance-sim/`: `data/fred/` (the FRED
