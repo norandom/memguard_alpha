@@ -316,7 +316,8 @@ def test_labels_stay_clear_of_lines_markers_each_other_and_the_panel_frame(stage
     for found in (stages, convergence_stages(PLAN, stages=("full_run",), analysis_dir=study.only)):
         for theme in THEMES:
             figure = plot_convergence(found, theme=theme)
-            figure.draw_without_rendering()
+            with matplotlib.rc_context(figures._theme_rc(theme)):  # measured under the figure's own rcParams
+                figure.draw_without_rendering()
             scale = figure.dpi / 72.0
             for axes in figure.axes:
                 labels = [text for text in axes.texts if isinstance(text, Annotation)]
@@ -432,15 +433,30 @@ def test_the_figure_is_written_in_light_and_dark_svg_with_a_csv_and_markdown_onc
 
 
 def test_the_svg_bytes_do_not_depend_on_the_process_that_renders_them(stages, tmp_path):
-    import hashlib
-
+    """Two fresh processes render the same bytes (the render under this process's rcParams is checked below)."""
     from tests.scripts.finance_sim.test_figures_draws import svg_hashes_in_processes
 
-    outputs = svg_hashes_in_processes(stages, "figures_convergence", "plot_convergence",
-                                      tmp_path / "convergence.pickle", runs=2)
-    here = [hashlib.sha256(figures.figure_svg(plot_convergence(stages, theme=theme)).encode("utf-8")).hexdigest()
-            for theme in THEMES]
-    assert all(output == here for output in outputs), (outputs, here)
+    first, second = svg_hashes_in_processes(stages, "figures_convergence", "plot_convergence",
+                                            tmp_path / "convergence.pickle", runs=2)
+    assert first == second and len(first) == 2 and first[0] != first[1], (first, second)
+
+
+def test_the_render_does_not_depend_on_the_processs_global_rc_params(stages, study):
+    """The paper style's pdf renderer and tight bounding box, or another font, dpi or marker default left in the
+    process by an earlier test, change nothing: the figure renders under matplotlib's defaults plus the theme."""
+    import hashlib
+
+    from tests.scripts.finance_sim.test_figures import foreign_rc_params
+
+    only = convergence_stages(PLAN, stages=("full_run",), analysis_dir=study.only)
+
+    def hashes() -> list[str]:
+        return [hashlib.sha256(figures.figure_svg(plot_convergence(found, theme=theme)).encode("utf-8")).hexdigest()
+                for found in (stages, only) for theme in THEMES]
+
+    clean = hashes()
+    with foreign_rc_params():
+        assert hashes() == clean
 
 
 def test_published_outputs_carry_derived_statistics_only(study, tmp_path):

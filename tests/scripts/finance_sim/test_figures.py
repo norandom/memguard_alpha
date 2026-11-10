@@ -13,8 +13,10 @@ Agg backend is selected before anything imports pyplot.
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import csv
+import hashlib
 import io
 import json
 import math
@@ -45,6 +47,7 @@ from recall_guard.harness.plots import (  # noqa: E402
     STUDY_PALETTE,
     STUDY_PALETTE_DARK,
     THEMES,
+    configure_paper_style,
     figure_theme,
     reliability_curve,
     variant_style,
@@ -105,6 +108,12 @@ from tests.scripts.finance_sim.test_execute import (  # noqa: E402
 )
 
 ROOT = Path(__file__).resolve().parents[3]
+#: Global rcParams a render would pick up if it read them, beyond the paper style of tests/harness/test_plots.py
+#: (which sets ``savefig.format`` to pdf, the renderer that lays a figure out, and ``savefig.bbox`` to tight, and
+#: never restores them): the figure dpi, the font, the text metrics, the layout padding and the marker defaults.
+FOREIGN_RC = {"figure.dpi": 150.0, "font.family": "serif", "text.hinting": "none", "svg.fonttype": "none",
+              "svg.hashsalt": "another-salt", "path.simplify": False, "figure.constrained_layout.h_pad": 0.3,
+              "figure.constrained_layout.w_pad": 0.3, "lines.markersize": 12.0, "axes.linewidth": 2.0}
 COMPUTED_SERVING = ("single_none", "single_top_k", "ensemble_none", "ensemble_top_k")
 SERVING_MISSING = ("single_full_distribution", "ensemble_full_distribution")
 SOURCES = ("top_k", "full_distribution")
@@ -118,6 +127,15 @@ def no_network(monkeypatch):
 
     monkeypatch.setattr(socket, "create_connection", forbidden)
     monkeypatch.setattr(socket.socket, "connect", forbidden)
+
+
+@contextlib.contextmanager
+def foreign_rc_params():
+    """The process's global rcParams as an earlier test may leave them; everything is restored on exit."""
+    with matplotlib.rc_context():
+        configure_paper_style()
+        matplotlib.rcParams.update(FOREIGN_RC)
+        yield
 
 
 @pytest.fixture(scope="module")
@@ -443,7 +461,8 @@ def test_bin_count_labels_stay_clear_of_the_diagonal_the_markers_and_the_panel_e
     assert corners
     for theme in THEMES:
         figure = plot_reliability(found, theme=theme)
-        figure.draw_without_rendering()
+        with matplotlib.rc_context(figures._theme_rc(theme)):  # measured under the figure's own rcParams
+            figure.draw_without_rendering()
         scale = figure.dpi / 72.0
         largest = max(b.count for panel in found for b in panel.bins)
         for axes, panel in zip(figure.axes, found, strict=True):
@@ -554,6 +573,28 @@ def test_each_figure_is_written_in_light_and_dark_svg_with_a_csv_and_markdown_on
         render_figures(PLAN, arms=("sampling",), analysis_dir=study.analysis_dir,
                        calibrators_dir=study.calibrators_dir, out_dir=out)
     assert {path: path.read_bytes() for path in expected} == before
+
+
+def test_the_render_does_not_depend_on_the_processs_global_rc_params(panels, study):
+    """Whatever rcParams an earlier test leaves in the process (the paper style's pdf renderer and tight bounding
+    box, another font or dpi), the bytes are those of a clean process: a figure is built, laid out, measured and
+    saved under matplotlib's own defaults plus the theme, and nothing global changes."""
+    found = reliability_panels(PLAN, arms=DEFAULT_ARMS, calibrators_dir=study.calibrators_dir)
+    draws = {"gap": lambda theme: plot_gap(panels, theme=theme),
+             "reliability": lambda theme: plot_reliability(found, theme=theme)}
+
+    def hashes() -> dict[tuple[str, str], str]:
+        return {(name, theme): hashlib.sha256(figure_svg(draw(theme)).encode("utf-8")).hexdigest()
+                for name, draw in draws.items() for theme in THEMES}
+
+    before = dict(matplotlib.rcParams)
+    clean = hashes()
+    with foreign_rc_params():
+        assert matplotlib.rcParams["savefig.format"] == "pdf" and matplotlib.rcParams["savefig.bbox"] == "tight"
+        assert hashes() == clean
+    assert dict(matplotlib.rcParams) == before
+    defaults = figures._default_rc()
+    assert "backend" not in defaults and defaults["savefig.format"] == "png" and defaults["savefig.bbox"] is None
 
 
 def test_the_markdown_table_is_the_csv_rendered_below_its_caption(panels, study):

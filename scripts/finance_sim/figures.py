@@ -42,7 +42,10 @@ no realized returns, no raw licensed series; the captions cite Moody's for
 BAA10Y and FMP for the prices behind the outcomes. A figure's files are
 written once: the same output again is a no-op and a different one is refused,
 never replaced (remove the old files first). Renders are byte-stable: no
-timestamp in the SVG metadata, a fixed SVG hash salt, glyphs as paths.
+timestamp in the SVG metadata, a fixed SVG hash salt, glyphs as paths, and
+every figure is built, laid out, measured and saved under matplotlib's own
+defaults plus the theme (:func:`_default_rc`), never under the process's
+global rcParams, so the same data gives the same bytes in any process.
 
 Style (task 8.1, recall_guard.harness.plots). The validated ``STUDY_PALETTE`` and
 ``STUDY_PALETTE_DARK`` through :func:`~recall_guard.harness.plots.figure_theme`;
@@ -288,10 +291,38 @@ def _percent(confidence: float) -> str:
     return f"{confidence * 100:g}"
 
 
+def _default_rc() -> dict[str, Any]:
+    """matplotlib's own defaults for every style key, so a render starts from the same rcParams in every process.
+
+    The plot functions build, lay out and measure a figure inside
+    ``matplotlib.rc_context`` with these defaults under the theme and the
+    chrome (:func:`_theme_rc`), and :func:`figure_svg` saves under them, so
+    whatever the process set before is overlaid, not inherited: a paper style
+    (``recall_guard.harness.plots.configure_paper_style`` leaves
+    ``savefig.format`` at ``pdf``, which is the renderer
+    ``Figure.draw_without_rendering`` lays the figure out and measures its
+    text with, and ``savefig.bbox`` at ``tight``, which re-crops the saved
+    file), a style sheet or a user's matplotlibrc. The keys matplotlib keeps
+    out of a style (``STYLE_BLACKLIST``: the backend, interactive mode, window
+    and directory settings) stay as they are; the backend cannot be reset at
+    runtime, and none of them reaches a render. The fonts are the ones shipped
+    with matplotlib (``_RC``) and nothing here touches the font manager.
+    """
+    import matplotlib
+    from matplotlib.style.core import STYLE_BLACKLIST
+
+    return {key: value for key, value in matplotlib.rcParamsDefault.items() if key not in STYLE_BLACKLIST}
+
+
 def _theme_rc(theme: str) -> dict[str, Any]:
+    """The complete rcParams a figure of ``theme`` is built, laid out, measured and saved under.
+
+    matplotlib's defaults (:func:`_default_rc`), then the theme's colours and
+    cycle, then the shared chrome (``_RC``); nothing of the process's state.
+    """
     from recall_guard.harness.plots import figure_theme
 
-    return {**figure_theme(theme).rc_params(), **_RC}
+    return {**_default_rc(), **figure_theme(theme).rc_params(), **_RC}
 
 
 def _style_axes(axes: Axes, style: FigureTheme) -> None:
@@ -1258,14 +1289,16 @@ def freeze_layout(figure: Figure) -> Figure:
 def figure_svg(figure: Figure) -> str:
     """The SVG text of ``figure``: glyphs as paths, a fixed id salt and no timestamp, so it is byte-stable.
 
-    The figure's layout is frozen first (:func:`freeze_layout`), so the bytes
-    do not depend on the process that renders it.
+    The figure's layout is frozen first (:func:`freeze_layout`), and the file
+    is saved under matplotlib's own defaults (:func:`_default_rc`: no tight
+    bounding box, nothing from the process's global rcParams), so the bytes do
+    not depend on the process that renders it.
     """
     import matplotlib
 
     freeze_layout(figure)
     buffer = io.StringIO()
-    with matplotlib.rc_context({"svg.hashsalt": SVG_HASH_SALT, "svg.fonttype": "path"}):
+    with matplotlib.rc_context({**_default_rc(), "svg.hashsalt": SVG_HASH_SALT, "svg.fonttype": "path"}):
         figure.savefig(buffer, format="svg", metadata={"Date": None}, facecolor=figure.get_facecolor(),
                        edgecolor=figure.get_edgecolor())
     return buffer.getvalue()
