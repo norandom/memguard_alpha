@@ -1458,7 +1458,7 @@ also carried by marker shape and fill.
 
 | Figure | Form | Encoding | Req |
 |--------|------|----------|-----|
-| F1 Gap | Dot and interval, small multiples by control | y = six variants; x = pre minus post accuracy gap of identifying minus anonymised; zero line; marker shape = adjustment, filled or open = draw mode | 10.2 |
+| F1 Gap | Dot and interval, small multiples by arm (positive control only; the negative control has no pre or post cutoff gap and is published by 8.4 as a derived table from the 7.9 report with its tolerance flag) | y = six variants; x = pre minus post accuracy gap of identifying minus anonymised; zero line; marker shape = adjustment, filled or open = draw mode | 10.2 |
 | F2 Reliability | Small multiples, one per variant | x = mean predicted `p_memorized`, y = observed share; diagonal; marker area by count, count labels; ECE in panel title | 10.3 |
 | F3 Draws | Strip plots, one panel per quantity (one axis each) | Per-draw component and estimate; ensemble median and IQR band; first draw marked with a distinct marker and label | 10.4 |
 | F4 Convergence | Lines, small multiples by feature; separate mass panel | x = k (log scale), y = absolute difference to full; at most four direct-labelled lines | 10.5 |
