@@ -1,17 +1,19 @@
 # Handover: memorization-adjusted-finance-sim
 
-Written 2026-11-10 at the end of the session, brought current at about 16:00 local time during the user's three-hour absence. The repository is
+Written 2026-11-10; brought current at about 21:00 local time after the evening waves. The repository is
 `norandom/recall_guard` (local folder `D:\Source\memguard_alpha`, branch `main`).
-Last code commit: `c50495e` (task 7.4). CI is green on every commit since `7260deb` (five
+Last code commit: `1c4035c` (task 7.11). CI is green on every commit since `7260deb` (five
 jobs, Windows included).
 
 ## State
 
-- Spec: `.kiro/specs/memorization-adjusted-finance-sim/`. 29 of 42 sub-tasks are
-  `[x]`: groups 1 to 6 complete (6.4 included, with the one-load gate and the
-  two-pass exactness check), 7.1 to 7.6 and 8.1 done. Task 7.7 (guarded execution
-  of study items) is in progress with an implementer; 7.8 to 7.12, 8.2 to 8.4,
-  9.x and 10.x remain.
+- Spec: `.kiro/specs/memorization-adjusted-finance-sim/`. 35 of 42 sub-tasks are
+  `[x]`: groups 1 to 7 complete (the whole study pipeline on fakes: items, plan,
+  recording, limits, calibration, execution, pilot gate, negative control,
+  analyses, convergence) plus 8.1 and the pre-9.2 follow-up 7.3b. Task 8.2
+  (accuracy-gap and reliability figures) is in progress; 8.3, 8.4, 9.x and 10.x
+  remain. Local full suite for the wave: 5,071 passed, 20 skipped, one known pwsh
+  launch flake (`runs/finance-sim/validation/wave-3-full.log`).
 - `tasks.md` ends with "## Implementation Notes", the running memory of every
   decision, pin, port, flake and follow-up. Read it before dispatching anything.
 - `design.md` carries concrete contracts through 8.4, so 7.x and 8.x should
@@ -21,11 +23,27 @@ jobs, Windows included).
 
 ## Working tree
 
-Task 7.7 (`scripts/finance_sim/execute.py`, tests `test_execute*.py`) may be
+Task 8.2 (`scripts/finance_sim/figures*.py`, tests `test_figures*.py`) may be
 present, written by an Opus implementer and not yet reviewed: treat it as a draft
 (inspect, review with kiro-review on Opus medium, then commit, or discard). Nothing
 else is uncommitted; no host is running.
 
+## Decisions of the evening (user, all recorded in the design and the notes)
+
+- Modal serving arm is the primary arm (none and top-k on the full evaluation
+  set, USD 32.54 of GPU time within the ceiling), approved after the local probe
+  results. The local arm is a probe arm: 8 draws, calibration 944 requests, a
+  seeded 20-month evaluation subset (15 pre, 5 post cutoff), negative control 40
+  rows, each stage at most about two hours (7,380 / 1,740 / 2,700 / 2,700 s with
+  a 1.25 headroom and the 300 s client timeout), about four hours in all plus the
+  batched evidence passes. "We don't have 44h of time."
+- The plan freezes each arm's GGUF digest, the fit settings, the evidence
+  settings, the arm roles and the pilot gate policy.
+- The pilot power gate cannot pass at effect 0.10 with month-level accuracy
+  differences (verified: power at most 0.40); it is pre-registered as
+  informative (`pilot.gate_policy = "inform"`), the probe arm proceeds.
+- The negative-control flag follows the three-outcome rule.
+- Correctness is scored on the raw sign when shrinking rounds a spread to zero.
 ## How the afternoon ran (keep this loop)
 
 Host-free tasks ran two or three at a time in disjoint modules, each with its own
@@ -56,15 +74,21 @@ Corrections from the user at session end, to apply before anything else:
 2. Check the machine is quiet: `podman ps` (other sessions' Dagger engines live in
    the Podman VM, process `vmmemWSL`, and held 6 GB for an hour today), free RAM,
    no listeners on the host ports.
-3. If 7.7 is in the tree unreviewed, review and commit it (see "Working tree").
-4. Then the next waves on fakes, no hosts, no network: 7.8 (pilot and power gate)
-   and 7.9 (negative control) and 7.12 (convergence) once 7.7 is committed; then
-   7.10 and 7.11 (analysis) after 7.8; then 8.2, 8.3, 8.4 (figures and replay);
-   then 9.1 (the live wiring: container-to-host gateway route, stop output
-   captured to files, calibration run) and the 9.2 freeze, which still needs the
-   user's decisions listed in the notes (12 s per generation time bound, freezing
-   FitSettings and EvidenceSettings and the GGUF digest in the plan, the Modal
-   manifest endpoint before any approval). Modal (9.4) only with the approval record.
+3. If 8.2 is in the tree unreviewed, review and commit it (see "Working tree").
+4. Then 8.3 (draw-distribution and convergence figures, sequential after 8.2) and
+   8.4 (offline replay and licensing guard), both on fixtures.
+5. Then 9.1, the live wiring on a quiet machine: the runner that threads 7.4's
+   recorder through `on_request`, `on_draw` and `on_evidence` (writing the
+   evidence files in the EvidenceSession format), runs the host checks before
+   admission, loads the hosts one at a time (generation with llama-server, then
+   the evidence pass with the full-distribution host), reads `gate_policy`, builds
+   EvidencePolicy from the plan, passes no calibration overrides, captures every
+   `stop` output to a file, and verifies the Compose-container route to the
+   gateways. Then the 9.2 freeze (`build_plan.py` with the keys by name through
+   Compose, about 380 FRED requests on a cold cache) and the probe-arm stages.
+   Modal (9.4) only with the user's approval record and the manifest endpoint set.
+   The tasks.md notes list every forward note per task; read 7.3b, 7.4, 7.7, 7.8,
+   7.10, 7.11 and 7.12 before writing the runner.
 5. Tooling on this workstation: use PowerShell for shell work, not Git Bash (the
    user's instruction at the end of this session; Git Bash also showed fork and
    heredoc failures all day).
@@ -140,4 +164,7 @@ explicit paths, never `git add -A`; commit messages end with
 `9a6d781` 5.2, `7260deb` Windows CI fix, `5d6444e` 6.1, `1277cc2` 6.2,
 `f8e6429` spec: 6.4 and execution split, `9cd14a5` 6.3, `0efa54d` upstream chore,
 `645fb5a` 7.2, `6fae278` 7.1, `0d386d1` 7.5, `340cc7f` 8.1, `b2009c5` 7.3,
-`3e78d53` 6.4, `8dc3f0f` test threshold fix, `2273ea7` 7.6, `c50495e` 7.4.
+`3e78d53` 6.4, `8dc3f0f` test threshold fix, `2273ea7` 7.6, `c50495e` 7.4,
+`c3b0a64` 7.7, `66a9694` 7.9, `233ef89` 7.8, `ef04406` 7.12, `507efd3` 7.3b,
+`bd33e81` 7.10, `1c4035c` 7.11; decision commits `2ff9ec2`, `83d85cd`, `0baf659`,
+`971158f`.
