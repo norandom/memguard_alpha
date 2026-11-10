@@ -1,5 +1,12 @@
 # Execution environment
 
+User instruction, 2026-11-10. Containers on Windows come from Podman Desktop: the
+`docker` and `docker compose` commands are Podman's Docker-compatible CLI and its
+Compose provider, run natively from PowerShell, and Compose is the preferred way to
+run a containerised command (`docker compose run --rm dev uv run --no-sync ...`).
+Dagger is a native CLI whose engine runs as a container in the Podman Desktop VM.
+WSL is no longer part of the container or CI route.
+
 User instruction, 2026-11-09. The development loop runs natively on Windows: run
 tests, ruff, the architecture check and scripts that need no model hardware with
 `uv run --no-sync ...` in the checkout's locked environment from PowerShell. Dagger
@@ -15,9 +22,10 @@ narrowed by the 2026-11-09 instruction above.
 - On Windows, run Recall Guard, Python development tools, probes, measurements
   and notebooks in Linux Docker containers. Direct native Windows application
   execution is no longer a supported delivery target.
-- Use PowerShell for repository/file operations and Docker launch commands. WSL
-  may provide Docker/Dagger infrastructure or the transport to its Docker CLI;
-  do not use native Windows Python or ad hoc WSL Python as execution fallbacks.
+- Use PowerShell for repository/file operations and container launch commands
+  (Podman Desktop provides the Docker-compatible CLI and Compose; Dagger's engine
+  runs in the Podman VM). Native Windows Python is the development loop, not the
+  delivery target; do not use ad hoc WSL Python.
 - Inside the development container, invoke project Python through
   `uv run --no-sync ...` using the existing locked environment. Keep the shared
   Dockerfile, Compose and Dagger recipe; do not create per-provider app images.

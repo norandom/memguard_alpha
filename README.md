@@ -244,8 +244,9 @@ limits and incomplete provider coverage.
 ## Windows
 
 On Windows, the supported way to run Recall Guard as an adopter is a Linux
-container: use Docker Desktop with Linux containers or Docker Engine inside WSL,
-then follow the [Docker quick start](#run-the-checkout-in-docker) and the
+container: use Docker Desktop with Linux containers, Podman Desktop (its
+Docker-compatible CLI and Compose provider), or Docker Engine inside WSL, then
+follow the [Docker quick start](#run-the-checkout-in-docker) and the
 [engineering guide](docs/development.md). No GPU is needed for the examples.
 
 Developers working on the checkout can run the test suite, ruff and the

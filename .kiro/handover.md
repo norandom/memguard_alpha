@@ -22,12 +22,14 @@ Phase B and the parked items (P1 to P7); nothing there changed.
 
 ## Do this first
 
-1. **The user is moving Dagger from Docker to Podman and improving the CI setup
-   themselves.** Until they say it is done: do not edit `ci/`, `.github/workflows/`,
-   `Dockerfile`, `compose.yaml`, the container invocation in
-   `scripts/modal_operator.sh`, or `.kiro/steering/execution-environment.md`; do
-   not rely on the WSL Dagger route (including `run-with-secrets`) without
-   re-verifying it. Windows CI test fixes are paused (see "Open follow-ups").
+1. **Done on 2026-11-10: containers run natively through Podman Desktop.**
+   `docker` and `docker compose` are Podman 5.8.3's Docker-compatible CLI and
+   Compose provider (Compose is the user's preferred route:
+   `docker compose run --rm dev uv run --no-sync ...`); `dagger` v0.21.11 is a
+   native CLI whose engine runs as a Podman container; WSL is no longer used. The
+   steering and README say so. Re-verify `run-with-secrets` on the Podman engine
+   before the next credentialed run. Windows CI test fixes stay paused until the
+   user says otherwise (see "Open follow-ups").
 2. **Finish task 5.1 (ensemble-first guarded decision).** State in the tree:
    - new: `recall_guard/harness/guarded_decision.py` (644 lines),
      `tests/harness/test_guarded_decision.py` (712 lines, 54 tests);
