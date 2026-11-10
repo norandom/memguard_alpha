@@ -458,7 +458,24 @@ CHANGES = {
     "analysis.alpha": lambda p: replace(p, analysis=replace(p.analysis, alpha=0.01)),
     "analysis.power_threshold": lambda p: replace(p, analysis=replace(p.analysis, power_threshold=0.9)),
     "analysis.first_draw_band": lambda p: replace(p, analysis=replace(p.analysis, first_draw_band=(0.2, 0.8))),
+    # The 7.3 sections, each added with the sections it depends on; tests/scripts/finance_sim/test_plan_arms.py
+    # changes every field inside them.
+    "arms": lambda p: replace(p, arms=plan_module.study_arms()),
+    "pilot": lambda p: _with_pilot(p),
+    "limits": lambda p: _with_limits(p),
+    "scored_probability": lambda p: replace(p, scored_probability=plan_module.ScoredProbability()),
 }
+
+
+def _with_pilot(p: StudyPlan) -> StudyPlan:
+    arms = plan_module.study_arms()
+    return replace(p, arms=arms, pilot=plan_module.PilotSettings.for_split(p.months, arms))
+
+
+def _with_limits(p: StudyPlan) -> StudyPlan:
+    planned = _with_pilot(p)
+    return replace(planned, limits=plan_module.size_limits(planned.months, planned.edgar, planned.arms,
+                                                           planned.pilot, plan_module.load_serving_manifest()))
 
 
 def test_the_change_table_covers_every_frozen_field():

@@ -1,11 +1,24 @@
 """Frozen study plan: month split, EDGAR sets, frozen fields and changed-plan refusal (tasks 7.2 and 7.3).
 
-Task 7.2 owns this part. It splits the decision months into calibration, pilot and
-evaluation sets, freezes the EDGAR calibration rows and the negative-control items,
-freezes the analysis settings and the accuracy definition, and hashes the plan.
-Task 7.3 adds the arms, variant sets, limits, pilot settings and the scored
-probability as further sections, and ``build_plan.py`` (7.3) wires the item
-assembly (7.1) into :func:`freeze_plan` and writes ``runs/finance-sim/plan/plan.json``.
+Task 7.2 splits the decision months into calibration, pilot and evaluation sets,
+freezes the EDGAR calibration rows and the negative-control items, freezes the
+analysis settings and the accuracy definition, and hashes the plan. Task 7.3 adds
+four sections and ``build_plan.py`` wires the item assembly (7.1) into
+:func:`freeze_plan` and writes ``runs/finance-sim/plan/plan.json``:
+
+- ``arms`` (8.1, 8.10): the explicit arm-to-registry-id map and per arm its
+  profile, temperature, seed base, draws and variant set. The sampling arm
+  computes the six variants; the serving arm no adjustment and top-k only, with
+  its full-distribution variants listed as missing with the reason.
+- ``pilot`` (8.9): 12 pilot months times 8 draws per rendering on the gated arm,
+  with its own minimum parsed draws and the frozen evaluation month counts.
+- ``limits`` (11.3): per arm and stage, in execution order, requests and output
+  tokens sized to one recorded ensemble per item and rendering (never one per
+  variant), time, and for the serving arm cost from the serving manifest's rates,
+  with the manifest's SHA-256 (``LIMITS_RULE``). The StageLimits files rendered
+  from it (:func:`stage_limits_files`) carry ``plan_sha256``.
+- ``scored_probability`` (8.4): outcome, mapping per draw mode, clip, and the
+  shrink toward 0.5, for Brier and log loss.
 
 The inputs are plain values, so nothing here fetches data or contacts a host: one
 :class:`MonthClass` per decision month with a pre-cutoff flag per model, and one
@@ -46,13 +59,14 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import MISSING, dataclass, field, fields
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 
-from recall_guard.dataset.macro_regime import EXPOSURE
+from recall_guard.dataset.macro_regime import EXPOSURE, RealizedReturns
 
 PLAN_SCHEMA = "finance-sim-plan/1"
 
@@ -518,6 +532,829 @@ class AnalysisSettings:
         return _section_from_dict(cls, data, "analysis")
 
 
+# ---------- 7.3: arms and variant sets (Requirements 8.1, 8.10) ----------
+
+SAMPLING_ARM = "sampling"
+SERVING_ARM = "serving"
+#: The two ensemble arms; every ensemble claim names its arm.
+ARMS: tuple[str, ...] = (SAMPLING_ARM, SERVING_ARM)
+GEMMA_REGISTRY_ID = "google/gemma-3-4b-it"
+#: Explicit arm to cutoff-registry id map: both arms serve Gemma 3 4B (the llama.cpp profile names it gemma3:4b).
+ARM_REGISTRY_IDS: Mapping[str, str] = MappingProxyType({SAMPLING_ARM: GEMMA_REGISTRY_ID,
+                                                        SERVING_ARM: GEMMA_REGISTRY_ID})
+#: Provider profile of each arm (recall_guard/core/provider_profiles).
+ARM_PROFILES: Mapping[str, str] = MappingProxyType({SAMPLING_ARM: "llamacpp-gemma3-4b",
+                                                    SERVING_ARM: "modal-gemma3-4b"})
+#: What ``build_plan.py`` reads from those profiles; the defaults when no profile is read.
+ARM_PROFILE_FACTS: Mapping[str, Mapping[str, Any]] = MappingProxyType({
+    SAMPLING_ARM: MappingProxyType({"profile_id": "llamacpp-gemma3-4b", "served_model": "gemma3:4b",
+                                    "top_logprobs": 5, "max_tokens": 512,
+                                    "estimate_sources": ("top_k", "full_distribution")}),
+    SERVING_ARM: MappingProxyType({"profile_id": "modal-gemma3-4b", "served_model": GEMMA_REGISTRY_ID,
+                                   "top_logprobs": 5, "max_tokens": 256, "estimate_sources": ("top_k",)}),
+})
+ARM_MEASURES: Mapping[str, str] = MappingProxyType({
+    SAMPLING_ARM: ("the model's sampling distribution: local llama.cpp at the frozen temperature, with seed "
+                   "seed_base + draw_index per draw; the confirmatory arm, gated by the pilot and power gate"),
+    SERVING_ARM: ("serving nondeterminism: Modal vLLM at temperature 0 without a seed; paid, with its own limits "
+                  "and approval, no pilot or power gate, reporting its achieved power"),
+})
+
+NO_ADJUSTMENT = "none"
+TOP_K = "top_k"
+FULL_DISTRIBUTION = "full_distribution"
+#: Estimate sources, named as the profiles' ``estimate_sources`` and ``EstimateSource``.
+ESTIMATE_SOURCES: tuple[str, ...] = (TOP_K, FULL_DISTRIBUTION)
+DRAW_MODES: tuple[str, ...] = ("single", "ensemble")
+ADJUSTMENTS: tuple[str, ...] = (NO_ADJUSTMENT, TOP_K, FULL_DISTRIBUTION)
+_VARIANT_PARTS: Mapping[str, tuple[str, str]] = MappingProxyType({
+    f"{mode}_{adjustment}": (mode, adjustment) for mode in DRAW_MODES for adjustment in ADJUSTMENTS})
+#: The six variants (8.1), ``<draw mode>_<adjustment>``: two draw modes crossed with three adjustments.
+VARIANTS: tuple[str, ...] = tuple(_VARIANT_PARTS)
+#: The single draw is the ensemble's first draw (7.7).
+SINGLE_DRAW_INDEX = 0
+VARIANT_RULE = (
+    "one recorded ensemble per item and rendering; every variant derives from it without another generation "
+    "request: an ensemble variant reduces every draw, a single variant uses draw index 0 only; adjustment none "
+    "passes the decision through, top_k and full_distribution use that source's per-draw estimates on the same "
+    "draws, so the variants are paired"
+)
+SERVING_FULL_DISTRIBUTION_REASON = (
+    "missing for the serving arm: the full-distribution host serves the local GGUF, which are different weights "
+    "from the served model, and values from different builds are not comparable (Requirement 9.4)"
+)
+ENSEMBLE_DRAWS = 32
+ENSEMBLE_MIN_PARSED = 24
+SAMPLING_TEMPERATURE = 0.7
+SERVING_TEMPERATURE = 0.0
+SAMPLING_SEED_BASE = 1000
+#: Largest per-draw seed, so ``seed_base + draw_index`` is a non-negative 32-bit signed integer for every host.
+MAX_SEED = 2**31 - 1
+#: Macro renderings (6.1); an EDGAR item has its one outlook prompt.
+RENDERINGS: tuple[str, ...] = ("identifying", "anonymised")
+
+
+def _choice(value: object, name: str, options: Sequence[str]) -> str:
+    if not isinstance(value, str) or value not in options:
+        raise ValueError(f"{name} must be one of {list(options)}; got {value!r}")
+    return value
+
+
+def _subset(value: object, name: str, universe: Sequence[str]) -> tuple[str, ...]:
+    """Distinct members of ``universe``, in its order."""
+    members = _ids(value, name)
+    for member in members:
+        _choice(member, f"{name} entry", universe)
+    if tuple(member for member in universe if member in members) != members:
+        raise ValueError(f"{name} must follow the order {list(universe)}; got {list(members)}")
+    return members
+
+
+def _boolean(value: object, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{name} must be a bool; got {value!r}")
+    return value
+
+
+def variant_parts(variant: str) -> tuple[str, str]:
+    """``(draw mode, adjustment)`` of a variant name."""
+    return _VARIANT_PARTS[_choice(variant, "variant", VARIANTS)]
+
+
+def variants_for(sources: Sequence[str]) -> tuple[str, ...]:
+    """The variants an arm computes: every draw mode with no adjustment and with each offered estimate source."""
+    offered = (NO_ADJUSTMENT, *_subset(sources, "estimate_sources", ESTIMATE_SOURCES))
+    return tuple(variant for variant in VARIANTS if _VARIANT_PARTS[variant][1] in offered)
+
+
+def _section_with(cls: type, data: object, name: str, **parsers: Callable[[Any], Any]) -> Any:
+    """Like ``_section_from_dict``, parsing the nested fields named in ``parsers``."""
+    mapping = _mapping(data, name)
+    names = {f.name for f in fields(cls)}
+    if set(mapping) != names:
+        raise ValueError(f"{name} must have exactly the fields {sorted(names)}; "
+                         f"missing {sorted(names - set(mapping))}, undeclared {sorted(map(str, set(mapping) - names))}")
+    return cls(**{key: parsers[key](value) if key in parsers else value for key, value in mapping.items()})
+
+
+@dataclass(frozen=True)
+class ArmPlan:
+    """One ensemble arm: its profile, sampling settings and variant set (Requirements 8.1 and 8.10).
+
+    ``variants`` is every draw mode crossed with no adjustment and with each
+    estimate source the profile offers; ``missing_variants`` gives the reason for
+    each of the others, which the analysis reports as missing, never substituted.
+    ``seed_base`` is set exactly when the arm samples (temperature above 0): draw
+    ``i`` uses seed ``seed_base + i``. ``max_tokens`` and ``top_logprobs`` are the
+    profile's per-request output cap and top-k.
+    """
+
+    profile_id: str
+    served_model: str
+    measures: str
+    temperature: float
+    seed_base: int | None
+    draws: int
+    min_parsed: int
+    top_logprobs: int
+    max_tokens: int
+    estimate_sources: tuple[str, ...]
+    variants: tuple[str, ...]
+    missing_variants: Mapping[str, str]
+    gated: bool
+
+    def __post_init__(self) -> None:
+        for name in ("profile_id", "served_model", "measures"):
+            _text(getattr(self, name), name)
+        temperature = _real(self.temperature, "temperature")
+        if temperature < 0:
+            raise ValueError(f"temperature must be at least 0; got {temperature}")
+        draws = _integer(self.draws, "draws", minimum=2)
+        min_parsed = _integer(self.min_parsed, "min_parsed", minimum=1)
+        if min_parsed > draws:
+            raise ValueError(f"min_parsed must not be above draws; got min_parsed={min_parsed}, draws={draws}")
+        _integer(self.top_logprobs, "top_logprobs", minimum=1)
+        _integer(self.max_tokens, "max_tokens", minimum=1)
+        if temperature > 0:
+            if self.seed_base is None:
+                raise ValueError("an arm that samples (temperature above 0) needs a seed_base, so every draw "
+                                 "carries a recorded seed")
+            seed_base = _integer(self.seed_base, "seed_base", minimum=0)
+            if seed_base + draws - 1 > MAX_SEED:
+                raise ValueError(f"seed_base + draws - 1 must be at most {MAX_SEED}; got {seed_base + draws - 1}")
+        elif self.seed_base is not None:
+            raise ValueError("an arm at temperature 0 sends no seed; seed_base must be None")
+        sources = _subset(self.estimate_sources, "estimate_sources", ESTIMATE_SOURCES)
+        if not sources:
+            raise ValueError("estimate_sources must name at least one source")
+        variants = _subset(self.variants, "variants", VARIANTS)
+        expected = variants_for(sources)
+        if variants != expected:
+            raise ValueError(f"variants must be every draw mode crossed with no adjustment and each offered "
+                             f"estimate source {list(sources)}: {list(expected)}; got {list(variants)}")
+        missing = _text_map(self.missing_variants, "missing_variants")
+        absent = [variant for variant in VARIANTS if variant not in variants]
+        if set(missing) != set(absent):
+            raise ValueError(f"missing_variants must give a reason for exactly the variants the arm cannot "
+                             f"compute {absent}; got {sorted(missing)}")
+        _boolean(self.gated, "gated")
+        object.__setattr__(self, "temperature", temperature)
+        object.__setattr__(self, "estimate_sources", sources)
+        object.__setattr__(self, "variants", variants)
+        object.__setattr__(self, "missing_variants", missing)
+
+    @classmethod
+    def for_arm(cls, arm: str, *, profile_id: str, served_model: str, top_logprobs: int, max_tokens: int,
+                estimate_sources: Sequence[str]) -> ArmPlan:
+        """The frozen settings of ``arm`` (temperature, seeds, draws, gate) on the facts of its profile."""
+        sampling = _choice(arm, "arm", ARMS) == SAMPLING_ARM
+        variants = variants_for(estimate_sources)
+        missing = {}
+        for variant in VARIANTS:
+            if variant not in variants:
+                adjustment = _VARIANT_PARTS[variant][1]
+                missing[variant] = (SERVING_FULL_DISTRIBUTION_REASON
+                                    if arm == SERVING_ARM and adjustment == FULL_DISTRIBUTION
+                                    else f"missing: the {profile_id} profile offers no {adjustment} estimate source")
+        return cls(profile_id=profile_id, served_model=served_model, measures=ARM_MEASURES[arm],
+                   temperature=SAMPLING_TEMPERATURE if sampling else SERVING_TEMPERATURE,
+                   seed_base=SAMPLING_SEED_BASE if sampling else None, draws=ENSEMBLE_DRAWS,
+                   min_parsed=ENSEMBLE_MIN_PARSED, top_logprobs=top_logprobs, max_tokens=max_tokens,
+                   estimate_sources=tuple(estimate_sources), variants=variants, missing_variants=missing,
+                   gated=sampling)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _section_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: object, name: str = "arm") -> ArmPlan:
+        return _section_from_dict(cls, data, name)
+
+
+@dataclass(frozen=True)
+class StudyArms:
+    """Both ensemble arms, the explicit arm-to-registry-id map and the frozen variant names.
+
+    The sampling arm is the confirmatory, gated arm: it samples at a temperature
+    above 0 and computes the six variants. The serving arm runs at temperature 0
+    with no pilot or power gate and computes no adjustment and top-k only.
+    """
+
+    registry_ids: Mapping[str, str]
+    arms: Mapping[str, ArmPlan]
+    variants: tuple[str, ...] = VARIANTS
+    single_draw_index: int = SINGLE_DRAW_INDEX
+    rule: str = VARIANT_RULE
+
+    def __post_init__(self) -> None:
+        registry = _text_map(self.registry_ids, "registry_ids")
+        if set(registry) != set(ARMS):
+            raise ValueError(f"registry_ids must map exactly the arms {list(ARMS)}; got {sorted(registry)}")
+        arms = _mapping(self.arms, "arms")
+        if set(arms) != set(ARMS):
+            raise ValueError(f"arms must hold exactly the arms {list(ARMS)}; got {sorted(map(str, arms))}")
+        for name in ARMS:
+            if not isinstance(arms[name], ArmPlan):
+                raise TypeError(f"arms[{name!r}] must be an ArmPlan; got {type(arms[name]).__name__}")
+        if tuple(_sequence(self.variants, "variants")) != VARIANTS:
+            raise ValueError(f"variants must be the six frozen variants {list(VARIANTS)}")
+        if _integer(self.single_draw_index, "single_draw_index", minimum=0) != SINGLE_DRAW_INDEX:
+            raise ValueError("single_draw_index must be 0: the single draw is the ensemble's first draw")
+        _text(self.rule, "rule")
+        sampling, serving = arms[SAMPLING_ARM], arms[SERVING_ARM]
+        if not sampling.gated or sampling.temperature <= 0 or sampling.variants != VARIANTS:
+            raise ValueError("the sampling arm is the gated arm: it samples at a temperature above 0 and computes "
+                             "the six variants")
+        if serving.gated or serving.temperature != 0 or serving.variants != variants_for((TOP_K,)):
+            raise ValueError("the serving arm runs at temperature 0 without a pilot or power gate and computes no "
+                             "adjustment and top-k only")
+        object.__setattr__(self, "registry_ids", registry)
+        object.__setattr__(self, "arms", MappingProxyType({name: arms[name] for name in ARMS}))
+        object.__setattr__(self, "variants", VARIANTS)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _section_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: object) -> StudyArms:
+        def arms(value: object) -> dict[str, ArmPlan]:
+            return {name: ArmPlan.from_dict(item, f"arms.arms[{name!r}]")
+                    for name, item in _mapping(value, "arms.arms").items()}
+        return _section_with(cls, data, "arms", arms=arms)
+
+
+def study_arms(facts: Mapping[str, Mapping[str, Any]] | None = None, *,
+               registry_ids: Mapping[str, str] = ARM_REGISTRY_IDS) -> StudyArms:
+    """Both arms from their profile facts (``ARM_PROFILE_FACTS`` by default) and the arm-to-registry-id map."""
+    facts = ARM_PROFILE_FACTS if facts is None else _mapping(facts, "facts")
+    if set(facts) != set(ARMS):
+        raise ValueError(f"facts must describe exactly the arms {list(ARMS)}")
+    return StudyArms(registry_ids=registry_ids,
+                     arms={arm: ArmPlan.for_arm(arm, **dict(_mapping(facts[arm], f"facts[{arm!r}]")))
+                           for arm in ARMS})
+
+
+# ---------- 7.3: pilot settings (Requirement 8.9) ----------
+
+PILOT_MONTHS = len(PILOT_YEARS) + PILOT_EXTRA_YEARS
+PILOT_DRAWS = 8
+#: The pilot's own minimum parsed draws: three quarters of its draws, as 24 of 32 in the full run.
+PILOT_MIN_PARSED = 6
+#: The pilot's noise statistic is the correctness difference of this variant.
+PILOT_NOISE_VARIANT = "ensemble_top_k"
+PILOT_RULE = (
+    "the pilot months of the month split run through the same guarded execution on the gated arm only, one "
+    "recorded ensemble of `draws` draws per month and rendering with `min_parsed`, seeds seed_base + draw_index; "
+    "per month the noise statistic is the identifying-minus-anonymised correctness difference of the noise "
+    "variant (values in {-1, 0, 1}) and noise_sd its standard deviation over the pilot months; simulated power "
+    "evaluates the frozen effect size with the pre-cutoff and post-cutoff evaluation month counts; the full run "
+    "starts only at power of at least power_threshold; pilot months are excluded from the confirmatory analysis"
+)
+
+
+def _evaluation_counts(split: MonthSplit, model: str) -> tuple[int, int]:
+    """Evaluation months on or before, and after, ``model``'s cutoff."""
+    if model not in split.pre_cutoff:
+        raise ValueError(f"{model!r} is not a model of the month split {list(split.models)}")
+    pre = set(split.pre_cutoff[model])
+    before = sum(month in pre for month in split.evaluation)
+    return before, len(split.evaluation) - before
+
+
+@dataclass(frozen=True)
+class PilotSettings:
+    """The pilot of the gated arm: about 12 pre-cutoff months times 8 draws per rendering, its own minimum.
+
+    ``pre_cutoff_evaluation_months`` and ``post_cutoff_evaluation_months`` are the
+    frozen item counts the power simulation applies the pilot noise to (68 and 22
+    for Gemma 3 4B).
+    """
+
+    pre_cutoff_evaluation_months: int
+    post_cutoff_evaluation_months: int
+    arm: str = SAMPLING_ARM
+    months: int = PILOT_MONTHS
+    draws: int = PILOT_DRAWS
+    min_parsed: int = PILOT_MIN_PARSED
+    renderings: tuple[str, ...] = RENDERINGS
+    noise_variant: str = PILOT_NOISE_VARIANT
+    rule: str = PILOT_RULE
+
+    def __post_init__(self) -> None:
+        _integer(self.pre_cutoff_evaluation_months, "pre_cutoff_evaluation_months", minimum=1)
+        _integer(self.post_cutoff_evaluation_months, "post_cutoff_evaluation_months", minimum=1)
+        _choice(self.arm, "pilot arm", ARMS)
+        _integer(self.months, "pilot months", minimum=1)
+        draws = _integer(self.draws, "pilot draws", minimum=1)
+        min_parsed = _integer(self.min_parsed, "pilot min_parsed", minimum=1)
+        if min_parsed > draws:
+            raise ValueError(f"pilot min_parsed must not be above the pilot's draws; got min_parsed={min_parsed}, "
+                             f"draws={draws}")
+        if tuple(_sequence(self.renderings, "renderings")) != RENDERINGS:
+            raise ValueError(f"the pilot draws both renderings {list(RENDERINGS)}")
+        _choice(self.noise_variant, "noise_variant", VARIANTS)
+        _text(self.rule, "rule")
+        object.__setattr__(self, "renderings", RENDERINGS)
+
+    @classmethod
+    def for_split(cls, split: MonthSplit, arms: StudyArms) -> PilotSettings:
+        """The frozen pilot of the gated arm on this month split."""
+        before, after = _evaluation_counts(split, arms.registry_ids[SAMPLING_ARM])
+        return cls(pre_cutoff_evaluation_months=before, post_cutoff_evaluation_months=after, months=len(split.pilot))
+
+    def to_dict(self) -> dict[str, Any]:
+        return _section_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: object) -> PilotSettings:
+        return _section_from_dict(cls, data, "pilot")
+
+
+def _check_pilot(pilot: PilotSettings, split: MonthSplit, arms: StudyArms) -> None:
+    arm = arms.arms[pilot.arm]
+    if not arm.gated:
+        raise ValueError(f"the pilot runs on the gated arm only; {pilot.arm!r} is not gated")
+    if pilot.months != len(split.pilot):
+        raise ValueError(f"pilot months must be the {len(split.pilot)} pilot months of the split; got {pilot.months}")
+    if pilot.draws > arm.draws:
+        raise ValueError(f"pilot draws must not exceed the arm's {arm.draws} draws (the pilot seeds are the first "
+                         f"of the arm's seeds); got {pilot.draws}")
+    if pilot.noise_variant not in arm.variants:
+        raise ValueError(f"the pilot noise variant {pilot.noise_variant!r} is not a variant of the {pilot.arm} arm")
+    counts = _evaluation_counts(split, arms.registry_ids[pilot.arm])
+    if (pilot.pre_cutoff_evaluation_months, pilot.post_cutoff_evaluation_months) != counts:
+        raise ValueError(f"pilot evaluation month counts must be the split's {counts} (pre-cutoff, post-cutoff); "
+                         f"got {(pilot.pre_cutoff_evaluation_months, pilot.post_cutoff_evaluation_months)}")
+
+
+# ---------- 7.3: limits per arm and stage (Requirement 11.3) ----------
+
+#: Sampling-arm stages in execution order (local hosts, no cost).
+SAMPLING_STAGES: tuple[str, ...] = ("calibration", "pilot", "full_run", "negative_control")
+#: Serving-arm stages in execution order; equal to deploy/modal/stage_limits.STAGES.
+SERVING_STAGES: tuple[str, ...] = ("weight_staging", "deployment", "smoke_run", "calibration", "full_run",
+                                   "negative_control")
+WEIGHT_STAGING = SERVING_STAGES[0]
+#: The serving manifest of task 3.4, repository-relative.
+SERVING_MANIFEST = "configs/modal/gemma-3-4b-measurement.json"
+ROOT = Path(__file__).resolve().parents[2]
+#: Sampling arm: twice the design's planning figure of about 6 s per generation on the iGPU.
+SAMPLING_SECONDS_PER_GENERATION = 12
+#: CPU-only weight staging timeout: about 8.6 GB of pinned weights at 2.4 MB/s or faster.
+WEIGHT_STAGING_SECONDS = 3600
+#: The expiry controller of deploy/modal/serve.py (scripts/measure_modal_model.py prices it the same way).
+CONTROLLER_CORES = 0.125
+CONTROLLER_MEMORY_GIB = 0.125
+CONTROLLER_ALLOWANCE_SECONDS = 150
+EVIDENCE_RULE = (
+    "full-distribution evidence calls do not count against max_requests, max_output_tokens or max_seconds: they "
+    "are teacher-forcing calls on the local full-distribution host, issued after generation with that host loaded "
+    "alone, each bounded by its own timeout, at most one per recorded response (or one per item and rendering in "
+    "batch mode); they never add a generation request"
+)
+LIMITS_RULE = (
+    "one recorded ensemble per item and rendering, never one per variant: max_requests = ensembles x draws, plus "
+    "the deployment's one eligibility post; max_output_tokens = max_requests x the arm's max_tokens. Sampling arm "
+    "(local, no cost): max_seconds = max_requests x sampling_seconds_per_generation. Serving arm (paid), stages "
+    "in execution order weight_staging, deployment, smoke_run, calibration (macro and EDGAR in one serve), "
+    "full_run, negative_control, each stage after weight staging one serve lifecycle, five in all: max_seconds = "
+    "startup_seconds + max_requests x serving_seconds_per_post, where serving_seconds_per_post = "
+    "ceil((gpu_phase_seconds - 5 x startup_seconds) / inference_posts) is the manifest's worst-case post; "
+    "max_usd = rate x (max_seconds + cleanup_seconds) + controller rate x (max_seconds + "
+    "controller_allowance_seconds), rounded up to the cent, with rate = gpu x gpu_count + cores x core + memory x "
+    "memory rate (scripts/measure_modal_model.compute_rate); weight staging is CPU-only with 0 requests and 0 "
+    "tokens: max_usd = (cores x core + memory x memory rate) x weight_staging_seconds, rounded up to the cent; "
+    "every stage, and the stages together, fit the manifest's reviewed ceiling"
+)
+
+
+def _usd_up(value: float) -> float:
+    """USD rounded up to the cent (an upper bound, never below the value)."""
+    return math.ceil(round(value * 100, 6)) / 100
+
+
+@dataclass(frozen=True)
+class StageBudget:
+    """One stage's frozen limits, sized to one recorded ensemble per item and rendering.
+
+    ``ensembles`` counts the ensembles per item group (items times renderings);
+    ``max_requests`` is their sum times ``draws`` plus ``extra_requests`` (the
+    serving deployment's eligibility post). ``max_usd`` is set for the paid
+    serving arm only.
+    """
+
+    stage: str
+    ensembles: Mapping[str, int]
+    draws: int
+    extra_requests: int
+    max_requests: int
+    max_output_tokens: int
+    max_seconds: int
+    max_usd: float | None
+
+    def __post_init__(self) -> None:
+        _text(self.stage, "stage")
+        groups = _mapping(self.ensembles, "ensembles")
+        ensembles = {_text(group, "ensembles group"): _integer(count, f"ensembles[{group!r}]", minimum=1)
+                     for group, count in sorted(groups.items())}
+        draws = _integer(self.draws, "draws", minimum=0)
+        extra = _integer(self.extra_requests, "extra_requests", minimum=0)
+        expected = sum(ensembles.values()) * draws + extra
+        if _integer(self.max_requests, "max_requests", minimum=0) != expected:
+            raise ValueError(f"{self.stage}: max_requests must be the ensembles times draws plus the extra requests "
+                             f"({expected}); got {self.max_requests}")
+        _integer(self.max_output_tokens, "max_output_tokens", minimum=0)
+        _integer(self.max_seconds, "max_seconds", minimum=1)
+        if self.max_usd is not None:
+            usd = _real(self.max_usd, "max_usd")
+            if usd <= 0:
+                raise ValueError(f"{self.stage}: max_usd must be positive or None; got {usd}")
+            object.__setattr__(self, "max_usd", usd)
+        object.__setattr__(self, "ensembles", MappingProxyType(ensembles))
+
+    def to_dict(self) -> dict[str, Any]:
+        return _section_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: object, name: str = "stage") -> StageBudget:
+        return _section_from_dict(cls, data, name)
+
+
+@dataclass(frozen=True)
+class ServingManifest:
+    """The serving manifest's reviewed rates and ceiling (task 3.4), identified by its file's SHA-256."""
+
+    path: str
+    sha256: str
+    pricing_checked_at: str
+    gpu_usd_per_second: float
+    physical_core_usd_per_second: float
+    memory_gib_usd_per_second: float
+    gpu_count: int
+    cpu_physical_cores: int
+    memory_gib: int
+    inference_posts: int
+    eligibility_posts: int
+    output_tokens_per_post: int
+    total_output_tokens: int
+    gpu_phase_seconds: int
+    startup_seconds: int
+    cleanup_seconds: int
+    temperature: float
+    top_logprobs: int
+    target_usd: float
+
+    def __post_init__(self) -> None:
+        path = _text(self.path, "manifest path")
+        if "\\" in path or path.startswith("/") or ".." in path.split("/"):
+            raise ValueError(f"manifest path must be repository-relative in POSIX form; got {path!r}")
+        _sha256(self.sha256, "manifest sha256")
+        _text(self.pricing_checked_at, "pricing_checked_at")
+        for name in ("gpu_usd_per_second", "physical_core_usd_per_second", "memory_gib_usd_per_second"):
+            rate = _real(getattr(self, name), name)
+            if not 0 < rate < 1:
+                raise ValueError(f"{name} must be in (0, 1); got {rate}")
+            object.__setattr__(self, name, rate)
+        for name in ("gpu_count", "cpu_physical_cores", "memory_gib", "inference_posts", "output_tokens_per_post",
+                     "total_output_tokens", "gpu_phase_seconds", "top_logprobs"):
+            _integer(getattr(self, name), name, minimum=1)
+        for name in ("eligibility_posts", "startup_seconds", "cleanup_seconds"):
+            _integer(getattr(self, name), name, minimum=0)
+        temperature = _real(self.temperature, "manifest temperature")
+        target = _real(self.target_usd, "target_usd")
+        if temperature < 0 or target <= 0:
+            raise ValueError("the manifest temperature must be at least 0 and target_usd positive")
+        object.__setattr__(self, "temperature", temperature)
+        object.__setattr__(self, "target_usd", target)
+
+    @classmethod
+    def from_manifest(cls, path: str, data: bytes) -> ServingManifest:
+        """The record of a serving manifest's bytes; ``deploy.modal.manifest.load_plan`` validates the rest."""
+        try:
+            raw = json.loads(data.decode("utf-8"), object_pairs_hook=_no_duplicate_keys, parse_constant=_no_constant)
+            cost, resources, limits = raw["cost"], raw["resources"], raw["limits"]
+            values = {
+                "pricing_checked_at": cost["pricing_checked_at"], "gpu_usd_per_second": cost["gpu_usd_per_second"],
+                "physical_core_usd_per_second": cost["physical_core_usd_per_second"],
+                "memory_gib_usd_per_second": cost["memory_gib_usd_per_second"], "target_usd": cost["target_usd"],
+                **{name: resources[name] for name in ("gpu_count", "cpu_physical_cores", "memory_gib")},
+                **{name: limits[name] for name in ("inference_posts", "eligibility_posts", "output_tokens_per_post",
+                                                   "total_output_tokens", "gpu_phase_seconds", "startup_seconds",
+                                                   "cleanup_seconds", "temperature", "top_logprobs")},
+            }
+        except (KeyError, TypeError, UnicodeDecodeError) as exc:
+            raise ValueError(f"serving manifest {path} lacks a reviewed field: {exc!r}") from None
+        return cls(path=path, sha256=hashlib.sha256(data).hexdigest(), **values)
+
+    @property
+    def cpu_usd_per_second(self) -> float:
+        return (self.cpu_physical_cores * self.physical_core_usd_per_second
+                + self.memory_gib * self.memory_gib_usd_per_second)
+
+    @property
+    def usd_per_second(self) -> float:
+        """The serving app's configured rate, as ``measure_modal_model.compute_rate``."""
+        return (self.gpu_usd_per_second * self.gpu_count + self.physical_core_usd_per_second * self.cpu_physical_cores
+                + self.memory_gib_usd_per_second * self.memory_gib)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _section_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: object) -> ServingManifest:
+        return _section_from_dict(cls, data, "limits.manifest")
+
+
+def load_serving_manifest(path: str = SERVING_MANIFEST, *, root: Path = ROOT) -> ServingManifest:
+    """The serving manifest record of ``root / path``."""
+    return ServingManifest.from_manifest(path, (Path(root) / path).read_bytes())
+
+
+@dataclass(frozen=True)
+class PlanLimits:
+    """Frozen request, token, time and (serving arm) cost limits per arm and stage, in execution order.
+
+    ``stages`` maps each arm to its :class:`StageBudget` tuple; ``manifest`` holds
+    the serving manifest's digest, rates and ceiling the serving limits are derived
+    from. The sizing inputs are fields too, so the plan recomputes every stage
+    with :func:`size_limits` and refuses any other value. The serving arm's
+    StageLimits files are rendered by :func:`stage_limits_files` and carry the
+    plan's ``plan_sha256``, which cannot be part of the content it hashes.
+    """
+
+    manifest: ServingManifest
+    stages: Mapping[str, tuple[StageBudget, ...]]
+    serving_seconds_per_post: int
+    sampling_seconds_per_generation: int = SAMPLING_SECONDS_PER_GENERATION
+    weight_staging_seconds: int = WEIGHT_STAGING_SECONDS
+    controller_cores: float = CONTROLLER_CORES
+    controller_memory_gib: float = CONTROLLER_MEMORY_GIB
+    controller_allowance_seconds: int = CONTROLLER_ALLOWANCE_SECONDS
+    evidence_requests: str = EVIDENCE_RULE
+    rule: str = LIMITS_RULE
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.manifest, ServingManifest):
+            raise TypeError(f"manifest must be a ServingManifest; got {type(self.manifest).__name__}")
+        groups = _mapping(self.stages, "stages")
+        if set(groups) != set(ARMS):
+            raise ValueError(f"stages must hold exactly the arms {list(ARMS)}")
+        stages = {}
+        for arm, names in ((SAMPLING_ARM, SAMPLING_STAGES), (SERVING_ARM, SERVING_STAGES)):
+            budgets = _sequence(groups[arm], f"stages[{arm!r}]")
+            if any(not isinstance(budget, StageBudget) for budget in budgets):
+                raise TypeError(f"stages[{arm!r}] must hold StageBudget values")
+            if tuple(budget.stage for budget in budgets) != names:
+                raise ValueError(f"the {arm} arm's stages must be {list(names)} in execution order")
+            if any((budget.max_usd is None) != (arm == SAMPLING_ARM) for budget in budgets):
+                raise ValueError("max_usd is set for every serving-arm stage and for no sampling-arm stage")
+            stages[arm] = budgets
+        for name in ("serving_seconds_per_post", "sampling_seconds_per_generation", "weight_staging_seconds",
+                     "controller_allowance_seconds"):
+            _integer(getattr(self, name), name, minimum=1)
+        for name in ("controller_cores", "controller_memory_gib"):
+            value = _real(getattr(self, name), name)
+            if value <= 0:
+                raise ValueError(f"{name} must be positive; got {value}")
+            object.__setattr__(self, name, value)
+        _text(self.evidence_requests, "evidence_requests")
+        _text(self.rule, "rule")
+        _check_ceiling(stages[SERVING_ARM], self.manifest)
+        object.__setattr__(self, "stages", MappingProxyType(stages))
+
+    def settings(self) -> dict[str, Any]:
+        """The sizing inputs :func:`size_limits` takes besides the plan sections and the manifest."""
+        return {name: getattr(self, name) for name in (
+            "sampling_seconds_per_generation", "weight_staging_seconds", "controller_cores", "controller_memory_gib",
+            "controller_allowance_seconds")}
+
+    def stage(self, arm: str, stage: str) -> StageBudget:
+        for budget in self.stages[_choice(arm, "arm", ARMS)]:
+            if budget.stage == stage:
+                return budget
+        raise ValueError(f"the {arm} arm has no stage {stage!r}")
+
+    @property
+    def serving_usd_total(self) -> float:
+        """The serving arm's maximum cost: every stage's ``max_usd``, summed exactly."""
+        return float(sum((Decimal(str(budget.max_usd)) for budget in self.stages[SERVING_ARM]), Decimal(0)))
+
+    def to_dict(self) -> dict[str, Any]:
+        return _section_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: object) -> PlanLimits:
+        def stages(value: object) -> dict[str, tuple[StageBudget, ...]]:
+            return {arm: tuple(StageBudget.from_dict(item, f"limits.stages[{arm!r}][{index}]")
+                               for index, item in enumerate(_sequence(items, f"limits.stages[{arm!r}]")))
+                    for arm, items in _mapping(value, "limits.stages").items()}
+        return _section_with(cls, data, "limits", manifest=ServingManifest.from_dict, stages=stages)
+
+
+def _check_ceiling(stages: Sequence[StageBudget], manifest: ServingManifest) -> None:
+    """Each serving stage, and the stages together, fit the manifest's reviewed ceiling.
+
+    Requests and tokens count every stage; seconds and USD the GPU stages only,
+    since the manifest's GPU phase and target exclude the CPU-only weight staging.
+    """
+    ceiling = {"max_requests": manifest.inference_posts, "max_output_tokens": manifest.total_output_tokens,
+               "max_seconds": manifest.gpu_phase_seconds, "max_usd": manifest.target_usd}
+    for budget in stages:
+        for name, limit in ceiling.items():
+            if getattr(budget, name) > limit:
+                raise ValueError(f"serving stage {budget.stage}: {name} {getattr(budget, name)} exceeds the "
+                                 f"manifest's reviewed ceiling of {limit}")
+    staging, gpu = stages[0], stages[1:]
+    if staging.max_requests or staging.max_output_tokens:
+        raise ValueError("weight staging is CPU-only: 0 requests and 0 output tokens")
+    if staging.max_usd < manifest.cpu_usd_per_second * staging.max_seconds:
+        raise ValueError("weight staging's max_usd must cover running to its timeout")
+    totals = {"max_requests": sum(budget.max_requests for budget in stages),
+              "max_output_tokens": sum(budget.max_output_tokens for budget in stages),
+              "max_seconds": sum(budget.max_seconds for budget in gpu),
+              "max_usd": sum((Decimal(str(budget.max_usd)) for budget in gpu), Decimal(0))}
+    for name, total in totals.items():
+        limit = Decimal(str(ceiling[name])) if name == "max_usd" else ceiling[name]
+        if total > limit:
+            raise ValueError(f"the serving stages together need {name} = {total}, above the manifest's reviewed "
+                             f"ceiling of {ceiling[name]} for the whole arm")
+
+
+def size_limits(split: MonthSplit, edgar: EdgarSplit, arms: StudyArms, pilot: PilotSettings,
+                manifest: ServingManifest, *, sampling_seconds_per_generation: int = SAMPLING_SECONDS_PER_GENERATION,
+                weight_staging_seconds: int = WEIGHT_STAGING_SECONDS, controller_cores: float = CONTROLLER_CORES,
+                controller_memory_gib: float = CONTROLLER_MEMORY_GIB,
+                controller_allowance_seconds: int = CONTROLLER_ALLOWANCE_SECONDS) -> PlanLimits:
+    """Size every stage to one recorded ensemble per item and rendering (module rule ``LIMITS_RULE``)."""
+    for value, cls, name in ((split, MonthSplit, "split"), (edgar, EdgarSplit, "edgar"), (arms, StudyArms, "arms"),
+                             (pilot, PilotSettings, "pilot"), (manifest, ServingManifest, "manifest")):
+        if not isinstance(value, cls):
+            raise TypeError(f"{name} must be a {cls.__name__}; got {type(value).__name__}")
+    sampling, serving = arms.arms[SAMPLING_ARM], arms.arms[SERVING_ARM]
+    if serving.max_tokens > manifest.output_tokens_per_post:
+        raise ValueError(f"the serving arm's max_tokens {serving.max_tokens} exceeds the manifest's "
+                         f"output_tokens_per_post {manifest.output_tokens_per_post}")
+    if serving.top_logprobs > manifest.top_logprobs:
+        raise ValueError(f"the serving arm's top_logprobs {serving.top_logprobs} exceeds the manifest's "
+                         f"top_logprobs {manifest.top_logprobs}")
+    if serving.temperature != manifest.temperature:
+        raise ValueError(f"the serving arm's temperature {serving.temperature} is not the manifest's "
+                         f"{manifest.temperature}")
+    calibration = {"macro": len(split.calibration) * len(RENDERINGS),
+                   "edgar": len(edgar.calibration_memorized) + len(edgar.calibration_control)}
+    full_run = {"macro": len(split.evaluation) * len(RENDERINGS)}
+    negative_control = {"edgar": len(edgar.negative_control)}
+
+    def local(stage: str, ensembles: Mapping[str, int], draws: int) -> StageBudget:
+        requests = sum(ensembles.values()) * draws
+        return StageBudget(stage=stage, ensembles=ensembles, draws=draws, extra_requests=0, max_requests=requests,
+                           max_output_tokens=requests * sampling.max_tokens,
+                           max_seconds=requests * _integer(sampling_seconds_per_generation,
+                                                           "sampling_seconds_per_generation", minimum=1),
+                           max_usd=None)
+
+    sampling_stages = (local("calibration", calibration, sampling.draws),
+                       local("pilot", {"macro": len(split.pilot) * len(pilot.renderings)}, pilot.draws),
+                       local("full_run", full_run, sampling.draws),
+                       local("negative_control", negative_control, sampling.draws))
+
+    lifecycles = len(SERVING_STAGES) - 1
+    budget = manifest.gpu_phase_seconds - lifecycles * manifest.startup_seconds
+    if budget <= 0:
+        raise ValueError("the manifest's GPU phase leaves no time for posts after five startups")
+    seconds_per_post = -(-budget // manifest.inference_posts)
+    controller_rate = (_real(controller_cores, "controller_cores") * manifest.physical_core_usd_per_second
+                       + _real(controller_memory_gib, "controller_memory_gib") * manifest.memory_gib_usd_per_second)
+    allowance = _integer(controller_allowance_seconds, "controller_allowance_seconds", minimum=1)
+    staging_seconds = _integer(weight_staging_seconds, "weight_staging_seconds", minimum=1)
+    serving_stages = [StageBudget(stage=WEIGHT_STAGING, ensembles={}, draws=0, extra_requests=0, max_requests=0,
+                                  max_output_tokens=0, max_seconds=staging_seconds,
+                                  max_usd=_usd_up(manifest.cpu_usd_per_second * staging_seconds))]
+    for stage, ensembles, draws, extra in (("deployment", {}, 0, manifest.eligibility_posts),
+                                           ("smoke_run", {"smoke": 1}, serving.draws, 0),
+                                           ("calibration", calibration, serving.draws, 0),
+                                           ("full_run", full_run, serving.draws, 0),
+                                           ("negative_control", negative_control, serving.draws, 0)):
+        requests = sum(ensembles.values()) * draws + extra
+        seconds = manifest.startup_seconds + requests * seconds_per_post
+        usd = _usd_up(manifest.usd_per_second * (seconds + manifest.cleanup_seconds)
+                      + controller_rate * (seconds + allowance))
+        serving_stages.append(StageBudget(stage=stage, ensembles=ensembles, draws=draws, extra_requests=extra,
+                                          max_requests=requests, max_output_tokens=requests * serving.max_tokens,
+                                          max_seconds=seconds, max_usd=usd))
+    return PlanLimits(manifest=manifest, stages={SAMPLING_ARM: sampling_stages, SERVING_ARM: tuple(serving_stages)},
+                      serving_seconds_per_post=seconds_per_post,
+                      sampling_seconds_per_generation=sampling_seconds_per_generation,
+                      weight_staging_seconds=staging_seconds, controller_cores=controller_cores,
+                      controller_memory_gib=controller_memory_gib, controller_allowance_seconds=allowance)
+
+
+# ---------- 7.3: scored probability for Brier and log loss (Requirement 8.4) ----------
+
+#: Decimals a spread or return keeps before its sign is tested, as macro_regime.is_correct.
+SIGN_DECIMALS = 9
+SCORED_CLIP: tuple[float, float] = (0.01, 0.99)
+SCORED_OUTCOME = (
+    "1 when the defensive pair beats the risk pair over the next month, "
+    "round((gold_commodity + short_treasury_cash) - (world_equity + tech_sector), 9) > 0, from the realized "
+    "returns of the accuracy definition (FMP adjusted closes, DTB3 as the cash leg); else 0"
+)
+SCORED_MAPPING: Mapping[str, str] = MappingProxyType({
+    "ensemble": "share of the parsed draws whose defensive spread is positive (round(spread, 9) > 0)",
+    "single": "1 when draw index 0 parsed with a positive defensive spread (round(spread, 9) > 0), else 0",
+})
+SCORED_ADJUSTMENT = (
+    "clip p_raw to [0.01, 0.99] first; then p_adj = 0.5 + (1 - clip(p_memorized, 0, 1)) * (p_raw - 0.5) with the "
+    "variant's p_memorized, the factor that scales the components; a variant without an adjustment (no "
+    "adjustment, no estimate or a weak calibrator) keeps p_adj = p_raw"
+)
+SCORED_LOSSES: Mapping[str, str] = MappingProxyType({
+    "brier": "(p_adj - outcome) ** 2",
+    "log_loss": "-(outcome * ln(p_adj) + (1 - outcome) * ln(1 - p_adj)), natural logarithm",
+})
+SCORED_MISSING = ("a month with realized = None, or a variant without a decision (fewer parsed draws than "
+                  "min_parsed, or draw index 0 unparsed), has no scored probability and is reported as missing, "
+                  "never substituted")
+
+
+@dataclass(frozen=True)
+class ScoredProbability:
+    """The forecast scored by Brier and log loss: outcome, mapping per draw mode, clip and shrink toward 0.5."""
+
+    outcome: str = SCORED_OUTCOME
+    mapping: Mapping[str, str] = field(default_factory=lambda: dict(SCORED_MAPPING))
+    clip: tuple[float, float] = SCORED_CLIP
+    adjustment: str = SCORED_ADJUSTMENT
+    losses: Mapping[str, str] = field(default_factory=lambda: dict(SCORED_LOSSES))
+    missing: str = SCORED_MISSING
+    sign_decimals: int = SIGN_DECIMALS
+
+    def __post_init__(self) -> None:
+        for name in ("outcome", "adjustment", "missing"):
+            _text(getattr(self, name), name)
+        mapping = _text_map(self.mapping, "mapping")
+        if set(mapping) != set(DRAW_MODES):
+            raise ValueError(f"mapping must give the rule of each draw mode {list(DRAW_MODES)}")
+        losses = _text_map(self.losses, "losses")
+        if set(losses) != {"brier", "log_loss"}:
+            raise ValueError("losses must define brier and log_loss")
+        bounds = _sequence(self.clip, "clip")
+        if len(bounds) != 2:
+            raise ValueError(f"clip must be (lower, upper); got {bounds!r}")
+        lower, upper = (_real(bound, "clip bound") for bound in bounds)
+        if not 0.0 < lower < 0.5 < upper < 1.0:
+            raise ValueError(f"clip must satisfy 0 < lower < 0.5 < upper < 1; got {bounds!r}")
+        _integer(self.sign_decimals, "sign_decimals", minimum=0)
+        object.__setattr__(self, "mapping", mapping)
+        object.__setattr__(self, "losses", losses)
+        object.__setattr__(self, "clip", (lower, upper))
+
+    def _positive(self, value: float) -> bool:
+        return round(value, self.sign_decimals) > 0
+
+    def outcome_of(self, realized: RealizedReturns) -> int:
+        """1 when the defensive pair beat the risk pair over the next month, else 0."""
+        if not isinstance(realized, RealizedReturns):
+            raise TypeError(f"realized must be RealizedReturns; got {type(realized).__name__}")
+        return int(self._positive((realized.gold_commodity + realized.short_treasury_cash)
+                                  - (realized.world_equity + realized.tech_sector)))
+
+    def probability(self, spreads: Sequence[float], *, mode: str) -> float:
+        """The clipped raw probability from the parsed draws' defensive spreads (draw order) of one draw mode."""
+        mode = _choice(mode, "mode", DRAW_MODES)
+        values = [_real(value, "spread") for value in _sequence(spreads, "spreads")]
+        if mode == "single" and len(values) != 1:
+            raise ValueError(f"a single draw has exactly one spread (draw index 0); got {len(values)}")
+        if not values:
+            raise ValueError("an ensemble probability needs at least one parsed draw")
+        share = sum(self._positive(value) for value in values) / len(values)
+        lower, upper = self.clip
+        return min(max(share, lower), upper)
+
+    def adjusted(self, p_raw: float, p_memorized: float | None) -> float:
+        """Shrink a clipped probability toward 0.5 by ``1 - clip(p_memorized, 0, 1)``; None keeps it."""
+        value = _real(p_raw, "p_raw")
+        lower, upper = self.clip
+        if not lower <= value <= upper:
+            raise ValueError(f"p_raw must be a clipped probability in [{lower}, {upper}]; got {value}")
+        if p_memorized is None:
+            return value
+        scale = 1.0 - min(max(_real(p_memorized, "p_memorized"), 0.0), 1.0)
+        # A factor of 1 (estimate 0) leaves the forecast exactly as no adjustment does.
+        return value if scale == 1.0 else 0.5 + scale * (value - 0.5)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _section_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: object) -> ScoredProbability:
+        return _section_from_dict(cls, data, "scored_probability")
+
+
+#: The 7.3 sections of the plan, in dependency order.
+STUDY_SECTIONS: tuple[str, ...] = ("arms", "pilot", "limits", "scored_probability")
+
+
 # ---------- the plan ----------
 
 @dataclass(frozen=True)
@@ -528,11 +1365,14 @@ class StudyPlan:
     ``excluded_models`` maps a model without a sourced cutoff to the reason;
     ``edgar_files`` maps each :data:`EDGAR_FILES` key to its manifest sha256.
 
-    Task 7.3 appends its sections (arms, variant sets, limits, pilot settings,
-    scored probability) as keyword fields defaulting to None, each with a
+    Task 7.3 appends its sections (arms with their variant sets, pilot settings,
+    limits, scored probability) as keyword fields defaulting to None, each with a
     ``to_dict`` and a parser in ``_SECTION_PARSERS``. A section that is None is
     left out of the payload and the hash; a set one is serialised, gets a content
-    hash and enters ``plan_sha256`` like the others.
+    hash and enters ``plan_sha256`` like the others. ``pilot`` needs ``arms``, and
+    ``limits`` needs both; the limits must equal :func:`size_limits` of the plan.
+    The runner (7.4 onward) runs a plan only with every section set
+    (:func:`require_complete`).
     """
 
     created_at: str
@@ -545,6 +1385,10 @@ class StudyPlan:
     accuracy: AccuracyDefinition
     analysis: AnalysisSettings
     schema_version: str = PLAN_SCHEMA
+    arms: StudyArms | None = None
+    pilot: PilotSettings | None = None
+    limits: PlanLimits | None = None
+    scored_probability: ScoredProbability | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != PLAN_SCHEMA:
@@ -561,6 +1405,40 @@ class StudyPlan:
         both = sorted(set(self.excluded_models) & set(self.months.models))
         if both:
             raise ValueError(f"excluded models must not be in the month split; got {both}")
+        self._check_study_sections()
+
+    def _check_study_sections(self) -> None:
+        """The 7.3 sections: their types, their dependencies and their agreement with the 7.2 part."""
+        for name, cls in (("arms", StudyArms), ("pilot", PilotSettings), ("limits", PlanLimits),
+                          ("scored_probability", ScoredProbability)):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, cls):
+                raise TypeError(f"{name} must be a {cls.__name__} or None; got {type(value).__name__}")
+        if self.pilot is not None and self.arms is None:
+            raise ValueError("the pilot section needs the arms section")
+        if self.limits is not None and (self.arms is None or self.pilot is None):
+            raise ValueError("the limits section needs the arms and pilot sections")
+        if self.arms is not None:
+            for arm, registry_id in self.arms.registry_ids.items():
+                if registry_id in self.excluded_models:
+                    raise ValueError(f"arm {arm!r} has no included model: {registry_id} is excluded "
+                                     f"({self.excluded_models[registry_id]})")
+                if registry_id not in self.months.models:
+                    raise ValueError(f"arm {arm!r} maps to {registry_id!r}, which is not an included model of the "
+                                     f"month split {list(self.months.models)}")
+        if self.pilot is not None:
+            _check_pilot(self.pilot, self.months, self.arms)
+        if self.limits is not None:
+            expected = size_limits(self.months, self.edgar, self.arms, self.pilot, self.limits.manifest,
+                                   **self.limits.settings())
+            differing = [f"{arm}/{budget.stage}" for arm in ARMS
+                         for budget, frozen in zip(expected.stages[arm], self.limits.stages[arm], strict=True)
+                         if budget != frozen]
+            if expected.serving_seconds_per_post != self.limits.serving_seconds_per_post:
+                differing.append("serving_seconds_per_post")
+            if differing:
+                raise ValueError(f"limits differ from the sizing rule of the plan's items, arms and manifest: "
+                                 f"{differing}")
 
     def frozen_fields(self) -> dict[str, Any]:
         """Every frozen field in JSON form; a None section (7.3, not set) is left out."""
@@ -613,6 +1491,10 @@ _SECTION_PARSERS: dict[str, Callable[[Any], Any]] = {
     "edgar": EdgarSplit.from_dict,
     "accuracy": AccuracyDefinition.from_dict,
     "analysis": AnalysisSettings.from_dict,
+    "arms": StudyArms.from_dict,
+    "pilot": PilotSettings.from_dict,
+    "limits": PlanLimits.from_dict,
+    "scored_probability": ScoredProbability.from_dict,
 }
 
 
@@ -708,21 +1590,96 @@ def freeze_plan(
     edgar_files: Mapping[str, str],
     excluded_models: Mapping[str, str] | None = None,
     analysis: AnalysisSettings | None = None,
+    arms: StudyArms | None = None,
+    serving_manifest: ServingManifest | None = None,
+    pilot: PilotSettings | None = None,
+    scored_probability: ScoredProbability | None = None,
 ) -> StudyPlan:
-    """Freeze the 7.2 part of the plan before any study request; ``created_at`` must be timezone-aware."""
+    """Freeze the plan before any study request; ``created_at`` must be timezone-aware.
+
+    Without ``arms`` and ``serving_manifest`` this is the 7.2 part only. With both
+    it is the complete plan: the pilot defaults to :meth:`PilotSettings.for_split`,
+    the scored probability to :class:`ScoredProbability`, and the limits are
+    :func:`size_limits` of the split, the EDGAR sets, the arms, the pilot and the
+    manifest.
+    """
     if not isinstance(created_at, datetime) or created_at.utcoffset() is None:
         raise ValueError("created_at must be a timezone-aware datetime")
+    split = split_months(months, seed=seed)
+    edgar = split_edgar(edgar_rows)
+    sections: dict[str, Any] = {}
+    if any(value is not None for value in (arms, serving_manifest, pilot, scored_probability)):
+        if arms is None:
+            raise ValueError("freeze_plan needs the arms to freeze the 7.3 sections")
+        if serving_manifest is None:
+            raise ValueError("freeze_plan needs the serving manifest to size the serving arm's limits")
+        if not isinstance(arms, StudyArms):
+            raise TypeError(f"arms must be a StudyArms; got {type(arms).__name__}")
+        pilot = PilotSettings.for_split(split, arms) if pilot is None else pilot
+        sections = {"arms": arms, "pilot": pilot,
+                    "limits": size_limits(split, edgar, arms, pilot, serving_manifest),
+                    "scored_probability": ScoredProbability() if scored_probability is None else scored_probability}
     return StudyPlan(
         created_at=created_at.astimezone(UTC).isoformat(timespec="seconds"),
         seed=seed,
         items=items,
         excluded_models={} if excluded_models is None else excluded_models,
-        months=split_months(months, seed=seed),
-        edgar=split_edgar(edgar_rows),
+        months=split,
+        edgar=edgar,
         edgar_files=edgar_files,
         accuracy=AccuracyDefinition(),
         analysis=AnalysisSettings() if analysis is None else analysis,
+        **sections,
     )
+
+
+def require_complete(plan: StudyPlan) -> StudyPlan:
+    """Refuse a plan without every 7.3 section; the runner (7.4 onward) runs complete plans only."""
+    if not isinstance(plan, StudyPlan):
+        raise TypeError(f"plan must be a StudyPlan; got {type(plan).__name__}")
+    missing = [name for name in STUDY_SECTIONS if getattr(plan, name) is None]
+    if missing:
+        raise ValueError(f"plan {plan.plan_sha256} lacks the sections {missing}; freeze it with "
+                         f"scripts/finance_sim/build_plan.py")
+    return plan
+
+
+def stage_limits_files(plan: StudyPlan) -> tuple[tuple[str, bytes], ...]:
+    """The serving arm's StageLimits files (deploy/modal/stage_limits.py) in execution order, as exact bytes.
+
+    Each carries the plan's ``plan_sha256``; ``build_plan.py`` writes these bytes
+    unchanged, so their SHA-256 values, and the ``stage_limits_sha256`` over them,
+    follow from the plan alone.
+    """
+    require_complete(plan)
+    files = []
+    for budget in plan.limits.stages[SERVING_ARM]:
+        document = {"plan_sha256": plan.plan_sha256, "stage": budget.stage, "max_requests": budget.max_requests,
+                    "max_output_tokens": budget.max_output_tokens, "max_seconds": budget.max_seconds,
+                    "max_usd": budget.max_usd}
+        files.append((budget.stage, (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")))
+    return tuple(files)
+
+
+def serving_limits_record(plan: StudyPlan) -> dict[str, Any]:
+    """The serving arm's limits with the hashes the approval checks: plan, manifest and stage limits.
+
+    ``stage_limits_sha256`` is the SHA-256 of the canonical JSON list of
+    ``[stage, file sha256]`` pairs in execution order, as
+    ``scripts/finance_sim/limits.py`` computes it from the files, so the
+    presentation, the approval record and the plan agree. These hashes cannot be
+    inside the plan's own content (they depend on ``plan_sha256``); the build
+    receipt records this dictionary.
+    """
+    files = stage_limits_files(plan)
+    stages = [{"stage": budget.stage, "sha256": hashlib.sha256(data).hexdigest(),
+               "max_requests": budget.max_requests, "max_output_tokens": budget.max_output_tokens,
+               "max_seconds": budget.max_seconds, "max_usd": budget.max_usd}
+              for budget, (_, data) in zip(plan.limits.stages[SERVING_ARM], files, strict=True)]
+    return {"plan_sha256": plan.plan_sha256, "manifest": plan.limits.manifest.path,
+            "manifest_sha256": plan.limits.manifest.sha256,
+            "stage_limits_sha256": sha256_of([[stage["stage"], stage["sha256"]] for stage in stages]),
+            "stages": stages, "max_usd_total": plan.limits.serving_usd_total}
 
 
 def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
