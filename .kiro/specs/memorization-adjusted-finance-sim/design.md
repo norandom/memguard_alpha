@@ -1371,7 +1371,7 @@ change is `adjusted_outlook - raw_outlook` on the 40 held-out control releases; 
 statistic is the mean absolute change, with a moving-block bootstrap over filing
 quarters (rows ordered by quarter, block length 2). Outcomes per variant: `no
 material change` when the interval's upper bound is below `tolerance`;
-`discounting honest answers` (the flag) when the lower bound is above `tolerance`;
+`discounting honest answers` (the flag) when the lower bound is above `tolerance`; (decision 2026-11-10: this three-outcome rule governs; any other sentence in this document that flags a variant when its upper bound exceeds the tolerance, such as the NegativeControlTask metric bullet, is read as this rule);
 `inconclusive` otherwise. The signed mean change and the share of items with a
 sign flip are reported beside it.
 
