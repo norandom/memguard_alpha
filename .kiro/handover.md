@@ -1,6 +1,6 @@
 # Handover: memorization-adjusted-finance-sim
 
-State as of 2026-11-10, about 22:50 local time. Repository `norandom/recall_guard`
+State as of 2026-11-10, 19:26 local time (system clock). Repository `norandom/recall_guard`
 (local folder `D:\Source\memguard_alpha`, branch `main`). Last code commit:
 `d023b17` (task 8.2); last commit: `d66f4a9` (design note). CI is green on every
 commit except the 8.2 push, whose one platform-sensitive figure test is fixed in
