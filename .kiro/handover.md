@@ -36,7 +36,15 @@ Phase B and the parked items (P1 to P7); nothing there changed.
    Implementation Notes. Design contracts are written through 8.4 (study plan,
    recording and limits, calibration, execution from one ensemble, pilot and gate,
    negative control, analysis inputs, figures layout).
-3. **Next:** finish 6.3 (in progress), then 7.1 onward in order. Earlier plan for 5.2, kept for reference: (public exports and the installed-wheel test). Its design
+3. **Queue (user decisions 2026-11-10):** 6.3 (review in flight), the upstream
+   chore (providers.py credential validation, consensus.py docstring,
+   intervention_metrics dedup, FLM pipe inheritance; one reviewed commit), then
+   6.4 (batch evidence and memory guard, added to tasks.md), then 7.1 onward.
+   Reviewers run on Opus at medium effort, implementers on Opus at xhigh.
+   Execution split: Compose for study scripts and the runner, native uv for the
+   unit-test loop, Dagger as the CI gate; model hosts native and never started
+   without free RAM plus headroom or beside another heavy job. Earlier plan for
+   5.2, kept for reference: (public exports and the installed-wheel test). Its design
    is already amended in `design.md` ("Modified Files" > `recall_guard/__init__.py`
    and `tests/test_installed_wheel.py`): the exact root export list and the wheel
    test mechanics (`uv build --wheel`, `uv venv` under `tmp_path`, `uv pip install`,
@@ -167,6 +175,10 @@ docs). Commit messages end with the Co-Authored-By line for the active model.
 
 ## Human decisions still ahead
 
+- **Decided 2026-11-10:** task 6.4 (batch mode) added; research defaults kept at
+  0.10 and 0.10; the host self-exit is attributed to memory exhaustion and
+  addressed by the 6.4 memory floor and faulthandler, not by supervised restarts.
+  The original note follows for context.
 - **Full-distribution evidence at study scale (raised 2026-11-10 after 6.1).** The
   host teacher-forces prompt plus response one token per decode at 15 to 17
   tokens/s on the iGPU: about 33 s per macro draw (534 decodes) and 26 s per EDGAR
