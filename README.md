@@ -105,7 +105,7 @@ returned 504 at eligibility, so GPT-OSS results remain unavailable.
 | Your goal | Start here | What you need |
 | --- | --- | --- |
 | Run checkout examples and tests in Docker | [Docker quick start](#run-the-checkout-in-docker) | Docker with Compose and a current checkout; the first example needs no keys |
-| Score model responses in an application | [Scorer integration](https://norandom.github.io/memguard_alpha/) | A model with token logprobs and calibration prompts; NVIDIA credentials for the NIM path |
+| Score model responses in an application | [Scorer integration](https://norandom.github.io/recall_guard/) | A model with token logprobs and calibration prompts; NVIDIA credentials for the NIM path |
 | Use a locally hosted model | [Local integration](docs/local-provider.md) | Development checkout; optional external host for live use, no key or GPU for the offline example |
 | Configure completion APIs, optional rewriting or n draws | [Completion workflow](docs/completion-api.md) | Development checkout; the default application and notebook fixtures run offline |
 | Try the divergence equation without a model | [Executable example](docs/divergence-decoding.md) | Current checkout, Python and NumPy; no credentials |
@@ -118,7 +118,7 @@ Use Python 3.12 or newer and [uv](https://docs.astral.sh/uv/) on Linux or
 macOS, or inside a Linux container on Windows (see [Windows](#windows)):
 
 ```text
-uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.5.0"
+uv add "recall-guard @ git+https://github.com/norandom/recall_guard.git@v0.5.0"
 ```
 
 Releases provide wheels and source distributions on GitHub Releases; the package
@@ -204,8 +204,8 @@ The divergence utility is included in v0.5.0. On Linux or macOS, install only
 the core dependencies from a checkout:
 
 ```text
-git clone https://github.com/norandom/memguard_alpha.git
-cd memguard_alpha
+git clone https://github.com/norandom/recall_guard.git
+cd recall_guard
 uv sync --no-dev
 uv run --no-dev python -c "from recall_guard.core.divergence import combine_logits; print(combine_logits([2, 0], [0, 3], [0, 0], alpha=1.0))"
 ```
@@ -341,7 +341,7 @@ the Jane Street feature.
 
 - [Research report](docs/research-report.md): what has been measured so far, in one place
 - [Research register](docs/research-register.md): every dated decision, experiment and result
-- [Engineering guide and API reference](https://norandom.github.io/memguard_alpha/)
+- [Engineering guide and API reference](https://norandom.github.io/recall_guard/)
 - [Point-in-time architecture](docs/pit-architecture.md)
 - [Ensemble scoring](docs/ensemble.md)
 - [Completion API configuration and notebook integration](docs/completion-api.md)
@@ -356,7 +356,7 @@ the Jane Street feature.
 
 If you want to cite the software itself, use the Zenodo DOI. Cite the version you actually ran; the all-versions DOI always resolves to the latest release.
 
-- v0.5.0: [GitHub Release](https://github.com/norandom/memguard_alpha/releases/tag/v0.5.0); version-specific DOI pending.
+- v0.5.0: [GitHub Release](https://github.com/norandom/recall_guard/releases/tag/v0.5.0); version-specific DOI pending.
 - v0.4.1: <https://doi.org/10.5281/zenodo.21806959>
 - v0.4.0: <https://doi.org/10.5281/zenodo.21795891>
 - v0.3.1: <https://doi.org/10.5281/zenodo.21795665>

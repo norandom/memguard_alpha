@@ -25,7 +25,7 @@ that matches your runtime.
 Use Python >=3.12. For a released scorer in a uv-managed project:
 
 ```text
-uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.5.0"
+uv add "recall-guard @ git+https://github.com/norandom/recall_guard.git@v0.5.0"
 ```
 
 The divergence helper is included in v0.5.0. Pin a release or commit to keep

@@ -37,7 +37,7 @@ computed.
 
 ## Data
 
-SEC EDGAR corpus ([manifest](https://github.com/norandom/memguard_alpha/blob/main/data/edgar/manifest.json)):
+SEC EDGAR corpus ([manifest](https://github.com/norandom/recall_guard/blob/main/data/edgar/manifest.json)):
 calibration 40 memorized and 100 control, held-out 40 and 40.
 
 ## Results

@@ -1,6 +1,8 @@
 # Handover: memorization-adjusted finance simulation, implementation in progress
 
 Updated: 2026-11-09 (end of day). Workspace: `D:\Source\memguard_alpha`, branch `main`.
+GitHub: `norandom/recall_guard` (the repository was renamed on 2026-11-10; the
+local folder name and the Dagger `/mnt/d/Source/memguard_alpha` path are unchanged).
 Last commit: `3148843` (task 4.3). Working tree: task 5.1 in progress, uncommitted
 (see "Task 5.1 state" below).
 

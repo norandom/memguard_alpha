@@ -5,7 +5,7 @@ consecutively in date order. Each entry has the same six fields: question, setup
 data, result, limits, evidence. Entries are added, never rewritten; when a later
 entry changes an earlier conclusion, both say so.
 
-Last updated 2026-11-09. Release plan: [release 1.0](https://github.com/norandom/memguard_alpha/blob/main/.kiro/specs/release-1.0/tasks.md).
+Last updated 2026-11-09. Release plan: [release 1.0](https://github.com/norandom/recall_guard/blob/main/.kiro/specs/release-1.0/tasks.md).
 
 ## Purpose
 
@@ -279,7 +279,7 @@ track. The guard does not need it to work.
 - **Data:** 8-K press releases: memorized 2015-01 to 2023-03 (40 dates, 40 companies), control 2024-09 to 2026-11.
 - **Result:** calibration 40/100 and held-out 40/40, disjoint and hashed.
 - **Limits:** filing date stands in for publication date; some titles are layout noise.
-- **Evidence:** [manifest](https://github.com/norandom/memguard_alpha/blob/main/data/edgar/manifest.json).
+- **Evidence:** [manifest](https://github.com/norandom/recall_guard/blob/main/data/edgar/manifest.json).
 
 ### R20 · 2026-11-08 · Windows Ollama with iGPU behind a gateway
 

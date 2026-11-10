@@ -89,7 +89,7 @@ Ollama. Synthetic separable scores demonstrate mechanics, not detection quality.
 The fixture returns two alternatives per position; it does not reproduce the
 five-alternative live Gemma observation.
 
-The [example source](https://github.com/norandom/memguard_alpha/blob/main/examples/local_provider.py)
+The [example source](https://github.com/norandom/recall_guard/blob/main/examples/local_provider.py)
 shows the complete path. These APIs belong to the development checkout, not the
 published v0.5.0 release.
 

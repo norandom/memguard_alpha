@@ -35,7 +35,7 @@ base rate when there is nothing to find is part of the research: an estimate
 that "finds" memorization where none can be detected would discount honest
 answers.
 
-**Data** ([manifest](https://github.com/norandom/memguard_alpha/blob/main/data/edgar/manifest.json), R19).
+**Data** ([manifest](https://github.com/norandom/recall_guard/blob/main/data/edgar/manifest.json), R19).
 SEC EDGAR 8-K press releases (EX-99.1), one public-domain source for both classes,
 so only the filing date relative to each model's training cutoff separates them.
 Memorized rows were filed 2015-01 to 2023-03, before every model's cutoff; control

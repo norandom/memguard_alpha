@@ -33,7 +33,7 @@ answer parses.
 ## Data
 
 SEC EDGAR 8-K press releases (EX-99.1), one source for both classes, built with
-`scripts/build_edgar_corpora.py` ([manifest](https://github.com/norandom/memguard_alpha/blob/main/data/edgar/manifest.json)).
+`scripts/build_edgar_corpora.py` ([manifest](https://github.com/norandom/recall_guard/blob/main/data/edgar/manifest.json)).
 Memorized rows were filed 2015-01 to 2023-03, before every model's cutoff;
 control rows 2024-09 to 2026-11, after every cutoff. Calibration 40 + 100,
 held-out 40 + 40, disjoint.

@@ -74,7 +74,7 @@ def test_citation_doi_matches_the_released_version() -> None:
     if cff.get("doi"):
         assert f"- v{version}: <https://doi.org/{cff['doi']}>" in readme
     else:
-        release_url = f"https://github.com/norandom/memguard_alpha/releases/tag/v{version}"
+        release_url = f"https://github.com/norandom/recall_guard/releases/tag/v{version}"
         assert cff["url"] == release_url
         assert f"- v{version}: [GitHub Release]({release_url}); version-specific DOI pending." in readme
 

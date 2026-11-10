@@ -86,10 +86,10 @@ The committed source receipts preserve the original observations. The candidate
 manifest and inventory describe the earlier inventory stage, including then
 incomplete downloads; the later feasibility receipt governs the call results.
 
-- [Ollama feasibility receipt](https://github.com/norandom/memguard_alpha/blob/main/.kiro/specs/local-ai-provider/ollama-feasibility-receipt.json)
-- [Pinned candidate manifest](https://github.com/norandom/memguard_alpha/blob/main/.kiro/specs/local-ai-provider/candidate-manifest.json)
-- [Machine inventory](https://github.com/norandom/memguard_alpha/blob/main/.kiro/specs/local-ai-provider/inventory-receipt.md)
-- [NPU prerequisite receipt](https://github.com/norandom/memguard_alpha/blob/main/.kiro/specs/local-ai-provider/npu-setup-receipt.json)
+- [Ollama feasibility receipt](https://github.com/norandom/recall_guard/blob/main/.kiro/specs/local-ai-provider/ollama-feasibility-receipt.json)
+- [Pinned candidate manifest](https://github.com/norandom/recall_guard/blob/main/.kiro/specs/local-ai-provider/candidate-manifest.json)
+- [Machine inventory](https://github.com/norandom/recall_guard/blob/main/.kiro/specs/local-ai-provider/inventory-receipt.md)
+- [NPU prerequisite receipt](https://github.com/norandom/recall_guard/blob/main/.kiro/specs/local-ai-provider/npu-setup-receipt.json)
 
 Use the [local integration guide](../local-provider.md) to run the offline example
 and prepare a separate frozen corpus and budget. No larger live batch follows

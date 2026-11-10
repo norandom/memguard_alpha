@@ -82,7 +82,7 @@ scorer.holdout_auc, scorer.is_weak    # calibrator quality
   ephemeral `GITHUB_TOKEN`.
 - **Distribution: GitHub Release only — no PyPI.** Consumers (e.g. Global_Macro_AI_Factors /
   `macro_framework`) install via:
-  `uv add "recall-guard @ git+https://github.com/norandom/memguard_alpha.git@v0.5.0"`
+  `uv add "recall-guard @ git+https://github.com/norandom/recall_guard.git@v0.5.0"`
   (latest released tag).
 
 ## Purpose framing — carry forward
@@ -139,7 +139,7 @@ accuracy.
 All 13 spec tasks complete and on `main`. **CI and Docs are verified green in GitHub
 Actions** — `ci.yml` (Dagger test matrix 3.12/3.14 + lint) and `docs.yml` (Dagger strict
 mkdocs build → GitHub Pages). Pages is enabled (Actions source); the site is live at
-<https://norandom.github.io/memguard_alpha/>. The default runner token cannot *create* the
+<https://norandom.github.io/recall_guard/>. The default runner token cannot *create* the
 Pages site, so Pages must be enabled out-of-band (Settings → Pages → GitHub Actions, or
 `gh api -X POST repos/<owner>/<repo>/pages -f build_type=workflow`) — do not use
 `configure-pages` `enablement: true` (it fails with "Resource not accessible by

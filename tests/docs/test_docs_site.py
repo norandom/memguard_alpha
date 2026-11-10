@@ -32,7 +32,7 @@ def test_mkdocs_config_is_strict_and_autodoc() -> None:
 
 def test_index_has_uv_git_dependency_recipe() -> None:
     text = _index()
-    assert "git+https://github.com/norandom/memguard_alpha.git" in text
+    assert "git+https://github.com/norandom/recall_guard.git" in text
     assert "uv add" in text
 
 
