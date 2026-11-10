@@ -57,6 +57,45 @@ def _is_finite_real(value: object) -> bool:
     return isinstance(value, numbers.Real) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _exact_fields(data: object, names: Sequence[str], what: str) -> Mapping[str, Any]:
+    """``data`` as a mapping holding exactly ``names``; anything else is refused, naming the difference."""
+    if not isinstance(data, Mapping):
+        raise TypeError(f"{what} must be a mapping; got {type(data).__name__}")
+    missing = [name for name in names if name not in data]
+    unexpected = sorted(str(key) for key in data if key not in names)
+    if missing or unexpected:
+        raise ValueError(f"{what} fields differ: missing {missing}, unexpected {unexpected}")
+    return data
+
+
+def _finite_field(value: object, name: str, *, optional: bool = False) -> float | None:
+    if value is None and optional:
+        return None
+    if not _is_finite_real(value):
+        raise ValueError(f"{name} must be a finite number{' or None' if optional else ''}; got {value!r}")
+    return float(value)
+
+
+def _count_field(value: object, name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer; got {value!r}")
+    return value
+
+
+def _quantiles_to_dict(quantiles: Mapping[int, float]) -> dict[str, float]:
+    """JSON object keys are strings, so the levels are written as ``"5"``, ``"25"`` and so on."""
+    return {str(level): float(quantiles[level]) for level in QUANTILE_LEVELS}
+
+
+def _quantiles_from_dict(value: object, name: str) -> dict[int, float]:
+    expected = [str(level) for level in QUANTILE_LEVELS]
+    keys = sorted(str(key) for key in value) if isinstance(value, Mapping) else None
+    if keys is None or len(value) != len(expected) or set(keys) != set(expected):
+        raise ValueError(f"{name} must hold exactly the quantile levels {expected}; got {keys if keys else value!r}")
+    by_level = {str(key): number for key, number in value.items()}
+    return {level: _finite_field(by_level[str(level)], f"{name}[{level}]") for level in QUANTILE_LEVELS}
+
+
 @dataclass(frozen=True)
 class RecordedDraw:
     """One draw as recorded by the guarded-decision API and the study runner.
@@ -152,6 +191,29 @@ class ComponentDistribution:
     unresolved: bool | None
     first_draw_rank: float | None
 
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-compatible dict with string quantile levels; the inverse of :meth:`from_dict`."""
+        return {"name": self.name, "quantiles": _quantiles_to_dict(self.quantiles), "sd": self.sd, "iqr": self.iqr,
+                "sign_agreement": self.sign_agreement, "unresolved": self.unresolved,
+                "first_draw_rank": self.first_draw_rank}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> ComponentDistribution:
+        """Load the exact field set written by :meth:`to_dict`; quantile levels become integers again."""
+        values = _exact_fields(data, [f.name for f in fields(cls)], "component distribution")
+        name = values["name"]
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"name must be a non-empty string; got {name!r}")
+        unresolved = values["unresolved"]
+        if unresolved is not None and not isinstance(unresolved, bool):
+            raise ValueError(f"unresolved must be true, false or None; got {unresolved!r}")
+        return cls(name=name, quantiles=_quantiles_from_dict(values["quantiles"], f"{name}.quantiles"),
+                   sd=_finite_field(values["sd"], f"{name}.sd"), iqr=_finite_field(values["iqr"], f"{name}.iqr"),
+                   sign_agreement=_finite_field(values["sign_agreement"], f"{name}.sign_agreement"),
+                   unresolved=unresolved,
+                   first_draw_rank=_finite_field(values["first_draw_rank"], f"{name}.first_draw_rank",
+                                                 optional=True))
+
 
 @dataclass(frozen=True)
 class DistributionSummary:
@@ -175,6 +237,53 @@ class DistributionSummary:
     distinct_answers: int
     lag1_dependence: float | None
     independence_note: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-compatible dict, as the study recording stores it; the inverse of :meth:`from_dict`."""
+        ci = self.decision_agreement_ci
+        return {
+            "n_requested": self.n_requested, "n_parsed": self.n_parsed, "n_failed": self.n_failed,
+            "components": [component.to_dict() for component in self.components],
+            "summary_value": None if self.summary_value is None else self.summary_value.to_dict(),
+            "decision_agreement": self.decision_agreement,
+            "decision_agreement_ci": None if ci is None else [ci[0], ci[1]],
+            "estimate_quantiles": None if self.estimate_quantiles is None else _quantiles_to_dict(
+                self.estimate_quantiles),
+            "estimate_sd": self.estimate_sd, "distinct_answers": self.distinct_answers,
+            "lag1_dependence": self.lag1_dependence, "independence_note": self.independence_note,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> DistributionSummary:
+        """Load the exact field set written by :meth:`to_dict`; unknown, missing or invalid fields are refused."""
+        values = _exact_fields(data, [f.name for f in fields(cls)], "distribution summary")
+        components = values["components"]
+        if not isinstance(components, list | tuple) or not components:
+            raise ValueError("components must be a non-empty list of component distributions")
+        ci = values["decision_agreement_ci"]
+        if ci is not None:
+            if not isinstance(ci, list | tuple) or len(ci) != 2:
+                raise ValueError(f"decision_agreement_ci must be a pair of bounds or None; got {ci!r}")
+            ci = (_finite_field(ci[0], "decision_agreement_ci[0]"), _finite_field(ci[1], "decision_agreement_ci[1]"))
+        quantiles = values["estimate_quantiles"]
+        note = values["independence_note"]
+        if not isinstance(note, str) or not note:
+            raise ValueError("independence_note must be a non-empty string")
+        return cls(
+            n_requested=_count_field(values["n_requested"], "n_requested"),
+            n_parsed=_count_field(values["n_parsed"], "n_parsed"),
+            n_failed=_count_field(values["n_failed"], "n_failed"),
+            components=tuple(ComponentDistribution.from_dict(component) for component in components),
+            summary_value=None if values["summary_value"] is None else ComponentDistribution.from_dict(
+                values["summary_value"]),
+            decision_agreement=_finite_field(values["decision_agreement"], "decision_agreement", optional=True),
+            decision_agreement_ci=ci,
+            estimate_quantiles=None if quantiles is None else _quantiles_from_dict(quantiles, "estimate_quantiles"),
+            estimate_sd=_finite_field(values["estimate_sd"], "estimate_sd", optional=True),
+            distinct_answers=_count_field(values["distinct_answers"], "distinct_answers"),
+            lag1_dependence=_finite_field(values["lag1_dependence"], "lag1_dependence", optional=True),
+            independence_note=note,
+        )
 
 
 @dataclass(frozen=True)

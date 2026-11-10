@@ -24,7 +24,11 @@ sample and does not change the calibrated distribution.
 
 Every result is a pure function of its recorded draws, the configuration and
 the identity, so :func:`decide_from_draws` recomputes it from stored draws
-without a request.
+without a request. :meth:`GuardedRun.to_dict` and :meth:`GuardedRun.from_dict`
+(with the same pair on :class:`GuardedDecision` and :class:`GuardIdentity`) are
+the supported serialisation of a result; ``dataclasses.asdict`` is not, because
+the decision vectors are read-only mappings. :func:`guarded_run` takes the draws
+an interrupted run already recorded (``recorded``) and issues only the others.
 """
 
 from __future__ import annotations
@@ -36,11 +40,11 @@ import numbers
 import os
 import statistics
 from collections import Counter
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from recall_guard.core.completion import CompletionClient, ModelResponse, ParameterValue
 from recall_guard.core.consensus import robust_location
@@ -71,6 +75,17 @@ REQUEST_ERROR_PREFIX = "request_error:"
 _AUTH_STATUS = frozenset({401, 403})
 
 GuardStatus = Literal["ok", "estimate_unavailable", "adjustment_skipped_weak_calibrator", "failed"]
+_STATUSES: tuple[str, ...] = ("ok", "estimate_unavailable", "adjustment_skipped_weak_calibrator", "failed")
+_IDENTITY_FIELDS = ("model", "protocol", "endpoint", "response_mapping", "source", "settings_json", "temperature",
+                    "draws", "calibrator_fingerprint", "calibrator_is_weak", "prompt_sha256")
+_DECISION_FIELDS = ("status", "mode", "decision", "adjusted", "p_memorized", "distribution", "reason", "identity",
+                    "draws_sha256", "category", "not_assessed", "draws")
+_RUN_FIELDS = ("decision", "responses", "evidence")
+
+#: Called before each issued request with its draw index and seed (None when no seed is sent).
+RequestHook = Callable[[int, int | None], None]
+#: Called after each issued request with its recorded draw, the reply (None when none arrived) and full evidence.
+DrawHook = Callable[[RecordedDraw, ModelResponse | None, FullDistributionEvidence | None], None]
 
 
 def _is_int(value: object) -> bool:
@@ -79,6 +94,56 @@ def _is_int(value: object) -> bool:
 
 def _is_real(value: object) -> bool:
     return isinstance(value, numbers.Real) and not isinstance(value, bool)
+
+
+def _exact_fields(data: object, names: Sequence[str], what: str) -> Mapping[str, Any]:
+    """``data`` as a mapping holding exactly ``names``; anything else is refused, naming the difference."""
+    if not isinstance(data, Mapping):
+        raise TypeError(f"{what} must be a mapping; got {type(data).__name__}")
+    missing = [name for name in names if name not in data]
+    unexpected = sorted(str(key) for key in data if key not in names)
+    if missing or unexpected:
+        raise ValueError(f"{what} fields differ: missing {missing}, unexpected {unexpected}")
+    return data
+
+
+def _text_field(value: object, name: str, *, optional: bool = False) -> str | None:
+    if value is None and optional:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{name} must be a non-empty string{' or None' if optional else ''}; got {value!r}")
+    return value
+
+
+def _real_field(value: object, name: str) -> float | None:
+    """A finite number as float, or None."""
+    if value is None:
+        return None
+    if not _is_real(value) or not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number or None; got {value!r}")
+    return float(value)
+
+
+def _json_scalar(value: object, name: str) -> Hashable | None:
+    """A value that reads back from JSON unchanged: None, a bool, an int, a string or a finite float."""
+    if value is None or isinstance(value, bool | int | str):
+        return value
+    if isinstance(value, float) and math.isfinite(value):
+        return value
+    raise ValueError(f"{name} must be a JSON scalar (None, bool, int, str or a finite float) to be recorded; "
+                     f"got {value!r}")
+
+
+def _vector_to_dict(vector: Mapping[str, float | None] | None) -> dict[str, float | None] | None:
+    return None if vector is None else dict(vector)
+
+
+def _vector_from_dict(value: object, name: str) -> Mapping[str, float | None] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or not all(isinstance(key, str) and key for key in value):
+        raise ValueError(f"{name} must map component names to values; got {value!r}")
+    return MappingProxyType({key: _real_field(number, f"{name}[{key!r}]") for key, number in value.items()})
 
 
 def _sha256(text: str) -> str:
@@ -180,6 +245,38 @@ class GuardIdentity:
         if not isinstance(self.calibrator_is_weak, bool):
             raise TypeError("calibrator_is_weak must be a boolean")
 
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-compatible dict; the source is written as ``{"source": ..., "k": ...}``."""
+        return {
+            "model": self.model, "protocol": self.protocol, "endpoint": self.endpoint,
+            "response_mapping": self.response_mapping,
+            "source": {"source": self.source.source.value, "k": self.source.k},
+            "settings_json": self.settings_json, "temperature": self.temperature, "draws": self.draws,
+            "calibrator_fingerprint": self.calibrator_fingerprint, "calibrator_is_weak": self.calibrator_is_weak,
+            "prompt_sha256": self.prompt_sha256,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> GuardIdentity:
+        """Inverse of :meth:`to_dict`; unknown, missing or invalid fields are refused."""
+        values = dict(_exact_fields(data, _IDENTITY_FIELDS, "guard identity"))
+        source = _exact_fields(values["source"], ("source", "k"), "guard identity source")
+        try:
+            kind = EstimateSource(source["source"])
+        except ValueError:
+            raise ValueError(f"source must be one of {[item.value for item in EstimateSource]}; "
+                             f"got {source['source']!r}") from None
+        k = source["k"]
+        if k is not None and (not _is_int(k) or k < 1):
+            raise ValueError(f"source k must be a positive integer or None; got {k!r}")
+        for name in ("model", "protocol", "response_mapping", "settings_json", "calibrator_fingerprint",
+                     "prompt_sha256"):
+            _text_field(values[name], name)
+        _text_field(values["endpoint"], "endpoint", optional=True)
+        values["source"] = SourceLabel(kind, k)
+        values["temperature"] = _real_field(values["temperature"], "temperature")
+        return cls(**values)
+
 
 @dataclass(frozen=True)
 class GuardedDecision:
@@ -229,19 +326,95 @@ class GuardedDecision:
     not_assessed: tuple[str, ...]
     draws: tuple[RecordedDraw, ...]
 
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-compatible dict, as the study recording stores it.
+
+        The decision vectors become plain dicts in component order, the draws
+        :meth:`RecordedDraw.to_dict` records. Raises ``ValueError`` for a
+        ``category`` that would not read back from JSON unchanged (only None,
+        bool, int, str or a finite float can be recorded).
+        """
+        return {
+            "status": self.status, "mode": self.mode.value, "decision": _vector_to_dict(self.decision),
+            "adjusted": _vector_to_dict(self.adjusted), "p_memorized": self.p_memorized,
+            "distribution": None if self.distribution is None else self.distribution.to_dict(),
+            "reason": self.reason, "identity": self.identity.to_dict(), "draws_sha256": self.draws_sha256,
+            "category": _json_scalar(self.category, "category"), "not_assessed": list(self.not_assessed),
+            "draws": [draw.to_dict() for draw in self.draws],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> GuardedDecision:
+        """Inverse of :meth:`to_dict`; unknown, missing or invalid fields are refused.
+
+        Loading does not recompute the decision; :func:`decide_from_draws` on the
+        loaded draws and identity does, without a request.
+        """
+        values = _exact_fields(data, _DECISION_FIELDS, "guarded decision")
+        if values["status"] not in _STATUSES:
+            raise ValueError(f"status must be one of {list(_STATUSES)}; got {values['status']!r}")
+        try:
+            mode = DrawMode(values["mode"])
+        except ValueError:
+            raise ValueError(f"mode must be ensemble or single; got {values['mode']!r}") from None
+        draws, not_assessed = values["draws"], values["not_assessed"]
+        if not isinstance(draws, list | tuple):
+            raise ValueError("draws must be a list of recorded draws")
+        if not isinstance(not_assessed, list | tuple) or not all(isinstance(name, str) for name in not_assessed):
+            raise ValueError(f"not_assessed must be a list of component names; got {not_assessed!r}")
+        distribution = values["distribution"]
+        return cls(
+            status=values["status"], mode=mode,
+            decision=_vector_from_dict(values["decision"], "decision"),
+            adjusted=_vector_from_dict(values["adjusted"], "adjusted"),
+            p_memorized=_real_field(values["p_memorized"], "p_memorized"),
+            distribution=None if distribution is None else DistributionSummary.from_dict(distribution),
+            reason=_text_field(values["reason"], "reason", optional=True),
+            identity=GuardIdentity.from_dict(values["identity"]),
+            draws_sha256=_text_field(values["draws_sha256"], "draws_sha256", optional=True),
+            category=_json_scalar(values["category"], "category"),
+            not_assessed=tuple(not_assessed),
+            draws=tuple(RecordedDraw.from_dict(draw) for draw in draws),
+        )
+
 
 @dataclass(frozen=True)
 class GuardedRun:
     """A guarded decision with the replies and evidence it was computed from, by draw index.
 
-    ``responses`` holds None for a request that returned no reply. ``evidence``
-    holds full-distribution evidence for the ``FULL_DISTRIBUTION`` source and
-    None elsewhere.
+    ``responses`` holds None for a request that returned no reply, and for a
+    draw that :func:`guarded_run` took from ``recorded`` (its reply is in the
+    caller's recording). ``evidence`` holds full-distribution evidence for the
+    ``FULL_DISTRIBUTION`` source and None elsewhere.
     """
 
     decision: GuardedDecision
     responses: tuple[ModelResponse | None, ...]
     evidence: tuple[FullDistributionEvidence | None, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-compatible dict: the decision, and per draw index the reply and the full evidence or None."""
+        return {
+            "decision": self.decision.to_dict(),
+            "responses": [None if response is None else response.to_dict() for response in self.responses],
+            "evidence": [None if item is None else item.to_dict() for item in self.evidence],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> GuardedRun:
+        """Inverse of :meth:`to_dict`; ``responses`` and ``evidence`` must hold one entry per draw."""
+        values = _exact_fields(data, _RUN_FIELDS, "guarded run")
+        decision = GuardedDecision.from_dict(values["decision"])
+        for name in ("responses", "evidence"):
+            entries = values[name]
+            if not isinstance(entries, list | tuple) or len(entries) != len(decision.draws):
+                raise ValueError(f"{name} must hold one entry per draw ({len(decision.draws)}); got "
+                                 f"{len(entries) if isinstance(entries, list | tuple) else entries!r}")
+        return cls(
+            decision,
+            tuple(None if item is None else ModelResponse.from_dict(item) for item in values["responses"]),
+            tuple(None if item is None else FullDistributionEvidence.from_dict(item) for item in values["evidence"]),
+        )
 
 
 @dataclass(frozen=True)
@@ -444,9 +617,36 @@ def _record(
                         estimate=estimate, evidence_ref=reference), evidence
 
 
+def _prefilled(
+    recorded: Iterable[RecordedDraw], config: GuardConfig, identity: GuardIdentity,
+    seed_of: Callable[[int], int | None],
+) -> dict[int, RecordedDraw]:
+    """Recorded draws by index, refused unless each fits the run: index, seed and temperature."""
+    if isinstance(recorded, str | bytes) or not isinstance(recorded, Iterable):
+        raise TypeError("recorded must be a sequence of RecordedDraw records")
+    by_index: dict[int, RecordedDraw] = {}
+    for draw in recorded:
+        if not isinstance(draw, RecordedDraw):
+            raise TypeError(f"recorded must hold RecordedDraw records; got {type(draw).__name__}")
+        index = draw.draw_index
+        if not 0 <= index < config.draws:
+            raise ValueError(f"recorded draw_index {index} is outside 0 to {config.draws - 1}")
+        if index in by_index:
+            raise ValueError(f"recorded draws repeat draw_index {index}")
+        if draw.seed != seed_of(index):
+            raise ValueError(f"recorded draw {index} carries seed {draw.seed}; its deterministic seed is "
+                             f"{seed_of(index)}")
+        if draw.temperature != identity.temperature:
+            raise ValueError(f"recorded draw {index} was drawn at temperature {draw.temperature}; this run draws "
+                             f"at {identity.temperature}")
+        by_index[index] = draw
+    return by_index
+
+
 def guarded_run(
     prompt: str, config: GuardConfig, *, client: CompletionClient, calibrator: SourceCalibrator,
-    full_distribution: FullDistributionClient | None = None,
+    full_distribution: FullDistributionClient | None = None, recorded: Sequence[RecordedDraw] = (),
+    on_request: RequestHook | None = None, on_draw: DrawHook | None = None,
 ) -> GuardedRun:
     """Draw ``prompt`` ``config.draws`` times, estimate per draw and return the guarded decision.
 
@@ -460,6 +660,22 @@ def guarded_run(
     any other failure is recorded on its draw. Estimates are computed for
     parsed draws only, so a ``FULL_DISTRIBUTION`` source requests evidence
     once per parsed draw and never for a reply that did not parse.
+
+    ``recorded`` holds draws an earlier, interrupted run of the same prompt
+    and configuration already recorded (the study recording, task 7.4). Those
+    draw indices are filled from it and never requested; only the missing
+    indices are issued, each with its deterministic seed, and the result
+    reduces the union exactly as a run without interruption would. A recorded
+    draw outside ``0..draws-1``, a repeated index, or a seed or temperature
+    other than the run's is refused (``ValueError``) before any request. The
+    recorded estimates must come from this calibrator; the caller's recording
+    checks that. Their replies and evidence stay in that recording, so
+    ``responses`` and ``evidence`` hold None at those indices.
+
+    ``on_request(index, seed)`` is called before each issued request and
+    ``on_draw(draw, response, evidence)`` after it is recorded, so a caller can
+    persist each attempt as it happens. An exception from either stops the
+    loop; one from ``on_request`` stops it before that request is sent.
     """
     if not isinstance(prompt, str):
         raise TypeError("prompt must be a string")
@@ -473,17 +689,32 @@ def guarded_run(
     if config.temperature is not None:
         overrides["temperature"] = config.temperature
     configured_seed = client.config.parameters.get("seed")
+
+    def seed_of(index: int) -> int | None:
+        if config.seed_base is not None:
+            return config.seed_base + index
+        return configured_seed if _is_int(configured_seed) else None
+
+    prefilled = _prefilled(recorded, config, identity, seed_of)
     draws: list[RecordedDraw] = []
     responses: list[ModelResponse | None] = []
     evidence: list[FullDistributionEvidence | None] = []
     for index in range(config.draws):
+        if index in prefilled:
+            draws.append(prefilled[index])
+            responses.append(None)
+            evidence.append(None)
+            continue
         parameters = dict(overrides)
+        seed = seed_of(index)
         if config.seed_base is not None:
-            seed = parameters["seed"] = config.seed_base + index
-        else:
-            seed = configured_seed if _is_int(configured_seed) else None
+            parameters["seed"] = seed
+        if on_request is not None:
+            on_request(index, seed)
         response, failure = _request(client, prompt, parameters)
         draw, full = _record(index, prompt, config, identity, seed, response, failure, calibrator, full_distribution)
+        if on_draw is not None:
+            on_draw(draw, response, full)
         draws.append(draw)
         responses.append(response)
         evidence.append(full)
