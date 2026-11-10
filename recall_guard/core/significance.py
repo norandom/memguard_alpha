@@ -25,6 +25,9 @@ same interval on every platform numpy supports.
   (Req 8.5).
 - :func:`simulated_power` is the power of a one-sided t test for a
   pre-registered effect, by simulation and without a t table (Req 8.9).
+- :func:`simulated_power_two_sample` is the same for the difference of two
+  independent sample means with the pooled standard error, the power of the
+  pre-cutoff minus post-cutoff gap the pilot gates on (Req 8.9).
 
 Intervals use the percentile convention of :mod:`recall_guard.core.bootstrap`:
 two-sided, with ``confidence`` the coverage, bounds at the ``(1 - confidence) / 2``
@@ -810,4 +813,74 @@ def simulated_power(effect: float, noise_sd: float, n_items: int, *, alpha: floa
     null = _t_statistics(float(noise_sd) * rng.standard_normal((n_sim, n_items)))
     critical = float(np.quantile(null, 1.0 - float(alpha)))
     alternative = _t_statistics(float(effect) + float(noise_sd) * rng.standard_normal((n_sim, n_items)))
+    return float(np.count_nonzero(alternative > critical) / n_sim)
+
+
+def _pooled_t_statistics(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Pooled two-sample t statistic of each row pair of ``a`` and ``b`` (simulations x items)."""
+    n_a, n_b = a.shape[1], b.shape[1]
+    pooled = ((n_a - 1) * a.var(axis=1, ddof=1) + (n_b - 1) * b.var(axis=1, ddof=1)) / (n_a + n_b - 2)
+    return (a.mean(axis=1) - b.mean(axis=1)) / np.sqrt(pooled * (1.0 / n_a + 1.0 / n_b))
+
+
+def simulated_power_two_sample(effect: float, noise_sd: float, n_a: int, n_b: int, *, alpha: float, n_sim: int,
+                               seed: int) -> float:
+    """Power of a one-sided pooled two-sample t test that the first mean exceeds the second, by simulation.
+
+    The conventions of :func:`simulated_power`, for two independent samples.
+    Each simulation draws ``n_a`` values from normal(``effect``, ``noise_sd``)
+    and ``n_b`` values from normal(0, ``noise_sd``) and forms the statistic
+    ``(mean_a - mean_b) / (s_p * sqrt(1 / n_a + 1 / n_b))``, where ``s_p`` is
+    the pooled sample standard deviation (each sample with ddof 1). The
+    critical value is the ``1 - alpha`` quantile (numpy's linear rule) of
+    ``n_sim`` such statistics simulated under effect 0, so no t table is
+    needed. Power is the share of ``n_sim`` simulations under ``effect`` whose
+    statistic exceeds it.
+
+    One generator seeded once from ``seed`` draws, in this order, the null
+    samples ``a`` and ``b`` and then the standard normal noise of the
+    alternative samples ``a`` and ``b``; only the alternative ``a`` is shifted
+    by ``effect``. The noise therefore does not depend on ``effect``, so for one
+    seed the power never decreases as the effect grows. The statistic is
+    invariant to the scale of the noise, so the power depends on
+    ``effect / noise_sd`` only.
+
+    Args:
+        effect: Pre-registered difference of the means, a finite real (0 gives about alpha).
+        noise_sd: Standard deviation of each value in both samples, a finite real above 0.
+        n_a: Values in the first sample, an integer of at least 2.
+        n_b: Values in the second sample, an integer of at least 2.
+        alpha: One-sided significance level, in (0, 1).
+        n_sim: Simulations under each of the null and the effect, at least 1.
+        seed: Seed for ``numpy.random.default_rng``; same seed, same power.
+
+    Returns:
+        The simulated power in [0, 1].
+
+    Raises:
+        ValueError: on a non-finite ``effect``, a ``noise_sd`` that is not a
+            positive finite real, ``n_a < 2`` or ``n_b < 2``, ``alpha`` outside
+            (0, 1), ``n_sim < 1`` or a non-integer seed or count.
+    """
+    caller = "simulated_power_two_sample"
+    if not _is_finite_real(effect):
+        raise ValueError(f"{caller}: 'effect' must be a finite real, got {effect!r}.")
+    if not _is_finite_real(noise_sd) or noise_sd <= 0.0:
+        raise ValueError(f"{caller}: 'noise_sd' must be a finite real above 0, got {noise_sd!r}.")
+    for name, count in (("n_a", n_a), ("n_b", n_b)):
+        if not _is_int(count) or count < 2:
+            raise ValueError(f"{caller}: '{name}' must be an integer >= 2, got {count!r}.")
+    if not _is_finite_real(alpha) or not 0.0 < alpha < 1.0:
+        raise ValueError(f"{caller}: 'alpha' must be in (0, 1), got {alpha!r}.")
+    if not _is_int(n_sim) or n_sim < 1:
+        raise ValueError(f"{caller}: 'n_sim' must be an integer >= 1, got {n_sim!r}.")
+    if not _is_int(seed):
+        raise ValueError(f"{caller}: 'seed' must be an integer, got {seed!r}.")
+
+    rng = np.random.default_rng(seed)
+    sd = float(noise_sd)
+    null = _pooled_t_statistics(sd * rng.standard_normal((n_sim, n_a)), sd * rng.standard_normal((n_sim, n_b)))
+    critical = float(np.quantile(null, 1.0 - float(alpha)))
+    alternative = _pooled_t_statistics(float(effect) + sd * rng.standard_normal((n_sim, n_a)),
+                                       sd * rng.standard_normal((n_sim, n_b)))
     return float(np.count_nonzero(alternative > critical) / n_sim)
