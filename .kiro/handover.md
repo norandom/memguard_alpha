@@ -205,6 +205,22 @@ docs). Commit messages end with the Co-Authored-By line for the active model.
 
 ## Human decisions still ahead
 
+- **Full-distribution evidence at study scale (raised 2026-11-10 after 6.1).** The
+  host teacher-forces prompt plus response one token per decode at 15 to 17
+  tokens/s on the iGPU: about 33 s per macro draw (534 decodes) and 26 s per EDGAR
+  draw. The local sampling arm needs evidence for 8,064 draws, so per-draw
+  requests would take about 67 hours, against the 13 to 15 hour estimate that
+  covered generation only. Proposal: a follow-up task (6.4) adding a batch mode to
+  the host, `POST /v1/full_distribution_batch {prompt_text, response_texts[]}`,
+  that evaluates the prompt once per item and rendering (batched prompt
+  processing), then teacher-forces each response against the cached prefix and
+  rolls the KV cache back to the prompt length after each (`llama_memory_seq_rm`),
+  recording only response positions. Estimate: about 100 s per item and rendering
+  (252 of them), about 7 hours for the evidence pass; generation stays separate
+  and sequential on the GPU. The exactness check must be re-run in batch mode
+  before use. Alternatives: fewer draws for the full-distribution variants (breaks
+  the pairing of 8.1) or evidence for a subset of items (weakens 9.x). Needs the
+  user's decision and a tasks.md amendment.
 - 9.2: the power-gate outcome on the local pilot (continue, widen the window, or
   more draws).
 - 9.4: the serving-arm approval record against the frozen stage limits (USD
