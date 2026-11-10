@@ -1,7 +1,7 @@
 """Analytic item-paired fixtures, failure denominators and physical resource accounting."""
 
 import json
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 import pytest
 
@@ -19,6 +19,7 @@ from recall_guard.harness.intervention_types import (
     RewriteRecord,
     text_hash,
 )
+from recall_guard.harness.scorer_client import CalibrationIdentity
 from tests.harness.test_intervention import protocol
 
 CONDITIONS = ("original_single", "original_ensemble", "rewritten_single", "rewritten_ensemble")
@@ -352,6 +353,46 @@ def test_calibration_quality_is_reported_as_scoring_evidence():
     condition = summarize_experiment(replace(run, arms=arms))["pooled"]["conditions"]["original_single"]
     assert condition["scoring"]["calibration_quality"] == [quality]
     assert condition["scoring"]["items_with_calibration_quality"] == 1
+
+
+#: A calibrator's identity as the legacy five-key payload, and as the ``asdict`` export
+#: that runs saved after the source extension: ten keys, the new ones at their defaults.
+LEGACY_IDENTITY = {"protocol": "openai_chat", "endpoint": "http://127.0.0.1:11570/v1/chat/completions",
+                   "model": "target", "parameters_json": '{"logprobs":true,"top_logprobs":5}',
+                   "intervention_id": "recorded-method"}
+ASDICT_IDENTITY = LEGACY_IDENTITY | {"local_identity": None, "response_mapping": "generic",
+                                     "mapping_revision": None, "estimate_source": "top_k", "corpus_sha256": None}
+
+
+def _scored(run, identities):
+    """Give every arm of item i a persisted scoring snapshot that carries ``identities[i]``."""
+    def scoring(identity):
+        return {"identity": identity, "holdout_auc": 0.7, "is_weak": False,
+                "valid_counts": {"is_holdout": 4, "oos_holdout": 4}}
+    return replace(run, arms=tuple(
+        replace(arm, outcome=arm.outcome | {"provenance": {"scoring": scoring(identities[int(arm.item_id)])}})
+        for arm in run.arms))
+
+
+def test_one_calibrator_saved_in_the_legacy_and_asdict_shapes_is_listed_once():
+    # The two shapes are what the identity class itself produces for one calibrator.
+    identity = CalibrationIdentity.from_dict(LEGACY_IDENTITY)
+    assert identity.to_dict() == LEGACY_IDENTITY
+    assert json.loads(json.dumps(asdict(identity))) == ASDICT_IDENTITY and len(ASDICT_IDENTITY) == 10
+    run = _scored(fixture([["up"] * 4, ["up"] * 4]), [LEGACY_IDENTITY, ASDICT_IDENTITY])
+    for name in CONDITIONS:
+        scoring = summarize_experiment(run)["pooled"]["conditions"][name]["scoring"]
+        assert [quality["identity"] for quality in scoring["calibration_quality"]] == [LEGACY_IDENTITY], name
+        assert scoring["items_with_calibration_quality"] == 2
+
+
+@pytest.mark.parametrize("change", [{"model": "other-target"}, {"corpus_sha256": "a" * 64}],
+                         ids=["legacy-field", "extension-field"])
+def test_different_calibrators_are_still_listed_separately(change):
+    run = _scored(fixture([["up"] * 4, ["up"] * 4]), [LEGACY_IDENTITY, ASDICT_IDENTITY | change])
+    scoring = summarize_experiment(run)["pooled"]["conditions"]["original_single"]["scoring"]
+    assert len(scoring["calibration_quality"]) == 2
+    assert scoring["items_with_calibration_quality"] == 2
 
 
 def test_fidelity_reports_unchanged_text_independently_of_acceptance():

@@ -372,6 +372,22 @@ function Start-Gateway {
 
 # ---------- actions ----------
 
+function Disable-OutputInheritance {
+    # Start-Process with redirection creates the child with handle inheritance on, so a caller's
+    # stdout and stderr pipes would leak into the long-lived host and gateway, and a caller that
+    # captures this script's output would wait until both exit. Clear HANDLE_FLAG_INHERIT on them.
+    if (-not ('RecallGuard.StdHandles' -as [type])) {
+        Add-Type -Namespace RecallGuard -Name StdHandles -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr GetStdHandle(int nStdHandle);
+[DllImport("kernel32.dll", SetLastError = true)] public static extern bool SetHandleInformation(IntPtr hObject, uint dwMask, uint dwFlags);
+'@
+    }
+    foreach ($id in -11, -12) {   # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
+        $handle = [RecallGuard.StdHandles]::GetStdHandle($id)
+        if ($handle -ne [IntPtr]::Zero -and $handle -ne [IntPtr]::new(-1)) { [void][RecallGuard.StdHandles]::SetHandleInformation($handle, 1, 0) }
+    }
+}
+
 function Start-Serving {
     if (-not $Model) { throw 'start needs the FLM model tag, for example: start gemma3:4b' }
     $state = Read-State
@@ -386,6 +402,7 @@ function Start-Serving {
     [IO.File]::WriteAllText($TagsPath, ($tags | ConvertTo-Json -Depth 8 -Compress), [Text.UTF8Encoding]::new($false))
     $tokenState = Initialize-Token
     $version = (& $flm version --json 2>$null | Out-String).Trim()
+    Disable-OutputInheritance
 
     $flmProcess = Start-Process -FilePath $flm -WindowStyle Hidden -PassThru `
         -ArgumentList 'serve', $Model, '--host', '127.0.0.1', '-p', "$FlmPort", '--quiet', '-c', "$ContextLength" `
@@ -407,6 +424,7 @@ function Start-Serving {
         Stop-All $state 'start_failed'
         throw "FLM did not start (alive: $alive). See $StateDir\flm.log."
     }
+    Disable-OutputInheritance
     $gateway = Start-Process -FilePath (Get-Process -Id $PID).Path -WindowStyle Hidden -PassThru `
         -ArgumentList '-NoProfile', '-NonInteractive', '-File', $PSCommandPath, 'gateway', '-Port', "$Port", '-FlmPort', "$FlmPort" `
         -RedirectStandardOutput (Join-Path $StateDir 'gateway.out.log') -RedirectStandardError (Join-Path $StateDir 'gateway.err.log')

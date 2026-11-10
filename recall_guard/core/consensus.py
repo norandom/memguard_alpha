@@ -375,14 +375,17 @@ def detect_multimodal(
 ) -> MultimodalVerdict | None:
     """Detect two clusters separated by a sparse gap.
 
-    Returns ``None`` when the check **could not run** -- never a silent "found
-    nothing". There are three such cases, and a caller who needs to tell them
-    apart should read the lattice adherence alongside this:
+    Returns ``None`` only when the check **could not run** -- never a silent
+    "found nothing". There are two such cases:
 
     * no lattice was declared (a continuous quantity has none);
-    * fewer than ``min_draws`` draws, which cannot evidence two clusters;
-    * the clusters are too thinly populated for a gap between them to mean
-      anything (see below).
+    * fewer than ``min_draws`` draws, which cannot evidence two clusters.
+
+    Clusters too thinly populated for a gap between them to mean anything (see
+    below) are not such a case. The check runs, the density guard skips every
+    such split, and the verdict is unseparated (``separated=False``). A caller
+    who needs to tell a thin scatter from a single dense cluster should read
+    the lattice adherence alongside this.
 
     The rule is defined directly on the lattice rather than by a classical
     unimodality test. Those assume a continuous distribution, and on heavily

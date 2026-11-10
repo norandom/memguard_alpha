@@ -190,6 +190,13 @@ class OpenAICompatibleClient:
             credential = environment.get(config.credential_ref.removeprefix("env:"))
             if not isinstance(credential, str) or not credential.strip():
                 raise ValueError("Referenced credential is missing or empty")
+            # requests echoes a rejected header value in its InvalidHeader repr, which
+            # redaction of the raw value cannot match, and http.client keeps a value that
+            # is not latin-1 in the UnicodeEncodeError args. Refuse such a credential
+            # before any request, with a message that does not echo it.
+            if (credential != credential.strip() or not credential.isascii()
+                    or any(char.isspace() or not char.isprintable() for char in credential)):
+                raise ValueError("Referenced credential contains whitespace, control or non-ASCII characters")
         elif not allow_unauthenticated:
             raise ValueError("A credential reference is required unless unauthenticated access is explicitly enabled")
         self._credential = credential
@@ -396,6 +403,13 @@ class OpenAICompatibleClient:
         return ProbeEvidence(self.config, report, result.response, result.observations)
 
     def _post(self, payload: dict) -> requests.Response:
+        """Send one POST through a fresh session without transport retries.
+
+        A UnicodeError (for example latin-1 header encoding in http.client) is
+        not a RequestException, and its args hold the header value, so it is
+        mapped to a fixed message with no detail and raised outside the
+        handler, leaving no exception context. It is not retryable.
+        """
         headers = {"Content-Type": "application/json"}
         if self._credential is not None:
             headers["Authorization"] = f"Bearer {self._credential}"
@@ -408,6 +422,9 @@ class OpenAICompatibleClient:
                                     timeout=self.config.timeout_s, allow_redirects=False)
         except requests.RequestException as error:
             raise _transport_failure(error) from None
+        except UnicodeError:
+            pass  # Raised below, outside the handler, so no exception context is kept.
+        raise RequestError("OpenAI-chat request could not be encoded", code="transport_error")
 
     def probe(self, prompt: str = _PROBE_PROMPT, *, stage: str = "probe") -> CapabilityReport:
         """Perform real generation; distinguish acceptance from effective values.

@@ -598,6 +598,41 @@ def test_missing_credentials_fail_locally_without_anonymous_fallback(reference, 
     assert calls == [] and budget.used == 0
 
 
+@pytest.mark.parametrize("credential", [
+    f"{FAKE_KEY}\n", f"\t{FAKE_KEY}", "synthetic\r\nprovider-secret", "synthetic\x00provider-secret",
+    "synthetic\u20acprovider-secret", "synthetic\u4e2dprovider-secret", "synthetic\u2019provider-secret",
+], ids=["trailing-newline", "leading-tab", "embedded-crlf", "nul", "euro", "cjk", "right-quote"])
+def test_credentials_outside_visible_ascii_are_refused_before_any_request_without_echo(credential, wire):
+    _, calls = wire
+    budget = CallBudget(1)
+    with pytest.raises(ValueError) as caught:
+        OpenAICompatibleClient(config(), budget, environment={"TEST_PROVIDER_KEY": credential})
+    error = caught.value
+    assert error.args == ("Referenced credential contains whitespace, control or non-ASCII characters",)
+    for text in (str(error), repr(error), *map(str, error.args)):
+        assert credential not in text and "synthetic" not in text
+    assert error.__context__ is None and error.__cause__ is None
+    assert calls == [] and budget.used == 0
+
+
+def test_header_encoding_failure_is_a_context_free_transport_error_without_the_header(wire):
+    pending, calls = wire
+    # http.client raises this while encoding headers; its args hold the whole header value.
+    header = f"Bearer {FAKE_KEY}"
+    pending.append(UnicodeEncodeError("latin-1", header, 7, 8, "ordinal not in range(256)"))
+    budget = CallBudget(5)
+    with pytest.raises(RequestError) as caught:
+        client(config(max_retries=3), budget).generate("test")
+    error = caught.value
+    assert error.code == "transport_error" and error.retryable is False
+    assert str(error) == "OpenAI-chat request could not be encoded" and error.detail is None
+    assert error.__context__ is None and error.__cause__ is None
+    rendered = "".join(traceback.format_exception(error)) + repr(error) + repr(error.args)
+    assert FAKE_KEY not in rendered and "Bearer" not in rendered
+    assert FAKE_KEY not in json.dumps([event.to_dict() for event in budget.events])
+    assert len(calls) == budget.used == 1
+
+
 def test_environment_resolution_uses_supplied_mapping_or_process_environment_without_serializing_key(monkeypatch, wire):
     pending, calls = wire
     pending.append(fixture_response())

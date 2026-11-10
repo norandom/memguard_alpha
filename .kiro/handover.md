@@ -4,16 +4,18 @@ Updated: 2026-11-10 (restart). Workspace: `D:\Source\memguard_alpha`, branch `ma
 GitHub: `norandom/recall_guard` (renamed from `memguard_alpha` on 2026-11-10; the
 local folder name and the Dagger path `/mnt/d/Source/memguard_alpha` are unchanged;
 the old URL redirects; Pages publishes at <https://norandom.github.io/recall_guard/>).
-Last commit: `ee0203f`. Working tree: task 6.3 (llama-server lifecycle script) in
-progress with an Opus implementer; if its files are present but no review has
-run, treat them as a draft (inspect, review, then commit, or discard).
+Last commits: `9cd14a5` (6.3) and the upstream chore. Working tree: task 6.4
+(batch evidence and memory guard) in progress with an Opus implementer in two
+phases (code and unit tests first, then the live exactness and soak on the
+parent's go); if its files are present but no review has run, treat them as a
+draft (inspect, review, then commit, or discard).
 
 ## Start here
 
 Active spec: [memorization-adjusted-finance-sim](specs/memorization-adjusted-finance-sim/)
 (`spec.json` phase `tasks-generated`, all approvals true). Progress lives in its
-[tasks.md](specs/memorization-adjusted-finance-sim/tasks.md): 20 of 41 sub-tasks
-are `[x]` (groups 1 to 5 complete, plus 6.1 and 6.2). The
+[tasks.md](specs/memorization-adjusted-finance-sim/tasks.md): 21 of 42 sub-tasks
+are `[x]` (groups 1 to 5 complete, plus 6.1 to 6.3; 6.4 was added on 2026-11-10). The
 `## Implementation Notes` section at the bottom of tasks.md is the running memory
 for later tasks; read it before dispatching anything.
 

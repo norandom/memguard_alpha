@@ -17,6 +17,7 @@ import numpy as np
 from recall_guard.harness.intervention_journal import ExperimentRun
 from recall_guard.harness.intervention_types import EvidenceArm, RecordStatus, text_hash
 from recall_guard.harness.intervention_usage import summarize_usage
+from recall_guard.harness.scorer_client import CalibrationIdentity
 
 CONDITION_ORDER = ("original_single", "original_ensemble", "rewritten_single", "rewritten_ensemble")
 _CONTRASTS = {
@@ -33,6 +34,21 @@ def _number(value):
 
 def _probability(value):
     return _number(value) and 0 <= value <= 1
+
+
+def _canonical_identity(identity):
+    """The ``CalibrationIdentity.to_dict`` payload of a saved identity, or the record as saved.
+
+    One calibrator is saved in more than one shape: the five-key legacy payload
+    and the ``asdict`` export, which gained fields with each identity version.
+    Normalising lets a run resumed across such a change list it once. A record
+    that is not a loadable identity is kept unchanged rather than guessed at.
+    """
+    try:
+        canonical = CalibrationIdentity.from_dict(identity).to_dict()
+    except (TypeError, ValueError):
+        return identity
+    return json.loads(json.dumps(canonical))  # Plain JSON values: the protocol enum becomes its string.
 
 
 def _mean(values):
@@ -246,6 +262,7 @@ def _condition_summary(run, name, rows, item_ids):
                 # Only this explicit, persisted scoring snapshot is exported;
                 # no live scorer or classifier state is traversed.
                 snapshot = {key: quality.get(key) for key in ("identity", "holdout_auc", "is_weak", "valid_counts")}
+                snapshot["identity"] = _canonical_identity(snapshot["identity"])
                 qualities[json.dumps(snapshot, sort_keys=True, allow_nan=False)] = snapshot
     discounts = [score["raw_confidence"] - score["memguard_confidence"] for score in scores
                  if _probability(score.get("raw_confidence")) and _probability(score.get("memguard_confidence"))]
