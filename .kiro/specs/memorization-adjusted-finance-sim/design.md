@@ -244,8 +244,29 @@ tests/
   verified stop) for the serving route; existing modes unchanged.
 - `recall_guard/harness/plots.py`: four lazy plot functions; the outdated
   "reliability curve not constructible" note is corrected.
-- `recall_guard/__init__.py`: exports `guarded_decide`, `DecisionDefinition`,
-  `GuardedDecision`.
+- `recall_guard/__init__.py`: a new `# guarded decision (ensemble-first)` block in
+  `__all__` exporting the API (`guarded_decide`, `guarded_run`, `decide_from_draws`,
+  `GuardConfig`, `DrawMode`, `GuardStatus`, `GuardIdentity`, `GuardedDecision`,
+  `GuardedRun`, `SourceCalibrator`), the definitions (`DecisionDefinition`,
+  `ComponentSpec`, `DecisionDefinitionError`, `DecisionParseError`,
+  `parse_json_components`, `adjust`), the results (`RecordedDraw`,
+  `DistributionSummary`, `ComponentDistribution`) and the sources
+  (`EstimateSource`, `SourceLabel`, `FullDistributionClient`,
+  `FullDistributionEvidence`), so an adopter can call the API with either source
+  from the root alone. Existing exports and their order are unchanged, and
+  `import recall_guard` still loads no matplotlib (the existing lean-import test).
+- `tests/test_installed_wheel.py` (task 5.2, 11.6): builds the wheel with
+  `uv build --wheel --out-dir <tmp_path>`, creates a fresh environment with
+  `uv venv` under `tmp_path` (pytest's temp root is under `D:\BuildArtifacts` on
+  this host), installs the wheel there with `uv pip install`, and runs a script
+  with that interpreter using `-I` and `cwd=tmp_path` so the checkout is not
+  importable. The script imports the names above from the root, runs
+  `guarded_decide` in ENSEMBLE mode and `decide_from_draws` on a fake client and a
+  fake calibrator built inside the script, asserts `status == "ok"`, asserts that
+  no module from `matplotlib` or `vectorbt` was imported, and asserts that the
+  installed package tree contains no `scripts`, `data`, `runs` or `docs` folder
+  (no research data, hosts or study code). The test skips with a reason when `uv`
+  is not on PATH; it runs in the Linux CI image, where `uv` is present.
 - `.kiro/steering/recall-guard-package.md`: amendment, the guarded-decision API is
   ensemble-first; the scorer's ensemble stays opt-in.
 - `.env.sample`: `FRED_API_KEY=`.

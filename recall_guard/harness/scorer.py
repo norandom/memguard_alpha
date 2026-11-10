@@ -249,6 +249,16 @@ class MemoryGuardedScorer:
         return self._mcs.model
 
     @property
+    def mcs(self) -> MCSCalibrator:
+        """The fitted MCS calibrator, read-only (for the guarded-decision API)."""
+        return self._mcs
+
+    @property
+    def control_baseline(self) -> ControlBaseline:
+        """The control baseline the calibrator standardises against, read-only."""
+        return self._baseline
+
+    @property
     def holdout_auc(self) -> float:
         """Held-out IS/OOS separation of the trained calibrator (Req 3.4)."""
         return self._mcs.holdout_auc

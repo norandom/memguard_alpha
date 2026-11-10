@@ -30,6 +30,8 @@ from recall_guard.mia.estimate_source import EstimateSource
 #: Mismatch names that differ from the field name: settings live in ``parameters_json``.
 _MISMATCH_NAMES = MappingProxyType({"parameters_json": "settings"})
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+#: Generation settings that select one sample rather than the calibrated distribution.
+SEED_SETTINGS = frozenset({"seed", "random_seed"})
 
 #: Local evidence defects confined to one received response. Such a row is excluded
 #: and counted; ``min_valid`` then decides whether calibration may proceed.
@@ -187,6 +189,29 @@ class CalibrationIdentity:
         """Configured identity plus the client's response mapping (v2)."""
         mapping, revision = client_mapping(client)
         return cls.from_config(client.config, intervention_id, response_mapping=mapping, mapping_revision=revision)
+
+
+def _plain_settings(value: ParameterValue) -> ParameterValue:
+    """Detached JSON-compatible containers: mappings become dicts, sequences lists."""
+    if isinstance(value, Mapping):
+        return {name: _plain_settings(child) for name, child in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_settings(child) for child in value]
+    return value
+
+
+def identity_settings(parameters: Mapping[str, ParameterValue]) -> str:
+    """Canonical JSON of generation settings for identity comparison, without seed keys.
+
+    ``seed`` and ``random_seed`` (:data:`SEED_SETTINGS`) are left out: a seed
+    selects one sample, it does not change the distribution a calibrator was
+    fitted on. The encoding is the one ``parameters_json`` uses (sorted keys,
+    compact separators), so settings without a seed key give the same text.
+    """
+    if not isinstance(parameters, Mapping):
+        raise TypeError("Generation parameters must be a mapping")
+    kept = {name: _plain_settings(value) for name, value in parameters.items() if name not in SEED_SETTINGS}
+    return json.dumps(kept, sort_keys=True, separators=(",", ":"))
 
 
 def client_mapping(client: object) -> tuple[str, str | None]:
