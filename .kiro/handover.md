@@ -1,24 +1,12 @@
 # Handover: memorization-adjusted-finance-sim
 
-State as of 2026-11-10, 19:26 local time (system clock). Repository `norandom/recall_guard`
-(local folder `D:\Source\memguard_alpha`, branch `main`). Last code commit:
-`d023b17` (task 8.2); last commit: `d66f4a9` (design note). CI is green on every
-commit except the 8.2 push, whose one platform-sensitive figure test is fixed in
-the uncommitted 8.3 work.
+State as of 2026-11-10, 21:12 local time (system clock). Repository `norandom/recall_guard`
+(local folder `D:\Source\memguard_alpha`, branch `main`). Last code commit: `cb177f2` (task 8.4). CI is green on every commit since the 8.3c fix (`9f8a75a`); the 8.4 push is being watched.
 
 ## Where the spec stands
 
-- 36 of 42 sub-tasks are `[x]`: groups 1 to 7 complete (prerequisites, core
-  statistics and decision types, sources and profiles, data loaders, the guarded
-  decision API, both model hosts with their lifecycle scripts, and the whole
-  study pipeline on fakes: items, plan, recording, limits and approval,
-  calibration, execution, pilot gate, negative control, analyses, convergence),
-  plus 8.1 and 8.2 (figure style, accuracy-gap and reliability figures) and the
-  pre-9.2 follow-up 7.3b.
-- Open: 8.3 (draw-distribution and convergence figures, in remediation after a
-  rejection), 8.4 (offline replay and licensing guard), 9.1 to 9.5 (the live
-  study: runner, calibration, freeze, probe-arm stages, Modal, report) and 10.x
-  (docs).
+- 38 of 42 sub-tasks are `[x]`: groups 1 to 8 complete (the whole study pipeline on fakes, the four figures and the offline replay with its licensing guard), plus the follow-ups 7.3b and 8.3c.
+- Open: 9.1 (end-to-end offline validation through one runner, in progress on Fable), 9.2 to 9.5 (the live study: plan build, probe-arm calibration and gate, probe stages, Modal, report) and 10.x (docs).
 - `tasks.md` ends with "## Implementation Notes": one entry per task with the
   reviewer's forward notes. Read 7.3b, 7.4, 7.7, 7.8, 7.10, 7.11, 7.12, 8.2 before
   writing the 9.1 runner. `design.md` carries dated amendment paragraphs
@@ -28,16 +16,7 @@ the uncommitted 8.3 work.
 
 ## Working tree
 
-Task 8.3 may be present, uncommitted and in remediation: new
-`scripts/finance_sim/figures_draws.py`, `figures_convergence.py`, their tests, plus
-edits to `scripts/finance_sim/figures.py` and `tests/scripts/finance_sim/test_figures.py`
-(the CI fix for the label test). Its review rejected it on: the exchangeability
-baseline ignoring 7.11's inclusion rule (no-category items enter the rate only
-when outside the band), SVG bytes drifting across processes (clip-path ids hash
-unrounded axes positions), a wrong "not drawn" reason for an unresolved ensemble,
-tie stacks fusing into a filled pill, and the design note (now written). Treat the
-files as a draft: inspect, re-review with kiro-review on Opus medium, commit, or
-discard. Nothing else is uncommitted; no host is running.
+Task 9.1 (the study runner, probably `scripts/finance_sim/run_study.py`, tests `test_run_study*.py`) may be present, written by a Fable implementer and not yet reviewed: treat it as a draft (inspect, review with kiro-review on Opus medium, then commit, or discard). Nothing else is uncommitted; no host is running.
 
 ## Decisions of 2026-11-10 (user; all in design.md and the notes)
 
@@ -66,16 +45,8 @@ discard. Nothing else is uncommitted; no host is running.
 
 ## Do this first
 
-1. `git status`; if 8.3 is present, finish its remediation (the reviewer's
-   probes are under the session scratchpad `scratchpad\review83`), re-review,
-   commit; CI returns to green with it.
-2. 8.4 on fixtures: one replay command that runs both analyses, the
-   negative-control report (7.9 has no published writer yet: add one, a derived
-   table with the tolerance flag) and the convergence analysis from recorded
-   draws with the network disabled, reproducing the stored outputs byte for byte
-   in a fresh process; publish only markdown and SVG (the JSON holds per-item
-   rows); the licensing guard test for raw series; pin matplotlib (its version is
-   in the SVG metadata); freeze the F3 example item rule.
+1. `git status`; if 9.1 is present, finish its review and commit it (see "Working tree").
+2. 9.1 is the runner that 9.2 to 9.5 drive live; its report lists the exact operator commands for 9.2.
 3. Then 9.1, on a quiet machine (`podman ps` shows no other session's job; free
    RAM for one load plus headroom): the runner that threads the 7.4 recorder
    through `on_request`, `on_draw` and `on_evidence` (writing evidence files in
