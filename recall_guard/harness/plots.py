@@ -17,24 +17,38 @@ Satisfies Requirements 12.3, 12.4, 12.5:
   notebook can ``fig.savefig(path)`` without writing any plotting
   boilerplate of its own.
 
+It also holds the figure style of the memorization-adjusted-finance-sim
+worked example (that design, Figures; Requirement 10.6): the validated
+fixed-order ``STUDY_PALETTE`` for light and ``STUDY_PALETTE_DARK`` for dark
+surfaces (the legacy ``plot_*`` figures keep ``PAPER_PALETTE``), the theme chrome, the
+marker-shape and fill encodings that keep variant identity readable
+without colour, and :func:`reliability_curve`.
+
 Pure presentation layer: no I/O, no logging, no global mutable state
 beyond ``matplotlib.rcParams``, and the ``rcParams`` write happens only
-inside ``configure_paper_style``, which is opt-in.
+inside ``configure_paper_style``, which is opt-in. ``FigureTheme.rc_params``
+only returns a mapping for ``matplotlib.rc_context``.
+
+This module imports matplotlib when it is imported; the package root and
+``recall_guard.harness`` never import it eagerly (the harness resolves the
+``plot_*`` names lazily), so ``import recall_guard`` stays matplotlib-free.
 
 Notes
 -----
-``MCSCalibrator`` retains only the held-out AUC scalar, not the
-per-prompt held-out predictions / labels. A faithful reliability /
-calibration curve is therefore not constructible from the dataclass
-alone, so :func:`plot_mcs_calibration` renders the held-out AUC as a
-horizontal line annotated with the ``min_auc`` gate. This is documented
-in the function docstring and is the most honest visualisation of what
-the dataclass actually carries.
+Calibrators fitted by ``train_mcs`` retain the paired held-out
+observations, ``holdout_probabilities`` and ``holdout_labels``, so a true
+reliability curve is built from them with :func:`reliability_curve`.
+Calibrators constructed without them (older or hand-built ones) carry
+None, and only the AUC scalar is available. :func:`plot_mcs_calibration`
+shows discrimination, not calibration: the held-out AUC as a horizontal
+line against the random baseline and the ``min_auc`` gate.
 """
 
 from __future__ import annotations
 
+import numbers
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Literal
 
 import matplotlib
@@ -52,6 +66,14 @@ from recall_guard.mia.mcs import MCSCalibrator
 #: series. Used by both ``configure_paper_style`` (as the matplotlib
 #: prop_cycle) and the individual ``plot_*`` helpers (for explicit
 #: hand-picked colors on overlaid series).
+#:
+#: Kept only for these earlier figures (the honest-model-ranking notebook and
+#: its spec pin these values). It fails the dataviz ``validate_palette.js``
+#: lightness band (task 8.1, 2026-11-10): in light mode #F0E442 (OKLCH L
+#: 0.902, band 0.43-0.77); in dark mode #F0E442 (0.902) and #CC79A7 (0.679,
+#: band 0.48-0.67). It also takes WARNs: #CC79A7 and #F0E442 below 3:1 on
+#: the light surface, and adjacent CVD Delta E 7.6 (#CC79A7 and #009E73,
+#: deutan). The finance-sim figures use ``STUDY_PALETTE`` instead.
 PAPER_PALETTE: list[str] = [
     "#0072B2",
     "#D55E00",
@@ -60,9 +82,50 @@ PAPER_PALETTE: list[str] = [
     "#F0E442",
 ]
 
+#: Fixed-order categorical palette of the finance-sim figures, light steps:
+#: the first five slots of the dataviz documented palette (blue, orange,
+#: aqua, yellow, magenta), assigned in order and never re-ordered. Used by
+#: the light ``figure_theme`` and ``variant_style``.
+#:
+#: Validated (task 8.1, 2026-11-10) with the dataviz ``validate_palette.js``,
+#: sha256 a5f3facc62ac64f3872f1674d60126820364ffcd368eddf0a6360f22c49887e2,
+#: ``--mode light --surface #fcfcfb``: lightness band, chroma floor, CVD
+#: separation (worst adjacent Delta E 9.1) and the normal-vision floor (19.6)
+#: pass; contrast is a WARN, since aqua, yellow and magenta sit below 3:1 on
+#: the light surface, so those slots need the relief channel (direct labels
+#: or the data table every figure ships beside it). The validator output is
+#: in the private receipt ``runs/finance-sim/figures/palette/receipt.json``.
+STUDY_PALETTE: list[str] = [
+    "#2a78d6",
+    "#eb6834",
+    "#1baf7a",
+    "#eda100",
+    "#e87ba4",
+]
+
+#: The same five hues stepped for the dark surface (the dark column of the
+#: dataviz documented palette), used by the dark ``figure_theme``. Validated
+#: with ``--mode dark --surface #1a1a19``: every check passes (worst adjacent
+#: CVD Delta E 8.4, normal vision 19.3, every slot at or above 3:1).
+STUDY_PALETTE_DARK: list[str] = [
+    "#3987e5",
+    "#d95926",
+    "#199e70",
+    "#c98500",
+    "#d55181",
+]
+
+#: Series cap of ``STUDY_PALETTE`` and ``STUDY_PALETTE_DARK`` for forms where
+#: any two marks can sit side by side (dot and interval plots, scatter, small
+#: multiples): only their first three slots pass ``--pairs all`` in both modes
+#: (worst CVD Delta E 9.2 light / 9.4 dark, normal vision 24.0 / 20.9). Past
+#: three, fold or facet; never re-order.
+ALL_PAIRS_SLOT_CAP: int = 3
+
 #: Marker cycle that distinguishes lines under black-and-white
 #: reproduction (Req 12.4). Length matches ``PAPER_PALETTE`` so the two
-#: cyclers compose into a single ``axes.prop_cycle``.
+#: cyclers compose into a single ``axes.prop_cycle`` (and ``STUDY_PALETTE``,
+#: which the figure themes pair it with).
 PAPER_MARKERS: list[str] = ["o", "s", "^", "D", "v"]
 
 #: MCS-AUC gate threshold rendered on the AUC plots (mirrors
@@ -176,9 +239,11 @@ def plot_mia_feature_distributions(
 def plot_mcs_calibration(mcs: MCSCalibrator) -> Figure:
     """Render the MCS calibrator's held-out AUC against the gate.
 
-    ``MCSCalibrator`` does not retain per-prompt held-out predictions,
-    so a true reliability curve cannot be reconstructed from the
-    dataclass. This figure draws three honest reference lines:
+    The AUC measures discrimination, not calibration. For a reliability
+    curve, pass the calibrator's retained ``holdout_probabilities`` and
+    ``holdout_labels`` (set by ``train_mcs``; None on calibrators
+    constructed without them) to :func:`reliability_curve`. This figure
+    draws three reference lines:
 
     * ``mcs.holdout_auc`` (the trained AUC, palette[0]),
     * ``0.5`` (random-classifier baseline),
@@ -357,6 +422,267 @@ def plot_composite_ranking(scores: Sequence[CompositeScore]) -> Figure:
     return fig
 
 
+# --- Figure style of the finance-sim worked example -------------------------
+
+Theme = Literal["light", "dark"]
+
+#: Figure themes, in render order: every docs figure has a light and a dark
+#: variant (MkDocs Material ``#only-light`` / ``#only-dark``).
+THEMES: tuple[str, ...] = ("light", "dark")
+
+#: Adjustment of a study variant, in fixed order; it picks palette slots 1-3.
+ADJUSTMENTS: tuple[str, ...] = ("none", "top_k", "full_distribution")
+
+#: Draw mode of a study variant (the ``DrawMode`` values).
+DRAW_MODES: tuple[str, ...] = ("single", "ensemble")
+
+#: Equal-width bins of a reliability curve, the count the local report's
+#: held-out calibration uses.
+RELIABILITY_BINS: int = 10
+
+_ADJUSTMENT_MARKERS = {"none": "o", "top_k": "s", "full_distribution": "^"}
+_ADJUSTMENT_LABELS = {"none": "no adjustment", "top_k": "top-k", "full_distribution": "full distribution"}
+_DRAW_MODE_LABELS = {"single": "single draw", "ensemble": "ensemble"}
+_FILLED_DRAW_MODE = "ensemble"
+
+
+@dataclass(frozen=True)
+class FigureTheme:
+    """Colours of one figure theme: the palette, the chart surface and the chrome ink.
+
+    Hex values are the dataviz reference tokens. ``palette`` was validated
+    against ``surface`` (``STUDY_PALETTE`` for light, ``STUDY_PALETTE_DARK``
+    for dark; see their comments). ``ink`` is for titles and
+    labels, ``secondary_ink`` for tick labels, ``muted`` for reference marks
+    such as a zero line or the diagonal, ``gridline`` for hairlines and
+    ``baseline`` for the axis spines.
+    """
+
+    name: str
+    palette: tuple[str, ...]
+    surface: str
+    ink: str
+    secondary_ink: str
+    muted: str
+    gridline: str
+    baseline: str
+
+    def rc_params(self) -> dict[str, object]:
+        """rcParams for ``matplotlib.rc_context`` that render a figure in this theme.
+
+        The surface fills the figure, the axes and the saved file. The
+        property cycle pairs the palette with ``PAPER_MARKERS``, so series
+        drawn without an explicit style still differ by marker shape.
+        Nothing global changes: use ``with matplotlib.rc_context(...)``.
+        """
+        return {
+            "figure.facecolor": self.surface,
+            "figure.edgecolor": self.surface,
+            "axes.facecolor": self.surface,
+            "savefig.facecolor": self.surface,
+            "savefig.edgecolor": self.surface,
+            "text.color": self.ink,
+            "axes.titlecolor": self.ink,
+            "axes.labelcolor": self.ink,
+            "axes.edgecolor": self.baseline,
+            "xtick.color": self.secondary_ink,
+            "ytick.color": self.secondary_ink,
+            "grid.color": self.gridline,
+            "legend.facecolor": self.surface,
+            "legend.edgecolor": self.baseline,
+            "legend.labelcolor": self.ink,
+            "axes.prop_cycle": cycler(color=list(self.palette)) + cycler(marker=PAPER_MARKERS),
+        }
+
+
+_FIGURE_THEMES = {
+    "light": FigureTheme(
+        name="light", palette=tuple(STUDY_PALETTE), surface="#fcfcfb", ink="#0b0b0b",
+        secondary_ink="#52514e", muted="#898781", gridline="#e1e0d9", baseline="#c3c2b7",
+    ),
+    "dark": FigureTheme(
+        name="dark", palette=tuple(STUDY_PALETTE_DARK), surface="#1a1a19", ink="#f0efec",
+        secondary_ink="#c3c2b7", muted="#898781", gridline="#2c2c2a", baseline="#383835",
+    ),
+}
+
+
+def figure_theme(theme: Theme) -> FigureTheme:
+    """Return the colours of ``theme`` (``"light"`` or ``"dark"``).
+
+    Raises ValueError naming the known themes for any other value.
+    """
+    try:
+        return _FIGURE_THEMES[theme]
+    except (KeyError, TypeError):
+        raise ValueError(f"unknown figure theme {theme!r}; expected one of: {', '.join(THEMES)}") from None
+
+
+@dataclass(frozen=True)
+class VariantStyle:
+    """How one study variant is drawn so that it reads without colour (Requirement 10.6).
+
+    Marker shape encodes the adjustment (circle: none, square: top-k,
+    triangle: full distribution) and fill encodes the draw mode (open:
+    single draw, filled: ensemble), so the six variants differ in shape and
+    fill alone. Colour repeats the adjustment from the first three palette
+    slots, within ``ALL_PAIRS_SLOT_CAP``, and is never the only cue. An open
+    marker is filled with the theme surface, so it stays hollow over an
+    interval line. ``label`` is the text for a direct label or legend entry.
+    """
+
+    adjustment: str
+    draw_mode: str
+    marker: str
+    color: str
+    facecolor: str
+    filled: bool
+    label: str
+
+    def marker_kwargs(self) -> dict[str, object]:
+        """Keyword arguments for ``Axes.plot`` or ``Axes.errorbar``: markers, no line."""
+        return {
+            "marker": self.marker,
+            "linestyle": "none",
+            "color": self.color,
+            "markeredgecolor": self.color,
+            "markerfacecolor": self.facecolor,
+            "label": self.label,
+        }
+
+    def scatter_kwargs(self) -> dict[str, object]:
+        """Keyword arguments for ``Axes.scatter``."""
+        return {
+            "marker": self.marker,
+            "edgecolors": self.color,
+            "facecolors": self.facecolor,
+            "label": self.label,
+        }
+
+
+def variant_style(adjustment: str, draw_mode: str, *, theme: Theme) -> VariantStyle:
+    """Return the marker encoding of one study variant in ``theme``.
+
+    ``adjustment`` is one of ``ADJUSTMENTS`` (``"none"`` or an
+    ``EstimateSource`` value) and ``draw_mode`` one of ``DRAW_MODES`` (a
+    ``DrawMode`` value). Raises ValueError naming the allowed values for an
+    unknown theme, adjustment or draw mode.
+    """
+    style = figure_theme(theme)
+    if adjustment not in ADJUSTMENTS:
+        raise ValueError(f"unknown adjustment {adjustment!r}; expected one of: {', '.join(ADJUSTMENTS)}")
+    if draw_mode not in DRAW_MODES:
+        raise ValueError(f"unknown draw mode {draw_mode!r}; expected one of: {', '.join(DRAW_MODES)}")
+    color = style.palette[ADJUSTMENTS.index(adjustment)]
+    filled = draw_mode == _FILLED_DRAW_MODE
+    return VariantStyle(
+        adjustment=adjustment,
+        draw_mode=draw_mode,
+        marker=_ADJUSTMENT_MARKERS[adjustment],
+        color=color,
+        facecolor=color if filled else style.surface,
+        filled=filled,
+        label=f"{_ADJUSTMENT_LABELS[adjustment]}, {_DRAW_MODE_LABELS[draw_mode]}",
+    )
+
+
+@dataclass(frozen=True)
+class ReliabilityBin:
+    """One non-empty bin ``[low, high)`` of a reliability curve (the last bin includes 1.0).
+
+    ``count`` is the number of items in the bin, ``mean_predicted`` their
+    mean ``p_memorized`` and ``observed_share`` the share of them labelled
+    memorized (label 1); all are dimensionless.
+    """
+
+    low: float
+    high: float
+    count: int
+    mean_predicted: float
+    observed_share: float
+
+
+@dataclass(frozen=True)
+class ReliabilityCurve:
+    """Reliability curve of held-out probabilities against their labels.
+
+    ``bins`` lists the non-empty bins in ascending order, ``ece`` is the
+    count-weighted mean of ``|mean_predicted - observed_share|`` over them,
+    ``n`` is the number of items and ``n_bins`` the number of equal-width
+    bins over [0, 1].
+    """
+
+    bins: tuple[ReliabilityBin, ...]
+    ece: float
+    n: int
+    n_bins: int
+
+
+def reliability_curve(
+    probabilities: Sequence[float] | None,
+    labels: Sequence[int] | None,
+    *,
+    n_bins: int = RELIABILITY_BINS,
+) -> ReliabilityCurve:
+    """Bin held-out probabilities into a reliability curve with its ECE.
+
+    ``probabilities`` are ``p_memorized`` values in [0, 1] and ``labels``
+    the paired held-out labels (1 = memorized, 0 = control), for example a
+    calibrator's ``holdout_probabilities`` and ``holdout_labels``. The bins
+    are ``n_bins`` equal-width intervals over [0, 1], with 1.0 in the last
+    bin, and empty bins are omitted: the binning of the local report's
+    held-out calibration, so a figure and its report agree.
+
+    Raises ValueError before any binning when either sequence is None
+    (calibrators constructed without the held-out pairs carry None), when
+    the lengths differ or are zero, when a probability is not a finite value
+    in [0, 1], when a label is not 0 or 1, or when ``n_bins`` is not a
+    positive integer.
+    """
+    if probabilities is None or labels is None:
+        raise ValueError(
+            "reliability_curve needs held-out probabilities and labels; "
+            "calibrators constructed without them carry None"
+        )
+    if isinstance(n_bins, bool) or not isinstance(n_bins, numbers.Integral) or n_bins < 1:
+        raise ValueError(f"n_bins must be a positive integer, got {n_bins!r}")
+    n_bins = int(n_bins)
+    predicted = np.asarray(probabilities, dtype=float)
+    truth = np.asarray(labels)
+    if predicted.ndim != 1 or truth.ndim != 1 or predicted.size != truth.size:
+        raise ValueError("probabilities and labels must be flat sequences of the same length")
+    if predicted.size == 0:
+        raise ValueError("reliability_curve needs at least one held-out item")
+    if not np.all(np.isfinite(predicted)) or np.any((predicted < 0.0) | (predicted > 1.0)):
+        raise ValueError("every probability must be a finite value in [0, 1]")
+    if not np.all(np.isin(truth, (0, 1))):
+        raise ValueError("every label must be 0 or 1")
+    observed = truth.astype(float)
+    index = np.clip(np.floor(predicted * n_bins).astype(int), 0, n_bins - 1)
+    bins: list[ReliabilityBin] = []
+    weighted_gap = 0.0
+    for position in range(n_bins):
+        member = index == position
+        count = int(member.sum())
+        if not count:
+            continue
+        mean_predicted = float(predicted[member].mean())
+        share = float(observed[member].mean())
+        bins.append(
+            ReliabilityBin(
+                low=position / n_bins,
+                high=(position + 1) / n_bins,
+                count=count,
+                mean_predicted=mean_predicted,
+                observed_share=share,
+            )
+        )
+        weighted_gap += count * abs(mean_predicted - share)
+    return ReliabilityCurve(
+        bins=tuple(bins), ece=weighted_gap / predicted.size, n=int(predicted.size), n_bins=n_bins
+    )
+
+
 # --- Internal helpers ---------------------------------------------------------
 
 
@@ -418,6 +744,21 @@ def _pretty_feature_name(feature: str) -> str:
 __all__ = [
     "PAPER_PALETTE",
     "PAPER_MARKERS",
+    "STUDY_PALETTE",
+    "STUDY_PALETTE_DARK",
+    "ALL_PAIRS_SLOT_CAP",
+    "THEMES",
+    "ADJUSTMENTS",
+    "DRAW_MODES",
+    "RELIABILITY_BINS",
+    "Theme",
+    "FigureTheme",
+    "VariantStyle",
+    "ReliabilityBin",
+    "ReliabilityCurve",
+    "figure_theme",
+    "variant_style",
+    "reliability_curve",
     "configure_paper_style",
     "plot_accuracy_with_ci",
     "plot_composite_ranking",
