@@ -1245,12 +1245,12 @@ loader cache), `data/fmp/` (raw adjusted closes, licensed, never published),
   recorded as unused. Row sets are frozen by the manifest's per-file sha256.
 - Month split (7.2), seeded by `plan.seed`: calibration = 3 pre-cutoff months per
   calendar year 2016 to 2023 (24 months, stratified random); pilot = 12 pre-cutoff
-  months stratified over the remaining years; evaluation = every remaining
+  months stratified over the years (decision 2026-11-10: one pilot month per year from 2016 to 2024, plus three extra months in three distinct years drawn by the seed from all nine; within a year months are drawn uniformly without replacement from numpy.random.default_rng(seed), calibration drawn first; a month is eligible for calibration or pilot only if it is pre-cutoff for every model, and any month post-cutoff for some model stays in evaluation); evaluation = every remaining
   pre-cutoff month (68) and every post-cutoff month (22). Calibration, pilot and
   evaluation are disjoint; pilot months are excluded from the confirmatory analysis.
 - Frozen fields (7.2): `schema_version`, `seed`, `created_at`, the item list with
   per-item sha256 of its row and prompts, the month split, the EDGAR file hashes,
-  `metrics` (names of the 7.10 and 7.11 statistics), `accuracy = "macro_regime.is_correct"`
+  `metrics` (frozen list, decision 2026-11-10, which 7.10 and 7.11 must use verbatim: estimate_difference_pre_cutoff, estimate_difference_post_cutoff, accuracy_difference_pre_cutoff, accuracy_difference_post_cutoff, did_accuracy_gap, brier_difference, log_loss_difference, achieved_power, half_ensemble_variance_summary, half_ensemble_variance_p_memorized, first_draw_rate, random_answerer_null), `negative_control_block_length = 2`, `first_draw_band = [0.25, 0.75]`, `accuracy = "macro_regime.is_correct"`
   with `EXPOSURE` converted to plain dicts, `effect_size` (the pre-registered DiD
   accuracy gap, default 0.10 as the smallest effect of practical interest; the
   user may change it before the freeze at 9.2), `tolerance` (negative control:
