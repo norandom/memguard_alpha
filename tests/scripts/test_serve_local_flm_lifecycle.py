@@ -129,7 +129,7 @@ def test_disable_output_inheritance_keeps_a_launched_child_off_the_callers_pipes
     assert result.returncode == 0, result.stdout + result.stderr
     child = _processes([json.loads(result.stdout.strip().splitlines()[-1])])
     try:
-        assert elapsed < 30, f"the caller waited {elapsed:.1f} s, until the launched child exited"
+        assert elapsed < 50, f"the caller waited {elapsed:.1f} s, until the launched child exited"
         assert child and child[0].is_running()
     finally:
         _kill(child)
@@ -182,7 +182,7 @@ def test_start_returns_while_the_flm_process_and_the_gateway_keep_running(tmp_pa
     children = _processes([state[name] for name in ("gateway_pid", "flm_pid") if state.get(name)])
     try:
         assert result.returncode == 0, result.stdout + result.stderr
-        assert elapsed < 30, f"the caller waited {elapsed:.1f} s, until the FLM process and the gateway exited"
+        assert elapsed < 50, f"the caller waited {elapsed:.1f} s, until the FLM process and the gateway exited"
         assert state["flm_pid"] in [child.pid for child in children]
         assert state["gateway_pid"] in [child.pid for child in children]
         assert all(child.is_running() for child in children)

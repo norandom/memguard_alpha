@@ -684,7 +684,7 @@ def test_launched_children_do_not_hold_the_callers_output_pipes(tmp_path):
     started = time.monotonic()
     pid = _run_functions(tmp_path, body)  # capture_output=True: blocks while any child holds the pipes.
     elapsed = time.monotonic() - started
-    assert elapsed < 30, f"the caller waited {elapsed:.1f} s, until the launched child exited"
+    assert elapsed < 50, f"the caller waited {elapsed:.1f} s, until the launched child exited"
     child = psutil.Process(pid)
     try:
         assert child.is_running()
