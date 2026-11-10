@@ -1072,6 +1072,14 @@ def decide_from_draws(draws: Sequence[RecordedDraw], config: GuardConfig, identi
     prompt carries two responses, compared against llama-server as before; plus a
     30-minute soak (a batch request every 30 s, memory samples) written as a receipt
     under `runs/finance-sim/hosts/full-distribution/soak/`.
+- Memory scheduling correction (user, 2026-11-10 end of session): only one model is
+  loaded at a time, by design. The lifecycle scripts gate on one load plus headroom
+  (the profile `min_free_ram_bytes`), not on two loads; the earlier doubled gate is
+  withdrawn. Memory-heavy steps run in batches, never together: the exactness check
+  records the reference llama-server outputs to a file, stops the server, then runs
+  the full-distribution host against the recording; the soak runs alone; the full
+  test suite runs after the host is down. Containers are controlled individually
+  with `docker stop <name>`; the Podman machine and WSL are never stopped.
 - Lifecycle scripts (tasks 6.2 and 6.3) are siblings of `scripts/serve_local_flm.ps1`
   and reuse its structure: actions `start | stop | status | gateway`, a hidden
   `pwsh` gateway process bound to `127.0.0.1` by default (the study runner is native

@@ -67,6 +67,20 @@ Steps, in order, on a quiet machine:
 
 ## Do this first
 
+Corrections from the user at session end, to apply before anything else:
+
+- PowerShell for host commands, never Git Bash.
+- Never stop the Podman machine or WSL; Compose works, and single containers are
+  controlled with `docker ps` and `docker stop <name>`.
+- The two-load RAM gate (12 GiB) was wrong: half the memory was free and processes
+  waited for an hour. Gate on one load plus headroom (6 GiB) in both lifecycle
+  scripts; keep the 6.3 drift test green.
+- Never schedule two large memory consumers together; split into batches. The
+  exactness check records llama-server outputs first, stops it, then runs the host
+  against the recording; the soak runs alone; the full suite runs after the host is
+  down. Rewrite 6.4 phase 2 (steps 1 to 5 above) to that order.
+
+
 1. `git status`; confirm the tree matches the list above and nothing else moved.
 2. Check the machine is quiet: `podman ps` (other sessions' Dagger engines live in
    the Podman VM, process `vmmemWSL`, and held 6 GB for an hour today), free RAM,
