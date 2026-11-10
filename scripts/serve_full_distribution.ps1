@@ -15,23 +15,39 @@ The gateway binds 127.0.0.1 by default, which serves the native study runner. Wh
 container (Podman: host.containers.internal) or another machine must reach the host, pass
 the address of that adapter with -BindAddress. It never binds all interfaces. It requires
 `Authorization: Bearer <LOCAL_MODEL_API_KEY>` (constant-time compare; 401 otherwise), strips
-that header and forwards ONLY `POST /v1/full_distribution` to the host; every other method
-or path gets 404 and never reaches the host.
+that header and forwards ONLY `POST /v1/full_distribution` and `POST /v1/full_distribution_batch`
+(task 6.4) to the host; every other method or path gets 404 and never reaches the host.
+
+Memory guard (task 6.4): the host is launched as `python -X faulthandler`, so a native death
+leaves a Python stack in host.log, with --memory-floor-bytes set to the profile's
+host_requirements.memory_floor_bytes (one quarter of min_free_ram_bytes when absent). The host
+samples free physical memory every 5 s into host.out.log and refuses new requests with 503
+memory_low below that floor; the gateway samples free physical memory every -MemorySampleSeconds
+(default 5), also while it waits for a long host request, into gateway.log and logs each
+memory_low refusal it passes through. Nothing restarts a host that died; the gateway then stops
+and logs its exit code.
+
+One model host at a time (user correction 2026-11-10): while the sibling llama-server (task
+6.3, a llama-server process listening on the profile's generation port) is resident, `start`
+refuses before loading anything, names the sibling's stop command, and exits 2.
 
 RAM gate before loading: free physical memory (Get-CimInstance Win32_OperatingSystem) must
-reach the llamacpp-gemma3-4b profile's min_free_ram_bytes for this load, plus the same again
-while the sibling llama-server (task 6.3, the profile's generation port) is not yet resident,
-because both are loads of the same GGUF. The gate waits up to -RamWaitSeconds (default 600)
-for three readings in a row at or above the requirement and prints a progress line while it
-waits. Otherwise it loads nothing, prints the Modal alternative and the "another machine"
-option in preflight_host's wording, and exits 2.
+reach the llamacpp-gemma3-4b profile's min_free_ram_bytes, which is one load of the GGUF plus
+headroom and is never doubled. The gate waits up to -RamWaitSeconds (default 600) for three
+readings in a row at or above the requirement and prints a progress line while it waits.
+Otherwise it loads nothing, prints the Modal alternative and the "another machine" option in
+preflight_host's wording, and exits 2.
 
 The token is LOCAL_MODEL_API_KEY from the root .env (shared with the Ollama and FastFlowLM
 gateways). If it is missing, a random 32-byte token is generated and appended there; its
 value is never printed. After -IdleMinutes (default 30) without a gateway request, the
 gateway stops itself and the host. `stop` stops both process trees and verifies that no host
 or gateway process remains and that nothing listens on either port; otherwise it names what
-remains and exits 1. State and logs: runs/finance-sim/hosts/full-distribution/ (private).
+remains and exits 1. At readiness `start` records the python process that listens (uv's
+grandchild through the venv launcher): the uv launcher can exit while that process still serves
+(seen live in tasks 6.2 and 6.4), so the gateway watches the listener, logs the launcher's exit,
+stops only when the listener exits, and every stop also stops the recorded listener. State and
+logs: runs/finance-sim/hosts/full-distribution/ (private).
 
 .EXAMPLE
 pwsh -File scripts/serve_full_distribution.ps1 start
@@ -49,6 +65,7 @@ param(
     [ValidateRange(1, 1440)][int]$IdleMinutes = 30,
     [ValidateRange(10, 3600)][int]$StartTimeoutSeconds = 600,
     [ValidateRange(0, 3600)][int]$RamWaitSeconds = 600,
+    [ValidateRange(1, 60)][int]$MemorySampleSeconds = 5,   # Gateway free-memory sampling interval (task 6.4).
     [string]$StateDir = 'runs/finance-sim/hosts/full-distribution',   # Relative paths resolve against the repository root.
     [string]$EnvPath = '.env',
     [string]$ProfilePath = 'recall_guard/core/provider_profiles/llamacpp-gemma3-4b.json'
@@ -69,7 +86,8 @@ $ProfileFile = Resolve-RootPath $ProfilePath
 $MaxBodyBytes = 1MB              # = the host's own body limit.
 $MaxResponseBytes = 64MB
 $TokenName = 'LOCAL_MODEL_API_KEY'
-$EvidenceRoute = 'POST /v1/full_distribution'   # = recall_guard.core.full_distribution.ENDPOINT_PATH
+# = ENDPOINT_PATH and BATCH_ENDPOINT_PATH in recall_guard.core.full_distribution
+$EvidenceRoutes = @('POST /v1/full_distribution', 'POST /v1/full_distribution_batch')
 $HostScript = 'scripts/serve_full_distribution.py'
 # Command lines of a host (uv and its python children) and of a gateway (pwsh) on this machine.
 $HostCommand = '(?<![\w.-])serve_full_distribution\.py\b'
@@ -163,8 +181,13 @@ function Get-ServingProcesses {
 }
 
 function Stop-All([hashtable]$State, [string]$Reason) {
-    # Stops both recorded trees and returns the ids it stopped; the first stop's time and reason are kept.
+    # Stops the recorded trees and returns the ids it stopped; the first stop's time and reason are kept.
+    # The python listener recorded at readiness is stopped too: its uv launcher can exit while it still
+    # serves (seen live in tasks 6.2 and 6.4), and then it is no longer in the launcher's tree.
     $stopped = @(Stop-Tree ([int]$State.host_pid) ([string]($State.host_name ?? 'uv')))
+    if ($State.listener_pid -and $State.listener_pid -ne $State.host_pid) {
+        $stopped += @(Stop-Tree ([int]$State.listener_pid) ([string]($State.listener_name ?? 'python')))
+    }
     if ($State.gateway_pid -and $State.gateway_pid -ne $PID) { $stopped += @(Stop-Tree ([int]$State.gateway_pid) 'pwsh') }
     if (-not $State.stopped_at) {
         $State.stopped_at = [DateTime]::UtcNow.ToString('o')
@@ -179,19 +202,24 @@ function Get-Remaining([hashtable]$State, [int[]]$Ports) {
     foreach ($item in @(Get-Listeners $Ports)) { "STILL LISTENING $($item.Address):$($item.Port) pid $($item.Pid)" }
     if ($State) {
         if (Test-Tracked ([int]$State.host_pid) ([string]($State.host_name ?? 'uv'))) { "STILL RUNNING recorded host pid $($State.host_pid)" }
+        if ($State.listener_pid -and $State.listener_pid -ne $State.host_pid -and
+            (Test-Tracked ([int]$State.listener_pid) ([string]($State.listener_name ?? 'python')))) { "STILL RUNNING recorded listener pid $($State.listener_pid)" }
         if ($State.gateway_pid -ne $PID -and (Test-Tracked ([int]$State.gateway_pid) 'pwsh')) { "STILL RUNNING recorded gateway pid $($State.gateway_pid)" }
     }
     foreach ($item in @(Get-ServingProcesses)) { "STILL RUNNING $($item.Kind) pid $($item.Pid) ($($item.Name))" }
 }
 
-# ---------- RAM gate (two loads of the same GGUF) ----------
+# ---------- one model host at a time; RAM gate for one load ----------
 
 function Read-HostProfile {
     if (-not (Test-Path -LiteralPath $ProfileFile -PathType Leaf)) { throw "Profile $ProfileFile not found." }
     $data = Get-Content -LiteralPath $ProfileFile -Raw | ConvertFrom-Json -AsHashtable
     $minimum = [long]($data.host_requirements.min_free_ram_bytes ?? 0)
     if ($minimum -le 0) { throw "Profile $ProfileFile declares no host_requirements.min_free_ram_bytes." }
+    # = HostResourceRequirement.memory_floor(): the recorded floor, else one quarter of the load minimum.
+    $floor = [long]($data.host_requirements.memory_floor_bytes ?? [Math]::Floor($minimum / 4))
     return @{ model = [string]$data.model_config.model; min_free_ram_bytes = $minimum
+              memory_floor_bytes = $floor
               fallbacks = @($data.host_requirements.fallback_profile_ids | Where-Object { $_ })
               sibling_port = ([Uri]$data.model_config.endpoint).Port }
 }
@@ -205,11 +233,16 @@ function Test-SiblingResident([int]$SiblingPort) {
     return $false
 }
 
-function Get-RamRequirement([long]$PerLoad, [bool]$SiblingResident) {
-    # This host's load, plus the same again while the sibling llama-server is not yet resident.
-    $loads = if ($SiblingResident) { 1 } else { 2 }
-    return [ordered]@{ per_load_bytes = $PerLoad; loads = $loads; required_bytes = $PerLoad * $loads
-                       sibling_resident = $SiblingResident }
+function Write-SiblingRefusal([int]$SiblingPort) {
+    Write-Output ("Refusing to start: llama-server (task 6.3) is resident on port $SiblingPort, and only one model host " +
+                  "runs at a time. Stop it first (pwsh -File scripts/serve_local_llamacpp.ps1 stop). Nothing was loaded " +
+                  "and no request was sent.")
+}
+
+function Get-RamRequirement([long]$PerLoad) {
+    # One load of the GGUF plus headroom (the profile's min_free_ram_bytes), never doubled: only
+    # one model host runs at a time, so no second load can coexist with this one.
+    return [ordered]@{ per_load_bytes = $PerLoad; loads = 1; required_bytes = $PerLoad }
 }
 
 function Get-FreeRamBytes {
@@ -253,14 +286,53 @@ function Wait-FreeRam([long]$Required, [int]$Seconds) {
 }
 
 function Write-RamRefusal([hashtable]$HostProfile, [System.Collections.IDictionary]$Need, [System.Collections.IDictionary]$Gate) {
-    $loads = if ($Need.loads -eq 2) { 'two loads of the same GGUF (this host, plus llama-server, which is not yet resident)' } else { 'one load (llama-server is already resident)' }
-    Write-Output "RAM gate: $loads at $(Format-Gib $Need.per_load_bytes) each; free RAM stayed below it for $($Gate.waited_seconds) s."
+    Write-Output ("RAM gate: one load of the GGUF at $(Format-Gib $Need.per_load_bytes) (the profile's min_free_ram_bytes); " +
+                  "free RAM stayed below it for $($Gate.waited_seconds) s.")
     # Same sentence as recall_guard.core.profiles.preflight_host (_ram_recommendation).
     $fallbacks = ($HostProfile.fallbacks | ForEach-Object { "--profile $_" }) -join ' or '
     $options = if ($fallbacks) { "Try $fallbacks, or run" } else { 'Run' }
     $required = Format-Gib $Need.required_bytes
     Write-Output ("$(Format-Gib $Gate.free_ram_bytes) free, $required required for $($HostProfile.model). Nothing was loaded and no " +
                   "request was sent. $options on a machine with at least $required of free RAM.")
+}
+
+# ---------- memory guard and host launch (task 6.4) ----------
+
+function Get-HostArguments([int]$ListenPort, [long]$FloorBytes) {
+    # uv run arguments of the host: python -X faulthandler, so a native death (for example an
+    # allocation failure under memory pressure) leaves a Python stack in host.log, and the floor
+    # below which the host refuses new requests with 503 memory_low.
+    return @('run', '--no-sync', 'python', '-X', 'faulthandler', $HostScript, '--port', "$ListenPort",
+             '--memory-floor-bytes', "$FloorBytes")
+}
+
+function Write-MemorySample([string]$Log, [long]$FloorBytes) {
+    # One reading of free physical memory, appended to the gateway log; returns the bytes.
+    $free = Get-FreeRamBytes
+    $below = if ($FloorBytes -gt 0 -and $free -lt $FloorBytes) { ' below_floor' } else { '' }
+    Add-Content -LiteralPath $Log -Value "$([DateTime]::UtcNow.ToString('o')) memory free_ram_bytes=$free floor_bytes=$FloorBytes$below"
+    return $free
+}
+
+function Update-MemorySample([hashtable]$Sampler) {
+    # Samples when the next reading is due, on a fixed schedule of $Sampler.seconds; the accept
+    # loop, each request and the wait for a host response call it at least every 0.5 s. A failed
+    # reading is logged, never fatal.
+    $now = [DateTime]::UtcNow
+    if ($now -lt $Sampler.next) { return }
+    $following = $Sampler.next.AddSeconds($Sampler.seconds)
+    $Sampler.next = if ($Sampler.next -eq [DateTime]::MinValue -or $following -le $now) { $now.AddSeconds($Sampler.seconds) } else { $following }
+    try { $null = Write-MemorySample $Sampler.log $Sampler.floor }
+    catch { Add-Content -LiteralPath $Sampler.log -Value "$($now.ToString('o')) memory sample failed: $($_.Exception.GetType().Name)" }
+}
+
+function Test-MemoryLowRefusal([int]$Status, [byte[]]$Body) {
+    # The host's refusal below its floor: 503 with {"error": {"code": "memory_low"}}.
+    if ($Status -ne 503 -or -not $Body) { return $false }
+    try {
+        $data = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json -AsHashtable
+        return [bool]($data -is [hashtable] -and $data.error -is [hashtable] -and $data.error.code -ceq 'memory_low')
+    } catch { return $false }
 }
 
 # ---------- gateway (runs in its own hidden pwsh process) ----------
@@ -320,13 +392,16 @@ function Test-Token([string]$Header, [byte[]]$Expected) {
     return [Security.Cryptography.CryptographicOperations]::FixedTimeEquals($given, $Expected)
 }
 
-function Invoke-Upstream([Net.Http.HttpClient]$Client, [string]$Upstream, [hashtable]$Request) {
+function Invoke-Upstream([Net.Http.HttpClient]$Client, [string]$Upstream, [hashtable]$Request, [hashtable]$Sampler) {
     $message = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, "$Upstream$($Request.Path)")
     $message.Content = [Net.Http.ByteArrayContent]::new($Request.Body)
     $message.Content.Headers.TryAddWithoutValidation('Content-Type', ($Request.Headers['content-type'] ?? 'application/json')) | Out-Null
     if ($Request.Headers['accept']) { $message.Headers.TryAddWithoutValidation('Accept', $Request.Headers['accept']) | Out-Null }
     # Authorization is never copied: the host sees an unauthenticated loopback request.
-    $response = $Client.SendAsync($message).GetAwaiter().GetResult()
+    # Wait in half-second steps so free memory is still sampled while a long batch runs.
+    $pending = $Client.SendAsync($message)
+    while (-not $pending.Wait(500)) { if ($Sampler) { Update-MemorySample $Sampler } }
+    $response = $pending.GetAwaiter().GetResult()
     $body = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
     $type = if ($response.Content.Headers.ContentType) { $response.Content.Headers.ContentType.ToString() } else { 'application/json' }
     return [int]$response.StatusCode, $body, $type
@@ -338,6 +413,15 @@ function Start-Gateway {
     $hostProcess = Get-Process -Id ([int]$state.host_pid) -ErrorAction SilentlyContinue
     if (-not (Test-Tracked ([int]$state.host_pid) ([string]($state.host_name ?? 'uv')))) { throw "The recorded host (pid $($state.host_pid)) is not running." }
     $null = $hostProcess.Handle   # Keep a handle: the watch below cannot mistake a reused PID, and the exit code stays readable.
+    # The process that serves is the python listener recorded at readiness; its uv launcher can exit (code 0)
+    # while it still serves, so the gateway watches the listener when one is recorded and notes the launcher's exit.
+    $listenerProcess = $null
+    if ($state.listener_pid -and $state.listener_pid -ne $state.host_pid -and
+        (Test-Tracked ([int]$state.listener_pid) ([string]($state.listener_name ?? 'python')))) {
+        $listenerProcess = Get-Process -Id ([int]$state.listener_pid) -ErrorAction SilentlyContinue
+        $null = $listenerProcess.Handle
+    }
+    $launcherNoted = $false
     $token = Read-Token
     if (-not $token) { throw "$TokenName missing from $EnvFile." }
     $expected = [Text.Encoding]::UTF8.GetBytes($token)
@@ -348,26 +432,40 @@ function Start-Gateway {
     $handler.UseProxy = $false
     $handler.AllowAutoRedirect = $false
     $client = [Net.Http.HttpClient]::new($handler)
-    $client.Timeout = [TimeSpan]::FromSeconds(330)   # A long teacher-forced response takes about 30 s on the iGPU.
+    # Above any client timeout a plan sets: a long single response takes about 30 s on the iGPU, a
+    # study batch several minutes (the plan gives about 600 s per batch, task 6.4).
+    $client.Timeout = [TimeSpan]::FromSeconds(1800)
     $client.MaxResponseContentBufferSize = $MaxResponseBytes
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Parse($state.bind_address), [int]$state.gateway_port)
     $listener.ExclusiveAddressUse = $true   # SO_EXCLUSIVEADDRUSE: no second socket can share the gateway port.
     $listener.Start()
     $idle = [TimeSpan]::FromMinutes([double]$state.idle_minutes)
     $last = [DateTime]::UtcNow
-    Add-Content -LiteralPath $log -Value "$([DateTime]::UtcNow.ToString('o')) listening $($state.bind_address):$($state.gateway_port) upstream=$upstream idle=$($state.idle_minutes)m"
+    $floor = [long]($state.memory_floor_bytes ?? 0)
+    if ($floor -le 0) { $floor = try { [long](Read-HostProfile).memory_floor_bytes } catch { 0 } }
+    $sampler = @{ log = $log; floor = $floor; seconds = $MemorySampleSeconds; next = [DateTime]::MinValue }
+    Add-Content -LiteralPath $log -Value "$([DateTime]::UtcNow.ToString('o')) listening $($state.bind_address):$($state.gateway_port) upstream=$upstream idle=$($state.idle_minutes)m memory_floor=$floor memory_sample=$($MemorySampleSeconds)s"
+    Update-MemorySample $sampler
     try {
         while ($true) {
             $accept = $listener.AcceptTcpClientAsync()
-            while (-not $accept.Wait(5000)) {
+            while (-not $accept.Wait(500)) {
+                Update-MemorySample $sampler
                 if ([DateTime]::UtcNow - $last -gt $idle) {
                     Add-Content -LiteralPath $log -Value "$([DateTime]::UtcNow.ToString('o')) idle timeout, stopping"
                     $listener.Stop()
                     $null = Stop-All (Read-State) 'idle_timeout'
                     return
                 }
-                if ($hostProcess.HasExited) {
+                if ($listenerProcess -and -not $launcherNoted -and $hostProcess.HasExited) {
                     $code = try { $hostProcess.ExitCode } catch { 'unknown' }
+                    Add-Content -LiteralPath $log -Value ("$([DateTime]::UtcNow.ToString('o')) host launcher pid $($state.host_pid) exited " +
+                                                          "(exit code $code); the listener pid $($state.listener_pid) still serves")
+                    $launcherNoted = $true
+                }
+                $watched = if ($listenerProcess) { $listenerProcess } else { $hostProcess }
+                if ($watched.HasExited) {
+                    $code = try { $watched.ExitCode } catch { 'unknown' }
                     Add-Content -LiteralPath $log -Value "$([DateTime]::UtcNow.ToString('o')) host exited (exit code $code), stopping"
                     $listener.Stop()
                     $null = Stop-All (Read-State) 'host_exited'
@@ -390,13 +488,18 @@ function Start-Gateway {
                     if (-not (Test-Token $request.Headers['authorization'] $expected)) {
                         $status = 401
                         Send-Error $stream 401 'unauthorized'
-                    } elseif ($route -cne $EvidenceRoute) {
+                    } elseif ($route -cnotin $EvidenceRoutes) {
                         $status = 404
                         Send-Error $stream 404 'route not served by the gateway'
                     } else {
                         try {
-                            $status, $body, $type = Invoke-Upstream $client $upstream $request
+                            $status, $body, $type = Invoke-Upstream $client $upstream $request $sampler
                             Send-Response $stream $status $body $type
+                            if (Test-MemoryLowRefusal $status $body) {
+                                Add-Content -LiteralPath $log -Value "$([DateTime]::UtcNow.ToString('o')) host refused memory_low (503 on $route)"
+                                $sampler.next = [DateTime]::MinValue   # A reading next to the refusal.
+                                Update-MemorySample $sampler
+                            }
                         } catch {
                             $status = 502
                             Send-Error $stream 502 'upstream unavailable'
@@ -419,6 +522,7 @@ function Start-Gateway {
             }
             $last = [DateTime]::UtcNow
             Add-Content -LiteralPath $log -Value "$($last.ToString('o')) $route $status"
+            Update-MemorySample $sampler   # Also due readings while requests arrive back to back.
         }
     } finally {
         $listener.Stop()
@@ -468,7 +572,11 @@ function Start-Serving {
     if ($running) { throw "A full-distribution $($running[0].Kind) already runs (pid $($running.Pid -join ', ')). Run stop first." }
     $uv = Resolve-Uv
     $hostProfile = Read-HostProfile
-    $need = Get-RamRequirement $hostProfile.min_free_ram_bytes (Test-SiblingResident $hostProfile.sibling_port)
+    if (Test-SiblingResident $hostProfile.sibling_port) {
+        Write-SiblingRefusal $hostProfile.sibling_port
+        exit 2
+    }
+    $need = Get-RamRequirement $hostProfile.min_free_ram_bytes
     $gate = Wait-FreeRam $need.required_bytes $RamWaitSeconds
     if (-not $gate.passed) {
         Write-RamRefusal $hostProfile $need $gate
@@ -478,16 +586,20 @@ function Start-Serving {
     $tokenState = Initialize-Token
     Disable-OutputInheritance
 
+    $hostArguments = Get-HostArguments $HostPort $hostProfile.memory_floor_bytes
     $hostProcess = Start-Process -FilePath $uv -WorkingDirectory $Root -WindowStyle Hidden -PassThru `
-        -ArgumentList 'run', '--no-sync', 'python', $HostScript, '--port', "$HostPort" `
+        -ArgumentList $hostArguments `
         -RedirectStandardOutput (Join-Path $StateFolder 'host.out.log') -RedirectStandardError (Join-Path $StateFolder 'host.log')
     $started = [DateTime]::UtcNow
     $origin = if ($address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetworkV6) { "[$bind]" } else { $bind }
     $state = @{ host_pid = $hostProcess.Id; host_name = $hostProcess.ProcessName; gateway_pid = $null
+                listener_pid = $null; listener_name = $null
                 bind_address = $bind; gateway_port = $Port; host_port = $HostPort; host_address = "127.0.0.1:$HostPort"
                 idle_minutes = $IdleMinutes; started_at = $started.ToString('o')
+                host_arguments = $hostArguments; memory_floor_bytes = $hostProfile.memory_floor_bytes
+                memory_sample_seconds = $MemorySampleSeconds
                 ram_gate = [ordered]@{ per_load_bytes = $need.per_load_bytes; loads = $need.loads
-                                       sibling_resident = $need.sibling_resident; required_bytes = $need.required_bytes
+                                       required_bytes = $need.required_bytes; sibling_resident = $false
                                        free_ram_bytes = $gate.free_ram_bytes; samples = $gate.samples
                                        waited_seconds = $gate.waited_seconds }
                 ready_at = $null; readiness_seconds = $null; stopped_at = $null; stop_reason = $null
@@ -499,7 +611,8 @@ function Start-Serving {
     do {
         Start-Sleep -Milliseconds 500
         $listening = @(Get-Listeners @($HostPort))
-        $ready = $listening -and ($listening.Pid | Where-Object { $_ -in @(Get-ProcessTree $hostProcess.Id) })
+        $listener = if ($listening) { $tree = @(Get-ProcessTree $hostProcess.Id); $listening | Where-Object { $_.Pid -in $tree } | Select-Object -First 1 }
+        $ready = [bool]$listener
         $alive = -not $hostProcess.HasExited
         if (-not $ready -and ([DateTime]::UtcNow - $noted).TotalSeconds -ge 30) {
             $noted = [DateTime]::UtcNow
@@ -512,13 +625,17 @@ function Start-Serving {
         $reason = if (Test-Path -LiteralPath $hostLog) { (Get-Content -LiteralPath $hostLog -Tail 1) } else { '' }
         throw "The host did not become ready (alive: $alive). $reason See $hostLog."
     }
+    # The python process that listens (a grandchild of uv through the venv launcher): stop and the gateway
+    # reach it even if uv exits while it serves.
+    $state.listener_pid = $listener.Pid
+    $state.listener_name = (Get-Process -Id $listener.Pid -ErrorAction SilentlyContinue).ProcessName
     $state.ready_at = [DateTime]::UtcNow.ToString('o')
     $state.readiness_seconds = [Math]::Round(([DateTime]::UtcNow - $started).TotalSeconds, 1)
     Write-State $state
     # Start-Process joins arguments with spaces, so paths are quoted here.
     $gateway = Start-Process -FilePath (Get-Process -Id $PID).Path -WindowStyle Hidden -PassThru `
         -ArgumentList '-NoProfile', '-NonInteractive', '-File', "`"$PSCommandPath`"", 'gateway', '-Port', "$Port", '-HostPort', "$HostPort",
-                      '-StateDir', "`"$StateFolder`"", '-EnvPath', "`"$EnvFile`"" `
+                      '-StateDir', "`"$StateFolder`"", '-EnvPath', "`"$EnvFile`"", '-MemorySampleSeconds', "$MemorySampleSeconds" `
         -RedirectStandardOutput (Join-Path $StateFolder 'gateway.out.log') -RedirectStandardError (Join-Path $StateFolder 'gateway.err.log')
     $state.gateway_pid = $gateway.Id
     Write-State $state
@@ -531,10 +648,13 @@ function Start-Serving {
         $null = Stop-All $state 'start_failed'
         throw "Start failed (listening: $($ports -join ', ')). See $StateFolder\host.log and gateway.err.log."
     }
-    Write-Output "Host 127.0.0.1:$HostPort (pid $($hostProcess.Id)), ready after $($state.readiness_seconds) s"
+    Write-Output "Host 127.0.0.1:$HostPort (pid $($hostProcess.Id), listener pid $($listener.Pid)), ready after $($state.readiness_seconds) s"
     Write-Output "Gateway ${bind}:$Port (pid $($gateway.Id)), $TokenName $tokenState in $EnvFile (value not shown)"
-    Write-Output "Gateway endpoint (FULL_DISTRIBUTION_ENDPOINT_URL): $($state.endpoint), route $EvidenceRoute only"
-    Write-Output "RAM gate: $(Format-Gib $gate.free_ram_bytes) free, $(Format-Gib $need.required_bytes) required ($($need.loads) loads)"
+    Write-Output "Gateway endpoint (FULL_DISTRIBUTION_ENDPOINT_URL): $($state.endpoint), routes $($EvidenceRoutes -join ' and ') only"
+    Write-Output "RAM gate: $(Format-Gib $gate.free_ram_bytes) free, $(Format-Gib $need.required_bytes) required (one load; llama-server not resident)"
+    Write-Output ("Memory guard: the host (python -X faulthandler) refuses new requests with 503 memory_low below " +
+                  "$(Format-Gib $hostProfile.memory_floor_bytes) free; free memory is sampled every 5 s (host.out.log) " +
+                  "and every $MemorySampleSeconds s (gateway.log).")
     Write-Output "Auto-stop after $IdleMinutes min without gateway requests."
 }
 
@@ -563,7 +683,7 @@ function Show-Status {
     $state = Read-State
     if (-not $state) { Write-Output 'No host state (never started).' }
     else {
-        foreach ($pair in @(@('host_pid', ($state.host_name ?? 'uv')), @('gateway_pid', 'pwsh'))) {
+        foreach ($pair in @(@('host_pid', ($state.host_name ?? 'uv')), @('listener_pid', ($state.listener_name ?? 'python')), @('gateway_pid', 'pwsh'))) {
             $running = Test-Tracked ([int]$state[$pair[0]]) $pair[1]
             Write-Output ("{0} {1}: {2}" -f $pair[0], $state[$pair[0]], $(if ($running) { 'running' } else { 'not running' }))
         }

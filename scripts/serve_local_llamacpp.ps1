@@ -29,13 +29,16 @@ strips that header and forwards ONLY `POST /v1/chat/completions`, `GET /v1/model
 `GET /health` and `GET /props` (whose model_path names the GGUF blob for the runner's digest
 check); every other method or path gets 404 and never reaches llama-server.
 
+One model host at a time (user correction 2026-11-10): while the sibling full-distribution host
+(task 6.1, a python process listening on the profile's full_distribution port) is resident,
+`start` refuses before loading anything, names the sibling's stop command, and exits 2.
+
 RAM gate before loading: free physical memory (Get-CimInstance Win32_OperatingSystem) must
-reach the llamacpp-gemma3-4b profile's min_free_ram_bytes for this load, plus the same again
-while the sibling full-distribution host (task 6.1, a python process listening on the profile's
-full_distribution port) is not yet resident, because both are loads of the same GGUF. The gate
-waits up to -RamWaitSeconds (default 600) for three readings in a row at or above the
-requirement and prints a progress line while it waits. Otherwise it loads nothing, prints the
-Modal alternative and the "another machine" option in preflight_host's wording, and exits 2.
+reach the llamacpp-gemma3-4b profile's min_free_ram_bytes, which is one load of the GGUF plus
+headroom and is never doubled. The gate waits up to -RamWaitSeconds (default 600) for three
+readings in a row at or above the requirement and prints a progress line while it waits.
+Otherwise it loads nothing, prints the Modal alternative and the "another machine" option in
+preflight_host's wording, and exits 2.
 
 The token is LOCAL_MODEL_API_KEY from the root .env (shared with the other local gateways). If
 it is missing, a random 32-byte token is generated and appended there; its value is never
@@ -338,7 +341,7 @@ function Write-Leftover([string]$Log, [hashtable]$State, [int[]]$Ports, [int[]]$
     Add-Content -LiteralPath $Log -Value ($remaining | ForEach-Object { "$stamp leftover check: $_" })
 }
 
-# ---------- RAM gate (two loads of the same GGUF) ----------
+# ---------- one model host at a time; RAM gate for one load ----------
 
 function Read-HostProfile {
     if (-not (Test-Path -LiteralPath $ProfileFile -PathType Leaf)) { throw "Profile $ProfileFile not found." }
@@ -364,16 +367,21 @@ function Test-SiblingResident([int]$SiblingPort) {
     return $false
 }
 
-function Get-RamRequirement([long]$PerLoad, [bool]$SiblingResident) {
-    # This load, plus the same again while the sibling full-distribution host is not yet resident.
-    $loads = if ($SiblingResident) { 1 } else { 2 }
-    return [ordered]@{ per_load_bytes = $PerLoad; loads = $loads; required_bytes = $PerLoad * $loads
-                       sibling_resident = $SiblingResident }
+function Write-SiblingRefusal([int]$SiblingPort) {
+    Write-Output ("Refusing to start: the full-distribution host (task 6.1) is resident on port $SiblingPort, and only one " +
+                  "model host runs at a time. Stop it first (pwsh -File scripts/serve_full_distribution.ps1 stop). Nothing " +
+                  "was loaded and no request was sent.")
+}
+
+function Get-RamRequirement([long]$PerLoad) {
+    # One load of the GGUF plus headroom (the profile's min_free_ram_bytes), never doubled: only
+    # one model host runs at a time, so no second load can coexist with this one.
+    return [ordered]@{ per_load_bytes = $PerLoad; loads = 1; required_bytes = $PerLoad }
 }
 
 function Write-RamRefusal([hashtable]$HostProfile, [System.Collections.IDictionary]$Need, [System.Collections.IDictionary]$Gate) {
-    $loads = if ($Need.loads -eq 2) { 'two loads of the same GGUF (this llama-server, plus the full-distribution host, which is not yet resident)' } else { 'one load (the full-distribution host is already resident)' }
-    Write-Output "RAM gate: $loads at $(Format-Gib $Need.per_load_bytes) each; free RAM stayed below it for $($Gate.waited_seconds) s."
+    Write-Output ("RAM gate: one load of the GGUF at $(Format-Gib $Need.per_load_bytes) (the profile's min_free_ram_bytes); " +
+                  "free RAM stayed below it for $($Gate.waited_seconds) s.")
     # Same sentence as recall_guard.core.profiles.preflight_host (_ram_recommendation).
     $fallbacks = ($HostProfile.fallbacks | ForEach-Object { "--profile $_" }) -join ' or '
     $options = if ($fallbacks) { "Try $fallbacks, or run" } else { 'Run' }
@@ -582,7 +590,11 @@ function Start-Serving {
     }
     $problem = Test-ModelFile $ModelFile $hostProfile.digest
     if ($problem) { throw $problem }
-    $need = Get-RamRequirement $hostProfile.min_free_ram_bytes (Test-SiblingResident $hostProfile.sibling_port)
+    if (Test-SiblingResident $hostProfile.sibling_port) {
+        Write-SiblingRefusal $hostProfile.sibling_port
+        exit 2
+    }
+    $need = Get-RamRequirement $hostProfile.min_free_ram_bytes
     $gate = Wait-FreeRam $need.required_bytes $RamWaitSeconds
     if (-not $gate.passed) {
         Write-RamRefusal $hostProfile $need $gate
@@ -609,7 +621,7 @@ function Start-Serving {
                 server_build = "b$build"; model_path = $ModelFile; model_digest = $hostProfile.digest; model_sha256_verified = $true
                 server_arguments = $server.arguments
                 ram_gate = [ordered]@{ per_load_bytes = $need.per_load_bytes; loads = $need.loads
-                                       sibling_resident = $need.sibling_resident; required_bytes = $need.required_bytes
+                                       required_bytes = $need.required_bytes; sibling_resident = $false
                                        free_ram_bytes = $gate.free_ram_bytes; samples = $gate.samples
                                        waited_seconds = $gate.waited_seconds }
                 ready_at = $null; readiness_seconds = $null; stopped_at = $null; stop_reason = $null
@@ -667,7 +679,7 @@ function Start-Serving {
     Write-Output "Model $(Split-Path -Leaf $ModelFile) (SHA-256 verified, = $($hostProfile.digest))"
     Write-Output "Gateway ${bind}:$Port (pid $($gateway.Id)), $TokenName $tokenState in $EnvFile (value not shown)"
     Write-Output "Gateway endpoint (LLAMACPP_ENDPOINT_URL): $($state.endpoint); routes $($Routes -join ', ')"
-    Write-Output "RAM gate: $(Format-Gib $gate.free_ram_bytes) free, $(Format-Gib $need.required_bytes) required ($($need.loads) loads)"
+    Write-Output "RAM gate: $(Format-Gib $gate.free_ram_bytes) free, $(Format-Gib $need.required_bytes) required (one load; the full-distribution host not resident)"
     Write-Output "Auto-stop after $IdleMinutes min without gateway requests."
 }
 

@@ -31,11 +31,37 @@ n_vocab)`` alternatives ``(token_id, logprob)`` chosen by ``argpartition`` and
 sorted by descending logprob, ties broken by the smaller id, so every position
 keeps the same count and any smaller k is a prefix.
 
+``POST /v1/full_distribution_batch`` (task 6.4) with ``{model_digest,
+prompt_text, response_texts[], top_k_keep}`` returns ``{"evidence": [...]}``,
+one evidence object per response in request order, each equal to the single
+route's for that pair. The prompt is tokenised and decoded once (one token per
+decode, as on the single route); the logits of its last position predict every
+response's first token; each response is then teacher-forced one decode at a
+time on top of the cached prompt and the KV cache is rolled back to the prompt
+length (``llama_memory_seq_rm``) after each response. The time of the prompt
+and of each response is kept in ``last_batch_timings``.
+
 Errors are JSON ``{"error": {"code", "message"}}``: 409 ``digest_mismatch``;
-413 ``oversize`` (prompt plus response ids beyond the 2048-token context, or a
-body beyond 1 MiB); 422 ``tokenisation_failed`` (a text fails to tokenise, or
-the response, or the prompt, tokenises to no ids); 400 ``malformed``; 404
-``not_found``; 500 ``internal_error``.
+413 ``oversize`` (prompt plus response ids beyond the 2048-token context, on
+the batch route prompt plus the longest response, or a body beyond 1 MiB); 422
+``tokenisation_failed`` (a text fails to tokenise, or a response, or the
+prompt, tokenises to no ids); 400 ``malformed``; 404 ``not_found``; 500
+``internal_error``; 503 ``memory_low``.
+
+Memory guard (task 6.4): the host samples free physical memory every 5 s and
+before each request and logs every sample as one JSON line on stdout. While
+free memory is below the floor (``--memory-floor-bytes``, by default the
+llamacpp-gemma3-4b profile's ``host_requirements.memory_floor()``, one quarter
+of ``min_free_ram_bytes``) it refuses new requests with 503 ``memory_low``
+and logs the refusal; the client reports that as the retryable ``host_busy``.
+The lifecycle script launches the host with ``python -X faulthandler`` so a
+native death leaves a Python stack in its log; nothing restarts it.
+
+``--check-against-server --batch`` (task 6.4) runs the same check on the batch
+route: the two pairs as one-response batches plus one prompt carrying two
+responses, each batch served twice and each pair once more on the single route
+(the batch evidence must equal it), with the per-item timing in the receipt
+under runs/finance-sim/hosts/full-distribution/exactness/batch/.
 
 ``--check-against-server`` runs the exactness check instead of serving: it
 starts llama-server b12199 on 127.0.0.1:11560 (the R40 reference method),
@@ -45,10 +71,24 @@ loads this host (so one model is resident at a time), serves the pairs twice on
 127.0.0.1:11580 and compares within 1e-4 after a float64 renormalisation of
 the server's float32 normaliser, with identical ranks and bitwise identical
 runs. The private receipt goes to runs/finance-sim/hosts/full-distribution/exactness/.
+
+Two passes (user correction 2026-11-10: never two models loaded, memory-heavy
+steps one after another): ``--check-against-server [--batch] --record`` is pass
+A, which starts only llama-server, writes its reference (server tokens,
+positions and the full-vocabulary vectors) to ``reference-recording.json`` and
+``reference-vectors.npz`` in the output folder, stops it and verifies that no
+listener and no llama-server process remains. ``--check-against-server [--batch]
+--compare`` is pass B, run as a separate process afterwards: it refuses while a
+llama-server is resident or when the recording is missing, failed, made for
+other pairs or settings, or its vector file no longer matches the recorded
+SHA-256; otherwise it loads only the host and compares against the recording.
+Without either flag both passes run one after the other in one process, the
+comparison again reading the recording from the file.
 """
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import hashlib
 import json
 import re
@@ -69,6 +109,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:  # Run as a file; the bindings live in scripts/, the contract in recall_guard/.
     sys.path.insert(0, str(ROOT))
 from recall_guard.core.full_distribution import (  # noqa: E402
+    BATCH_ENDPOINT_PATH,
     ENDPOINT_PATH,
     FullDistributionEvidence,
     logprobs_from_logits,
@@ -91,6 +132,8 @@ MAX_BODY_BYTES = 1 << 20
 SOCKET_TIMEOUT_S = 60  # A stalled client cannot hold the one-at-a-time server.
 WARMUP_TEXT = 'The quick brown fox jumps over the lazy dog.'
 REQUEST_FIELDS = ('model_digest', 'prompt_text', 'response_text', 'top_k_keep')
+BATCH_REQUEST_FIELDS = ('model_digest', 'prompt_text', 'response_texts', 'top_k_keep')
+MEMORY_SAMPLE_S = 5.0  # The memory guard's sampling interval (task 6.4).
 _CONTENT_LENGTH = re.compile(r'[0-9]{1,12}')
 
 
@@ -123,31 +166,54 @@ def _unique_keys(pairs):
     return dict(pairs)
 
 
-def parse_request(body: bytes) -> dict:
-    """Decode a request body (UTF-8 JSON object, no duplicate keys) and validate its fields."""
+def parse_request(body: bytes, validate=None) -> dict:
+    """Decode a request body (UTF-8 JSON object, no duplicate keys) and validate its fields.
+
+    ``validate`` defaults to the single route's ``validate_request``.
+    """
     try:
         data = json.loads(body.decode('utf-8'), object_pairs_hook=_unique_keys)
     except (UnicodeDecodeError, ValueError):
         raise HostError(400, 'malformed', 'the body must be a UTF-8 JSON object without duplicate keys') from None
-    return validate_request(data)
+    return (validate_request if validate is None else validate)(data)
+
+
+def _exact_fields(data, fields) -> None:
+    if not isinstance(data, Mapping):
+        raise HostError(400, 'malformed', 'the body must be a JSON object')
+    missing = [name for name in fields if name not in data]
+    unknown = len(set(data) - set(fields))
+    if missing or unknown:
+        raise HostError(400, 'malformed', f'expected exactly {list(fields)}; missing {missing}, '
+                                          f'{unknown} unknown field(s)')
+
+
+def _top_k_keep(value) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise HostError(400, 'malformed', 'top_k_keep must be a positive integer')
 
 
 def validate_request(data) -> dict:
     """Exactly the four request fields: three strings and a positive integer ``top_k_keep``."""
-    if not isinstance(data, Mapping):
-        raise HostError(400, 'malformed', 'the body must be a JSON object')
-    missing = [name for name in REQUEST_FIELDS if name not in data]
-    unknown = len(set(data) - set(REQUEST_FIELDS))
-    if missing or unknown:
-        raise HostError(400, 'malformed', f'expected exactly {list(REQUEST_FIELDS)}; missing {missing}, '
-                                          f'{unknown} unknown field(s)')
+    _exact_fields(data, REQUEST_FIELDS)
     for name in REQUEST_FIELDS[:3]:
         if not isinstance(data[name], str):
             raise HostError(400, 'malformed', f'{name} must be a string')
-    top_k_keep = data['top_k_keep']
-    if isinstance(top_k_keep, bool) or not isinstance(top_k_keep, int) or top_k_keep < 1:
-        raise HostError(400, 'malformed', 'top_k_keep must be a positive integer')
+    _top_k_keep(data['top_k_keep'])
     return {name: data[name] for name in REQUEST_FIELDS}
+
+
+def validate_batch_request(data) -> dict:
+    """Exactly the four batch fields: two strings, a nonempty list of strings and a positive ``top_k_keep``."""
+    _exact_fields(data, BATCH_REQUEST_FIELDS)
+    for name in BATCH_REQUEST_FIELDS[:2]:
+        if not isinstance(data[name], str):
+            raise HostError(400, 'malformed', f'{name} must be a string')
+    texts = data['response_texts']
+    if not isinstance(texts, list) or not texts or not all(isinstance(text, str) for text in texts):
+        raise HostError(400, 'malformed', 'response_texts must be a nonempty list of strings')
+    _top_k_keep(data['top_k_keep'])
+    return {name: list(data[name]) if name == 'response_texts' else data[name] for name in BATCH_REQUEST_FIELDS}
 
 
 def top_token_ids(logprobs: np.ndarray, kept: int) -> np.ndarray:
@@ -178,18 +244,90 @@ def position_evidence(logits_row, target: int, kept: int) -> tuple[float, float,
     return float(logprob[0]), float(entropy[0]), int(rank[0]), alternatives
 
 
+class MemoryGuard:
+    """Free physical memory, sampled every ``interval_s`` and before each request (task 6.4).
+
+    ``probe()`` returns free physical memory in bytes (by default
+    ``psutil.virtual_memory().available``). Every sample, periodic or taken
+    when a request arrives, goes to ``log`` as ``{"memory_sample": {...}}``, so
+    the host log shows the memory trend before a refusal or a native death.
+    ``admit()`` refuses a request with 503 ``memory_low`` while the sample is
+    below ``floor_bytes`` and logs ``{"refused": {...}}``.
+    """
+
+    def __init__(self, floor_bytes: int, *, probe=None, interval_s: float = MEMORY_SAMPLE_S, log=None) -> None:
+        if isinstance(floor_bytes, bool) or not isinstance(floor_bytes, int):
+            raise TypeError('floor_bytes must be an integer')
+        if floor_bytes < 1:
+            raise ValueError('floor_bytes must be positive')
+        self.floor_bytes, self.interval_s = floor_bytes, float(interval_s)
+        self.probe = _free_ram if probe is None else probe
+        self.log = log if log is not None else (lambda record: None)
+        self.last: dict | None = None
+        self.samples = self.refusals = 0
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+
+    @property
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def sample(self, reason: str = 'periodic') -> dict:
+        free = int(self.probe())
+        record = {'at': _now(), 'free_ram_bytes': free, 'floor_bytes': self.floor_bytes,
+                  'below_floor': free < self.floor_bytes, 'reason': reason}
+        with self._lock:
+            self.last, self.samples = record, self.samples + 1
+        self.log({'memory_sample': record})
+        return record
+
+    def admit(self) -> None:
+        """Raise 503 ``memory_low`` while free physical memory is below the floor."""
+        record = self.sample('request')
+        if record['below_floor']:
+            with self._lock:
+                self.refusals += 1
+            self.log({'refused': {'code': 'memory_low', **record}})
+            raise HostError(503, 'memory_low', f'free physical memory is {record["free_ram_bytes"]} bytes, below '
+                                               f'the floor of {self.floor_bytes} bytes; retry later')
+
+    def start(self) -> None:
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, name='memory-guard', daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(max(5.0, 2 * self.interval_s))
+
+    def _run(self) -> None:
+        while True:
+            try:
+                self.sample()
+            except Exception as error:  # A failed reading is logged; sampling goes on.
+                self.log({'memory_sample_failed': f'{type(error).__name__}: {str(error)[:200]}', 'at': _now()})
+            if self._stop.wait(self.interval_s):
+                return
+
+
 class FullDistributionHost:
     """One loaded model and its teacher-forcing evidence; one caller at a time.
 
     ``llama`` provides ``tokenize(text, add_special, parse_special)``,
-    ``incremental_logits(tokens, rows)``, ``n_vocab`` and ``close()``
-    (``scripts.llamacpp_native.Llama``, or a fake in tests).
+    ``incremental_logits(tokens, rows)``, ``n_vocab`` and ``close()``, and for
+    the batch route ``continue_logits(tokens, start)`` and ``truncate(n_keep)``
+    (``scripts.llamacpp_native.Llama``, or a fake in tests). ``memory_guard``
+    (a ``MemoryGuard``) admits each request when given.
     """
 
-    def __init__(self, llama, *, model_digest: str, n_ctx: int = N_CTX) -> None:
+    def __init__(self, llama, *, model_digest: str, n_ctx: int = N_CTX, memory_guard: MemoryGuard | None = None) -> None:
         self.llama, self.model_digest, self.n_ctx = llama, model_digest, n_ctx
         self.n_vocab = int(llama.n_vocab)
         self.timings: dict[str, float] = {}
+        self.memory_guard = memory_guard
+        self.last_batch_timings: dict | None = None
         self._lock = threading.Lock()
 
     def warm_up(self) -> None:
@@ -240,6 +378,10 @@ class FullDistributionHost:
                         columns[name].append(value)
             finally:
                 rows.close()
+        return self._payload(response_ids, columns)
+
+    def _payload(self, response_ids: list[int], columns: dict) -> dict:
+        """The evidence wire dict, checked against its contract before it is sent."""
         payload = {'model_digest': self.model_digest, 'n_vocab': self.n_vocab,
                    'response_token_ids': response_ids, **columns}
         try:
@@ -248,9 +390,100 @@ class FullDistributionHost:
             raise HostError(500, 'internal_error', f'the evidence fails its contract: {error}') from None
         return payload
 
-    def respond(self, body: bytes) -> tuple[int, dict]:
-        """HTTP status and JSON payload for one request body; never raises."""
+    def evidence_batch(self, request: Mapping) -> dict:
+        """Teacher-force each response against the prompt decoded once; ``{"evidence": [...]}`` in request order.
+
+        Every refusal (digest, tokenisation, size) happens before any decode. The
+        prompt is decoded one token per decode from an empty cache, as on the
+        single route; each response then continues on the cached prompt and the
+        KV cache is rolled back to the prompt length after it, so each response
+        position sees the single route's computation.
+        """
+        request = validate_batch_request(request)
+        if request['model_digest'] != self.model_digest:
+            raise HostError(409, 'digest_mismatch', f'this host serves {self.model_digest}')
+        with self._lock:
+            started = time.perf_counter()
+            prompt_ids = self._tokenize(request['prompt_text'], add_special=True, what='prompt')
+            responses = []
+            for index, text in enumerate(request['response_texts']):
+                ids = self._tokenize(text, add_special=False, what=f'response {index}')
+                if not ids:
+                    raise HostError(422, 'tokenisation_failed', f'response {index} tokenises to no ids')
+                responses.append(ids)
+            if not prompt_ids:
+                raise HostError(422, 'tokenisation_failed', 'the prompt tokenises to no ids, so the first '
+                                                            'response token has no context')
+            total = len(prompt_ids) + max(len(ids) for ids in responses)
+            if total > self.n_ctx:
+                raise HostError(413, 'oversize', f'prompt plus the longest response is {total} ids, beyond the '
+                                                 f'context of {self.n_ctx}')
+            kept = min(request['top_k_keep'], self.n_vocab)
+            last = self._decode_prompt(prompt_ids)
+            timings = {'prompt_ids': len(prompt_ids), 'prompt_seconds': time.perf_counter() - started, 'responses': []}
+            evidence = []
+            for response_ids in responses:
+                began = time.perf_counter()
+                columns = {'logprob': [], 'entropy': [], 'rank': [], 'top_logprobs': []}
+                for _, row, target in self._response_rows(len(prompt_ids), last, response_ids):
+                    for name, value in zip(columns, position_evidence(row, target, kept), strict=True):
+                        columns[name].append(value)
+                self.llama.truncate(len(prompt_ids))  # Roll back to the prompt for the next response.
+                evidence.append(self._payload(response_ids, columns))
+                timings['responses'].append({'response_ids': len(response_ids), 'decodes': len(response_ids) - 1,
+                                             'seconds': time.perf_counter() - began})
+            timings['total_seconds'] = time.perf_counter() - started
+            self.last_batch_timings = timings
+        return {'evidence': evidence}
+
+    def batch_logit_rows(self, prompt_ids: list[int], responses: list[list[int]]) -> list[np.ndarray]:
+        """Full logit rows of every response position by the batch computation (for the exactness check)."""
+        with self._lock:
+            last = self._decode_prompt(prompt_ids)
+            blocks = []
+            for response_ids in responses:
+                blocks.append(np.stack([row for _, row, _ in self._response_rows(len(prompt_ids), last,
+                                                                                    response_ids)]))
+                self.llama.truncate(len(prompt_ids))
+            return blocks
+
+    def _decode_prompt(self, prompt_ids: list[int]) -> np.ndarray:
+        """Decode the prompt from an empty cache, one token per decode; the logits of its last position."""
+        last = len(prompt_ids) - 1
+        rows = self.llama.incremental_logits(prompt_ids, rows=range(last, len(prompt_ids)))
         try:
+            decoded = list(rows)
+        finally:
+            rows.close()
+        if [position for position, _ in decoded] != [last]:
+            raise HostError(500, 'internal_error', 'the prompt decode returned positions out of order')
+        return decoded[0][1]
+
+    def _response_rows(self, prompt_length: int, last, response_ids: list[int]):
+        """Yield (position, logit row, target) of each response position on the cached prompt."""
+        yield prompt_length - 1, last, response_ids[0]
+        if len(response_ids) == 1:
+            return
+        rows = self.llama.continue_logits(response_ids[:-1], start=prompt_length)
+        try:
+            for expected, ((position, row), target) in enumerate(zip(rows, response_ids[1:], strict=True),
+                                                                 prompt_length):
+                if position != expected:
+                    raise HostError(500, 'internal_error', 'the decode returned positions out of order')
+                yield position, row, target
+        finally:
+            rows.close()
+
+    def respond(self, body: bytes, *, batch: bool = False) -> tuple[int, dict]:
+        """HTTP status and JSON payload for one request body (the batch route when ``batch``); never raises.
+
+        The memory guard admits the request first, before any parsing or model work.
+        """
+        try:
+            if self.memory_guard is not None:
+                self.memory_guard.admit()
+            if batch:
+                return 200, self.evidence_batch(parse_request(body, validate=validate_batch_request))
             return 200, self.evidence(parse_request(body))
         except HostError as error:
             return error.status, error_body(error.code, error.message)
@@ -263,8 +496,10 @@ class _Handler(BaseHTTPRequestHandler):
     timeout = SOCKET_TIMEOUT_S
 
     def do_POST(self) -> None:
-        if self.path != ENDPOINT_PATH:
-            self._send(404, error_body('not_found', f'only POST {ENDPOINT_PATH} is served'))
+        routes = {ENDPOINT_PATH: False, BATCH_ENDPOINT_PATH: True}
+        if self.path not in routes:
+            self._send(404, error_body('not_found', f'only POST {ENDPOINT_PATH} and POST {BATCH_ENDPOINT_PATH} '
+                                                    'are served'))
             return
         length = self.headers.get('Content-Length')
         if self.headers.get('Transfer-Encoding') or length is None or not _CONTENT_LENGTH.fullmatch(length):
@@ -278,7 +513,7 @@ class _Handler(BaseHTTPRequestHandler):
         if len(body) != int(length):
             self._send(400, error_body('malformed', 'the body is shorter than its Content-Length'))
             return
-        self._send(*self.server.full_distribution_host.respond(body))
+        self._send(*self.server.full_distribution_host.respond(body, batch=routes[self.path]))
 
     def _send(self, status: int, payload: dict) -> None:
         data = json.dumps(payload, allow_nan=False).encode('utf-8')
@@ -340,29 +575,58 @@ def open_host(model_path=None, *, pinned_digest: str = MODEL_DIGEST, llama_facto
     return host
 
 
-def serve(port: int = PORT) -> int:
-    """Reserve the port, start the host, then listen until interrupted."""
+def _log_line(record: dict) -> None:
+    print(json.dumps(record), flush=True)
+
+
+def _memory_floor_bytes() -> int:
+    """The llamacpp-gemma3-4b profile's memory floor (``host_requirements.memory_floor()``)."""
+    from recall_guard.core.profiles import load_profile
+    floor = load_profile('llamacpp-gemma3-4b').host_requirements.memory_floor()
+    if floor is None:
+        raise StartRefused('the llamacpp-gemma3-4b profile records no memory floor')
+    return int(floor)
+
+
+def serve(port: int = PORT, *, memory_floor_bytes: int | None = None) -> int:
+    """Reserve the port, sample free memory, start the host, then listen until interrupted."""
     try:
         server = make_server(None, port, activate=False)
     except OSError as error:
         print(f'refused to start: port_unavailable: {HOST}:{port}: {error.strerror or error}', file=sys.stderr)
         return 2
+    guard = None
     try:
+        guard = MemoryGuard(_memory_floor_bytes() if memory_floor_bytes is None else memory_floor_bytes,
+                            log=_log_line)
+        guard.start()  # Samples during the hash, the load and the warm-up too.
         host = open_host()
     except StartRefused as error:
+        if guard is not None:
+            guard.stop()
         server.server_close()
         print(f'refused to start: {error}', file=sys.stderr)
         return 2
+    except BaseException:  # A failed load: stop sampling and release the port before the error propagates.
+        if guard is not None:
+            guard.stop()
+        server.server_close()
+        raise
+    host.memory_guard = guard
     server.full_distribution_host = host
     try:
         server.server_activate()
         print(json.dumps({'listening': f'{HOST}:{server.server_address[1]}', 'endpoint': ENDPOINT_PATH,
-                          'model_digest': host.model_digest, 'n_vocab': host.n_vocab, **host.timings}), flush=True)
+                          'batch_endpoint': BATCH_ENDPOINT_PATH, 'model_digest': host.model_digest,
+                          'n_vocab': host.n_vocab, 'memory_floor_bytes': guard.floor_bytes,
+                          'memory_sample_seconds': guard.interval_s, 'faulthandler': faulthandler.is_enabled(),
+                          **host.timings}), flush=True)
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        guard.stop()
         host.close()
     return 0
 
@@ -383,7 +647,22 @@ EXACTNESS_PAIRS = (  # Short, synthetic, no licensed text.
                                               'were stable.\nSummary:',
      'response_text': ' Output rose while prices held steady.'},
 )
+BATCH_RECEIPT_DIR = RECEIPT_DIR / 'batch'
+BATCH_EXACTNESS_ITEMS = (  # The two pairs as one-response batches, plus one prompt carrying two responses (6.4).
+    *({'name': pair['name'], 'prompt_text': pair['prompt_text'], 'response_texts': [pair['response_text']]}
+      for pair in EXACTNESS_PAIRS),
+    {'name': 'shared_prompt', 'prompt_text': 'Name the macro regime of the month and give one reason.\nAnswer:',
+     'response_texts': [' Expansion, because output and employment rose together.', ' Slowdown.']},
+)
+KV_ROLLBACK = 'llama_memory_seq_rm'  # Exported by llama.dll b12199 (llama_memory_* API); llama_kv_self_seq_rm is not.
 OTHER_HOST_PORTS = (11570, 11571, 11581)  # The 6.2/6.3 llama.cpp hosts and gateways must not be resident.
+
+
+def batch_reference_pairs(items) -> list[dict]:
+    """Each (prompt, response) of the batch items as a reference pair named ``<item>/<index>``."""
+    return [{'name': f'{item["name"]}/{index}', 'item': item['name'], 'index': index,
+             'prompt_text': item['prompt_text'], 'response_text': text}
+            for item in items for index, text in enumerate(item['response_texts'])]
 RAM_WAIT_S = 600.0  # How long a load waits for the profile's free-RAM minimum before it is refused.
 
 
@@ -655,10 +934,85 @@ def _host_phase(pairs, tokens, port: int) -> tuple[dict, dict, dict, dict]:
     return tokenisation, runs, rows, lifecycle
 
 
+def _host_phase_batch(items, pairs, tokens, port: int) -> tuple[dict, list, dict, dict, dict]:
+    """Load the host, serve every item on the batch route twice and every pair once on the single route,
+    then take the batch computation's logit rows twice (the server stopped before the load)."""
+    lifecycle = {'ram_gate': _await_free_ram(_min_free_ram_bytes()), 'started_at': _now()}
+    host = open_host()
+    lifecycle |= {'model_digest': host.model_digest, 'n_vocab': host.n_vocab, **host.timings}
+    ids = {pair['name']: entry for pair, entry in zip(pairs, tokens, strict=True)}
+    try:
+        tokenisation = {pair['name']: {
+            'prompt_ids_match_server': host.llama.tokenize(pair['prompt_text']) == ids[pair['name']]['prompt_ids'],
+            'response_ids_match_server': host.llama.tokenize(pair['response_text'], add_special=False)
+            == ids[pair['name']]['response_ids']} for pair in pairs}
+        server = make_server(host, port)
+        thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.2}, daemon=True)
+        thread.start()
+        lifecycle |= {'listening': f'{HOST}:{server.server_address[1]}', 'listening_at': _now()}
+        runs, singles = [], {}
+        try:
+            for _ in range(2):
+                run = {}
+                for item in items:
+                    started = time.perf_counter()
+                    body = _post_bytes(f'http://{HOST}:{port}{BATCH_ENDPOINT_PATH}', {
+                        'model_digest': MODEL_DIGEST, 'prompt_text': item['prompt_text'],
+                        'response_texts': item['response_texts'], 'top_k_keep': CHECK_TOP_K})
+                    run[item['name']] = {'body': body, 'seconds': time.perf_counter() - started,
+                                         'host_timings': host.last_batch_timings}
+                runs.append(run)
+            for pair in pairs:
+                started = time.perf_counter()
+                body = _post_bytes(f'http://{HOST}:{port}{ENDPOINT_PATH}', {
+                    'model_digest': MODEL_DIGEST, 'prompt_text': pair['prompt_text'],
+                    'response_text': pair['response_text'], 'top_k_keep': CHECK_TOP_K})
+                singles[pair['name']] = {'body': body, 'seconds': time.perf_counter() - started}
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(30)
+            lifecycle['server_stopped_at'] = _now()
+        rows = {}
+        for item in items:
+            members = [pair['name'] for pair in pairs if pair['item'] == item['name']]
+            twice = [host.batch_logit_rows(ids[members[0]]['prompt_ids'], [ids[name]['response_ids'] for name in members])
+                     for _ in range(2)]
+            rows |= {name: [twice[0][k], twice[1][k]] for k, name in enumerate(members)}
+    finally:
+        host.close()
+        lifecycle['model_closed_at'] = _now()
+    lifecycle['after_stop'] = {'listeners': _wait_until_free((port,)), 'checked_at': _now()}
+    return tokenisation, runs, singles, rows, lifecycle
+
+
+def _per_item_timing(runs, singles) -> dict:
+    """Request time per batch (with the host's prompt and per-response times) and per single-route pair."""
+    return {'batch': [{'run': index, 'item': name, 'request_seconds': entry['seconds'], **(entry['host_timings'] or {})}
+                      for index, run in enumerate(runs) for name, entry in run.items()],
+            'single': [{'pair': name, 'request_seconds': entry['seconds']} for name, entry in singles.items()]}
+
+
+def _batch_summary_lines(receipt: dict) -> list[str]:
+    lines = ['## Per-item timing (batch route)', '',
+             '| Run | Item | Responses | Prompt ids | Prompt s | Response s | Request s |', '|---|---|---|---|---|---|---|']
+    for entry in receipt.get('per_item_timing', {}).get('batch', []):
+        each = ', '.join(f'{item["seconds"]:.2f}' for item in entry.get('responses', []))
+        lines.append(f'| {entry["run"]} | {entry["item"]} | {len(entry.get("responses", []))} | '
+                     f'{entry.get("prompt_ids")} | {entry.get("prompt_seconds", 0):.2f} | {each} | '
+                     f'{entry["request_seconds"]:.2f} |')
+    return [*lines, '']
+
+
 def _write_summary(path: Path, receipt: dict) -> None:
     comparison, outcome = receipt.get('comparison', {}), receipt['outcome']
     worst = comparison.get('max_abs_diff', {})
-    lines = ['# Full-distribution host exactness check (task 6.1)', '',
+    batch = receipt.get('mode') == 'batch'
+    title = ('# Full-distribution host exactness check, batch mode (task 6.4)' if batch
+             else '# Full-distribution host exactness check (task 6.1)')
+    recorded = receipt.get('reference_recording') or {}
+    vectors = recorded.get('vectors') or {}
+    lines = [title, '',
              f'- Outcome: **{"passed" if outcome["passed"] else "failed"}**'
              + (f' ({"; ".join(outcome["failures"])})' if outcome['failures'] else ''),
              f'- Started {receipt["started_at"]}, finished {receipt.get("finished_at")}',
@@ -666,8 +1020,16 @@ def _write_summary(path: Path, receipt: dict) -> None:
              f'- llama.cpp: {"; ".join(receipt.get("build", {}).get("llama_cpp", []))}',
              f'- Reference: llama-server on {HOST}:{SERVER_PORT}, flags `{" ".join(SERVER_FLAGS)}`, stopped before the '
              f'host loaded (one model resident at a time)',
+             *([f'- Reference recorded by a separate pass from {recorded.get("started_at")} to '
+                f'{recorded.get("finished_at")} into `{recorded.get("file")}` (vectors `{vectors.get("file")}`, '
+                f'{vectors.get("bytes")} bytes, {vectors.get("dtype")}, sha256 `{vectors.get("sha256")}`); this '
+                'pass loaded only the host'] if receipt.get('passes') == 'two' and recorded else []),
              f'- Host: {HOST}:{receipt["settings"]["host_port"]}, top_k_keep {CHECK_TOP_K}, '
              'prompt add_special=True, response add_special=False, parse_special=False, no chat template', '']
+    if batch:
+        lines[-1:-1] = [f'- Batch route `{BATCH_ENDPOINT_PATH}`: the prompt is decoded once per item, each response '
+                        f'continues on the cached prompt and the KV cache is rolled back with `{KV_ROLLBACK}` after '
+                        f'each; items: {", ".join(item["name"] for item in receipt["items"])}']
     if comparison:
         lines += ['| Measure | Value |', '|---|---|',
                   f'| Positions compared | {comparison["positions_checked"]} |',
@@ -677,6 +1039,10 @@ def _write_summary(path: Path, receipt: dict) -> None:
                   f'| Min top-{CHECK_TOP_K} id overlap with the server | {comparison["min_top_k_id_overlap"]} |',
                   f'| Within {TOLERANCE:g} after float64 renormalisation | {comparison["within_tolerance"]} |',
                   f'| Two host runs bitwise identical | {receipt["repeatability"]["all_identical"]} |', '']
+        if batch:
+            lines[-1:-1] = [f'| Batch route equals the single route on every pair | '
+                            f'{all(receipt.get("batch_matches_single", {}).values())} |']
+            lines += _batch_summary_lines(receipt)
     teardown = receipt.get('teardown', {})
     lines += [f'- Teardown: listeners on {teardown.get("ports")}: {teardown.get("listeners")}; llama-server processes: '
               f'{teardown.get("llama_server_processes")}; other TCP states on those ports: '
@@ -686,18 +1052,217 @@ def _write_summary(path: Path, receipt: dict) -> None:
     path.write_text('\n'.join(lines), encoding='utf-8')
 
 
-def check_against_server(output: Path, *, port: int = PORT) -> int:
-    """Run the exactness check and write ``receipt.json`` and ``summary.md``; 0 when it passes."""
+# ---------- the two passes (user correction 2026-11-10: never two models loaded) ----------
+
+RECORDING_SCHEMA = 'finance-sim-full-distribution-reference/1'
+RECORDING_NAME = 'reference-recording.json'
+RECORDING_VECTORS = 'reference-vectors.npz'
+PASS_MODES = ('record', 'compare')
+
+
+class RecordingError(ValueError):
+    """A reference recording the compare pass cannot use (missing, failed, mismatched or altered)."""
+
+
+def _check_pairs(batch: bool) -> list[dict]:
+    return batch_reference_pairs(BATCH_EXACTNESS_ITEMS) if batch else [dict(pair) for pair in EXACTNESS_PAIRS]
+
+
+def _plain(value):
+    """``value`` as it reads back from JSON (tuples become lists), so a recording compares equal."""
+    return json.loads(json.dumps(value))
+
+
+def _model_identity() -> dict:
+    return {'digest': MODEL_DIGEST, 'path': str(MODEL_PATH.relative_to(ROOT))}
+
+
+def _reference_settings() -> dict:
+    return _plain({'reference_port': SERVER_PORT, 'server_flags': SERVER_FLAGS, 'reference_request': REFERENCE_BODY,
+                   'n_probs': REFERENCE_N_PROBS})
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        for block in iter(lambda: handle.read(1 << 20), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def write_recording(output: Path, recording: Mapping, vectors) -> dict:
+    """Write the reference vectors (``RECORDING_VECTORS``) and the recording (``RECORDING_NAME``); return the recording.
+
+    llama-server's logprobs are float32 values, so the stacked vectors are stored as float32 when
+    that is exact (NaN for absent ids included) and as float64 otherwise; the vector file's size
+    and SHA-256 go into the recording. Without vectors any older vector file is removed, so a
+    stale file never pairs with a new recording.
+    """
     output.mkdir(parents=True, exist_ok=True)
-    receipt = {'schema': 'finance-sim-full-distribution-exactness/1', 'task': '6.1', 'started_at': _now(),
-               'model': {'digest': MODEL_DIGEST, 'path': str(MODEL_PATH.relative_to(ROOT))},
+    recording = dict(recording)
+    path = output / RECORDING_VECTORS
+    if len(vectors):
+        stack = np.stack([np.asarray(vector, dtype=np.float64) for vector in vectors])
+        with np.errstate(over='ignore'):  # A value beyond float32 becomes inf and keeps float64.
+            narrow = stack.astype(np.float32)
+        stored = narrow if np.array_equal(narrow.astype(np.float64), stack, equal_nan=True) else stack
+        with path.open('wb') as handle:
+            np.savez_compressed(handle, vectors=stored)
+        recording['vectors'] = {'file': RECORDING_VECTORS, 'sha256': _file_sha256(path), 'bytes': path.stat().st_size,
+                                'shape': list(stack.shape), 'dtype': str(stored.dtype)}
+    else:
+        path.unlink(missing_ok=True)
+        recording['vectors'] = None
+    (output / RECORDING_NAME).write_text(json.dumps(recording, indent=1) + '\n', encoding='utf-8')
+    return recording
+
+
+def load_recorded_vectors(output: Path, recording: Mapping) -> list[np.ndarray]:
+    """The recording's reference vectors as float64, after checking the file's SHA-256, shape and dtype."""
+    meta = recording.get('vectors')
+    if not isinstance(meta, Mapping):
+        raise RecordingError('the recording holds no reference vectors')
+    name = meta.get('file')
+    if not isinstance(name, str) or Path(name).name != name:
+        raise RecordingError('the recording names no plain vector file')
+    path = output / name
+    if not path.is_file():
+        raise RecordingError(f'the vector file {name} is missing')
+    if _file_sha256(path) != meta.get('sha256'):
+        raise RecordingError(f'the vector file {name} does not match its recorded sha256')
+    with np.load(path, allow_pickle=False) as data:
+        stack = data['vectors']
+    if list(stack.shape) != meta.get('shape') or str(stack.dtype) != meta.get('dtype'):
+        raise RecordingError(f'the vector file {name} differs from its recorded shape or dtype')
+    return [row.astype(np.float64) for row in stack]
+
+
+def read_recording(output: Path, *, pairs, batch: bool) -> tuple[dict, list[np.ndarray]]:
+    """The record pass's recording for these pairs, with its vectors; RecordingError when it cannot be used."""
+    path = output / RECORDING_NAME
+    try:
+        recording = json.loads(path.read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        raise RecordingError(f'no reference recording at {path}; run the record pass first') from None
+    except (OSError, ValueError) as error:
+        raise RecordingError(f'the reference recording {path} is unreadable ({type(error).__name__})') from None
+    if not isinstance(recording, dict) or recording.get('schema') != RECORDING_SCHEMA:
+        raise RecordingError(f'{path.name} is not a {RECORDING_SCHEMA} recording')
+    outcome = recording.get('outcome') or {}
+    if not outcome.get('passed'):
+        raise RecordingError(f'the record pass did not pass ({"; ".join(outcome.get("failures") or ["no outcome"])})')
+    expected = {'mode': 'batch' if batch else 'single', 'model': _model_identity(), 'settings': _reference_settings(),
+                'pairs': _plain([dict(pair) for pair in pairs])}
+    for key, value in expected.items():
+        if recording.get(key) != value:
+            raise RecordingError(f"the recording's {key} differs from this check's")
+    tokens, positions = recording.get('tokens'), recording.get('positions')
+    if not isinstance(tokens, list) or len(tokens) != len(pairs) or not isinstance(positions, list):
+        raise RecordingError('the recording does not hold the server tokens and positions of every pair')
+    vectors = load_recorded_vectors(output, recording)
+    if len(vectors) != len(positions):
+        raise RecordingError(f'the recording holds {len(vectors)} vectors for {len(positions)} positions')
+    return recording, vectors
+
+
+def record_reference_pass(output: Path, *, port: int = PORT, batch: bool = False) -> int:
+    """Pass A: start only llama-server on 127.0.0.1:11560, record its full-vocabulary reference for
+    the pairs, stop it and verify that no listener and no llama-server process remains; write the
+    recording (``RECORDING_NAME`` plus ``RECORDING_VECTORS``) into ``output``. The host is never
+    loaded here. 0 when recorded and torn down cleanly, 3 when the preflight refuses."""
+    output.mkdir(parents=True, exist_ok=True)  # Before the server log is opened in it.
+    pairs = _check_pairs(batch)
+    recording = {'schema': RECORDING_SCHEMA, 'task': '6.4' if batch else '6.1', 'pass': 'record',
+                 'mode': 'batch' if batch else 'single', 'started_at': _now(), 'model': _model_identity(),
+                 'settings': _reference_settings(), 'pairs': [dict(pair) for pair in pairs]}
+    failures, vectors = [], []
+    recording['preflight'] = preflight = _preflight(port)
+    if preflight['refusals']:
+        failures = [f'preflight: {reason}' for reason in preflight['refusals']]
+        recording |= {'finished_at': _now(), 'outcome': {'passed': False, 'refused': True, 'failures': failures}}
+        write_recording(output, recording, [])
+        print(json.dumps({'recording': str(output / RECORDING_NAME), **recording['outcome']}))
+        return 3
+    try:
+        recording['build'] = build_info()
+        tokens, positions, vectors, recording['reference_lifecycle'] = _record_reference(
+            pairs, output / 'reference-llama-server.log')
+        recording |= {'tokens': tokens, 'positions': positions}
+        if recording['reference_lifecycle']['after_stop']['listeners'] or _processes():
+            failures.append('the reference llama-server did not stop cleanly')
+    except Exception as error:  # Recorded; the server is already stopped by _record_reference.
+        failures.append(f'error: {type(error).__name__}: {error}')
+    recording['teardown'] = teardown = {'ports': [SERVER_PORT], 'listeners': _wait_until_free((SERVER_PORT,)),
+                                        'llama_server_processes': _processes(), 'checked_at': _now()}
+    if teardown['listeners'] or teardown['llama_server_processes']:
+        failures.append('a listener or llama-server process remains after the record pass')
+    recording |= {'finished_at': _now(), 'outcome': {'passed': not failures, 'refused': False, 'failures': failures}}
+    recording = write_recording(output, recording, [] if failures else vectors)
+    print(json.dumps({'recording': str(output / RECORDING_NAME), 'vectors': recording['vectors'],
+                      **recording['outcome']}))
+    return 0 if not failures else 1
+
+
+def _base_receipt(pairs, *, port: int, batch: bool, passes: str) -> dict:
+    receipt = {'schema': 'finance-sim-full-distribution-exactness/1', 'task': '6.4' if batch else '6.1',
+               'started_at': _now(), 'passes': passes, 'model': _model_identity(),
                'settings': {'reference_port': SERVER_PORT, 'host_port': port, 'server_flags': SERVER_FLAGS,
                             'reference_request': REFERENCE_BODY, 'top_k_keep': CHECK_TOP_K, 'tolerance': TOLERANCE,
                             'tokenisation': {'prompt': {'add_special': True, 'parse_special': False},
                                              'response': {'add_special': False, 'parse_special': False},
                                              'template': 'none'}},
-               'pairs': [dict(pair) for pair in EXACTNESS_PAIRS]}
+               'pairs': [dict(pair) for pair in pairs]}
+    if batch:
+        receipt['mode'] = 'batch'
+        receipt['settings'] |= {'batch_route': BATCH_ENDPOINT_PATH, 'kv_rollback': KV_ROLLBACK,
+                                'prompt_decode': 'once per item, one token per llama_decode as on the single route'}
+        receipt['items'] = [dict(item) for item in BATCH_EXACTNESS_ITEMS]
+    return receipt
+
+
+def check_against_server(output: Path, *, port: int = PORT, batch: bool = False, mode: str | None = None) -> int:
+    """Run the exactness check (on the batch route when ``batch``); 0 when it passes.
+
+    ``mode='record'`` runs pass A only (llama-server, written to the recording in ``output``);
+    ``mode='compare'`` runs pass B only (the host against that recording; ``receipt.json`` and
+    ``summary.md``). Without ``mode`` both passes run one after the other in this process, the
+    comparison again reading the recording from the file.
+    """
+    if mode not in (None, *PASS_MODES):
+        raise ValueError(f'mode must be one of {PASS_MODES} or None')
+    if mode == 'record':
+        return record_reference_pass(output, port=port, batch=batch)
+    if mode == 'compare':
+        return compare_pass(output, port=port, batch=batch, passes='two')
+    code = record_reference_pass(output, port=port, batch=batch)
+    if code:
+        receipt = _base_receipt(_check_pairs(batch), port=port, batch=batch, passes='one process')
+        recorded = json.loads((output / RECORDING_NAME).read_text(encoding='utf-8'))['outcome']
+        receipt['outcome'] = {'passed': False, 'refused': recorded['refused'],
+                              'failures': [f'record pass: {failure}' for failure in recorded['failures']]}
+        return _finish(output, receipt, code)
+    return compare_pass(output, port=port, batch=batch, passes='one process')
+
+
+def compare_pass(output: Path, *, port: int = PORT, batch: bool = False, passes: str = 'two') -> int:
+    """Pass B: with no llama-server resident, load only the host, serve the pairs (on the batch route
+    when ``batch``) and compare against the record pass's recording in ``output``; write
+    ``receipt.json`` and ``summary.md``. 0 when it passes, 3 when the recording or the preflight refuses."""
+    output.mkdir(parents=True, exist_ok=True)
+    pairs = _check_pairs(batch)
+    receipt = _base_receipt(pairs, port=port, batch=batch, passes=passes)
     failures = []
+    try:
+        recording, vectors = read_recording(output, pairs=pairs, batch=batch)
+    except RecordingError as error:
+        receipt['outcome'] = {'passed': False, 'refused': True, 'failures': [f'recording: {error}']}
+        return _finish(output, receipt, 3)
+    receipt['reference_recording'] = {key: recording.get(key) for key in (
+        'started_at', 'finished_at', 'outcome', 'vectors', 'preflight', 'teardown', 'build')} | {'file': RECORDING_NAME}
+    receipt['reference_lifecycle'] = recording.get('reference_lifecycle')
+    tokens, positions = recording['tokens'], recording['positions']
+    for pair, ids in zip(receipt['pairs'], tokens, strict=True):
+        pair |= {'server_prompt_ids': ids['prompt_ids'], 'server_response_ids': ids['response_ids']}
     receipt['preflight'] = preflight = _preflight(port)
     if preflight['refusals']:
         failures += [f'preflight: {reason}' for reason in preflight['refusals']]
@@ -705,17 +1270,19 @@ def check_against_server(output: Path, *, port: int = PORT) -> int:
         return _finish(output, receipt, 3)
     try:
         receipt['build'] = build_info()
-        tokens, positions, vectors, receipt['reference_lifecycle'] = _record_reference(
-            EXACTNESS_PAIRS, output / 'reference-llama-server.log')
-        for pair, ids in zip(receipt['pairs'], tokens, strict=True):
-            pair |= {'server_prompt_ids': ids['prompt_ids'], 'server_response_ids': ids['response_ids']}
-        if receipt['reference_lifecycle']['after_stop']['listeners'] or _processes():
-            raise RuntimeError('the reference llama-server did not stop cleanly')
-        tokenisation, runs, rows, receipt['host_lifecycle'] = _host_phase(EXACTNESS_PAIRS, tokens, port)
+        if receipt['build'] != recording.get('build'):
+            raise RuntimeError('the llama.cpp build differs from the record pass')
+        if batch:
+            tokenisation, runs, singles, rows, receipt['host_lifecycle'] = _host_phase_batch(
+                BATCH_EXACTNESS_ITEMS, pairs, tokens, port)
+            replies = {name: json.loads(entry['body'])['evidence'] for name, entry in runs[0].items()}
+            evidence = {pair['name']: replies[pair['item']][pair['index']] for pair in pairs}
+        else:
+            tokenisation, runs, rows, receipt['host_lifecycle'] = _host_phase(EXACTNESS_PAIRS, tokens, port)
+            evidence = {name: json.loads(entry['body']) for name, entry in runs[0].items()}
         receipt['tokenisation_agreement'] = tokenisation
         n_vocab = receipt['host_lifecycle']['n_vocab']
-        compared, cursor = [], {pair['name']: 0 for pair in EXACTNESS_PAIRS}
-        evidence = {name: json.loads(entry['body']) for name, entry in runs[0].items()}
+        compared, cursor = [], {pair['name']: 0 for pair in pairs}
         for meta, vector in zip(positions, vectors, strict=True):
             name, j = meta['pair'], meta['position']
             assert cursor[name] == j
@@ -747,6 +1314,17 @@ def check_against_server(output: Path, *, port: int = PORT) -> int:
             failures.append(f'host differs from llama-server beyond {TOLERANCE:g} or in rank')
         if not repeat['all_identical']:
             failures.append('two host runs are not bitwise identical')
+        if batch:
+            receipt['batch_matches_single'] = matches = {
+                pair['name']: json.loads(singles[pair['name']]['body']) == evidence[pair['name']] for pair in pairs}
+            receipt['shared_prompt_ids_identical'] = shared = all(
+                len({tuple(pair['server_prompt_ids']) for pair in receipt['pairs'] if pair['item'] == item['name']}) == 1
+                for item in BATCH_EXACTNESS_ITEMS)
+            receipt['per_item_timing'] = _per_item_timing(runs, singles)
+            if not all(matches.values()):
+                failures.append('the batch route differs from the single route on the same pairs')
+            if not shared:
+                failures.append('llama-server tokenised a shared prompt differently across its responses')
     except Exception as error:  # Recorded in the receipt; every started process is already stopped.
         failures.append(f'error: {type(error).__name__}: {error}')
     ports = (SERVER_PORT, port)
@@ -770,15 +1348,37 @@ def _finish(output: Path, receipt: dict, code: int) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--port', type=int, default=PORT, help='loopback port (default %(default)s)')
+    parser.add_argument('--memory-floor-bytes', type=int, default=None,
+                        help="refuse new requests with 503 memory_low below this free physical memory (default: "
+                             "the llamacpp-gemma3-4b profile's memory floor)")
     parser.add_argument('--check-against-server', action='store_true',
                         help='run the exactness check against llama-server instead of serving')
-    parser.add_argument('--output', default=str(RECEIPT_DIR), help='receipt folder for --check-against-server')
+    parser.add_argument('--batch', action='store_true',
+                        help='with --check-against-server: check the batch route (task 6.4)')
+    passes = parser.add_mutually_exclusive_group()
+    passes.add_argument('--record', action='store_true',
+                        help='with --check-against-server: pass A only: start llama-server, write its reference to '
+                             f'{RECORDING_NAME} and {RECORDING_VECTORS} in the output folder, stop it, verify it is gone')
+    passes.add_argument('--compare', action='store_true',
+                        help='with --check-against-server: pass B only: load the host and compare against the '
+                             'recording of pass A in the output folder')
+    parser.add_argument('--output', default=None,
+                        help='receipt and recording folder for --check-against-server (default: exactness/, or '
+                             'exactness/batch/)')
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error('--port must be between 1 and 65535')
+    if args.memory_floor_bytes is not None and args.memory_floor_bytes < 1:
+        parser.error('--memory-floor-bytes must be a positive number of bytes')
+    if args.batch and not args.check_against_server:
+        parser.error('--batch is a mode of --check-against-server')
+    if (args.record or args.compare) and not args.check_against_server:
+        parser.error('--record and --compare are passes of --check-against-server')
     if args.check_against_server:
-        return check_against_server(Path(args.output), port=args.port)
-    return serve(args.port)
+        output = Path(args.output) if args.output else (BATCH_RECEIPT_DIR if args.batch else RECEIPT_DIR)
+        mode = 'record' if args.record else 'compare' if args.compare else None
+        return check_against_server(output, port=args.port, batch=args.batch, mode=mode)
+    return serve(args.port, memory_floor_bytes=args.memory_floor_bytes)
 
 
 if __name__ == '__main__':

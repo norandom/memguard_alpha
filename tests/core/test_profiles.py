@@ -568,7 +568,7 @@ def test_llamacpp_ports_follow_the_gateway_rule_and_do_not_collide():
     assert len(ports) == 4 and not ports & RESERVED_PORTS
 
 
-def test_llamacpp_ram_refusal_proposes_modal_and_notes_cover_the_second_load():
+def test_llamacpp_ram_refusal_proposes_modal_and_notes_state_one_model_host_at_a_time():
     profile = load_profile(LLAMACPP)
     # Modal Gemma 3 4B serves the same model family first; GPT-OSS-20B stays the second fallback.
     assert profile.host_requirements.fallback_profile_ids == ("modal-gemma3-4b", "modal-gpt-oss-20b")
@@ -577,7 +577,9 @@ def test_llamacpp_ram_refusal_proposes_modal_and_notes_cover_the_second_load():
     assert not report.passed and report.reason == "insufficient_free_ram"
     assert "--profile modal-gemma3-4b or --profile modal-gpt-oss-20b" in report.recommendation
     assert "test-key" not in report.recommendation
-    assert "generation process only" in profile.notes
+    # User correction 2026-11-10: one load plus headroom per start, one model host at a time, no second load.
+    assert "one load of the GGUF plus headroom" in profile.notes and "one model host" in profile.notes
+    assert "second load" not in profile.notes and "generation process only" not in profile.notes
 
 
 def test_llamacpp_notes_record_state_folders_and_pins():

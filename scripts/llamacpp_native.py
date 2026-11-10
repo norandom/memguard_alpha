@@ -13,6 +13,13 @@ KV cache, which R40 showed matches llama-server's ``cache_prompt`` computation
 within 1e-6 once the server's float32 normaliser is redone in float64. The
 batched ``Llama.logits`` route changes the Vulkan kernels with the batch shape
 and differs by up to about 0.1 nats, so it is kept only for comparison.
+
+For the batch route of task 6.4, ``Llama.continue_logits`` decodes further tokens
+(again one per ``llama_decode``) on top of a cached prompt and ``Llama.truncate``
+rolls the KV cache back to the prompt length with ``llama_memory_seq_rm``. The
+installed b12199 ``llama.dll`` exports the ``llama_memory_*`` API
+(``llama_get_memory``, ``llama_memory_seq_rm``, ``llama_memory_seq_pos_max``);
+the older ``llama_kv_self_seq_rm`` is not exported, so it is not bound.
 """
 from __future__ import annotations
 
@@ -129,6 +136,10 @@ class Llama:
         lib.llama_get_memory.restype = ctypes.c_void_p
         lib.llama_get_memory.argtypes = [ctypes.c_void_p]
         lib.llama_memory_clear.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+        lib.llama_memory_seq_rm.restype = ctypes.c_bool   # (memory, seq_id, p0, p1); p1 < 0 means to the end.
+        lib.llama_memory_seq_rm.argtypes = [ctypes.c_void_p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
+        lib.llama_memory_seq_pos_max.restype = ctypes.c_int32   # -1 when the sequence is empty.
+        lib.llama_memory_seq_pos_max.argtypes = [ctypes.c_void_p, ctypes.c_int32]
         lib.llama_free.argtypes = [ctypes.c_void_p]
         lib.llama_model_free.argtypes = [ctypes.c_void_p]
 
@@ -220,6 +231,44 @@ class Llama:
                     yield i, np.ctypeslib.as_array(pointer, shape=(self.n_vocab,)).copy()
         finally:
             self.lib.llama_batch_free(batch)
+
+    def cached_length(self):
+        """Positions the KV cache holds for sequence 0 (``llama_memory_seq_pos_max`` plus one; 0 when empty)."""
+        return int(self.lib.llama_memory_seq_pos_max(self.lib.llama_get_memory(self.ctx), 0)) + 1
+
+    def continue_logits(self, tokens, start):
+        """Yield (i, logits at position i) for i = start, start + 1, ..., ONE token per llama_decode, on top of
+        the cached positions 0..start-1, which are kept (no clear).
+
+        After ``incremental_logits`` decoded a prompt of ``start`` tokens, this is the computation one
+        ``incremental_logits`` call over the prompt plus ``tokens`` performs for these positions (task 6.4).
+        """
+        if start < 1 or start + len(tokens) > N_CTX:
+            raise ValueError('the continuation runs beyond the context')
+        held = self.cached_length()
+        if held != start:
+            raise RuntimeError(f'the KV cache holds {held} positions, not {start}')
+        batch = self.lib.llama_batch_init(1, 0, 1)
+        try:
+            batch.n_tokens, batch.n_seq_id[0], batch.seq_id[0][0], batch.logits[0] = 1, 1, 0, 1
+            for i, token in enumerate(tokens, start):
+                batch.token[0], batch.pos[0] = token, i
+                status = self.lib.llama_decode(self.ctx, batch)
+                if status != 0:
+                    raise RuntimeError(f'llama_decode returned {status}')
+                pointer = self.lib.llama_get_logits_ith(self.ctx, -1)
+                yield i, np.ctypeslib.as_array(pointer, shape=(self.n_vocab,)).copy()
+        finally:
+            self.lib.llama_batch_free(batch)
+
+    def truncate(self, n_keep):
+        """Roll the KV cache of sequence 0 back to positions 0..n_keep-1 (``llama_memory_seq_rm`` from n_keep on)
+        and check that exactly those positions remain."""
+        if not self.lib.llama_memory_seq_rm(self.lib.llama_get_memory(self.ctx), 0, n_keep, -1):
+            raise RuntimeError('llama_memory_seq_rm refused the rollback')
+        held = self.cached_length()
+        if held != n_keep:
+            raise RuntimeError(f'after the rollback the KV cache holds {held} positions, not {n_keep}')
 
     def score(self, tokens, route='incremental', chunk=64):
         """Per-token (logprob, entropy, rank) for targets tokens[1:]."""

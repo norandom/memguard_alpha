@@ -372,6 +372,59 @@ def test_gateway_stops_itself_when_the_host_exits(rig, fake_host, tmp_path):
     assert _read_state(rig)["stop_reason"] == "host_exited"
 
 
+def _sleeper(*extra: str) -> tuple[subprocess.Popen, psutil.Process]:
+    process = subprocess.Popen([sys.executable, "-I", "-c", "import time; time.sleep(120)", *extra])
+    return process, psutil.Process(process.pid)
+
+
+def test_gateway_keeps_serving_while_the_recorded_listener_lives_after_its_launcher_exits(rig, fake_host, tmp_path):
+    """The uv launcher can exit (code 0) while its python host keeps listening, as in the 6.4 soak on
+    2026-11-10: the gateway watches the listener recorded at readiness, logs the launcher's exit and stops
+    only when the listener itself exits."""
+    launcher, handle = _sleeper()
+    log = rig.state / "gateway.log"
+    try:
+        _write_state(rig, host_pid=launcher.pid, host_name=Path(handle.name()).stem, host_port=fake_host.port,
+                     listener_pid=fake_host.process.pid, listener_name=Path(fake_host.handle.name()).stem)
+        with _gateway(rig, tmp_path) as gateway:
+            _kill_tree(handle)
+            _wait_for(lambda: (log.exists() and "launcher" in log.read_text(encoding="utf-8"))
+                      or gateway.process.poll() is not None, 30, "the launcher exit line")
+            assert gateway.process.poll() is None, "the gateway stopped although the listener still serves"
+            assert _client(rig, TOKEN).evidence("Synthetic prompt.", " OK", top_k_keep=2).to_dict() == EVIDENCE
+            _kill_tree(fake_host.handle)  # Now the host itself exits.
+            assert gateway.process.wait(timeout=60) == 0
+        assert not _listening(rig.port)
+        assert _read_state(rig)["stop_reason"] == "host_exited"
+        text = log.read_text(encoding="utf-8")
+        assert f"host launcher pid {launcher.pid} exited" in text
+        assert f"listener pid {fake_host.process.pid} still serves" in text and "host exited" in text
+    finally:
+        _kill_tree(handle)
+        launcher.wait(timeout=10)
+
+
+FUNCTION_TEXT_PROBE = r"""
+param([string]$Script, [string]$Name)
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref]$null, [ref]$null)
+$found = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                    $n.Name -eq $Name }, $true)
+$found.Extent.Text | ConvertTo-Json -Compress
+"""
+
+
+def test_start_records_the_listener_at_readiness(tmp_path):
+    """So that a stop and the gateway reach the python host even after its uv launcher exited (design:
+    lifecycle scripts, the listener's process id is recorded at readiness)."""
+    probe = tmp_path / "function_text_probe.ps1"
+    probe.write_text(FUNCTION_TEXT_PROBE, encoding="utf-8")
+    result = _pwsh("-File", str(probe), str(SCRIPT), "Start-Serving")
+    assert result.returncode == 0, result.stderr
+    text = json.loads(result.stdout)
+    assert "listener_pid = $null; listener_name = $null" in text
+    assert "$state.listener_pid = $listener.Pid" in text and "$state.listener_name = " in text
+
+
 # --- stop verification ---------------------------------------------------------------------------
 
 
@@ -424,6 +477,34 @@ def test_stop_kills_the_recorded_host_tree_and_records_the_stop(rig, quiet_host)
         root.wait(timeout=10)
 
 
+def test_stop_reaches_the_recorded_listener_when_its_launcher_is_gone(rig, quiet_host):
+    """The live 6.4 soak left the python host listening after uv exited; stop reaches it through the
+    listener recorded at readiness."""
+    listener, handle = _sleeper("scripts/serve_full_distribution.py")  # A host command line, as the real one.
+    try:
+        _write_state(rig, host_pid=None, host_name="uv", listener_pid=listener.pid,
+                     listener_name=Path(handle.name()).stem)
+        result = _script("stop", *rig.args)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _alive(_tree(handle)) == []
+        assert "Stopped: no host or gateway process remains" in result.stdout
+    finally:
+        _kill_tree(handle)
+        listener.wait(timeout=10)
+
+
+def test_stop_does_not_kill_an_unrelated_process_that_reused_the_recorded_listener_pid(rig, quiet_host):
+    other, handle = _sleeper()
+    try:
+        _write_state(rig, host_pid=None, host_name="uv", listener_pid=other.pid, listener_name="uv")  # Name differs.
+        result = _script("stop", *rig.args)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert other.poll() is None
+    finally:
+        _kill_tree(handle)
+        other.wait(timeout=10)
+
+
 def test_stop_does_not_kill_an_unrelated_process_that_reused_the_recorded_pid(rig, quiet_host):
     other = subprocess.Popen([sys.executable, "-I", "-c", "import time; time.sleep(120)"])
     handle = psutil.Process(other.pid)
@@ -471,24 +552,79 @@ def test_start_refuses_all_interfaces_and_names(rig, address):
     assert rig.env_file.read_text(encoding="utf-8") == f"{TOKEN_NAME}={TOKEN}\n"
 
 
-def test_ram_gate_refuses_two_loads_with_the_preflight_wording_and_loads_nothing(rig, tmp_path, quiet_host):
+def _ram_profile(tmp_path, sibling_port: int, per_load: int) -> tuple[dict, Path]:
     data = json.loads(PROFILE_FILE.read_text(encoding="utf-8"))
-    per_load = 2 ** 50  # 1 PiB: no host has it free.
     data["host_requirements"]["min_free_ram_bytes"] = per_load
-    [sibling] = _free_ports(1)  # No llama-server listens there, so the sibling load is not resident.
-    data["model_config"]["endpoint"] = f"http://127.0.0.1:{sibling}/v1/chat/completions"
-    profile_file = tmp_path / "profile.json"
-    profile_file.write_text(json.dumps(data), encoding="utf-8")
+    data["model_config"]["endpoint"] = f"http://127.0.0.1:{sibling_port}/v1/chat/completions"
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return data, path
+
+
+def test_ram_gate_refuses_one_load_with_the_preflight_wording_and_loads_nothing(rig, tmp_path, quiet_host):
+    """One model host runs at a time, so the gate is the profile's min_free_ram_bytes, never doubled
+    (user correction 2026-11-10)."""
+    per_load = 2 ** 50  # 1 PiB: no host has it free.
+    [sibling] = _free_ports(1)  # No llama-server listens there.
+    data, profile_file = _ram_profile(tmp_path, sibling, per_load)
 
     result = _script("start", *rig.args, "-ProfilePath", str(profile_file), "-RamWaitSeconds", "3")
     output = result.stdout + result.stderr
     assert result.returncode == 2, output
     assert "Waiting for free RAM" in output  # Progress line while waiting.
     fallbacks = tuple(data["host_requirements"]["fallback_profile_ids"])
-    expected = _ram_recommendation(data["model_config"]["model"], 0, 2 * per_load, fallbacks)
-    assert expected.split(" free, ", 1)[1] in output  # Same sentence as preflight_host.
+    expected = _ram_recommendation(data["model_config"]["model"], 0, per_load, fallbacks)
+    assert expected.split(" free, ", 1)[1] in output  # Same sentence as preflight_host, for one load.
     assert "--profile modal-gemma3-4b" in output and "on a machine with at least" in output
-    assert "two loads" in output
+    assert "one load" in output and "two loads" not in output
+    assert not (rig.state / "state.json").exists() and not _listening(rig.host_port)
+    assert rig.env_file.read_text(encoding="utf-8") == f"{TOKEN_NAME}={TOKEN}\n"
+
+
+@contextlib.contextmanager
+def _named_listener(tmp_path, name: str):
+    """A copy of the base interpreter named ``name`` listening on an ephemeral loopback port.
+
+    Its process name is ``name`` without the extension, as a resident llama-server's is. The copy
+    takes the interpreter's DLLs and finds the standard library through PYTHONHOME.
+    """
+    base = Path(getattr(sys, "_base_executable", sys.executable)).parent
+    needed = [base / "python.exe", *sorted(base.glob("python3*.dll")), *sorted(base.glob("vcruntime140*.dll"))]
+    if not all(path.is_file() for path in needed) or not (base / "Lib").is_dir():
+        pytest.skip(f"no copyable base interpreter under {base}")
+    folder = tmp_path / "fake-sibling"
+    folder.mkdir()
+    for path in needed[1:]:
+        shutil.copy2(path, folder / path.name)
+    executable = folder / name
+    shutil.copy2(needed[0], executable)
+    code = ("import socket, time; s = socket.socket(); s.bind(('127.0.0.1', 0)); s.listen(); "
+            "print(s.getsockname()[1], flush=True); time.sleep(120)")
+    environment = {key: value for key, value in os.environ.items() if not key.upper().startswith("PYTHON")}
+    environment["PYTHONHOME"] = str(base)
+    process = subprocess.Popen([str(executable), "-c", code], stdout=subprocess.PIPE, text=True, env=environment)
+    handle = psutil.Process(process.pid)
+    try:
+        port = int(process.stdout.readline())
+        _wait_for(lambda: _listening(port), 30, f"the {name} listener")
+        yield port
+    finally:
+        _kill_tree(handle)
+        process.stdout.close()
+
+
+def test_a_resident_llama_server_refuses_the_start_before_the_ram_gate(rig, tmp_path, quiet_host):
+    """Only one model host at a time: a llama-server listening on the generation port refuses the start."""
+    per_load = 2 ** 50  # Without the sibling refusal the RAM gate refuses, so nothing is ever loaded here.
+    with _named_listener(tmp_path, "llama-server.exe") as sibling:
+        _, profile_file = _ram_profile(tmp_path, sibling, per_load)
+        result = _script("start", *rig.args, "-ProfilePath", str(profile_file), "-RamWaitSeconds", "3")
+    output = result.stdout + result.stderr
+    assert result.returncode == 2, output
+    assert "only one model host runs at a time" in output and f"port {sibling}" in output
+    assert "serve_local_llamacpp.ps1 stop" in output
+    assert "Nothing was loaded and no request was sent." in output
+    assert "Waiting for free RAM" not in output  # Refused before the RAM gate.
     assert not (rig.state / "state.json").exists() and not _listening(rig.host_port)
     assert rig.env_file.read_text(encoding="utf-8") == f"{TOKEN_NAME}={TOKEN}\n"
 
@@ -515,12 +651,9 @@ def _run_functions(tmp_path, body: str) -> object:
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 
-def test_ram_requirement_counts_the_sibling_load_until_it_is_resident(tmp_path):
-    body = ("@((Get-RamRequirement 6442450944 $false), (Get-RamRequirement 6442450944 $true)) | "
-            "ConvertTo-Json -Compress")
-    absent, resident = _run_functions(tmp_path, body)
-    assert (absent["loads"], absent["required_bytes"]) == (2, 2 * 6442450944)
-    assert (resident["loads"], resident["required_bytes"]) == (1, 6442450944)
+def test_ram_requirement_is_one_load_never_doubled(tmp_path):
+    result = _run_functions(tmp_path, "Get-RamRequirement 6442450944 | ConvertTo-Json -Compress")
+    assert result == {"per_load_bytes": 6442450944, "loads": 1, "required_bytes": 6442450944}
 
 
 @pytest.mark.parametrize(("samples", "seconds", "passed", "count"), [

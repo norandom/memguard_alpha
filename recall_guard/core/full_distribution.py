@@ -8,6 +8,8 @@ the full vector. Log-probabilities and entropies use natural-log units.
 
 The host sits behind a bearer gateway. The bearer value is read from the
 environment at request time and is never stored, logged or included in errors.
+A batch request (task 6.4) sends one prompt with several responses; the host
+evaluates the prompt once and returns one evidence object per response.
 """
 
 import math
@@ -25,8 +27,13 @@ from recall_guard.core.request_control import RequestError
 
 #: Host route, relative to the gateway base URL.
 ENDPOINT_PATH = "/v1/full_distribution"
+#: Batch route (task 6.4): one prompt, several responses, one evidence object per response in order.
+BATCH_ENDPOINT_PATH = "/v1/full_distribution_batch"
 _CREDENTIAL_REF = re.compile(r"(?:env:)?[A-Za-z_][A-Za-z0-9_]*")
-_STATUS_CODES = {401: "auth_failed", 409: "digest_mismatch", 413: "oversize", 422: "tokenisation_failed"}
+_STATUS_CODES = {401: "auth_failed", 409: "digest_mismatch", 413: "oversize", 422: "tokenisation_failed",
+                 503: "host_busy"}
+#: The host answers 503 ``memory_low`` while free physical memory is below its floor; the caller may retry later.
+_RETRYABLE_CODES = frozenset({"host_busy"})
 _DETAIL_LIMIT = 2000
 _REDACTED = "[redacted]"
 _POSITION_FIELDS = ("response_token_ids", "logprob", "entropy", "rank", "top_logprobs")
@@ -170,7 +177,8 @@ def _redact(text: str, secret: str) -> str:
 class FullDistributionClient:
     """Request full-distribution evidence from a host through its bearer gateway.
 
-    One call is exactly one POST to ``{base_url}/v1/full_distribution`` with
+    One call is exactly one POST to ``{base_url}/v1/full_distribution`` (or to
+    ``/v1/full_distribution_batch`` for ``evidence_batch``) with
     transport retries and redirects disabled and ambient proxy or netrc
     authentication ignored, so only the referenced bearer reaches the gateway.
     ``credential_ref`` names an environment variable as ``env:NAME`` or as a
@@ -204,6 +212,7 @@ class FullDistributionClient:
             raise TypeError("environment must be a mapping")
         self.base_url = base_url.rstrip("/")
         self.endpoint = self.base_url + ENDPOINT_PATH
+        self.batch_endpoint = self.base_url + BATCH_ENDPOINT_PATH
         self.model_digest = model_digest
         self.credential_ref = credential_ref
         self.timeout_s = float(timeout_s)
@@ -216,7 +225,8 @@ class FullDistributionClient:
         """Teacher-force ``prompt_text`` plus ``response_text`` on the pinned digest.
 
         HTTP 401, 409, 413 and 422 become RequestError codes ``auth_failed``,
-        ``digest_mismatch``, ``oversize`` and ``tokenisation_failed``; another
+        ``digest_mismatch``, ``oversize`` and ``tokenisation_failed``; HTTP 503
+        (the host's ``memory_low`` refusal) is ``host_busy`` (retryable); another
         status is ``http_error`` and a network failure ``transport_error``
         (retryable). A 200 body that fails validation, including a digest other
         than the requested one or more than ``top_k_keep`` alternatives at a
@@ -227,28 +237,16 @@ class FullDistributionClient:
         if not response_text:
             raise ValueError("response_text must be nonempty")
         _count(top_k_keep, "top_k_keep", minimum=1)
-        credential = self._environment.get(self.credential_ref.removeprefix("env:"))
-        if not isinstance(credential, str) or not credential.strip():
-            raise ValueError("Referenced credential is missing or empty")
-        if (credential != credential.strip() or not credential.isascii()
-                or any(char.isspace() or not char.isprintable() for char in credential)):
-            raise ValueError("Referenced credential contains whitespace, control or non-ASCII characters")
+        credential = self._credential()
         payload = {"model_digest": self.model_digest, "prompt_text": prompt_text,
                    "response_text": response_text, "top_k_keep": top_k_keep}
         response, failure = self._post(payload, credential)
         if failure is not None:
             raise failure
         if response.status_code != 200:
-            code = _STATUS_CODES.get(response.status_code, "http_error")
-            raise RequestError(f"HTTP {response.status_code}: full-distribution request rejected ({code})",
-                               status_code=response.status_code, code=code,
-                               detail=_redact(response.text, credential)[:_DETAIL_LIMIT])
+            raise self._rejection(response, credential)
         try:
-            evidence = FullDistributionEvidence.from_dict(response.json())
-            if evidence.model_digest != self.model_digest:
-                raise ValueError("host reported a model digest other than the requested one")
-            if any(len(position) > top_k_keep for position in evidence.top_logprobs):
-                raise ValueError("host returned more alternatives than top_k_keep")
+            evidence = self._checked(FullDistributionEvidence.from_dict(response.json()), top_k_keep)
         except (TypeError, ValueError) as error:
             failure = RequestError(_redact(f"Invalid full-distribution evidence: {error}", credential),
                                    status_code=200, code="invalid_evidence")
@@ -256,7 +254,81 @@ class FullDistributionClient:
             raise failure
         return evidence
 
-    def _post(self, payload: dict, credential: str) -> tuple[requests.Response | None, RequestError | None]:
+    def evidence_batch(self, prompt_text: str, response_texts, *, top_k_keep: int = 100,
+                       timeout_s: float | None = None) -> tuple[FullDistributionEvidence, ...]:
+        """Teacher-force several responses to one prompt in one request (task 6.4).
+
+        The host evaluates ``prompt_text`` once and each of ``response_texts``
+        against the cached prompt, so each evidence object equals what
+        ``evidence`` returns for that pair. The result holds one evidence
+        object per response, in order. ``timeout_s`` bounds this one request
+        and defaults to the client's; the plan sets it, since a batch takes
+        about one prompt evaluation plus every response's decodes (the study
+        uses about 600 s per batch). Status codes map as for ``evidence``,
+        including the retryable ``host_busy`` for HTTP 503. A 200 body other
+        than ``{"evidence": [...]}`` holding one valid evidence object per
+        response is ``invalid_evidence``.
+        """
+        if not isinstance(prompt_text, str):
+            raise TypeError("prompt_text must be a string")
+        if not isinstance(response_texts, (list, tuple)) or not all(isinstance(text, str) for text in response_texts):
+            raise TypeError("response_texts must be a list or tuple of strings")
+        if not response_texts or not all(response_texts):
+            raise ValueError("response_texts must hold at least one response, each nonempty")
+        _count(top_k_keep, "top_k_keep", minimum=1)
+        if timeout_s is not None and _finite(timeout_s, "timeout_s") <= 0:
+            raise ValueError("timeout_s must be finite and greater than 0")
+        timeout = self.timeout_s if timeout_s is None else float(timeout_s)
+        credential = self._credential()
+        payload = {"model_digest": self.model_digest, "prompt_text": prompt_text,
+                   "response_texts": list(response_texts), "top_k_keep": top_k_keep}
+        response, failure = self._post(payload, credential, endpoint=self.batch_endpoint, timeout_s=timeout)
+        if failure is not None:
+            raise failure
+        if response.status_code != 200:
+            raise self._rejection(response, credential)
+        try:
+            data = response.json()
+            if not isinstance(data, Mapping) or set(data) != {"evidence"}:
+                raise ValueError('the batch reply must be exactly {"evidence": [...]}')
+            items = data["evidence"]
+            if not isinstance(items, list) or len(items) != len(response_texts):
+                raise ValueError(f"the batch reply must hold one evidence object for each of the "
+                                 f"{len(response_texts)} responses")
+            batch = tuple(self._checked(FullDistributionEvidence.from_dict(item), top_k_keep) for item in items)
+        except (TypeError, ValueError) as error:
+            failure = RequestError(_redact(f"Invalid full-distribution evidence: {error}", credential),
+                                   status_code=200, code="invalid_evidence")
+        if failure is not None:
+            raise failure
+        return batch
+
+    def _credential(self) -> str:
+        """The referenced bearer, refused before any request when missing or not a visible-ASCII token."""
+        credential = self._environment.get(self.credential_ref.removeprefix("env:"))
+        if not isinstance(credential, str) or not credential.strip():
+            raise ValueError("Referenced credential is missing or empty")
+        if (credential != credential.strip() or not credential.isascii()
+                or any(char.isspace() or not char.isprintable() for char in credential)):
+            raise ValueError("Referenced credential contains whitespace, control or non-ASCII characters")
+        return credential
+
+    def _checked(self, evidence: FullDistributionEvidence, top_k_keep: int) -> FullDistributionEvidence:
+        if evidence.model_digest != self.model_digest:
+            raise ValueError("host reported a model digest other than the requested one")
+        if any(len(position) > top_k_keep for position in evidence.top_logprobs):
+            raise ValueError("host returned more alternatives than top_k_keep")
+        return evidence
+
+    @staticmethod
+    def _rejection(response: requests.Response, credential: str) -> RequestError:
+        code = _STATUS_CODES.get(response.status_code, "http_error")
+        return RequestError(f"HTTP {response.status_code}: full-distribution request rejected ({code})",
+                            status_code=response.status_code, code=code, retryable=code in _RETRYABLE_CODES,
+                            detail=_redact(response.text, credential)[:_DETAIL_LIMIT])
+
+    def _post(self, payload: dict, credential: str, *, endpoint: str | None = None,
+              timeout_s: float | None = None) -> tuple[requests.Response | None, RequestError | None]:
         """Send one POST; a failure is returned, not raised, so no exception context is kept.
 
         A UnicodeError (for example latin-1 header encoding in http.client) is
@@ -269,8 +341,9 @@ class FullDistributionClient:
                 session.trust_env = False
                 session.mount("http://", requests.adapters.HTTPAdapter(max_retries=0))
                 session.mount("https://", requests.adapters.HTTPAdapter(max_retries=0))
-                return session.post(self.endpoint, headers=headers, json=payload,
-                                    timeout=self.timeout_s, allow_redirects=False), None
+                return session.post(endpoint or self.endpoint, headers=headers, json=payload,
+                                    timeout=self.timeout_s if timeout_s is None else timeout_s,
+                                    allow_redirects=False), None
         except requests.RequestException as error:
             return None, RequestError("Full-distribution request failed in transport", code="transport_error",
                                       retryable=True, detail=_redact(str(error), credential))

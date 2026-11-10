@@ -64,6 +64,7 @@
   "harmony": null,
   "host_requirements": {
     "min_free_ram_bytes": 6442450944,
+    "memory_floor_bytes": 1610612736,
     "recommended_ram_bytes": null,
     "context_tokens": 2048,
     "fallback_profile_ids": [
@@ -72,7 +73,7 @@
     ]
   },
   "allow_unauthenticated": false,
-  "notes": "llama.cpp b12199 natively on Windows with the Vulkan backend on the iGPU, serving the pinned Gemma 3 4B GGUF sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1 (q4_K_M, from models/blobs). Generation runs through llama-server on loopback port 11570, and its bearer gateway listens on port 11571; from WSL or a container set LLAMACPP_ENDPOINT_URL to the gateway's chat-completions URL. Full distribution runs through the teacher-forcing host on loopback port 11580 on the same GGUF digest, keeping the top 100 alternatives, and its bearer gateway listens on port 11581; from WSL or a container set FULL_DISTRIBUTION_ENDPOINT_URL to the gateway's base URL. Both gateways require LOCAL_MODEL_API_KEY. Each gateway listens on its host's loopback port plus one. min_free_ram_bytes covers the generation process only, and the start scripts gate the full-distribution host's second load of the same GGUF. Host state lives under runs/finance-sim/hosts/llama-server and runs/finance-sim/hosts/full-distribution. None of these ports collides with Ollama (11434, 11435), FastFlowLM (11540, 11541) or the reference llama-server (11560). top_logprobs 5 keeps parity with the Ollama profiles.",
+  "notes": "llama.cpp b12199 natively on Windows with the Vulkan backend on the iGPU, serving the pinned Gemma 3 4B GGUF sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1 (q4_K_M, from models/blobs). Generation runs through llama-server on loopback port 11570, and its bearer gateway listens on port 11571; from WSL or a container set LLAMACPP_ENDPOINT_URL to the gateway's chat-completions URL. Full distribution runs through the teacher-forcing host on loopback port 11580 on the same GGUF digest, keeping the top 100 alternatives, and its bearer gateway listens on port 11581; from WSL or a container set FULL_DISTRIBUTION_ENDPOINT_URL to the gateway's base URL. Both gateways require LOCAL_MODEL_API_KEY. Each gateway listens on its host's loopback port plus one. min_free_ram_bytes is one load of the GGUF plus headroom: only one model host (llama-server or the full-distribution host) runs at a time, so each start script gates its own load on it and refuses while the other host is resident. While free physical memory is below memory_floor_bytes (one quarter of min_free_ram_bytes), the full-distribution host refuses new requests with 503 memory_low, which the client reports as a retryable host_busy. Host state lives under runs/finance-sim/hosts/llama-server and runs/finance-sim/hosts/full-distribution. None of these ports collides with Ollama (11434, 11435), FastFlowLM (11540, 11541) or the reference llama-server (11560). top_logprobs 5 keeps parity with the Ollama profiles.",
   "full_distribution": {
     "endpoint": "http://127.0.0.1:11580",
     "endpoint_ref": "env:FULL_DISTRIBUTION_ENDPOINT_URL",

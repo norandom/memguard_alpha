@@ -618,35 +618,37 @@ def _refused_start(rig, dummy_install, profile_file) -> str:
                      "-RamWaitSeconds", "3")
     output = result.stdout + result.stderr
     assert result.returncode == 2, output
-    assert "Waiting for free RAM" in output  # Progress line while waiting.
-    assert "--profile modal-gemma3-4b" in output and "on a machine with at least" in output
+    assert "Nothing was loaded and no request was sent." in output
     assert not (rig.state / "state.json").exists() and not _listening(rig.host_port)
     assert rig.env_file.read_text(encoding="utf-8") == f"{TOKEN_NAME}={TOKEN}\n"
     return output
 
 
-def test_ram_gate_counts_both_loads_while_the_full_distribution_host_is_not_resident(
-        rig, dummy_install, tmp_path, quiet_host):
+def test_ram_gate_requires_one_load_with_the_preflight_wording(rig, dummy_install, tmp_path, quiet_host):
+    """One model host runs at a time, so the gate is the profile's min_free_ram_bytes, never doubled
+    (user correction 2026-11-10)."""
     per_load = 2 ** 50  # 1 PiB: no host has it free.
-    [sibling] = _free_ports(1)  # Nothing listens there, so the sibling load is not resident.
+    [sibling] = _free_ports(1)  # Nothing listens there.
     data, profile_file = _ram_profile(tmp_path, sibling, per_load)
     output = _refused_start(rig, dummy_install, profile_file)
-    fallbacks = tuple(data["host_requirements"]["fallback_profile_ids"])
-    expected = _ram_recommendation(data["model_config"]["model"], 0, 2 * per_load, fallbacks)
-    assert expected.split(" free, ", 1)[1] in output  # Same sentence as preflight_host.
-    assert "two loads" in output
-
-
-def test_ram_gate_counts_one_load_while_the_full_distribution_host_is_resident(
-        rig, dummy_install, tmp_path, quiet_host):
-    per_load = 2 ** 50
-    with _python_listener() as sibling:
-        data, profile_file = _ram_profile(tmp_path, sibling, per_load)
-        output = _refused_start(rig, dummy_install, profile_file)
+    assert "Waiting for free RAM" in output  # Progress line while waiting.
+    assert "--profile modal-gemma3-4b" in output and "on a machine with at least" in output
     fallbacks = tuple(data["host_requirements"]["fallback_profile_ids"])
     expected = _ram_recommendation(data["model_config"]["model"], 0, per_load, fallbacks)
-    assert expected.split(" free, ", 1)[1] in output
-    assert "one load" in output and "already resident" in output
+    assert expected.split(" free, ", 1)[1] in output  # Same sentence as preflight_host, for one load.
+    assert "one load" in output and "two loads" not in output
+
+
+def test_a_resident_full_distribution_host_refuses_the_start_before_the_ram_gate(
+        rig, dummy_install, tmp_path, quiet_host):
+    """Only one model host at a time: a python process on the full-distribution port refuses the start."""
+    per_load = 2 ** 50  # Without the sibling refusal the RAM gate refuses, so nothing is ever loaded here.
+    with _python_listener() as sibling:
+        _, profile_file = _ram_profile(tmp_path, sibling, per_load)
+        output = _refused_start(rig, dummy_install, profile_file)
+    assert "only one model host runs at a time" in output and f"port {sibling}" in output
+    assert "serve_full_distribution.ps1 stop" in output
+    assert "Waiting for free RAM" not in output  # Refused before the RAM gate.
 
 
 def test_sibling_is_resident_only_when_a_python_process_listens_on_its_port(tmp_path):
@@ -656,13 +658,11 @@ def test_sibling_is_resident_only_when_a_python_process_listens_on_its_port(tmp_
             "$own = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)",  # Owned by pwsh, not python.
             "$own.Start()",
             f"@((Test-SiblingResident {python_port}), (Test-SiblingResident {free}), "
-            "(Test-SiblingResident $own.LocalEndpoint.Port), (Get-RamRequirement 6442450944 $false), "
-            "(Get-RamRequirement 6442450944 $true)) | ConvertTo-Json -Compress"))
-        python, nothing, other, absent, resident = _run_functions(
+            "(Test-SiblingResident $own.LocalEndpoint.Port), (Get-RamRequirement 6442450944)) | ConvertTo-Json -Compress"))
+        python, nothing, other, need = _run_functions(
             tmp_path, ["Get-Listeners", "Test-SiblingResident", "Get-RamRequirement"], body)
     assert (python, nothing, other) == (True, False, False)
-    assert (absent["loads"], absent["required_bytes"], absent["sibling_resident"]) == (2, 2 * 6442450944, False)
-    assert (resident["loads"], resident["required_bytes"], resident["sibling_resident"]) == (1, 6442450944, True)
+    assert need == {"per_load_bytes": 6442450944, "loads": 1, "required_bytes": 6442450944}  # Never doubled.
 
 
 # --- helpers shared with the 6.2 lifecycle script --------------------------------------------------

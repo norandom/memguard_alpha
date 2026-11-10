@@ -1070,7 +1070,7 @@ def decide_from_draws(draws: Sequence[RecordedDraw], config: GuardConfig, identi
     the stage with its exit code in the receipt.
   - The exactness check gains `--batch`: the two single pairs plus one pair whose
     prompt carries two responses, compared against llama-server as before; plus a
-    30-minute soak (a batch request every 30 s, memory samples) written as a receipt
+    soak (10 minutes by decision of 2026-11-10 under the user's time constraint; a batch request every 30 s, memory samples) written as a receipt
     under `runs/finance-sim/hosts/full-distribution/soak/`.
 - Memory scheduling correction (user, 2026-11-10 end of session): only one model is
   loaded at a time, by design. The lifecycle scripts gate on one load plus headroom

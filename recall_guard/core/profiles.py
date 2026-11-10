@@ -78,25 +78,43 @@ def _optional_bytes(value, name: str) -> None:
 
 @dataclass(frozen=True)
 class HostResourceRequirement:
-    """Declarative pre-load host requirements; enforced by host preflight (M1.4)."""
+    """Declarative pre-load host requirements; enforced by host preflight (M1.4).
+
+    ``memory_floor_bytes`` is the free physical memory below which a running
+    model host refuses new requests (503 ``memory_low``, task 6.4); when unset,
+    ``memory_floor()`` derives one quarter of ``min_free_ram_bytes``.
+    """
 
     min_free_ram_bytes: int | None = None
     recommended_ram_bytes: int | None = None
     context_tokens: int = 2048
     fallback_profile_ids: tuple[str, ...] = ("modal-gpt-oss-20b", "ollama-gemma3-4b")
+    memory_floor_bytes: int | None = None
 
     def __post_init__(self) -> None:
         _optional_bytes(self.min_free_ram_bytes, "min_free_ram_bytes")
         _optional_bytes(self.recommended_ram_bytes, "recommended_ram_bytes")
+        _optional_bytes(self.memory_floor_bytes, "memory_floor_bytes")
+        if (self.memory_floor_bytes is not None and self.min_free_ram_bytes is not None
+                and self.memory_floor_bytes > self.min_free_ram_bytes):
+            raise ProfileError("memory_floor_bytes must not exceed min_free_ram_bytes")
         if type(self.context_tokens) is not int or self.context_tokens < 1:
             raise ProfileError("context_tokens must be a positive integer")
         object.__setattr__(self, "fallback_profile_ids", tuple(self.fallback_profile_ids))
         if not all(isinstance(item, str) and _PROFILE_ID.fullmatch(item) for item in self.fallback_profile_ids):
             raise ProfileError("fallback_profile_ids must contain profile IDs")
 
+    def memory_floor(self) -> int | None:
+        """The recorded floor, else one quarter of ``min_free_ram_bytes``, else None."""
+        if self.memory_floor_bytes is not None:
+            return self.memory_floor_bytes
+        return None if self.min_free_ram_bytes is None else self.min_free_ram_bytes // 4
+
     def to_dict(self) -> dict:
+        # The floor is emitted only when set, so profiles without one export unchanged.
         return {"min_free_ram_bytes": self.min_free_ram_bytes, "recommended_ram_bytes": self.recommended_ram_bytes,
-                "context_tokens": self.context_tokens, "fallback_profile_ids": list(self.fallback_profile_ids)}
+                "context_tokens": self.context_tokens, "fallback_profile_ids": list(self.fallback_profile_ids),
+                **({} if self.memory_floor_bytes is None else {"memory_floor_bytes": self.memory_floor_bytes})}
 
 
 @dataclass(frozen=True)
