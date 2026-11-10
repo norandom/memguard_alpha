@@ -4,15 +4,16 @@ Updated: 2026-11-10 (restart). Workspace: `D:\Source\memguard_alpha`, branch `ma
 GitHub: `norandom/recall_guard` (renamed from `memguard_alpha` on 2026-11-10; the
 local folder name and the Dagger path `/mnt/d/Source/memguard_alpha` are unchanged;
 the old URL redirects; Pages publishes at <https://norandom.github.io/recall_guard/>).
-Last commit: `cd7a0f4` (repository rename). Working tree: task 5.1 reviewed and
-APPROVED but not committed; see "Do this first".
+Last commit: `ee0203f`. Working tree: task 6.3 (llama-server lifecycle script) in
+progress with an Opus implementer; if its files are present but no review has
+run, treat them as a draft (inspect, review, then commit, or discard).
 
 ## Start here
 
 Active spec: [memorization-adjusted-finance-sim](specs/memorization-adjusted-finance-sim/)
 (`spec.json` phase `tasks-generated`, all approvals true). Progress lives in its
-[tasks.md](specs/memorization-adjusted-finance-sim/tasks.md): 15 of 41 sub-tasks
-are `[x]` (groups 1 to 4 complete, 3.5 included); 5.1 is done but unmarked. The
+[tasks.md](specs/memorization-adjusted-finance-sim/tasks.md): 20 of 41 sub-tasks
+are `[x]` (groups 1 to 5 complete, plus 6.1 and 6.2). The
 `## Implementation Notes` section at the bottom of tasks.md is the running memory
 for later tasks; read it before dispatching anything.
 
@@ -30,53 +31,12 @@ Phase B and the parked items (P1 to P7); nothing there changed.
    steering and README say so. Re-verify `run-with-secrets` on the Podman engine
    before the next credentialed run. The Windows CI test fixes were applied on
    2026-11-10 (see "Open follow-ups").
-2. **Finish task 5.1 (ensemble-first guarded decision).** State in the tree:
-   - new: `recall_guard/harness/guarded_decision.py` (644 lines),
-     `tests/harness/test_guarded_decision.py` (712 lines, 54 tests);
-   - modified: `recall_guard/harness/scorer.py` (+10: read-only properties `mcs`,
-     `control_baseline`), `recall_guard/harness/scorer_client.py` (+25:
-     `SEED_SETTINGS`, `_plain_settings`, `identity_settings`); nothing else there;
-   - no feature-flag residue; RED evidence in
-     `runs/finance-sim/validation/task-5.1-red.log`.
-   - Independent review (kiro-review, 2026-11-10): **APPROVED**, no remediation.
-     Verified: no direction-parser estimates; SINGLE never gated or zeroed; `None`
-     components never reach `adjust`; not-assessed components exposed as
-     `GuardedDecision.not_assessed`; `p_memorized` over the same estimate set as
-     `summarize_distribution`; consensus = per-component median with `None` where
-     `unresolved is True`; identity check before any request with seed keys
-     excluded; at most `draws` requests, no retries; `decide_from_draws` issues no
-     request and equals the live result (nine scenarios).
-   - Gate: full native suite `runs/finance-sim/validation/task-5.1-parent-full.log`:
-     3,971 passed, 20 skipped, 1 failed. The failure is
-     `tests/scripts/test_npu_phase_a.py::test_gateway_synthesizes_installed_only_tags_with_catalog_digest`,
-     a host flake (see "Open follow-ups"), not 5.1's code; focused 5.1 runs pass
-     (117 passed, `task-5.1-parent-focused.log`, `task-5.1-review-tests.log`).
-   - To commit: `git add recall_guard/harness/guarded_decision.py tests/harness/test_guarded_decision.py recall_guard/harness/scorer.py recall_guard/harness/scorer_client.py .kiro/specs/memorization-adjusted-finance-sim/design.md .kiro/specs/memorization-adjusted-finance-sim/tasks.md`
-     (explicit paths only; never `git add -A`; `.openidea/` stays untracked), mark
-     5.1 `[x]`, message `feat(memorization-adjusted-finance-sim): ensemble-first
-     guarded decision` with the gate stated honestly, push.
-   - Before committing, append the reviewer's forward notes to tasks.md
-     Implementation Notes:
-     - `draws_sha256` is `canonical_draw_hash` over the parsed draws'
-       `response_sha256` values (the record holds no text), so it is not comparable
-       with an `EnsembleResult.draws_sha256` over content; 7.4 and later use the
-       same convention.
-     - `SourceCalibrator.from_scorer` relabels the fitted identity's source and
-       corpus hash from the caller's arguments without comparison; 7.6 must bind
-       the source at fit time (one calibrator per model and source), or
-       `from_scorer` should refuse a relabel of a non-default source.
-     - `_estimate` records the configured `SourceLabel.k`, not an observed one; k
-       is bound through `top_logprobs` in `parameters_json` (3.2 note).
-     - The guard checks identity once before the loop and does not compare
-       `response.confirmed_settings` or the observed local identity; a note for
-       7.7 on local hosts.
-     - `GuardedDecision`, `GuardIdentity` and `GuardedRun` have no `to_dict`;
-       `dataclasses.asdict` fails on mappingproxy fields; `RecordedDraw.to_dict`
-       is the only serialiser, so 7.4 needs one for the result.
-     - `_request` records any non-fatal exception as `request_error:<code>`
-       (as `ensemble._safe_draw` does); 401/403 and `BudgetExhaustedError` stop
-       the loop. Failed draws carry `response_sha256 = sha256("")`.
-3. **Then dispatch 5.2** (public exports and the installed-wheel test). Its design
+2. **Tasks 5.1, 5.2, 6.1 and 6.2 are committed** (`d7991d7`, `9a6d781`, `5d6444e`,
+   `1277cc2`), each after an independent review; their forward notes are in the
+   Implementation Notes. Design contracts are written through 8.4 (study plan,
+   recording and limits, calibration, execution from one ensemble, pilot and gate,
+   negative control, analysis inputs, figures layout).
+3. **Next:** finish 6.3 (in progress), then 7.1 onward in order. Earlier plan for 5.2, kept for reference: (public exports and the installed-wheel test). Its design
    is already amended in `design.md` ("Modified Files" > `recall_guard/__init__.py`
    and `tests/test_installed_wheel.py`): the exact root export list and the wheel
    test mechanics (`uv build --wheel`, `uv venv` under `tmp_path`, `uv pip install`,
@@ -133,7 +93,9 @@ tests · `820b365` 1.1 · `828b275` 1.2 · `9c795ca` 2.1 · `c2626ae` 2.2 · `99
 `5616081` 3.2 · `2eea39b` 3.3 · `6d80c7a` 3.4 · `a2538fd` native dev loop ·
 `aba69c6` 3.5 · `0c247e7` 4.1 · `af1e209` research note R42 (logits as model
 fingerprints) · `5d515c9` 4.2 · `3148843` 4.3 · `6a7a72c` handover · `cd7a0f4`
-repository rename.
+repository rename · `d7991d7` 5.1 · `761b9c7` Podman environment docs · `9a6d781`
+5.2 · `7260deb` Windows CI fix · `5d6444e` 6.1 · `1277cc2` 6.2 · `ee0203f`
+handover. CI green on every commit since `7260deb` (all five jobs).
 
 ## Design preparation already done
 
