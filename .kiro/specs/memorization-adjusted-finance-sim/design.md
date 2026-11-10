@@ -1048,10 +1048,14 @@ def decide_from_draws(draws: Sequence[RecordedDraw], config: GuardConfig, identi
     check is a receipt, not a unit test.
 - Lifecycle scripts (tasks 6.2 and 6.3) are siblings of `scripts/serve_local_flm.ps1`
   and reuse its structure: actions `start | stop | status | gateway`, a hidden
-  `pwsh` gateway process bound only to the WSL adapter address, the bearer token
-  read from `LOCAL_MODEL_API_KEY` in the root `.env` and never printed, `-IdleMinutes`
-  idle stop, `Stop-All` verifying that no process tree and no listener remain,
-  state and logs under the private runs folder.
+  `pwsh` gateway process bound to `127.0.0.1` by default (the study runner is native
+  since 2026-11-10) or to the adapter address given with `-BindAddress` when a
+  container (Podman: `host.containers.internal`) or another machine must reach the
+  host, never to all interfaces; the bearer token read from `LOCAL_MODEL_API_KEY`
+  in the root `.env` and never printed, `-IdleMinutes` idle stop, `Stop-All`
+  verifying that no process tree and no listener remain, state and logs under the
+  private runs folder. Readiness of the full-distribution host is "port 11580
+  listening", which the host reaches only after its warm-up.
   - `scripts/serve_full_distribution.ps1`: host `127.0.0.1:11580`, gateway `11581`,
     state `runs/finance-sim/hosts/full-distribution/`; forwards only
     `POST /v1/full_distribution`.
@@ -1167,19 +1171,212 @@ the probability toward 0.5 by the same factor as the components:
 `p_adj = 0.5 + (1 - p_memorized) * (p_raw - 0.5)`. The mapping, outcome and clip
 are frozen in the plan before any request.
 
+**Study plan** (tasks 7.1 to 7.3). Modules under `scripts/finance_sim/`: `items.py`
+(7.1), `plan.py` (7.2 and 7.3), `build_plan.py` (the CLI that runs both and writes
+the frozen plan). Private storage root `runs/finance-sim/`: `data/fred/` (the FRED
+loader cache), `data/fmp/` (raw adjusted closes, licensed, never published),
+`plan/items.json`, `plan/plan.json`, `plan/receipt.json`.
+
+- Decision months: the last calendar day of each month from 2016-01 to 2026-06
+  (126 items), `as_of = decision_date`. Macro row per month, strictly point in time:
+  `fetch_series_as_of(series, as_of)` for CPIAUCSL, T10Y2Y and BAA10Y (one call
+  each per month, cached), then from that vector alone: `cpi_yoy` = the latest CPI
+  level known on `as_of` divided by the level twelve observations earlier, minus
+  one, in percent; `t10y2y` and `baa10y` = the latest daily value on or before
+  `as_of`; monthly series for the z-scores = the last observation of each calendar
+  month in the as-of vector; `zscores` over the trailing 60 monthly values (ddof 1,
+  at least 30, else the month is excluded with the reason); `revised` from
+  `Observation.revised_data`. DTB3 is not a model input.
+- Realized returns per month M: FMP `historical-price-eod/dividend-adjusted`
+  (`adjClose`) for SWDA.L, XLK, IAU from 2015-12 to 2026-07, key `FMP_API_TOKEN`
+  from the environment only; `return = adjClose(last trading day of M+1) /
+  adjClose(last trading day of M) - 1`; cash = `DTB3(last observation on or before
+  the end of M) / 100 / 12` from the current FRED vintage. Months without a
+  complete M+1 are kept as items with `realized = None` (reported as missing for
+  accuracy, never substituted).
+- Cutoff classes: `load_cutoffs("data/cutoffs.yaml")`; `pre_cutoff = decision_date
+  <= cutoff` per model; a model without a sourced cutoff is excluded with the reason
+  in the plan. Both arms use `google/gemma-3-4b-it` (2024-08-31): 104 pre-cutoff
+  and 22 post-cutoff months.
+- EDGAR items: calibration rows = `data/edgar/calibration/{is_memorized,
+  oos_control}.jsonl` (40 and 100, label 1 and 0); negative-control items =
+  `data/edgar/held_out/oos_control.jsonl` (40 post-cutoff releases the model cannot
+  have memorised, the clean no-change control); `held_out/is_memorized.jsonl` is
+  recorded as unused. Row sets are frozen by the manifest's per-file sha256.
+- Month split (7.2), seeded by `plan.seed`: calibration = 3 pre-cutoff months per
+  calendar year 2016 to 2023 (24 months, stratified random); pilot = 12 pre-cutoff
+  months stratified over the remaining years; evaluation = every remaining
+  pre-cutoff month (68) and every post-cutoff month (22). Calibration, pilot and
+  evaluation are disjoint; pilot months are excluded from the confirmatory analysis.
+- Frozen fields (7.2): `schema_version`, `seed`, `created_at`, the item list with
+  per-item sha256 of its row and prompts, the month split, the EDGAR file hashes,
+  `metrics` (names of the 7.10 and 7.11 statistics), `accuracy = "macro_regime.is_correct"`
+  with `EXPOSURE` converted to plain dicts, `effect_size` (the pre-registered DiD
+  accuracy gap, default 0.10 as the smallest effect of practical interest; the
+  user may change it before the freeze at 9.2), `tolerance` (negative control:
+  the allowed mean absolute change of the outlook against no adjustment, default
+  0.10 on the [-1, 1] scale), `n_resamples = 2000`, `block_length = 6` months,
+  `alpha = 0.05`, `power_threshold = 0.8`, the scored-probability mapping; 7.3 adds
+  the arms, variant sets, limits and pilot settings.
+- Hashing and refusal: `plan_sha256` = SHA-256 of the canonical JSON of every frozen
+  field (sorted keys, compact separators, ISO dates, no floats beyond what the
+  fields hold) excluding `plan_sha256` itself; `load_plan(path)` recomputes it and
+  raises `PlanChangedError` on any difference; the runner stores the hash in every
+  record and refuses a plan whose hash differs from the recording's. The stage
+  limit files (3.5) carry the same hash.
+- Keys come from the process environment only (`FRED_API_KEY`, `FMP_API_TOKEN`);
+  the 9.2 wrapper loads named keys from the root `.env` as
+  `check_prerequisites.ps1` does. Tests use recorded FRED and FMP response bodies.
+
+**Recording, resume, limits and approval** (tasks 7.4 and 7.5). Modules
+`scripts/finance_sim/recording.py` (7.4) and `scripts/finance_sim/limits.py` (7.5).
+- Layout under `runs/finance-sim/records/<arm>/<stage>/`: one `<item_id>.jsonl` per
+  item with one line per request attempt (`plan_sha256`, `arm`, `stage`, `item_id`,
+  `rendering`, `draw_index`, `requested_at`, `prompt_sha256`,
+  `settings_json` = `identity_settings(parameters)`, `seed`, `response_sha256` or
+  null, `failure_code` or null, `usage`, `latency_s`, `evidence_ref`), one
+  `<item_id>.<rendering>.result.json` holding the serialised `GuardedRun` (draws by
+  `RecordedDraw.to_dict`, evidence by `FullDistributionEvidence.to_dict`, the
+  decision by `GuardedDecision.to_dict`), and `budget.json` (7.5). Task 7.4 adds
+  `to_dict`/`from_dict` to `GuardedDecision`, `GuardIdentity` and
+  `DistributionSummary` in their modules (plain dicts, mappingproxy fields
+  converted), and an optional `recorded: Sequence[RecordedDraw] = ()` parameter to
+  `guarded_run` that pre-fills those draw indices and issues only the missing ones
+  with their deterministic seeds; `decide_from_draws` then reduces the union.
+- Resume: before any request for an item and rendering, the runner reuses a
+  complete result whose `plan_sha256`, `prompt_sha256` and `settings_json` match
+  and issues nothing; a partial `.jsonl` is completed draw by draw through
+  `recorded=`; a recorded request is never issued again. A record under a different
+  `plan_sha256` is refused, never merged.
+- Host checks before admission (11.1): sampling arm, `GET /v1/models` on
+  llama-server through its gateway with the bearer, and `GET /props` whose
+  `model_path` basename equals the pinned GGUF blob name; full-distribution host, a
+  minimal evidence request with the pinned digest (409 means mismatch; the host has
+  no separate health route); serving arm, `GET /v1/models` on `MODAL_ENDPOINT_URL`
+  with the proxy bearer. Results go into the stage's `receipt.json`; at the end the
+  runner records the paths and `verified_stopped` flags of the host scripts' stop
+  receipts as teardown evidence.
+- Limits (7.5): per arm and stage, `max_requests`, `max_output_tokens`,
+  `max_seconds` and, for the serving arm, `max_usd`, taken from the frozen plan
+  (the serving arm's are the 3.5 StageLimits files, same `plan_sha256`). A
+  persisted counter (`budget.json`: requests issued, output tokens, elapsed seconds,
+  estimated USD) is checked before every request; reaching any limit closes
+  admission, marks the stage `incomplete` with partial results kept, and exits with
+  a distinct code (11.3); resume continues the counters. The in-memory guard reuses
+  `CallBudget` and raises `BudgetExhaustedError`, which the guarded loop treats as
+  fatal.
+- Approval (7.5): the serving arm runs only with
+  `runs/finance-sim/approvals/<plan_sha256>.json`, validated by the existing
+  `approval_record(path, plan, hashes)` gate from `scripts/probe_modal_model.py`
+  with `hashes = {plan_sha256, manifest_sha256, stage_limits_sha256}` (the StageLimits
+  files hashed in execution order), the explicit assertions, `workspace`,
+  `endpoint` and `provider_budget_reference`, plus `max_usd_total` at least the sum
+  of the stage `max_usd`; any mismatch refuses before any request. The sampling arm
+  needs no approval record, only the frozen plan.
+
+**Calibration fits** (task 7.6, `scripts/finance_sim/calibrate.py`). One
+calibrator per arm and source: the macro calibrator from the 24 calibration months,
+both renderings, one recorded ensemble per rendering (identifying draws labelled 1,
+anonymised draws labelled 0, each draw one feature row through the configured
+source); the EDGAR calibrator from the 140 calibration rows with the outlook prompt
+and the same draw count. Fits reuse `mia.control.build_baseline` and `mia.mcs.train`
+with the holdout split by prompt, never by draw, so the held-out AUC is not
+inflated by sibling draws; `holdout_auc_interval` is recorded per calibrator.
+`corpus_sha256` is the SHA-256 of the ordered `(prompt_sha256, label)` list.
+`SourceCalibrator` is built directly with an identity carrying `estimate_source`
+and `corpus_sha256` at fit time (the 5.1 note), not by relabelling. Calibrators are
+stored under `runs/finance-sim/calibrators/<arm>/<source>/<macro|edgar>.json` with
+the scorer's calibration payload scheme and the identity; the macro calibrator is
+never applied to EDGAR prompts.
+
+**Execution from one ensemble** (task 7.7, `scripts/finance_sim/execute.py`). Per
+item and rendering the runner issues exactly one ensemble through `guarded_run`
+with the TOP_K config (recording the responses with their top-k evidence) and
+derives every variant from those draws without another generation request:
+- `draws_top_k`: the recorded draws as returned; `draws_full`: the same draws with
+  `estimate` and `evidence_ref` replaced by the host's evidence per draw
+  (`full_distribution.evidence(prompt, content)` once per recorded draw, cached by
+  `evidence_ref`); `draws_none`: the same draws with `estimate = None`, so the
+  decision passes through unchanged (status `estimate_unavailable` by construction,
+  reported as the no-adjustment variant, not as a failure).
+- Ensemble variants: `decide_from_draws(draws_X, config_X, identity_X)`; single-draw
+  variants: `decide_from_draws(draws_X[:1], SINGLE config)` on draw index 0. The
+  six variants are therefore paired on identical responses (8.1). The serving arm
+  has only `draws_top_k` and `draws_none` (its full-distribution variants are
+  recorded as missing with the reason).
+- Per item, rendering and variant the runner stores: `decision` (consensus or the
+  single draw), `adjusted`, `p_memorized`, `summary_value` (the defensive spread or
+  the outlook), `category`, `correct` (via `is_correct` with the item's realized
+  returns, None when realized is None), the scored probability (plan mapping),
+  `first_draw_rank` of the summary value, `not_assessed`, and the draw-level
+  arrays needed by 7.11.
+
+**Pilot and power gate** (task 7.8). The pilot runs the 12 pilot months through the
+same execution with `draws = 8` and the plan's pilot `min_parsed`. Per month the
+noise statistic is the identifying-minus-anonymised correctness difference of the
+ensemble top-k variant (values in {-1, 0, 1}); its standard deviation over the pilot
+months is `noise_sd`. Task 7.8 adds `simulated_power_two_sample(effect, noise_sd,
+n_a, n_b, *, alpha, n_sim, seed)` to `core/significance.py` (same conventions as
+`simulated_power`: the critical value is simulated under effect 0, the statistic is
+the difference of the two sample means over its pooled standard error) and
+evaluates it with `n_a = 68` pre-cutoff and `n_b = 22` post-cutoff months for the
+frozen effect size. The gate continues at power >= `power_threshold`, else stops
+with the expected power and the options; the serving arm reports achieved power
+through the same helper on its realised counts.
+
+**Negative control** (task 7.9). For each variant with an adjustment, the per-item
+change is `adjusted_outlook - raw_outlook` on the 40 held-out control releases; the
+statistic is the mean absolute change, with a moving-block bootstrap over filing
+quarters (rows ordered by quarter, block length 2). Outcomes per variant: `no
+material change` when the interval's upper bound is below `tolerance`;
+`discounting honest answers` (the flag) when the lower bound is above `tolerance`;
+`inconclusive` otherwise. The signed mean change and the share of items with a
+sign flip are reported beside it.
+
+**Analysis inputs** (tasks 7.10 to 7.12). All statistics exclude pilot months and
+use the frozen seeds, `n_resamples`, `block_length` and `alpha`:
+- Accuracy gap per variant: `did_gap(correct, identifying, pre_cutoff)` over the
+  evaluation months times two renderings, with a moving-block bootstrap over months
+  (rows = months, both renderings in a row); the identifying-minus-anonymised
+  differences of the estimate and of accuracy, before and after the cutoff, come
+  from the same rows.
+- Losses: `paired_loss_difference` of the Brier and log-loss arrays of each
+  variant against the no-adjustment variant of the same draw mode, rows = months.
+- Half-ensemble variance (8.5): halves = draw indices 0 to 15 and 16 to 31 reduced
+  with `decide_from_draws`, singles = draw indices 0 and 16; the statistic on the
+  summary value and on `p_memorized`; report `dropped_resamples`,
+  `unbounded_resamples` and `interval_note`.
+- First-draw rate (8.6): share of items where draw 0's `category` differs from the
+  consensus, or its `first_draw_rank` lies outside [0.25, 0.75], with a Wilson
+  interval, per arm and control.
+- Random-answerer null (8.7): statistic = accuracy of the consensus decision over
+  the evaluation items; sampler = uniform loadings on the 0.1 grid passed through
+  `defensive_spread` and `decide` (outlook uniform on the grid for EDGAR), with
+  `random_answerer_null`.
+- Holm across the six variants per metric family; raw and adjusted p-values,
+  effect sizes with intervals, achieved power; every uncomputable cell is reported
+  as missing with its reason (8.10).
+- Convergence (7.12, `scripts/finance_sim/convergence.py`): for each recorded draw
+  with full evidence, features and estimates from `truncate_to_top_k` at k in
+  {1, 5, 10, 20, 50, 100} against `features_from_full`; per feature and k the
+  agreement (Spearman-free: mean absolute difference and the share within 1e-6
+  of the full value) and the mean `top_k_mass`; the adjusted-decision change
+  between the top-k and full estimates per item; values compared only within one
+  model and set of weights, stated in the table.
+
 **Contracts**: Batch [x]
 - Trigger: `build_plan.py` then `run_study.py --plan --approval?`.
 - Input: frozen plan (items, variants, metrics, tolerance, seeds, resample counts,
   significance level, block length, decision rule, limits) with content hashes.
 - Output: per item and variant, recorded draws, evidence and `GuardedDecision`
-  results under `runs/container/finance-sim/` (private); summaries for analysis.
+  results under `runs/finance-sim/` (private); summaries for analysis.
 - Idempotency: resumable per item; never replays a recorded request; refuses a
   changed plan; stops on any limit and marks the run incomplete (11.3).
 - Hosts: model hosts are native Windows processes started and stopped by the
   Windows-side scripts (`serve_local_llamacpp.ps1`, `serve_full_distribution.ps1`,
-  `modal_operator.sh`). The containerized runner never starts them; it checks
-  reachability and the model digest before admitting requests and records the
-  scripts' teardown evidence (11.1).
+  `modal_operator.sh`). The runner (native on Windows since 2026-11-10, or in a
+  container) never starts them; it checks reachability and the model digest before
+  admitting requests and records the scripts' teardown evidence (11.1).
 
 #### NegativeControlTask
 
@@ -1221,6 +1418,36 @@ also carried by marker shape and fill.
 | F4 Convergence | Lines, small multiples by feature; separate mass panel | x = k (log scale), y = absolute difference to full; at most four direct-labelled lines | 10.5 |
 
 Captions state data, sample size and interval method (10.6).
+
+Layout (tasks 8.1 to 8.4):
+- `recall_guard/harness/plots.py` gains the four lazy functions `plot_gap`,
+  `plot_reliability`, `plot_draws`, `plot_convergence`, each taking plain data
+  (sequences and mappings produced by the analysis, never a results file) and a
+  `theme` of `light` or `dark`, returning a matplotlib `Figure`; matplotlib stays
+  imported inside the functions or the module, never from the package root. The
+  outdated note in `plot_mcs_calibration` (a true reliability curve cannot be
+  reconstructed) is corrected, since calibrators now retain `holdout_probabilities`
+  and `holdout_labels`.
+- `PAPER_PALETTE` is the fixed-order categorical palette; 8.1 validates it with the
+  dataviz `validate_palette.js` for both surfaces (`--mode light`, `--mode dark`),
+  records the validator's path, sha256 and output in a private receipt under
+  `runs/finance-sim/figures/palette/`, and pins the validated hex values in a test.
+  Marker shape encodes the adjustment (none, top-k, full) and fill encodes the draw
+  mode (single open, ensemble filled); status colours are never reused.
+- `scripts/finance_sim/figures.py` renders from the analysis outputs
+  (`runs/finance-sim/analysis/*.json`) into `docs/assets/finance-sim/` as
+  `<figure>-light.svg`, `<figure>-dark.svg`, `<figure>.csv` and `<figure>.md`, with
+  `<figure>` in {`gap`, `reliability`, `draws`, `convergence`}; the markdown table
+  is the CSV rendered with the caption line (data, n, interval method) above it.
+- Published CSV and markdown carry derived statistics only: point estimates,
+  interval bounds, counts, k, ECE, per-draw loadings and estimates of the one
+  example item (model outputs, not licensed data). They never carry a FRED, FMP or
+  BAA10Y raw series or a per-month realized return; 8.4's guard test scans every
+  published CSV and markdown for the frozen raw series values and the ETF closes
+  and fails on any match. Moody's (BAA10Y) and FMP are cited in the captions.
+- The example item for F3 is frozen in the plan (one evaluation month and one
+  rendering); the replay command (8.4) regenerates all four figures from fixtures
+  with network disabled and compares the SVG and CSV bytes to the committed ones.
 
 ## Data Models
 

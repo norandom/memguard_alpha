@@ -171,8 +171,9 @@ re-locate it). FMP key name is `FMP_API_TOKEN`. The real `.env` still carries
   pieces on Windows. `tests/scripts/test_modal_operator.py` is marked Linux-only
   (Compose parity: 18 passed), and the FLM gateway test in
   `tests/scripts/test_npu_phase_a.py` skips without the untracked `models/flm`
-  store and retries one `pwsh` launch refused by the Store alias. Confirm the
-  Windows jobs are green on the next CI run.
+  store and retries one `pwsh` launch refused by the Store alias. CI run
+  42787332959 on `7260deb`: all five jobs green (Windows py3.12 and py3.14, Linux
+  test py3.12 and py3.14, lint).
 - **Host flake (2026-11-10):** Python launching the Store-installed `pwsh`
   app-execution alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\...\pwsh.exe`)
   intermittently fails with `PermissionError: [WinError 5]` at CreateProcess
