@@ -13,8 +13,10 @@ The public entry point. A consumer typically needs only::
     guarded = scorer.score("<your prompt>")
     guarded.signal, guarded.p_memorized, guarded.memguard_confidence
 
-This module re-exports the façade plus a curated set of ``core`` and ``mia``
-primitives. It deliberately re-exports no plotting symbol and nothing from the
+This module re-exports the façade, the ensemble-first guarded-decision API
+(``guarded_decide`` with its decision definitions, recorded-draw results and
+evidence sources) and a curated set of ``core`` and ``mia`` primitives. It
+deliberately re-exports no plotting symbol and nothing from the
 ``portfolio`` (backtest) layer, so ``import recall_guard`` never pulls in
 matplotlib or vectorbt (Req 4.1, 4.3). The plotting helpers remain available, on
 demand, via ``recall_guard.harness`` (lazy) and the backtest engine via
@@ -80,6 +82,32 @@ from recall_guard.mia import (
     train_mcs,
 )
 
+# isort: split
+# guarded decision (ensemble-first): one block after the existing imports
+from recall_guard.core.decision import (
+    ComponentSpec,
+    DecisionDefinition,
+    DecisionDefinitionError,
+    DecisionParseError,
+    adjust,
+    parse_json_components,
+)
+from recall_guard.core.distribution import ComponentDistribution, DistributionSummary, RecordedDraw
+from recall_guard.core.full_distribution import FullDistributionClient, FullDistributionEvidence
+from recall_guard.harness.guarded_decision import (
+    DrawMode,
+    GuardConfig,
+    GuardedDecision,
+    GuardedRun,
+    GuardIdentity,
+    GuardStatus,
+    SourceCalibrator,
+    decide_from_draws,
+    guarded_decide,
+    guarded_run,
+)
+from recall_guard.mia.estimate_source import EstimateSource, SourceLabel
+
 __all__ = [
     # façade (the headline surface)
     "MemoryGuardedScorer",
@@ -92,6 +120,34 @@ __all__ = [
     "WorkflowCalibration",
     "CalibrationItem",
     "ScoredDraw",
+    # guarded decision (ensemble-first)
+    #   API
+    "guarded_decide",
+    "guarded_run",
+    "decide_from_draws",
+    "GuardConfig",
+    "DrawMode",
+    "GuardStatus",
+    "GuardIdentity",
+    "GuardedDecision",
+    "GuardedRun",
+    "SourceCalibrator",
+    #   definitions
+    "DecisionDefinition",
+    "ComponentSpec",
+    "DecisionDefinitionError",
+    "DecisionParseError",
+    "parse_json_components",
+    "adjust",
+    #   results
+    "RecordedDraw",
+    "DistributionSummary",
+    "ComponentDistribution",
+    #   sources
+    "EstimateSource",
+    "SourceLabel",
+    "FullDistributionClient",
+    "FullDistributionEvidence",
     # ensemble surface (opt-in; see EnsembleSpec)
     "EnsembledScore",
     "EnsembleSpec",
