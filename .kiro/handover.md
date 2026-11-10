@@ -16,6 +16,8 @@ State as of 2026-11-10, 22:44 local time (system clock); the overnight live run 
 
 ## Working tree and the live run
 
+Live status: calibration attempt 1 ran the full generation pass but every draw failed to parse (the model fences its JSON; the parser was strict); fix 9.2a is in review; attempt 1 is kept aside under the records folder; the stage re-runs from scratch once the fix is committed. See the Implementation Notes entry "Live calibration attempt 1".
+
 Nothing is uncommitted. The real plan is frozen under `runs/finance-sim/plan/` (hash `f7603eeb8efdbf74645d658f2bd733a35b3834ba7c90b74d00c6ac2e6b5332fe`, built natively with the keys by name; 126 months, none excluded; probe subset 20 months). The live stages run natively (decision recorded in the notes) through a detached driver in the session scratchpad (`scratchpad\live\run_stage.ps1`, status files `<stage>.status`, logs `<stage>.out.log`): each stage starts llama-server, runs the generation pass, stops it, starts the full-distribution host, runs the evidence pass, stops it, records the teardown; one restart and resume on a host failure, stop on a second. Receipts land under `runs/finance-sim/records/sampling/<stage>/`. If this session died mid-stage: check `Get-NetTCPConnection` for 11570/11571/11580/11581 and the lifecycle scripts' `status`; a host left running stops itself after 180 idle minutes; rerun the same runner command to resume (only unrecorded draws or missing batches are sent). The operator sequence and exit codes are in the 9.1 review notes in tasks.md and in `run_study --help`.
 
 ## Decisions of 2026-11-10 (user; all in design.md and the notes)
