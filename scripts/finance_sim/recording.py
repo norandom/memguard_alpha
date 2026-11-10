@@ -118,7 +118,6 @@ import requests
 from recall_guard.core.completion import ModelConfig, ModelResponse
 from recall_guard.core.distribution import RecordedDraw
 from recall_guard.core.full_distribution import FullDistributionEvidence
-from recall_guard.core.profiles import load_profile
 from recall_guard.core.request_control import BudgetExhaustedError, RequestError
 from recall_guard.harness.guarded_decision import (
     REQUEST_ERROR_PREFIX,
@@ -414,22 +413,21 @@ def read_records(arm: str, stage: str, item_id: str, records_dir: str | Path = R
 # ---------- the plan's pins and the allowance ----------
 
 def pinned_digest(plan: StudyPlan, arm: str = SAMPLING_ARM) -> str:
-    """The GGUF digest the sampling arm's frozen profile declares; both local hosts must serve it.
+    """The GGUF digest the frozen plan pins for the sampling arm; both local hosts must serve it.
 
-    The plan freezes the arm's ``profile_id``; the profile declares the artifact
-    digest, and its full-distribution host must name the same digest.
+    The plan freezes the digest the arm's provider profile declared when the
+    plan was built (``ArmPlan.artifact_digest``); the profile is not read
+    again, so a later profile edit cannot move the pin. A plan without the
+    digest is refused, never filled in from the profile.
     """
     require_complete(plan)
     if arm != SAMPLING_ARM:
         raise ValueError("only the sampling arm runs a pinned local GGUF; the serving arm is checked by its registry id")
-    profile = load_profile(plan.arms.arms[arm].profile_id)
-    identity = profile.model_config.local_identity
-    digest = _digest(None if identity is None else identity.declared.artifact_digest)
-    host = profile.full_distribution
-    if host is not None and host.model_digest != digest:
-        raise ValueError(f"profile {profile.profile_id}: the full-distribution host names {host.model_digest}, the "
-                         f"generation model {digest}")
-    return digest
+    digest = plan.arms.arms[arm].artifact_digest
+    if digest is None:
+        raise ValueError(f"plan {plan.plan_sha256} carries no GGUF artifact digest for the {arm} arm; refreeze it "
+                         "with scripts/finance_sim/build_plan.py")
+    return _digest(digest)
 
 
 def request_allowance(plan: StudyPlan, arm: str, config: ModelConfig, *,

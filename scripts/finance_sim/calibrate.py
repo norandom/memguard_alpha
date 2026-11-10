@@ -33,8 +33,35 @@ must be the client's real ``max_tokens`` and timeout. A reply is parsed with the
 evaluation decision definition; each parsed draw gives its top-k feature row from
 its own logprobs, through the function the guarded-decision API uses per draw,
 and keeps its reply text (private, like every study record) for the evidence
-pass. ``on_draw`` receives every finished draw (the request recording of task
-7.4), and ``recorded`` draws are reused, never requested again.
+pass. ``recorded`` draws are reused, never requested again.
+
+Settings. The frozen plan (7.3) carries, per arm, the draws of each corpus
+(``ArmPlan.calibration_draws``: the probe arm's macro months 8, its EDGAR rows 4),
+the fit gates (``ArmPlan.fit``) and the evidence settings (``ArmPlan.evidence``);
+:func:`plan_draw_settings`, :func:`plan_fit_settings` and
+:func:`plan_evidence_settings` read them, and :func:`run_calibration` uses them
+when no settings are passed. The module constants are the defaults only for a
+plan without its 7.3 sections and for the corpus-level functions, which take no
+plan.
+
+Recording seam (the contract for the study recording, task 7.4, as in
+:mod:`scripts.finance_sim.execute`):
+
+- ``on_request(prompt, draw_index, seed)`` is called before each generation
+  request is sent, with the corpus prompt and the draw's deterministic seed. The
+  recorder persists the request then, before the send.
+- ``on_draw(draw)`` receives every new draw after its request returned, before
+  the next request, and again when its full-distribution evidence settles. The
+  recorder keeps the latest version per draw.
+- ``recorded`` takes the :class:`CalibrationDraw` values the recorder kept. A
+  request the recorder persisted but whose outcome it never heard (the process
+  died while it was in flight) is passed back as the failed draw
+  :meth:`CalibrationDraw.interrupted` builds: no reply,
+  ``request_error:interrupted``, the SHA-256 of the empty string, the seed
+  ``on_request`` reported, the draw temperature and every estimate source of the
+  run settled to None. It stays in its ensemble as a failed draw and is never
+  sent again, so a resumed stage spends exactly one admission per draw and can
+  still complete within limits sized to one ensemble per prompt and rendering.
 
 Evidence (:func:`collect_evidence`, the evidence pass). Full-distribution
 evidence is requested after generation, with the full-distribution host loaded
@@ -42,7 +69,7 @@ alone (two model loads never coexist), outside the ledger session, as the frozen
 plan's evidence rule states: evidence calls never count against the generation
 limits. One ``evidence_batch`` request per prompt and rendering carries the
 parsed replies in draw order, with the evidence timeout of
-:class:`EvidenceSettings` (600 s, the plan freezes none), and each returned
+:class:`EvidenceSettings` (the frozen plan's 600 s), and each returned
 evidence object gives its draw's full-distribution row exactly as the per-draw
 path does. A failed or unparsed draw gets no evidence. ``host_busy`` (the host's
 memory-low refusal) is retried a bounded number of times after a wait; any other
@@ -112,7 +139,19 @@ from scripts.finance_sim.limits import (
     LedgerCallBudget,
     RequestAllowance,
 )
-from scripts.finance_sim.plan import PlanChangedError, StudyPlan, ensure_unchanged, sha256_of
+from scripts.finance_sim.plan import (
+    EVIDENCE_HOST_BUSY_RETRIES,
+    EVIDENCE_HOST_BUSY_WAIT_S,
+    EVIDENCE_TIMEOUT_S,
+    EVIDENCE_TOP_K_KEEP,
+    FIT_MIN_AUC,
+    FIT_MIN_VALID,
+    ArmPlan,
+    PlanChangedError,
+    StudyPlan,
+    ensure_unchanged,
+    sha256_of,
+)
 
 MACRO, EDGAR = "macro", "edgar"
 KINDS: tuple[str, ...] = (MACRO, EDGAR)
@@ -138,14 +177,16 @@ INTERVAL_SEED = 0
 CLUSTERED_METHOD = "prompt_clustered_stratified_percentile_bootstrap"
 #: Evidence pass: one ``evidence_batch`` request per prompt and rendering over its parsed replies in draw order.
 EVIDENCE_MODE = "batch_per_prompt_and_rendering"
-#: Timeout of one evidence batch (about one prompt evaluation plus every reply's decodes); the plan freezes none.
-EVIDENCE_TIMEOUT_S = 600.0
-#: Alternatives kept per position, the profile's ``full_distribution.top_k_keep``.
-EVIDENCE_TOP_K_KEEP = 100
+#: The defaults below are the frozen plan's values (scripts/finance_sim/plan.py, ``EvidencePlan`` and
+#: ``FitPlan``), used only where no plan is at hand. EVIDENCE_TIMEOUT_S bounds one evidence batch (about one
+#: prompt evaluation plus every reply's decodes) and EVIDENCE_TOP_K_KEEP is the alternatives kept per position,
+#: the profile's ``full_distribution.top_k_keep``; both are imported from the plan module above.
 #: ``host_busy`` (HTTP 503, memory low on the host) is retried this many times, after this wait each time.
-HOST_BUSY_RETRIES = 5
-HOST_BUSY_WAIT_S = 60.0
+HOST_BUSY_RETRIES = EVIDENCE_HOST_BUSY_RETRIES
+HOST_BUSY_WAIT_S = EVIDENCE_HOST_BUSY_WAIT_S
 HOST_BUSY = "host_busy"
+#: Failure code of a request that was sent (``on_request`` was called) but whose outcome was lost.
+INTERRUPTED = REQUEST_ERROR_PREFIX + "interrupted"
 #: The split seed must be a valid ``random_state`` for scikit-learn.
 _SEED_MODULUS = 2**32
 #: Statuses that mean the credential was rejected; no later draw can succeed.
@@ -525,8 +566,8 @@ class DrawSettings:
 class FitSettings:
     """The fit's quality gates: the weak-calibrator AUC threshold and the baseline's minimum control rows."""
 
-    min_auc: float = 0.6
-    min_valid: int = 50
+    min_auc: float = FIT_MIN_AUC
+    min_valid: int = FIT_MIN_VALID
 
     def __post_init__(self) -> None:
         if not _is_real(self.min_auc) or not 0.0 <= self.min_auc <= 1.0:
@@ -569,6 +610,35 @@ class EvidenceSettings:
         if mapping["mode"] != EVIDENCE_MODE:
             raise CalibrationError(f"unsupported evidence mode {mapping['mode']!r}; expected {EVIDENCE_MODE!r}")
         return cls(**{key: value for key, value in mapping.items() if key != "mode"})
+
+
+def _frozen_arm(plan: StudyPlan, arm: str) -> ArmPlan:
+    """The frozen arm plan of ``arm``; a plan without its 7.3 sections is refused."""
+    if not isinstance(plan, StudyPlan):
+        raise TypeError(f"plan must be a StudyPlan; got {type(plan).__name__}")
+    if plan.arms is None:
+        raise CalibrationError(f"plan {plan.plan_sha256} lacks the sections ['arms'] that freeze the calibration "
+                               "settings; freeze it with scripts/finance_sim/build_plan.py")
+    return plan.arms.arms[_arm(arm)]
+
+
+def plan_draw_settings(plan: StudyPlan, arm: str, kind: str) -> DrawSettings:
+    """The frozen draw settings of one arm's calibration corpus: its draws per prompt, temperature and seed base."""
+    frozen = _frozen_arm(plan, arm)
+    return DrawSettings(draws=frozen.calibration_draws[_kind(kind)], temperature=frozen.temperature,
+                        seed_base=frozen.seed_base)
+
+
+def plan_fit_settings(plan: StudyPlan, arm: str) -> FitSettings:
+    """The frozen fit gates of one arm (``ArmPlan.fit``)."""
+    fit = _frozen_arm(plan, arm).fit
+    return FitSettings(min_auc=fit.min_auc, min_valid=fit.min_valid)
+
+
+def plan_evidence_settings(plan: StudyPlan, arm: str) -> EvidenceSettings | None:
+    """The frozen evidence settings of one arm (``ArmPlan.evidence``); None for an arm without that source."""
+    evidence = _frozen_arm(plan, arm).evidence
+    return None if evidence is None else EvidenceSettings(**evidence.to_dict())
 
 
 def split_seed(plan: StudyPlan) -> int:
@@ -716,6 +786,35 @@ class CalibrationDraw:
                 _hex(reference, f"evidence_ref[{name!r}]")
         object.__setattr__(self, "features", MappingProxyType(features))
         object.__setattr__(self, "evidence_ref", MappingProxyType(dict(sorted(self.evidence_ref.items()))))
+
+    @classmethod
+    def interrupted(cls, prompt: CorpusPrompt, draw_index: int, *, seed: int | None, temperature: float | None,
+                    sources: Iterable[EstimateSource | str]) -> CalibrationDraw:
+        """The failed draw a recorder passes back for a request that was sent but whose outcome was lost.
+
+        ``seed`` is the one ``on_request`` reported (the draw's deterministic
+        seed), ``temperature`` the draw temperature and ``sources`` the estimate
+        sources of the run, each settled to None. The draw carries no reply, the
+        SHA-256 of the empty string and the failure code
+        ``request_error:interrupted``; it stays in its ensemble as a failed draw
+        and is never requested again. Its corpus (macro or EDGAR) follows from
+        the prompt's rendering.
+        """
+        if not isinstance(prompt, CorpusPrompt):
+            raise TypeError(f"prompt must be a CorpusPrompt; got {type(prompt).__name__}")
+        if not _is_int(draw_index) or draw_index < 0:
+            raise CalibrationError(f"draw_index must be a non-negative integer; got {draw_index!r}")
+        if isinstance(sources, str | EstimateSource):
+            raise TypeError("sources must be a sequence of estimate sources")
+        names = {_source(source).value for source in sources}
+        if not names:
+            raise CalibrationError("an interrupted draw settles at least one estimate source")
+        kind = next(kind for kind, renderings in RENDERINGS.items() if prompt.rendering in renderings)
+        empty = {name: None for name in sorted(names)}
+        return cls(kind=kind, item_id=prompt.item_id, rendering=prompt.rendering, label=prompt.label,
+                   prompt_sha256=prompt.prompt_sha256, draw_index=draw_index, seed=seed, temperature=temperature,
+                   response_sha256=_sha256(""), response_text=None, failure_code=INTERRUPTED, features=empty,
+                   evidence_ref=dict(empty))
 
     @property
     def key(self) -> tuple[str, str, str, int]:
@@ -904,6 +1003,7 @@ def collect_draws(
     corpus: CalibrationCorpus, settings: DrawSettings, *, client: CompletionClient, ledger: BudgetLedger,
     sources: Iterable[EstimateSource | str], recorded: Iterable[CalibrationDraw] = (),
     on_draw: Callable[[CalibrationDraw], None] | None = None,
+    on_request: Callable[[CorpusPrompt, int, int | None], None] | None = None,
 ) -> tuple[CalibrationDraw, ...]:
     """The generation pass: one recorded ensemble of ``settings.draws`` draws per corpus prompt, in corpus order.
 
@@ -914,9 +1014,11 @@ def collect_draws(
     and the settings. Each request carries the configured temperature and the
     draw's seed as overrides and is never retried here; a rejected credential or
     a closed ledger is raised, any other failure is recorded on its draw.
-    ``on_draw`` receives each new draw before the next request. No
-    full-distribution evidence is requested here: a parsed draw leaves that
-    source pending for :func:`collect_evidence`.
+    ``on_request`` is called before each request is sent and ``on_draw``
+    receives each new draw before the next request (the recording seam of the
+    module docstring); a recorded draw, an interrupted one included, is never
+    requested again. No full-distribution evidence is requested here: a parsed
+    draw leaves that source pending for :func:`collect_evidence`.
     """
     if not isinstance(settings, DrawSettings):
         raise TypeError("settings must be DrawSettings")
@@ -924,8 +1026,9 @@ def collect_draws(
         raise TypeError(f"ledger must be a BudgetLedger; got {type(ledger).__name__}")
     sources = _arm_sources(ledger.limits.arm, sources)
     _check_request_path(corpus, client, ledger, sources)
-    if on_draw is not None and not callable(on_draw):
-        raise TypeError("on_draw must be callable or None")
+    for hook, name in ((on_draw, "on_draw"), (on_request, "on_request")):
+        if hook is not None and not callable(hook):
+            raise TypeError(f"{name} must be callable or None")
     reused = _reusable(recorded, corpus, settings, client.config, sources)
     temperature = _draw_temperature(settings, client.config)
     overrides: dict[str, ParameterValue] = {} if settings.temperature is None else {"temperature": settings.temperature}
@@ -940,6 +1043,8 @@ def collect_draws(
             seed = _draw_seed(settings, client.config, index)
             if settings.seed_base is not None:
                 parameters["seed"] = seed
+            if on_request is not None:
+                on_request(prompt, index, seed)
             response, failure = _request(client, prompt.prompt, parameters)
             common = {"kind": corpus.kind, "item_id": prompt.item_id, "rendering": prompt.rendering,
                       "label": prompt.label, "prompt_sha256": prompt.prompt_sha256, "draw_index": index,
@@ -1468,19 +1573,50 @@ class CalibrationRun:
     draws: Mapping[str, tuple[CalibrationDraw, ...]]
 
 
+def _draw_settings_by_kind(plan: StudyPlan, arm: str,
+                           settings: DrawSettings | Mapping[str, DrawSettings] | None) -> dict[str, DrawSettings]:
+    """The draw settings of each corpus: the frozen plan's when none are given, else those given (one or per kind)."""
+    if settings is None:
+        if plan.arms is None:
+            raise CalibrationError("a plan without its 7.3 sections freezes no calibration draw settings; pass "
+                                   "settings=DrawSettings(...)")
+        return {kind: plan_draw_settings(plan, arm, kind) for kind in KINDS}
+    if isinstance(settings, DrawSettings):
+        return {kind: settings for kind in KINDS}
+    if not isinstance(settings, Mapping) or set(settings) != set(KINDS):
+        raise TypeError(f"settings must be DrawSettings, a mapping of {list(KINDS)} to DrawSettings, or None")
+    for kind in KINDS:
+        if not isinstance(settings[kind], DrawSettings):
+            raise TypeError(f"settings[{kind!r}] must be DrawSettings")
+    return {kind: settings[kind] for kind in KINDS}
+
+
 def run_calibration(
     plan: StudyPlan, *, arm: str, macro_rows: Iterable[MacroRow], edgar_releases: Iterable[EdgarRelease],
-    client: CompletionClient, ledger: BudgetLedger, settings: DrawSettings, sources: Iterable[EstimateSource | str],
-    full_distribution: FullDistributionClient | None = None, fit: FitSettings = FitSettings(),
-    evidence: EvidenceSettings = EvidenceSettings(), recorded: Iterable[CalibrationDraw] = (),
-    on_draw: Callable[[CalibrationDraw], None] | None = None, calibrators_dir: str | Path = CALIBRATORS_DIR,
-    sleep: Callable[[float], None] = time.sleep,
+    client: CompletionClient, ledger: BudgetLedger, sources: Iterable[EstimateSource | str],
+    settings: DrawSettings | Mapping[str, DrawSettings] | None = None,
+    full_distribution: FullDistributionClient | None = None, fit: FitSettings | None = None,
+    evidence: EvidenceSettings | None = None, recorded: Iterable[CalibrationDraw] = (),
+    on_draw: Callable[[CalibrationDraw], None] | None = None,
+    on_request: Callable[[CorpusPrompt, int, int | None], None] | None = None,
+    calibrators_dir: str | Path = CALIBRATORS_DIR, sleep: Callable[[float], None] = time.sleep,
 ) -> CalibrationRun:
     """Macro and EDGAR calibration of one arm: draw both corpora, fit one calibrator per kind and source, store them.
+
+    Settings: without ``settings``, ``fit`` and ``evidence`` the frozen plan's
+    apply (:func:`plan_draw_settings` per corpus, :func:`plan_fit_settings`,
+    :func:`plan_evidence_settings`), which is how the study runs. A plan
+    without its 7.3 sections freezes none: it needs ``settings``, and the fit
+    and evidence take the module defaults. Settings that are passed (one
+    :class:`DrawSettings` for both corpora, or one per corpus) are used as given
+    and recorded in every calibrator file, so a deviation from the frozen plan
+    stays visible.
 
     Before any request: the ledger must belong to ``plan`` and ``arm`` and to the
     calibration stage, both corpora must be the plan's frozen calibration sets,
     and the client and sources are checked as in :func:`collect_draws`.
+    ``on_request`` and ``on_draw`` follow the recording seam of the module
+    docstring.
 
     1. Generation pass: both corpora are drawn in one ``with ledger:`` session; a
        frozen limit raises :class:`~scripts.finance_sim.limits.AdmissionClosedError`
@@ -1505,6 +1641,13 @@ def run_calibration(
     ensure_unchanged(plan, ledger.limits.plan_sha256)
     if _arm(arm) != ledger.limits.arm:
         raise CalibrationError(f"the ledger belongs to the {ledger.limits.arm} arm, not the {arm} arm")
+    by_kind = _draw_settings_by_kind(plan, arm, settings)
+    frozen = plan.arms is not None
+    fit = (plan_fit_settings(plan, arm) if frozen else FitSettings()) if fit is None else fit
+    if evidence is None:
+        evidence = (plan_evidence_settings(plan, arm) if frozen else None) or EvidenceSettings()
+    if not isinstance(fit, FitSettings):
+        raise TypeError("fit must be FitSettings or None")
     corpora = {MACRO: macro_corpus(plan, macro_rows), EDGAR: edgar_corpus(plan, edgar_releases)}
     chosen = estimate_sources(arm, sources, full_distribution)
     for corpus in corpora.values():
@@ -1515,12 +1658,12 @@ def run_calibration(
             raise TypeError(f"recorded draws must be CalibrationDraw values; got {type(draw).__name__}")
         previous[draw.kind].append(draw)
     for kind, corpus in corpora.items():
-        _reusable(previous[kind], corpus, settings, client.config, chosen)
+        _reusable(previous[kind], corpus, by_kind[kind], client.config, chosen)
     if not isinstance(evidence, EvidenceSettings):
-        raise TypeError("evidence must be EvidenceSettings")
+        raise TypeError("evidence must be EvidenceSettings or None")
     with ledger:
-        draws = {kind: collect_draws(corpus, settings, client=client, ledger=ledger, sources=chosen,
-                                     recorded=previous[kind], on_draw=on_draw)
+        draws = {kind: collect_draws(corpus, by_kind[kind], client=client, ledger=ledger, sources=chosen,
+                                     recorded=previous[kind], on_draw=on_draw, on_request=on_request)
                  for kind, corpus in corpora.items()}
     if EstimateSource.FULL_DISTRIBUTION in chosen:
         draws = {kind: collect_evidence(corpus, draws[kind], full_distribution=full_distribution, evidence=evidence,
@@ -1532,9 +1675,9 @@ def run_calibration(
     records = {}
     for kind, corpus in corpora.items():
         for source in chosen:
-            identity = calibration_identity(client, settings, source, corpus)
+            identity = calibration_identity(client, by_kind[kind], source, corpus)
             records[(kind, source.value)] = fit_calibrator(corpus, draws[kind], source, identity=identity, arm=arm,
-                                                           settings=settings, fit=fit, split_seed=seed,
+                                                           settings=by_kind[kind], fit=fit, split_seed=seed,
                                                            evidence=evidence)
     paths = {key: write_calibrator(record, calibrators_dir) for key, record in records.items()}
     return CalibrationRun(records=MappingProxyType(records), paths=MappingProxyType(paths),
@@ -1548,6 +1691,7 @@ __all__ = [
     "EDGAR",
     "FEATURE_ORDER",
     "IDENTIFYING",
+    "INTERRUPTED",
     "KINDS",
     "MACRO",
     "OUTLOOK",
@@ -1576,6 +1720,9 @@ __all__ = [
     "macro_corpus",
     "macro_item_id",
     "plan_corpus_layout",
+    "plan_draw_settings",
+    "plan_evidence_settings",
+    "plan_fit_settings",
     "request_allowance",
     "run_calibration",
     "split_seed",

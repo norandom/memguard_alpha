@@ -158,9 +158,53 @@ def test_split_follows_the_frozen_draw_order_of_numpy_default_rng():
     assert {year for year, count in years(split.pilot).items() if count == 2} == extra
 
 
+def test_the_probe_evaluation_is_20_evaluation_months_stratified_15_pre_and_5_post_cutoff():
+    split = gemma_split()
+    probe = split.probe_evaluation
+    assert len(probe) == plan_module.PROBE_EVALUATION_MONTHS == 20
+    assert list(probe) == sorted(probe) and len(set(probe)) == 20
+    assert set(probe) <= set(split.evaluation)
+    assert not set(probe) & (set(split.calibration) | set(split.pilot))
+    # 68 pre-cutoff and 22 post-cutoff evaluation months: round(20 x 68 / 90) = 15 and 5.
+    assert sum(month <= GEMMA_CUTOFF for month in probe) == 15
+    assert sum(month > GEMMA_CUTOFF for month in probe) == 5
+
+
+def test_the_probe_evaluation_is_drawn_after_the_pilot_by_the_same_generator():
+    """Calibration, extra pilot years and pilot months first; then the pre-cutoff and post-cutoff probe months."""
+    pre = [month for month in STUDY_MONTHS if month <= GEMMA_CUTOFF]
+    rng = np.random.default_rng(SEED)
+    calibration = []
+    for year in range(2016, 2024):
+        pool = [month for month in pre if int(month[:4]) == year]
+        calibration += sorted(pool[int(i)] for i in rng.choice(len(pool), size=3, replace=False))
+    pilot_years = list(range(2016, 2025))
+    extra = {pilot_years[int(i)] for i in rng.choice(len(pilot_years), size=3, replace=False)}
+    pilot = []
+    for year in pilot_years:
+        pool = [month for month in pre if int(month[:4]) == year and month not in calibration]
+        pilot += sorted(pool[int(i)] for i in rng.choice(len(pool), size=1 + (year in extra), replace=False))
+    evaluation = [month for month in STUDY_MONTHS if month not in calibration and month not in pilot]
+    probe = []
+    strata = (([month for month in evaluation if month <= GEMMA_CUTOFF], 15),
+              ([month for month in evaluation if month > GEMMA_CUTOFF], 5))
+    for pool, count in strata:
+        probe += sorted(pool[int(i)] for i in rng.choice(len(pool), size=count, replace=False))
+    assert gemma_split().probe_evaluation == tuple(sorted(probe))
+
+
+def test_the_probe_strata_follow_every_models_cutoff_and_round_half_up():
+    split = split_months(classes({GEMMA: GEMMA_CUTOFF, "vendor/earlier-model": "2024-06"}), seed=SEED)
+    pre = [month for month in split.evaluation if month <= "2024-06"]
+    expected = (2 * 20 * len(pre) + len(split.evaluation)) // (2 * len(split.evaluation))
+    assert sum(month <= "2024-06" for month in split.probe_evaluation) == expected
+    assert len(split.probe_evaluation) == 20
+
+
 def test_split_is_reproducible_from_the_seed_and_changes_with_it():
     assert gemma_split() == gemma_split()
     assert gemma_split(SEED + 1).calibration != gemma_split().calibration
+    assert gemma_split(SEED + 1).probe_evaluation != gemma_split().probe_evaluation
 
 
 def test_a_month_is_eligible_for_calibration_or_pilot_only_before_every_models_cutoff():
@@ -521,6 +565,9 @@ def test_load_refuses_a_plan_whose_accuracy_exposure_differs_from_the_library(tm
     ("months", lambda m: m.update(evaluation=m["evaluation"][:-1]), "every month"),
     ("months", lambda m: m.update(pilot=sorted([*m["pilot"][1:], m["evaluation"][-1]]),
                                   evaluation=sorted([*m["evaluation"][:-1], m["pilot"][0]])), "cutoff"),
+    ("months", lambda m: m.update(probe_evaluation=sorted([*m["probe_evaluation"][1:], m["pilot"][0]])),
+     "probe_evaluation"),
+    ("months", lambda m: m.update(probe_evaluation=list(reversed(m["probe_evaluation"]))), "probe_evaluation"),
     ("edgar", lambda e: e.update(negative_control=[e["calibration_control"][0], *e["negative_control"][1:]]),
      "disjoint"),
 ])

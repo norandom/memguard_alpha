@@ -7,7 +7,8 @@ four sections and ``build_plan.py`` wires the item assembly (7.1) into
 :func:`freeze_plan` and writes ``runs/finance-sim/plan/plan.json``:
 
 - ``arms`` (8.1, 8.10): the explicit arm-to-registry-id map and per arm its
-  profile, temperature, seed base, draws and variant set. The sampling arm
+  role, profile, GGUF artifact digest, temperature, seed base, draws, calibration
+  draws, fit settings, evidence settings and variant set. The sampling arm
   computes the six variants; the serving arm no adjustment and top-k only, with
   its full-distribution variants listed as missing with the reason.
 - ``pilot`` (8.9): 12 pilot months times 8 draws per rendering on the gated arm,
@@ -19,6 +20,17 @@ four sections and ``build_plan.py`` wires the item assembly (7.1) into
   from it (:func:`stage_limits_files`) carry ``plan_sha256``.
 - ``scored_probability`` (8.4): outcome, mapping per draw mode, clip, and the
   shrink toward 0.5, for Brier and log loss.
+
+Arm roles (user decision 2026-11-10, :data:`ROLE_REASON`): the serving arm is
+the primary arm (none and top-k on the full evaluation set, its stages as frozen
+by 7.3); the sampling arm is the probe arm, sized to about one to two hours of
+iGPU generation per stage at the planning rate of 6 s per generation: 8 draws per
+rendering (min parsed 6), calibration on the 24 calibration months with 8 draws
+and on the 140 EDGAR calibration rows with 4 draws, its full run on the frozen
+probe evaluation months (``MonthSplit.probe_evaluation``, about 20 evaluation
+months stratified pre and post cutoff), the negative control with 8 draws. Each
+probe stage's time limit adds a headroom of 1.25 on that rate and one client
+timeout (300 s), and is at most 9,000 s.
 
 The inputs are plain values, so nothing here fetches data or contacts a host: one
 :class:`MonthClass` per decision month with a pre-cutoff flag per model, and one
@@ -33,11 +45,17 @@ Month split (Requirement 4.1), seeded by the plan's ``seed``:
   in each of 3 distinct years drawn from those 9.
 - Evaluation: every other month. Pilot months are excluded from the confirmatory
   analysis (7.8).
+- Probe evaluation: a subset of :data:`PROBE_EVALUATION_MONTHS` evaluation months
+  for the probe arm, stratified like the evaluation set: the months on or before
+  every model's cutoff get ``round(PROBE_EVALUATION_MONTHS x pre / evaluation)``
+  of them (half rounded up), the months after some model's cutoff the rest. It is
+  a subset of the evaluation months, so disjoint from calibration and pilot.
 
 One ``numpy.random.default_rng(seed)`` generator is consumed in this order: the
 calibration months year by year, then the 3 extra pilot years, then the pilot
-months year by year. Within a year, months are drawn uniformly without replacement
-from that year's eligible months in calendar order.
+months year by year, then the pre-cutoff and the post-cutoff probe evaluation
+months. Within a year (or a probe stratum), months are drawn uniformly without
+replacement from the eligible months in calendar order.
 
 Hashing and refusal (Requirement 8.2): every section has a content hash, and
 ``plan_sha256`` is the SHA-256 of the canonical JSON (sorted keys, compact
@@ -76,12 +94,17 @@ CALIBRATION_PER_YEAR = 3
 #: Calendar years that give one pilot month each; PILOT_EXTRA_YEARS of them, drawn by the seed, give one more.
 PILOT_YEARS: tuple[int, ...] = tuple(range(2016, 2025))
 PILOT_EXTRA_YEARS = 3
+#: Evaluation months of the probe arm's full run (user decision 2026-11-10: about 20).
+PROBE_EVALUATION_MONTHS = 20
 SPLIT_RULE = (
     "calibration: 3 months per calendar year 2016 to 2023, drawn first; pilot: from the months left, "
     "1 month per calendar year 2016 to 2024 plus 1 more in each of 3 distinct years drawn from those 9; "
     "only months on or before every model's cutoff are drawn; evaluation: every other month; "
-    "numpy.random.default_rng(seed) consumed as calibration months, extra pilot years, pilot months, "
-    "months drawn uniformly without replacement within a year in calendar order"
+    "probe evaluation: 20 evaluation months, round(20 x pre / evaluation) (half up) of the evaluation months on "
+    "or before every model's cutoff and the rest of those after some model's cutoff; "
+    "numpy.random.default_rng(seed) consumed as calibration months, extra pilot years, pilot months, then the "
+    "pre-cutoff and the post-cutoff probe evaluation months, months drawn uniformly without replacement within a "
+    "year or a probe stratum in calendar order"
 )
 
 #: EDGAR split tags (the directories under ``data/edgar/``) and the manifest's file keys.
@@ -339,6 +362,9 @@ class MonthSplit:
 
     ``pre_cutoff`` lists, per model, the months on or before its cutoff; they are
     the earliest months, so every later month is post-cutoff for that model.
+    ``probe_evaluation`` is the probe arm's frozen subset of the evaluation months
+    (so disjoint from calibration and pilot); its stratum counts are enforced when
+    the split is drawn, like the per-year counts.
     """
 
     models: tuple[str, ...]
@@ -347,6 +373,7 @@ class MonthSplit:
     calibration: tuple[str, ...]
     pilot: tuple[str, ...]
     evaluation: tuple[str, ...]
+    probe_evaluation: tuple[str, ...] = ()
     rule: str = SPLIT_RULE
 
     def __post_init__(self) -> None:
@@ -379,12 +406,18 @@ class MonthSplit:
         late = sorted((sets["calibration"] | sets["pilot"]) - eligible)
         if late:
             raise ValueError(f"calibration and pilot months must be on or before every model's cutoff; got {late}")
+        probe = _months(self.probe_evaluation, "probe_evaluation")
+        outside = sorted(set(probe) - sets["evaluation"])
+        if outside:
+            raise ValueError(f"probe_evaluation months must be evaluation months (so neither calibration nor pilot "
+                             f"months); got {outside}")
         object.__setattr__(self, "models", models)
         object.__setattr__(self, "months", months)
         object.__setattr__(self, "pre_cutoff", MappingProxyType(pre_cutoff))
         object.__setattr__(self, "calibration", calibration)
         object.__setattr__(self, "pilot", pilot)
         object.__setattr__(self, "evaluation", evaluation)
+        object.__setattr__(self, "probe_evaluation", probe)
         _text(self.rule, "rule")
 
     def to_dict(self) -> dict[str, Any]:
@@ -545,20 +578,59 @@ ARM_REGISTRY_IDS: Mapping[str, str] = MappingProxyType({SAMPLING_ARM: GEMMA_REGI
 #: Provider profile of each arm (recall_guard/core/provider_profiles).
 ARM_PROFILES: Mapping[str, str] = MappingProxyType({SAMPLING_ARM: "llamacpp-gemma3-4b",
                                                     SERVING_ARM: "modal-gemma3-4b"})
-#: What ``build_plan.py`` reads from those profiles; the defaults when no profile is read.
+#: The Gemma 3 4B GGUF the llama.cpp profile declares (q4_K_M, the 1.2 receipt's pin); both local hosts serve it.
+GEMMA_GGUF_DIGEST = "sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1"
+#: What ``build_plan.py`` reads from those profiles; the defaults when no profile is read. ``artifact_digest``
+#: is the declared GGUF digest (None for the serving arm, whose weights the serving manifest's digest pins).
 ARM_PROFILE_FACTS: Mapping[str, Mapping[str, Any]] = MappingProxyType({
     SAMPLING_ARM: MappingProxyType({"profile_id": "llamacpp-gemma3-4b", "served_model": "gemma3:4b",
                                     "top_logprobs": 5, "max_tokens": 512,
-                                    "estimate_sources": ("top_k", "full_distribution")}),
+                                    "estimate_sources": ("top_k", "full_distribution"),
+                                    "artifact_digest": GEMMA_GGUF_DIGEST}),
     SERVING_ARM: MappingProxyType({"profile_id": "modal-gemma3-4b", "served_model": GEMMA_REGISTRY_ID,
-                                   "top_logprobs": 5, "max_tokens": 256, "estimate_sources": ("top_k",)}),
+                                   "top_logprobs": 5, "max_tokens": 256, "estimate_sources": ("top_k",),
+                                   "artifact_digest": None}),
 })
 ARM_MEASURES: Mapping[str, str] = MappingProxyType({
     SAMPLING_ARM: ("the model's sampling distribution: local llama.cpp at the frozen temperature, with seed "
-                   "seed_base + draw_index per draw; the confirmatory arm, gated by the pilot and power gate"),
+                   "seed_base + draw_index per draw; the probe arm, gated by the pilot and power gate"),
     SERVING_ARM: ("serving nondeterminism: Modal vLLM at temperature 0 without a seed; paid, with its own limits "
                   "and approval, no pilot or power gate, reporting its achieved power"),
 })
+
+#: Arm roles (user decision 2026-11-10): the serving arm is the primary arm, the sampling arm the probe arm.
+PRIMARY_ROLE, PROBE_ROLE = "primary", "probe"
+ROLES: tuple[str, ...] = (PRIMARY_ROLE, PROBE_ROLE)
+ARM_ROLES: Mapping[str, str] = MappingProxyType({SAMPLING_ARM: PROBE_ROLE, SERVING_ARM: PRIMARY_ROLE})
+ROLE_REASON = (
+    "user decision 2026-11-10: \"the big tests take too long. we don't have 44h of time. so modal it is. for "
+    "probes, smaller tests 1-2h local is fine. but the iGPU is just a small chip.\" The local iGPU cannot carry "
+    "the 44-hour run, so the Modal serving arm is the primary arm, approved after the local probe results, and "
+    "the local sampling arm is a probe arm of about one to two hours of iGPU time per stage"
+)
+#: What each arm supplies to the study (design, "Arm sizing decision").
+ARM_SUPPLIES: Mapping[str, str] = MappingProxyType({
+    SERVING_ARM: ("the pre-registered tests: the pre- minus post-cutoff accuracy gap, the Brier and log-loss "
+                  "differences and the negative control, on the none and top_k variants over the full evaluation "
+                  "set, with its achieved power"),
+    SAMPLING_ARM: ("the top_k versus full_distribution comparison and the convergence analysis (7.12) and a small "
+                   "paired check of the gap, with all six variants on its frozen probe evaluation months; the pilot "
+                   "and power gate (7.8) gates this arm only"),
+})
+#: Evaluation months each role's full run executes (a MonthSplit field name).
+FULL_RUN_MONTHS: Mapping[str, str] = MappingProxyType({PRIMARY_ROLE: "evaluation", PROBE_ROLE: "probe_evaluation"})
+#: Calibration corpora, each with its own draws per prompt and rendering (7.6).
+CALIBRATION_KINDS: tuple[str, ...] = ("macro", "edgar")
+
+#: Calibrator quality gates (7.6), frozen per arm: weak below this held-out AUC, at least this many control rows.
+FIT_MIN_AUC = 0.6
+FIT_MIN_VALID = 50
+#: Evidence pass (6.4, 7.6, 7.7), frozen per arm with a full-distribution source: one batch per prompt and rendering
+#: with this timeout, the alternatives kept per position, and the host_busy retries and the wait between them.
+EVIDENCE_TIMEOUT_S = 600.0
+EVIDENCE_TOP_K_KEEP = 100
+EVIDENCE_HOST_BUSY_RETRIES = 5
+EVIDENCE_HOST_BUSY_WAIT_S = 60.0
 
 NO_ADJUSTMENT = "none"
 TOP_K = "top_k"
@@ -583,8 +655,14 @@ SERVING_FULL_DISTRIBUTION_REASON = (
     "missing for the serving arm: the full-distribution host serves the local GGUF, which are different weights "
     "from the served model, and values from different builds are not comparable (Requirement 9.4)"
 )
+#: The primary (serving) arm's ensemble, as frozen by 7.3.
 ENSEMBLE_DRAWS = 32
 ENSEMBLE_MIN_PARSED = 24
+#: The probe (sampling) arm's ensemble: 8 draws per rendering, at least 6 parsed (user decision 2026-11-10).
+PROBE_DRAWS = 8
+PROBE_MIN_PARSED = 6
+#: The probe arm's EDGAR calibration rows take 4 draws each; its macro calibration months take PROBE_DRAWS.
+PROBE_EDGAR_CALIBRATION_DRAWS = 4
 SAMPLING_TEMPERATURE = 0.7
 SERVING_TEMPERATURE = 0.0
 SAMPLING_SEED_BASE = 1000
@@ -637,16 +715,86 @@ def _section_with(cls: type, data: object, name: str, **parsers: Callable[[Any],
     return cls(**{key: parsers[key](value) if key in parsers else value for key, value in mapping.items()})
 
 
+_GGUF_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+@dataclass(frozen=True)
+class FitPlan:
+    """The calibrator fit's frozen quality gates (7.6): the weak-calibrator AUC threshold and the minimum control rows."""
+
+    min_auc: float = FIT_MIN_AUC
+    min_valid: int = FIT_MIN_VALID
+
+    def __post_init__(self) -> None:
+        min_auc = _real(self.min_auc, "min_auc")
+        if not 0.0 <= min_auc <= 1.0:
+            raise ValueError(f"min_auc must be in [0, 1]; got {min_auc}")
+        _integer(self.min_valid, "min_valid", minimum=1)
+        object.__setattr__(self, "min_auc", min_auc)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _section_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: object, name: str = "fit") -> FitPlan:
+        return _section_from_dict(cls, data, name)
+
+
+@dataclass(frozen=True)
+class EvidencePlan:
+    """The evidence pass's frozen settings (6.4, 7.6, 7.7): one batch per prompt and rendering.
+
+    ``timeout_s`` bounds one batch, ``top_k_keep`` is the alternatives kept per
+    position, and a ``host_busy`` refusal is retried ``host_busy_retries`` times,
+    ``host_busy_wait_s`` apart. Evidence calls never count against the
+    generation limits (``EVIDENCE_RULE``).
+    """
+
+    timeout_s: float = EVIDENCE_TIMEOUT_S
+    top_k_keep: int = EVIDENCE_TOP_K_KEEP
+    host_busy_retries: int = EVIDENCE_HOST_BUSY_RETRIES
+    host_busy_wait_s: float = EVIDENCE_HOST_BUSY_WAIT_S
+
+    def __post_init__(self) -> None:
+        timeout = _real(self.timeout_s, "timeout_s")
+        if timeout <= 0:
+            raise ValueError(f"timeout_s must be above 0; got {timeout}")
+        wait = _real(self.host_busy_wait_s, "host_busy_wait_s")
+        if wait < 0:
+            raise ValueError(f"host_busy_wait_s must not be negative; got {wait}")
+        _integer(self.top_k_keep, "top_k_keep", minimum=1)
+        _integer(self.host_busy_retries, "host_busy_retries", minimum=0)
+        object.__setattr__(self, "timeout_s", timeout)
+        object.__setattr__(self, "host_busy_wait_s", wait)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _section_dict(self)
+
+    @classmethod
+    def from_dict(cls, data: object, name: str = "evidence") -> EvidencePlan:
+        return _section_from_dict(cls, data, name)
+
+
 @dataclass(frozen=True)
 class ArmPlan:
-    """One ensemble arm: its profile, sampling settings and variant set (Requirements 8.1 and 8.10).
+    """One ensemble arm: its role, profile, pins, sampling settings and variant set (Requirements 8.1 and 8.10).
 
-    ``variants`` is every draw mode crossed with no adjustment and with each
-    estimate source the profile offers; ``missing_variants`` gives the reason for
-    each of the others, which the analysis reports as missing, never substituted.
-    ``seed_base`` is set exactly when the arm samples (temperature above 0): draw
-    ``i`` uses seed ``seed_base + i``. ``max_tokens`` and ``top_logprobs`` are the
-    profile's per-request output cap and top-k.
+    ``role`` is ``primary`` or ``probe`` with ``role_reason`` (the user's
+    decision) and ``supplies`` (what the arm contributes to the study).
+    ``artifact_digest`` is the GGUF digest its profile declared at build time
+    (``sha256:<hex>``), which both local hosts must serve; None for an arm
+    without a local GGUF (the serving arm, whose weights the serving manifest's
+    digest pins). ``variants`` is every draw mode crossed with no adjustment and
+    with each estimate source the profile offers; ``missing_variants`` gives the
+    reason for each of the others, which the analysis reports as missing, never
+    substituted. ``seed_base`` is set exactly when the arm samples (temperature
+    above 0): draw ``i`` uses seed ``seed_base + i``. ``max_tokens`` and
+    ``top_logprobs`` are the profile's per-request output cap and top-k.
+    ``draws`` and ``min_parsed`` size every evaluation ensemble of the arm;
+    ``calibration_draws`` gives the draws per prompt and rendering of each
+    calibration corpus (macro, EDGAR). ``fit`` freezes the calibrator fit's
+    gates and ``evidence`` the evidence pass, set exactly when the arm has a
+    full-distribution source.
     """
 
     profile_id: str
@@ -662,10 +810,18 @@ class ArmPlan:
     variants: tuple[str, ...]
     missing_variants: Mapping[str, str]
     gated: bool
+    role: str
+    role_reason: str
+    supplies: str
+    artifact_digest: str | None
+    calibration_draws: Mapping[str, int]
+    fit: FitPlan
+    evidence: EvidencePlan | None
 
     def __post_init__(self) -> None:
-        for name in ("profile_id", "served_model", "measures"):
+        for name in ("profile_id", "served_model", "measures", "role_reason", "supplies"):
             _text(getattr(self, name), name)
+        _choice(self.role, "role", ROLES)
         temperature = _real(self.temperature, "temperature")
         if temperature < 0:
             raise ValueError(f"temperature must be at least 0; got {temperature}")
@@ -675,13 +831,21 @@ class ArmPlan:
             raise ValueError(f"min_parsed must not be above draws; got min_parsed={min_parsed}, draws={draws}")
         _integer(self.top_logprobs, "top_logprobs", minimum=1)
         _integer(self.max_tokens, "max_tokens", minimum=1)
+        calibration = _mapping(self.calibration_draws, "calibration_draws")
+        if set(calibration) != set(CALIBRATION_KINDS):
+            raise ValueError(f"calibration_draws must give the draws of exactly the corpora {list(CALIBRATION_KINDS)}; "
+                             f"got {sorted(map(str, calibration))}")
+        calibration = {kind: _integer(calibration[kind], f"calibration_draws[{kind!r}]", minimum=1)
+                       for kind in CALIBRATION_KINDS}
         if temperature > 0:
             if self.seed_base is None:
                 raise ValueError("an arm that samples (temperature above 0) needs a seed_base, so every draw "
                                  "carries a recorded seed")
             seed_base = _integer(self.seed_base, "seed_base", minimum=0)
-            if seed_base + draws - 1 > MAX_SEED:
-                raise ValueError(f"seed_base + draws - 1 must be at most {MAX_SEED}; got {seed_base + draws - 1}")
+            widest = max(draws, *calibration.values())
+            if seed_base + widest - 1 > MAX_SEED:
+                raise ValueError(f"seed_base + draws - 1 must be at most {MAX_SEED} for every ensemble of the arm; "
+                                 f"got {seed_base + widest - 1}")
         elif self.seed_base is not None:
             raise ValueError("an arm at temperature 0 sends no seed; seed_base must be None")
         sources = _subset(self.estimate_sources, "estimate_sources", ESTIMATE_SOURCES)
@@ -698,15 +862,34 @@ class ArmPlan:
             raise ValueError(f"missing_variants must give a reason for exactly the variants the arm cannot "
                              f"compute {absent}; got {sorted(missing)}")
         _boolean(self.gated, "gated")
+        if self.artifact_digest is not None and (not isinstance(self.artifact_digest, str)
+                                                 or not _GGUF_DIGEST.fullmatch(self.artifact_digest)):
+            raise ValueError(f"artifact_digest must be sha256: and 64 lowercase hex characters, or None; "
+                             f"got {self.artifact_digest!r}")
+        full = FULL_DISTRIBUTION in sources
+        if full and self.artifact_digest is None:
+            raise ValueError("an arm with a full_distribution source needs the artifact_digest of the GGUF its "
+                             "generation and full-distribution hosts serve")
+        if not isinstance(self.fit, FitPlan):
+            raise TypeError(f"fit must be a FitPlan; got {type(self.fit).__name__}")
+        if full != isinstance(self.evidence, EvidencePlan) or (not full and self.evidence is not None):
+            raise ValueError("evidence must be an EvidencePlan exactly when the arm has a full_distribution source, "
+                             f"else None; got {type(self.evidence).__name__}")
         object.__setattr__(self, "temperature", temperature)
         object.__setattr__(self, "estimate_sources", sources)
         object.__setattr__(self, "variants", variants)
         object.__setattr__(self, "missing_variants", missing)
+        object.__setattr__(self, "calibration_draws", MappingProxyType(calibration))
 
     @classmethod
     def for_arm(cls, arm: str, *, profile_id: str, served_model: str, top_logprobs: int, max_tokens: int,
-                estimate_sources: Sequence[str]) -> ArmPlan:
-        """The frozen settings of ``arm`` (temperature, seeds, draws, gate) on the facts of its profile."""
+                estimate_sources: Sequence[str], artifact_digest: str | None = None) -> ArmPlan:
+        """The frozen settings of ``arm`` (role, temperature, seeds, draws, gate, fit, evidence) on its profile's facts.
+
+        The sampling arm is the probe arm (8 draws, at least 6 parsed; macro
+        calibration 8 and EDGAR calibration 4 draws per prompt); the serving arm
+        the primary arm (32 draws, at least 24 parsed, both calibrations 32).
+        """
         sampling = _choice(arm, "arm", ARMS) == SAMPLING_ARM
         variants = variants_for(estimate_sources)
         missing = {}
@@ -716,28 +899,38 @@ class ArmPlan:
                 missing[variant] = (SERVING_FULL_DISTRIBUTION_REASON
                                     if arm == SERVING_ARM and adjustment == FULL_DISTRIBUTION
                                     else f"missing: the {profile_id} profile offers no {adjustment} estimate source")
+        draws, min_parsed = (PROBE_DRAWS, PROBE_MIN_PARSED) if sampling else (ENSEMBLE_DRAWS, ENSEMBLE_MIN_PARSED)
+        calibration = ({"macro": PROBE_DRAWS, "edgar": PROBE_EDGAR_CALIBRATION_DRAWS} if sampling
+                       else {"macro": ENSEMBLE_DRAWS, "edgar": ENSEMBLE_DRAWS})
         return cls(profile_id=profile_id, served_model=served_model, measures=ARM_MEASURES[arm],
                    temperature=SAMPLING_TEMPERATURE if sampling else SERVING_TEMPERATURE,
-                   seed_base=SAMPLING_SEED_BASE if sampling else None, draws=ENSEMBLE_DRAWS,
-                   min_parsed=ENSEMBLE_MIN_PARSED, top_logprobs=top_logprobs, max_tokens=max_tokens,
+                   seed_base=SAMPLING_SEED_BASE if sampling else None, draws=draws,
+                   min_parsed=min_parsed, top_logprobs=top_logprobs, max_tokens=max_tokens,
                    estimate_sources=tuple(estimate_sources), variants=variants, missing_variants=missing,
-                   gated=sampling)
+                   gated=sampling, role=ARM_ROLES[arm], role_reason=ROLE_REASON, supplies=ARM_SUPPLIES[arm],
+                   artifact_digest=artifact_digest, calibration_draws=calibration, fit=FitPlan(),
+                   evidence=EvidencePlan() if FULL_DISTRIBUTION in estimate_sources else None)
 
     def to_dict(self) -> dict[str, Any]:
         return _section_dict(self)
 
     @classmethod
     def from_dict(cls, data: object, name: str = "arm") -> ArmPlan:
-        return _section_from_dict(cls, data, name)
+        def evidence(value: object) -> EvidencePlan | None:
+            return None if value is None else EvidencePlan.from_dict(value, f"{name}.evidence")
+        return _section_with(cls, data, name, fit=lambda value: FitPlan.from_dict(value, f"{name}.fit"),
+                             evidence=evidence)
 
 
 @dataclass(frozen=True)
 class StudyArms:
     """Both ensemble arms, the explicit arm-to-registry-id map and the frozen variant names.
 
-    The sampling arm is the confirmatory, gated arm: it samples at a temperature
-    above 0 and computes the six variants. The serving arm runs at temperature 0
-    with no pilot or power gate and computes no adjustment and top-k only.
+    The serving arm is the primary arm: it runs at temperature 0 with no pilot or
+    power gate, computes no adjustment and top-k only, and carries the
+    pre-registered tests. The sampling arm is the probe arm and the gated arm: it
+    samples at a temperature above 0, computes the six variants on its frozen
+    probe months and runs the local GGUF whose digest it freezes.
     """
 
     registry_ids: Mapping[str, str]
@@ -768,6 +961,13 @@ class StudyArms:
         if serving.gated or serving.temperature != 0 or serving.variants != variants_for((TOP_K,)):
             raise ValueError("the serving arm runs at temperature 0 without a pilot or power gate and computes no "
                              "adjustment and top-k only")
+        for name in ARMS:
+            if arms[name].role != ARM_ROLES[name]:
+                raise ValueError(f"the {name} arm is the {ARM_ROLES[name]} arm (user decision 2026-11-10): the "
+                                 f"serving arm is primary and the sampling arm the probe arm; got "
+                                 f"{arms[name].role!r}")
+        if sampling.artifact_digest is None:
+            raise ValueError("the sampling arm runs the local GGUF: it needs its artifact_digest")
         object.__setattr__(self, "registry_ids", registry)
         object.__setattr__(self, "arms", MappingProxyType({name: arms[name] for name in ARMS}))
         object.__setattr__(self, "variants", VARIANTS)
@@ -802,23 +1002,36 @@ PILOT_DRAWS = 8
 PILOT_MIN_PARSED = 6
 #: The pilot's noise statistic is the correctness difference of this variant.
 PILOT_NOISE_VARIANT = "ensemble_top_k"
+#: What a gate below power_threshold does: "inform" lets the probe arm proceed after stop_for_decision with its
+#: expected power reported, "block" waits for a decision (user decision 2026-11-10: "inform", because at effect
+#: size 0.10 the gate cannot pass with month-level accuracy differences, and the serving arm carries the
+#: confirmatory tests).
+PILOT_GATE_POLICIES: tuple[str, ...] = ("inform", "block")
+PILOT_GATE_POLICY = "inform"
 PILOT_RULE = (
     "the pilot months of the month split run through the same guarded execution on the gated arm only, one "
     "recorded ensemble of `draws` draws per month and rendering with `min_parsed`, seeds seed_base + draw_index; "
     "per month the noise statistic is the identifying-minus-anonymised correctness difference of the noise "
     "variant (values in {-1, 0, 1}) and noise_sd its standard deviation over the pilot months; simulated power "
-    "evaluates the frozen effect size with the pre-cutoff and post-cutoff evaluation month counts; the full run "
+    "evaluates the frozen effect size with the pre-cutoff and post-cutoff counts of the months the gated arm's full "
+    "run executes (the probe arm's probe evaluation months, so the gate does not overstate its power); the full run "
     "starts only at power of at least power_threshold; pilot months are excluded from the confirmatory analysis"
 )
 
 
-def _evaluation_counts(split: MonthSplit, model: str) -> tuple[int, int]:
-    """Evaluation months on or before, and after, ``model``'s cutoff."""
+def _evaluation_counts(split: MonthSplit, model: str, months: Sequence[str] | None = None) -> tuple[int, int]:
+    """Months on or before, and after, ``model``'s cutoff among ``months`` (every evaluation month by default)."""
     if model not in split.pre_cutoff:
         raise ValueError(f"{model!r} is not a model of the month split {list(split.models)}")
+    months = split.evaluation if months is None else months
     pre = set(split.pre_cutoff[model])
-    before = sum(month in pre for month in split.evaluation)
-    return before, len(split.evaluation) - before
+    before = sum(month in pre for month in months)
+    return before, len(months) - before
+
+
+def _arm_counts(split: MonthSplit, arms: StudyArms, arm: str) -> tuple[int, int]:
+    """Pre-cutoff and post-cutoff counts of the months ``arm``'s full run executes, by its model's cutoff."""
+    return _evaluation_counts(split, arms.registry_ids[arm], _role_months(split, arms.arms[arm]))
 
 
 @dataclass(frozen=True)
@@ -826,8 +1039,11 @@ class PilotSettings:
     """The pilot of the gated arm: about 12 pre-cutoff months times 8 draws per rendering, its own minimum.
 
     ``pre_cutoff_evaluation_months`` and ``post_cutoff_evaluation_months`` are the
-    frozen item counts the power simulation applies the pilot noise to (68 and 22
-    for Gemma 3 4B).
+    frozen item counts the power simulation applies the pilot noise to: those of
+    the months the gated arm's full run executes, the probe arm's probe
+    evaluation months (15 and 5 for Gemma 3 4B with the default seed), so the
+    gate never assumes the primary arm's 68 and 22. The primary arm's counts,
+    for its achieved-power report, are :func:`evaluation_month_counts`.
     """
 
     pre_cutoff_evaluation_months: int
@@ -839,8 +1055,13 @@ class PilotSettings:
     renderings: tuple[str, ...] = RENDERINGS
     noise_variant: str = PILOT_NOISE_VARIANT
     rule: str = PILOT_RULE
+    #: "inform" (the probe arm proceeds after stop_for_decision, its expected power reported) or "block": inform,
+    #: because at effect size 0.10 the gate cannot pass with month-level accuracy differences, and the serving arm
+    #: carries the confirmatory tests (user decision 2026-11-10).
+    gate_policy: str = PILOT_GATE_POLICY
 
     def __post_init__(self) -> None:
+        _choice(self.gate_policy, "gate_policy", PILOT_GATE_POLICIES)
         _integer(self.pre_cutoff_evaluation_months, "pre_cutoff_evaluation_months", minimum=1)
         _integer(self.post_cutoff_evaluation_months, "post_cutoff_evaluation_months", minimum=1)
         _choice(self.arm, "pilot arm", ARMS)
@@ -858,8 +1079,8 @@ class PilotSettings:
 
     @classmethod
     def for_split(cls, split: MonthSplit, arms: StudyArms) -> PilotSettings:
-        """The frozen pilot of the gated arm on this month split."""
-        before, after = _evaluation_counts(split, arms.registry_ids[SAMPLING_ARM])
+        """The frozen pilot of the gated arm on this month split, with the counts of that arm's full-run months."""
+        before, after = _arm_counts(split, arms, SAMPLING_ARM)
         return cls(pre_cutoff_evaluation_months=before, post_cutoff_evaluation_months=after, months=len(split.pilot))
 
     def to_dict(self) -> dict[str, Any]:
@@ -881,9 +1102,10 @@ def _check_pilot(pilot: PilotSettings, split: MonthSplit, arms: StudyArms) -> No
                          f"of the arm's seeds); got {pilot.draws}")
     if pilot.noise_variant not in arm.variants:
         raise ValueError(f"the pilot noise variant {pilot.noise_variant!r} is not a variant of the {pilot.arm} arm")
-    counts = _evaluation_counts(split, arms.registry_ids[pilot.arm])
+    counts = _arm_counts(split, arms, pilot.arm)
     if (pilot.pre_cutoff_evaluation_months, pilot.post_cutoff_evaluation_months) != counts:
-        raise ValueError(f"pilot evaluation month counts must be the split's {counts} (pre-cutoff, post-cutoff); "
+        raise ValueError(f"pilot evaluation month counts must be those of the {pilot.arm} arm's full-run months "
+                         f"{counts} (pre-cutoff, post-cutoff); "
                          f"got {(pilot.pre_cutoff_evaluation_months, pilot.post_cutoff_evaluation_months)}")
 
 
@@ -898,8 +1120,16 @@ WEIGHT_STAGING = SERVING_STAGES[0]
 #: The serving manifest of task 3.4, repository-relative.
 SERVING_MANIFEST = "configs/modal/gemma-3-4b-measurement.json"
 ROOT = Path(__file__).resolve().parents[2]
-#: Sampling arm: twice the design's planning figure of about 6 s per generation on the iGPU.
-SAMPLING_SECONDS_PER_GENERATION = 12
+#: Sampling (probe) arm: the design's planning rate of 6 s per generation on the iGPU (user decision 2026-11-10).
+SAMPLING_SECONDS_PER_GENERATION = 6
+#: Headroom on the planning rate, so a stage slower than 6 s per generation still completes (decision 2026-11-10).
+PROBE_TIME_HEADROOM = 1.25
+#: The probe arm's client timeout (llamacpp-gemma3-4b timeout_s): the ledger admits a request only while elapsed time
+#: plus this timeout fits max_seconds, so each probe stage adds it once.
+PROBE_REQUEST_TIMEOUT_SECONDS = 300
+#: Every probe stage is bounded to two and a half hours (within the user's one to two hours of generation at the
+#: planning rate, plus the headroom and one timeout).
+PROBE_STAGE_MAX_SECONDS = 9000
 #: CPU-only weight staging timeout: about 8.6 GB of pinned weights at 2.4 MB/s or faster.
 WEIGHT_STAGING_SECONDS = 3600
 #: The expiry controller of deploy/modal/serve.py (scripts/measure_modal_model.py prices it the same way).
@@ -913,9 +1143,15 @@ EVIDENCE_RULE = (
     "batch mode); they never add a generation request"
 )
 LIMITS_RULE = (
-    "one recorded ensemble per item and rendering, never one per variant: max_requests = ensembles x draws, plus "
-    "the deployment's one eligibility post; max_output_tokens = max_requests x the arm's max_tokens. Sampling arm "
-    "(local, no cost): max_seconds = max_requests x sampling_seconds_per_generation. Serving arm (paid), stages "
+    "one recorded ensemble per item and rendering, never one per variant: max_requests = the sum over ensemble "
+    "groups of ensembles x that group's draws (draws_by_group, else draws), plus the deployment's one eligibility "
+    "post; max_output_tokens = max_requests x the arm's max_tokens. Each arm's calibration takes its "
+    "calibration_draws per corpus (macro, edgar), its pilot the pilot's draws and every other stage the arm's draws; "
+    "the full run covers the evaluation months of the arm's role (primary: every evaluation month; probe: the "
+    "split's probe_evaluation months). Sampling arm (local probe arm, no cost): max_seconds = ceil(max_requests x "
+    "sampling_seconds_per_generation x probe_time_headroom) + probe_request_timeout_seconds (the ledger admits a "
+    "request only while elapsed time plus the client timeout fits), at most probe_stage_max_seconds per stage. "
+    "Serving arm (paid), stages "
     "in execution order weight_staging, deployment, smoke_run, calibration (macro and EDGAR in one serve), "
     "full_run, negative_control, each stage after weight staging one serve lifecycle, five in all: max_seconds = "
     "startup_seconds + max_requests x serving_seconds_per_post, where serving_seconds_per_post = "
@@ -938,9 +1174,11 @@ class StageBudget:
     """One stage's frozen limits, sized to one recorded ensemble per item and rendering.
 
     ``ensembles`` counts the ensembles per item group (items times renderings);
-    ``max_requests`` is their sum times ``draws`` plus ``extra_requests`` (the
-    serving deployment's eligibility post). ``max_usd`` is set for the paid
-    serving arm only.
+    each group's ensemble has ``draws`` draws unless ``draws_by_group`` names
+    another count for it (the probe arm's EDGAR calibration rows).
+    ``max_requests`` is the sum of ensembles times their draws plus
+    ``extra_requests`` (the serving deployment's eligibility post). ``max_usd``
+    is set for the paid serving arm only.
     """
 
     stage: str
@@ -951,6 +1189,7 @@ class StageBudget:
     max_output_tokens: int
     max_seconds: int
     max_usd: float | None
+    draws_by_group: Mapping[str, int] = field(default_factory=lambda: MappingProxyType({}))
 
     def __post_init__(self) -> None:
         _text(self.stage, "stage")
@@ -958,11 +1197,21 @@ class StageBudget:
         ensembles = {_text(group, "ensembles group"): _integer(count, f"ensembles[{group!r}]", minimum=1)
                      for group, count in sorted(groups.items())}
         draws = _integer(self.draws, "draws", minimum=0)
+        overrides = _mapping(self.draws_by_group, "draws_by_group")
+        by_group = {}
+        for group, count in sorted(overrides.items()):
+            if group not in ensembles:
+                raise ValueError(f"{self.stage}: draws_by_group names {group!r}, which is not an ensemble group of "
+                                 f"the stage {sorted(ensembles)}")
+            if _integer(count, f"draws_by_group[{group!r}]", minimum=1) == draws:
+                raise ValueError(f"{self.stage}: draws_by_group[{group!r}] repeats the stage's draws {draws}; list "
+                                 "only the groups whose ensembles take another count")
+            by_group[group] = count
         extra = _integer(self.extra_requests, "extra_requests", minimum=0)
-        expected = sum(ensembles.values()) * draws + extra
+        expected = sum(count * by_group.get(group, draws) for group, count in ensembles.items()) + extra
         if _integer(self.max_requests, "max_requests", minimum=0) != expected:
-            raise ValueError(f"{self.stage}: max_requests must be the ensembles times draws plus the extra requests "
-                             f"({expected}); got {self.max_requests}")
+            raise ValueError(f"{self.stage}: max_requests must be the ensembles times their draws plus the extra "
+                             f"requests ({expected}); got {self.max_requests}")
         _integer(self.max_output_tokens, "max_output_tokens", minimum=0)
         _integer(self.max_seconds, "max_seconds", minimum=1)
         if self.max_usd is not None:
@@ -971,6 +1220,11 @@ class StageBudget:
                 raise ValueError(f"{self.stage}: max_usd must be positive or None; got {usd}")
             object.__setattr__(self, "max_usd", usd)
         object.__setattr__(self, "ensembles", MappingProxyType(ensembles))
+        object.__setattr__(self, "draws_by_group", MappingProxyType(by_group))
+
+    def group_draws(self) -> dict[str, int]:
+        """The draws of each ensemble group's ensembles."""
+        return {group: self.draws_by_group.get(group, self.draws) for group in self.ensembles}
 
     def to_dict(self) -> dict[str, Any]:
         return _section_dict(self)
@@ -1090,6 +1344,11 @@ class PlanLimits:
     controller_cores: float = CONTROLLER_CORES
     controller_memory_gib: float = CONTROLLER_MEMORY_GIB
     controller_allowance_seconds: int = CONTROLLER_ALLOWANCE_SECONDS
+    probe_stage_max_seconds: int = PROBE_STAGE_MAX_SECONDS
+    #: Headroom on the planning rate, so a probe stage somewhat slower than 6 s per generation still completes.
+    probe_time_headroom: float = PROBE_TIME_HEADROOM
+    #: The probe arm's client timeout, added once per stage because admission needs elapsed time plus it to fit.
+    probe_request_timeout_seconds: int = PROBE_REQUEST_TIMEOUT_SECONDS
     evidence_requests: str = EVIDENCE_RULE
     rule: str = LIMITS_RULE
 
@@ -1110,23 +1369,26 @@ class PlanLimits:
                 raise ValueError("max_usd is set for every serving-arm stage and for no sampling-arm stage")
             stages[arm] = budgets
         for name in ("serving_seconds_per_post", "sampling_seconds_per_generation", "weight_staging_seconds",
-                     "controller_allowance_seconds"):
+                     "controller_allowance_seconds", "probe_stage_max_seconds", "probe_request_timeout_seconds"):
             _integer(getattr(self, name), name, minimum=1)
         for name in ("controller_cores", "controller_memory_gib"):
             value = _real(getattr(self, name), name)
             if value <= 0:
                 raise ValueError(f"{name} must be positive; got {value}")
             object.__setattr__(self, name, value)
+        object.__setattr__(self, "probe_time_headroom", _headroom(self.probe_time_headroom))
         _text(self.evidence_requests, "evidence_requests")
         _text(self.rule, "rule")
         _check_ceiling(stages[SERVING_ARM], self.manifest)
+        _check_probe_bound(stages[SAMPLING_ARM], self.probe_stage_max_seconds)
         object.__setattr__(self, "stages", MappingProxyType(stages))
 
     def settings(self) -> dict[str, Any]:
         """The sizing inputs :func:`size_limits` takes besides the plan sections and the manifest."""
         return {name: getattr(self, name) for name in (
             "sampling_seconds_per_generation", "weight_staging_seconds", "controller_cores", "controller_memory_gib",
-            "controller_allowance_seconds")}
+            "controller_allowance_seconds", "probe_stage_max_seconds", "probe_time_headroom",
+            "probe_request_timeout_seconds")}
 
     def stage(self, arm: str, stage: str) -> StageBudget:
         for budget in self.stages[_choice(arm, "arm", ARMS)]:
@@ -1149,6 +1411,26 @@ class PlanLimits:
                                for index, item in enumerate(_sequence(items, f"limits.stages[{arm!r}]")))
                     for arm, items in _mapping(value, "limits.stages").items()}
         return _section_with(cls, data, "limits", manifest=ServingManifest.from_dict, stages=stages)
+
+
+def _headroom(value: object) -> float:
+    headroom = _real(value, "probe_time_headroom")
+    if headroom < 1.0:
+        raise ValueError(f"probe_time_headroom must be at least 1 (a margin above the planning rate); got {headroom}")
+    return headroom
+
+
+def _probe_seconds(requests: int, rate: int, headroom: float, timeout: int) -> int:
+    """``ceil(requests x rate x headroom) + timeout``, in exact decimal arithmetic."""
+    return math.ceil(Decimal(requests * rate) * Decimal(str(headroom))) + timeout
+
+
+def _check_probe_bound(stages: Sequence[StageBudget], bound: int) -> None:
+    """Every stage of the probe (sampling) arm fits its time bound of about two hours of iGPU time."""
+    over = {budget.stage: budget.max_seconds for budget in stages if budget.max_seconds > bound}
+    if over:
+        raise ValueError(f"the probe arm's stages must each fit probe_stage_max_seconds = {bound} s at the planning "
+                         f"rate; {over} exceed it")
 
 
 def _check_ceiling(stages: Sequence[StageBudget], manifest: ServingManifest) -> None:
@@ -1184,8 +1466,18 @@ def size_limits(split: MonthSplit, edgar: EdgarSplit, arms: StudyArms, pilot: Pi
                 manifest: ServingManifest, *, sampling_seconds_per_generation: int = SAMPLING_SECONDS_PER_GENERATION,
                 weight_staging_seconds: int = WEIGHT_STAGING_SECONDS, controller_cores: float = CONTROLLER_CORES,
                 controller_memory_gib: float = CONTROLLER_MEMORY_GIB,
-                controller_allowance_seconds: int = CONTROLLER_ALLOWANCE_SECONDS) -> PlanLimits:
-    """Size every stage to one recorded ensemble per item and rendering (module rule ``LIMITS_RULE``)."""
+                controller_allowance_seconds: int = CONTROLLER_ALLOWANCE_SECONDS,
+                probe_stage_max_seconds: int = PROBE_STAGE_MAX_SECONDS,
+                probe_time_headroom: float = PROBE_TIME_HEADROOM,
+                probe_request_timeout_seconds: int = PROBE_REQUEST_TIMEOUT_SECONDS) -> PlanLimits:
+    """Size every stage to one recorded ensemble per item and rendering (module rule ``LIMITS_RULE``).
+
+    The calibration stage takes each arm's ``calibration_draws`` per corpus,
+    the pilot the pilot's draws and every other stage the arm's draws; the full
+    run covers the evaluation months of the arm's role (:func:`full_run_months`).
+    A probe-arm stage's time limit is ``ceil(requests x rate x headroom)`` plus
+    one client timeout, and must fit ``probe_stage_max_seconds``.
+    """
     for value, cls, name in ((split, MonthSplit, "split"), (edgar, EdgarSplit, "edgar"), (arms, StudyArms, "arms"),
                              (pilot, PilotSettings, "pilot"), (manifest, ServingManifest, "manifest")):
         if not isinstance(value, cls):
@@ -1202,21 +1494,43 @@ def size_limits(split: MonthSplit, edgar: EdgarSplit, arms: StudyArms, pilot: Pi
                          f"{manifest.temperature}")
     calibration = {"macro": len(split.calibration) * len(RENDERINGS),
                    "edgar": len(edgar.calibration_memorized) + len(edgar.calibration_control)}
-    full_run = {"macro": len(split.evaluation) * len(RENDERINGS)}
     negative_control = {"edgar": len(edgar.negative_control)}
 
-    def local(stage: str, ensembles: Mapping[str, int], draws: int) -> StageBudget:
-        requests = sum(ensembles.values()) * draws
+    def full_run(arm: str) -> dict[str, int]:
+        months = _role_months(split, arms.arms[arm])
+        if not months:
+            raise ValueError(f"the {arm} arm's full run needs the split's {FULL_RUN_MONTHS[arms.arms[arm].role]} "
+                             "months; the split has none")
+        return {"macro": len(months) * len(RENDERINGS)}
+
+    def calibration_draws(arm: ArmPlan) -> tuple[int, dict[str, int]]:
+        """The calibration stage's draws (macro) and the EDGAR override when it differs."""
+        draws = arm.calibration_draws["macro"]
+        edgar_draws = arm.calibration_draws["edgar"]
+        return draws, ({} if edgar_draws == draws else {"edgar": edgar_draws})
+
+    def requests_of(ensembles: Mapping[str, int], draws: int, by_group: Mapping[str, int]) -> int:
+        return sum(count * by_group.get(group, draws) for group, count in ensembles.items())
+
+    rate = _integer(sampling_seconds_per_generation, "sampling_seconds_per_generation", minimum=1)
+    headroom = _headroom(probe_time_headroom)
+    timeout = _integer(probe_request_timeout_seconds, "probe_request_timeout_seconds", minimum=1)
+
+    def local(stage: str, ensembles: Mapping[str, int], draws: int,
+              by_group: Mapping[str, int] | None = None) -> StageBudget:
+        by_group = {} if by_group is None else by_group
+        requests = requests_of(ensembles, draws, by_group)
         return StageBudget(stage=stage, ensembles=ensembles, draws=draws, extra_requests=0, max_requests=requests,
                            max_output_tokens=requests * sampling.max_tokens,
-                           max_seconds=requests * _integer(sampling_seconds_per_generation,
-                                                           "sampling_seconds_per_generation", minimum=1),
-                           max_usd=None)
+                           max_seconds=_probe_seconds(requests, rate, headroom, timeout), max_usd=None,
+                           draws_by_group=by_group)
 
-    sampling_stages = (local("calibration", calibration, sampling.draws),
+    sampling_stages = (local("calibration", calibration, *calibration_draws(sampling)),
                        local("pilot", {"macro": len(split.pilot) * len(pilot.renderings)}, pilot.draws),
-                       local("full_run", full_run, sampling.draws),
+                       local("full_run", full_run(SAMPLING_ARM), sampling.draws),
                        local("negative_control", negative_control, sampling.draws))
+    bound = _integer(probe_stage_max_seconds, "probe_stage_max_seconds", minimum=1)
+    _check_probe_bound(sampling_stages, bound)
 
     lifecycles = len(SERVING_STAGES) - 1
     budget = manifest.gpu_phase_seconds - lifecycles * manifest.startup_seconds
@@ -1230,23 +1544,30 @@ def size_limits(split: MonthSplit, edgar: EdgarSplit, arms: StudyArms, pilot: Pi
     serving_stages = [StageBudget(stage=WEIGHT_STAGING, ensembles={}, draws=0, extra_requests=0, max_requests=0,
                                   max_output_tokens=0, max_seconds=staging_seconds,
                                   max_usd=_usd_up(manifest.cpu_usd_per_second * staging_seconds))]
-    for stage, ensembles, draws, extra in (("deployment", {}, 0, manifest.eligibility_posts),
-                                           ("smoke_run", {"smoke": 1}, serving.draws, 0),
-                                           ("calibration", calibration, serving.draws, 0),
-                                           ("full_run", full_run, serving.draws, 0),
-                                           ("negative_control", negative_control, serving.draws, 0)):
-        requests = sum(ensembles.values()) * draws + extra
+    for stage, ensembles, (draws, by_group), extra in (
+            ("deployment", {}, (0, {}), manifest.eligibility_posts),
+            ("smoke_run", {"smoke": 1}, (serving.draws, {}), 0),
+            ("calibration", calibration, calibration_draws(serving), 0),
+            ("full_run", full_run(SERVING_ARM), (serving.draws, {}), 0),
+            ("negative_control", negative_control, (serving.draws, {}), 0)):
+        requests = requests_of(ensembles, draws, by_group) + extra
         seconds = manifest.startup_seconds + requests * seconds_per_post
         usd = _usd_up(manifest.usd_per_second * (seconds + manifest.cleanup_seconds)
                       + controller_rate * (seconds + allowance))
         serving_stages.append(StageBudget(stage=stage, ensembles=ensembles, draws=draws, extra_requests=extra,
                                           max_requests=requests, max_output_tokens=requests * serving.max_tokens,
-                                          max_seconds=seconds, max_usd=usd))
+                                          max_seconds=seconds, max_usd=usd, draws_by_group=by_group))
     return PlanLimits(manifest=manifest, stages={SAMPLING_ARM: sampling_stages, SERVING_ARM: tuple(serving_stages)},
-                      serving_seconds_per_post=seconds_per_post,
-                      sampling_seconds_per_generation=sampling_seconds_per_generation,
+                      serving_seconds_per_post=seconds_per_post, sampling_seconds_per_generation=rate,
                       weight_staging_seconds=staging_seconds, controller_cores=controller_cores,
-                      controller_memory_gib=controller_memory_gib, controller_allowance_seconds=allowance)
+                      controller_memory_gib=controller_memory_gib, controller_allowance_seconds=allowance,
+                      probe_stage_max_seconds=bound, probe_time_headroom=headroom,
+                      probe_request_timeout_seconds=timeout)
+
+
+def _role_months(split: MonthSplit, arm: ArmPlan) -> tuple[str, ...]:
+    """The evaluation months the full run of an arm with this role executes."""
+    return getattr(split, FULL_RUN_MONTHS[arm.role])
 
 
 # ---------- 7.3: scored probability for Brier and log loss (Requirement 8.4) ----------
@@ -1547,14 +1868,46 @@ def split_months(months: Sequence[MonthClass], *, seed: int) -> MonthSplit:
         pilot += _draw(rng, pool, 1 + (year in extra_years), f"pilot year {year}")
     drawn = taken | set(pilot)
     all_months = tuple(item.month for item in ordered)
+    evaluation = tuple(month for month in all_months if month not in drawn)
     return MonthSplit(
         models=models,
         months=all_months,
         pre_cutoff={model: tuple(item.month for item in ordered if item.pre_cutoff[model]) for model in models},
         calibration=tuple(sorted(calibration)),
         pilot=tuple(sorted(pilot)),
-        evaluation=tuple(month for month in all_months if month not in drawn),
+        evaluation=evaluation,
+        probe_evaluation=_probe_evaluation(rng, evaluation, {item.month for item in ordered
+                                                             if all(item.pre_cutoff.values())}),
     )
+
+
+def probe_strata(evaluation: int, pre_cutoff: int, months: int = PROBE_EVALUATION_MONTHS) -> tuple[int, int]:
+    """Probe months on or before every model's cutoff and after it, in the evaluation set's proportion.
+
+    ``round(months x pre_cutoff / evaluation)`` with a half rounded up, in exact
+    integer arithmetic; the post-cutoff stratum gets the rest (68 and 22
+    evaluation months give 15 and 5).
+    """
+    _integer(evaluation, "evaluation months", minimum=1)
+    _integer(pre_cutoff, "pre-cutoff evaluation months", minimum=0)
+    _integer(months, "probe evaluation months", minimum=1)
+    if pre_cutoff > evaluation:
+        raise ValueError(f"pre-cutoff evaluation months {pre_cutoff} exceed the {evaluation} evaluation months")
+    before = (2 * months * pre_cutoff + evaluation) // (2 * evaluation)
+    return before, months - before
+
+
+def _probe_evaluation(rng: np.random.Generator, evaluation: Sequence[str], pre_cutoff: set[str]) -> tuple[str, ...]:
+    """The probe arm's evaluation subset, drawn after the pilot: the pre-cutoff stratum, then the post-cutoff one."""
+    before = [month for month in evaluation if month in pre_cutoff]
+    after = [month for month in evaluation if month not in pre_cutoff]
+    counts = probe_strata(len(evaluation), len(before))
+    probe: list[str] = []
+    for pool, count, label in ((before, counts[0], "the pre-cutoff probe stratum"),
+                               (after, counts[1], "the post-cutoff probe stratum")):
+        if count:
+            probe += _draw(rng, pool, count, label)
+    return tuple(sorted(probe))
 
 
 def split_edgar(rows: Sequence[EdgarRow]) -> EdgarSplit:
@@ -1642,6 +1995,32 @@ def require_complete(plan: StudyPlan) -> StudyPlan:
         raise ValueError(f"plan {plan.plan_sha256} lacks the sections {missing}; freeze it with "
                          f"scripts/finance_sim/build_plan.py")
     return plan
+
+
+def full_run_months(plan: StudyPlan, arm: str) -> tuple[str, ...]:
+    """The evaluation months the full run of ``arm`` executes, by its role.
+
+    The primary (serving) arm runs every evaluation month; the probe (sampling)
+    arm its frozen ``probe_evaluation`` months, a subset of them.
+    """
+    if not isinstance(plan, StudyPlan):
+        raise TypeError(f"plan must be a StudyPlan; got {type(plan).__name__}")
+    if plan.arms is None:
+        raise ValueError(f"plan {plan.plan_sha256} lacks the sections ['arms']; the full-run months follow the arm's "
+                         "role")
+    return _role_months(plan.months, plan.arms.arms[_choice(arm, "arm", ARMS)])
+
+
+def evaluation_month_counts(plan: StudyPlan, arm: str) -> tuple[int, int]:
+    """Pre-cutoff and post-cutoff months among the full-run months of ``arm``, by its model's cutoff.
+
+    The primary (serving) arm's are every evaluation month's (68 and 22 for Gemma
+    3 4B), the counts of its achieved-power report; the probe (sampling) arm's
+    are its probe evaluation months' (15 and 5), which the pilot freezes for the
+    power gate.
+    """
+    full_run_months(plan, arm)  # the arm and the arms section are checked there
+    return _arm_counts(plan.months, plan.arms, arm)
 
 
 def stage_limits_files(plan: StudyPlan) -> tuple[tuple[str, bytes], ...]:

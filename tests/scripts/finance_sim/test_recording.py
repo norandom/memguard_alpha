@@ -436,6 +436,30 @@ def test_the_allowance_is_built_from_the_arm_max_tokens_and_the_client_timeout()
                           allowance=RequestAllowance(output_tokens=256, timeout_s=300), records_dir=Path("unused"))
 
 
+def test_the_pinned_digest_is_the_plans_frozen_gguf_digest_not_the_profiles(monkeypatch):
+    from recall_guard.core import profiles
+    from scripts.finance_sim.plan import ARM_PROFILE_FACTS, study_arms
+
+    assert PINNED == PLAN.arms.arms["sampling"].artifact_digest
+    other = "sha256:" + "1" * 64
+    facts = {arm: dict(value) for arm, value in ARM_PROFILE_FACTS.items()}
+    facts["sampling"]["artifact_digest"] = other
+    frozen = full_plan(arms=study_arms(facts))
+
+    def no_profile(*args, **kwargs):
+        raise AssertionError("the pinned digest must come from the frozen plan, not from the provider profile")
+
+    monkeypatch.setattr(profiles, "load_profile", no_profile)
+    assert pinned_digest(frozen) == other != pinned_digest(PLAN)
+    with pytest.raises(ValueError, match="only the sampling arm"):
+        pinned_digest(PLAN, "serving")
+    # A plan without the digest (only reachable around the plan's own validation) is refused, never filled in.
+    bare = full_plan()
+    object.__setattr__(bare.arms.arms["sampling"], "artifact_digest", None)
+    with pytest.raises(ValueError, match="no GGUF artifact digest"):
+        pinned_digest(bare)
+
+
 def test_a_frozen_limit_closes_admission_mid_ensemble_and_keeps_the_partial_record(tmp_path, calibrator):
     limits = sampling_limits(max_requests=4)
     with pytest.raises(AdmissionClosedError) as closed, open_session(tmp_path, limits=limits) as session:

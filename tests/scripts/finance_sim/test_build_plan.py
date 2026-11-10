@@ -25,6 +25,7 @@ import requests
 
 from deploy.modal.manifest import load_plan as load_modal_plan
 from deploy.modal.stage_limits import STAGES, parse_stage_limits
+from recall_guard.core.profiles import load_profile
 from recall_guard.dataset import fred
 from recall_guard.dataset.fred import RollingRateLimiter
 from scripts.finance_sim import build_plan, items
@@ -181,12 +182,39 @@ def test_the_plan_freezes_the_arm_to_registry_id_map_and_takes_the_arms_from_the
     assert built.plan.excluded_models == {}
 
 
+def test_the_plan_freezes_the_gguf_digest_the_profile_declares_and_the_receipt_names_the_roles(built):
+    declared = load_profile("llamacpp-gemma3-4b").model_config.local_identity.declared.artifact_digest
+    assert built.plan.arms.arms["sampling"].artifact_digest == declared
+    assert built.plan.arms.arms["serving"].artifact_digest is None
+    assert build_plan.arm_facts()["sampling"]["artifact_digest"] == declared
+    assert built.receipt["arm_roles"] == {"sampling": "probe", "serving": "primary"}
+
+
+def test_a_profile_whose_full_distribution_host_keeps_another_count_is_refused(monkeypatch):
+    original = build_plan.load_profile
+
+    def other_kept(profile_id):
+        profile = original(profile_id)
+        if profile.full_distribution is None:
+            return profile
+        return replace(profile, full_distribution=replace(profile.full_distribution, top_k_keep=50))
+
+    monkeypatch.setattr(build_plan, "load_profile", other_kept)
+    with pytest.raises(build_plan.PlanBuildError, match="top_k_keep"):
+        build_plan.arm_facts()
+
+
 def test_the_frozen_split_and_pilot_have_the_design_sizes(built):
     plan = built.plan
     assert (len(plan.months.calibration), len(plan.months.pilot), len(plan.months.evaluation)) == (24, 12, 90)
-    assert (plan.pilot.pre_cutoff_evaluation_months, plan.pilot.post_cutoff_evaluation_months) == (68, 22)
+    # The pilot gate simulates the probe arm's own full run: its probe evaluation months.
+    assert (plan.pilot.pre_cutoff_evaluation_months, plan.pilot.post_cutoff_evaluation_months) == (15, 5)
     counts = built.receipt["counts"]
     assert counts["months"] == 126 and counts["edgar_calibration"] == 140 and counts["negative_control"] == 40
+    assert (counts["pre_cutoff_evaluation"], counts["post_cutoff_evaluation"]) == (68, 22)
+    assert len(plan.months.probe_evaluation) == counts["probe_evaluation"] == 20
+    assert (counts["probe_evaluation_pre_cutoff"], counts["probe_evaluation_post_cutoff"]) == (15, 5)
+    assert [entry["max_requests"] for entry in built.receipt["sampling_limits"]] == [944, 192, 320, 320]
 
 
 def test_the_stage_limits_files_carry_the_plan_sha256_in_execution_order(built):

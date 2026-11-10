@@ -101,7 +101,7 @@ GEMMA = "google/gemma-3-4b-it"
 CREATED_AT = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
 SEED = 20261110
 DIGEST = "sha256:" + "f" * 64
-#: Small ensembles keep the fakes fast: the full run is 90 months x 2 renderings x 3 draws = 540 requests.
+#: Small ensembles keep the fakes fast: the probe arm's full run is 20 probe months x 2 renderings x 3 draws.
 DRAWS, MIN_PARSED = 3, 2
 #: The pilot's own, smaller ensemble (it may not exceed the arm's draws).
 PILOT_DRAWS = 2
@@ -395,11 +395,12 @@ def macro_calibrators(calibrators_dir):
 
 
 def evaluation_items() -> tuple[ExecutionItem, ...]:
-    return macro_items(PLAN, MACRO_ITEMS, stage="full_run")
+    """The probe arm's full-run items: both renderings of its frozen probe evaluation months."""
+    return macro_items(PLAN, MACRO_ITEMS, stage="full_run", arm="sampling")
 
 
 def subset(months: int = 3) -> tuple[ExecutionItem, ...]:
-    chosen = {f"macro-{month}" for month in PLAN.months.evaluation[:months]}
+    chosen = {f"macro-{month}" for month in PLAN.months.probe_evaluation[:months]}
     return tuple(item for item in evaluation_items() if item.item_id in chosen)
 
 
@@ -446,7 +447,7 @@ def executed(module_root, macro_calibrators) -> SimpleNamespace:
 
 def test_the_full_run_issues_exactly_one_ensemble_per_item_and_rendering_and_completes_the_stage(executed):
     keys = planned_keys(PLAN, "sampling", "full_run")
-    assert len(keys) == len(PLAN.months.evaluation) * 2 == 180
+    assert len(keys) == len(PLAN.months.probe_evaluation) * 2 == 40  # the probe arm's frozen probe months
     calls = executed.host.calls
     assert len(calls) == len(keys) * DRAWS == PLAN.limits.stage("sampling", "full_run").max_requests
     by_prompt: dict[str, list[dict]] = {}
@@ -465,8 +466,8 @@ def test_the_full_run_issues_exactly_one_ensemble_per_item_and_rendering_and_com
 
 def test_evidence_is_one_batch_per_item_and_rendering_over_the_parsed_replies_in_draw_order(executed):
     calls = executed.full.batch_calls
-    assert len(calls) == 180
-    assert len({prompt for prompt, *_ in calls}) == 180
+    assert len(calls) == 40
+    assert len({prompt for prompt, *_ in calls}) == 40
     for prompt, texts, top_k_keep, timeout_s in calls:
         assert texts == tuple(reply(prompt, SEED_BASE + index) for index in range(DRAWS))
         assert (top_k_keep, timeout_s) == (100, 600.0)
@@ -587,7 +588,17 @@ def test_scored_probability_and_accuracy_follow_the_frozen_plan(executed):
                 assert variant.correct is None and "correct" in variant.missing_reasons
             else:
                 assert variant.correct == is_correct(variant.adjusted_summary_value, r)
-    assert any(item.realized is None for item in items.values())
+    # The month without realized returns is a primary-arm evaluation month outside the seeded probe subset.
+    missing = next(item for item in macro_items(PLAN, MACRO_ITEMS, stage="full_run", arm="serving")
+                   if item.realized is None)
+    result = derive_result(missing, serving_draws(missing), None, plan=PLAN, arm="serving", stage="full_run",
+                           identities={"top_k": serving_identity(missing)})
+    assert result.outcome is None
+    for variant in result.variants:
+        if variant.missing is None:
+            assert (variant.correct, variant.scored_probability, variant.adjusted_scored_probability) == (
+                None, None, None)
+            assert dict(variant.missing_reasons) == {"correct": MISSING_REASON, "scored_probability": MISSING_REASON}
 
 
 # ---------- resume without a duplicate request (5.8) ----------
@@ -958,6 +969,20 @@ def test_evidence_settings_must_keep_the_full_calibrators_alternatives(tmp_path,
     assert host.calls == []
 
 
+def test_the_evidence_pass_takes_its_timeout_and_busy_retries_from_the_frozen_plan(tmp_path, macro_calibrators):
+    frozen = PLAN.arms.arms["sampling"].evidence
+    assert (frozen.timeout_s, frozen.top_k_keep, frozen.host_busy_retries, frozen.host_busy_wait_s) == (
+        600.0, 100, 5, 60.0)
+    # A calibrator recorded with other operational settings: the plan's still apply; top_k_keep is the calibrator's.
+    full = macro_calibrators["full_distribution"]
+    other = replace(full, evidence_settings=EvidenceSettings(timeout_s=900.0, host_busy_retries=1, host_busy_wait_s=5.0))
+    sleeps: list = []
+    outcome = run_stage(tmp_path, subset(1), {**macro_calibrators, "full_distribution": other},
+                        full=FakeFull(busy=2), sleeps=sleeps)
+    assert {(top_k_keep, timeout_s) for _, _, top_k_keep, timeout_s in outcome.full.batch_calls} == {(100, 600.0)}
+    assert sleeps == [60.0, 60.0]  # two busy refusals retried at the plan's wait, within its five retries
+
+
 # ---------- recorded draws and stored results are refused, never merged ----------
 
 def recorded_subset(executed, items) -> list:
@@ -1063,26 +1088,45 @@ def test_macro_items_are_both_renderings_of_every_stage_month_in_plan_order_with
         source = by_month[item.item_id]
         expected = render_identifying(source.row) if item.rendering == "identifying" else render_anonymised(source.row)
         assert (item.kind, item.prompt, item.realized) == ("macro", expected, source.outcome.realized)
-    missing = [item for item in items if item.item_id == f"macro-{MISSING_MONTH}"]
+    missing = [item for item in macro_items(PLAN, MACRO_ITEMS, stage="full_run", arm="serving")
+               if item.item_id == f"macro-{MISSING_MONTH}"]
     assert [item.realized_missing_reason for item in missing] == [MISSING_REASON] * 2
     assert [item.key for item in macro_items(PLAN, MACRO_ITEMS, stage="pilot")] == list(
         planned_keys(PLAN, "sampling", "pilot"))
 
 
 def test_macro_items_refuse_a_changed_or_missing_item_and_a_stage_without_macro_items():
-    month = PLAN.months.evaluation[0]
-    changed = [replace(item, row=macro_row(PLAN.months.evaluation[1]) if item.item_id == f"macro-{month}" else item.row)
-               for item in MACRO_ITEMS]
+    month = PLAN.months.probe_evaluation[0]
+    changed = [replace(item, row=macro_row(PLAN.months.probe_evaluation[1]) if item.item_id == f"macro-{month}"
+                       else item.row) for item in MACRO_ITEMS]
     with pytest.raises(ExecutionError, match="holds the row of"):
-        macro_items(PLAN, changed, stage="full_run")
+        macro_items(PLAN, changed, stage="full_run", arm="sampling")
     edited = [replace(item, row=replace(item.row, raw={**item.row.raw, "baa10y": 9.9}))
               if item.item_id == f"macro-{month}" else item for item in MACRO_ITEMS]
     with pytest.raises(ExecutionError, match="differs from the item the plan froze"):
-        macro_items(PLAN, edited, stage="full_run")
+        macro_items(PLAN, edited, stage="full_run", arm="sampling")
     with pytest.raises(ExecutionError, match="is missing"):
-        macro_items(PLAN, [item for item in MACRO_ITEMS if item.item_id != f"macro-{month}"], stage="full_run")
+        macro_items(PLAN, [item for item in MACRO_ITEMS if item.item_id != f"macro-{month}"], stage="full_run",
+                    arm="sampling")
     with pytest.raises(ExecutionError, match="full_run and pilot"):
         macro_items(PLAN, MACRO_ITEMS, stage="negative_control")
+
+
+def test_the_full_run_months_depend_on_the_arm_the_probe_arm_runs_its_frozen_subset():
+    serving = macro_items(PLAN, MACRO_ITEMS, stage="full_run", arm="serving")
+    # Without an arm, the full run's items are every evaluation month (the primary arm's, a superset of the probe's).
+    assert macro_items(PLAN, MACRO_ITEMS, stage="full_run") == serving
+    assert [item.key for item in serving] == list(planned_keys(PLAN, "serving", "full_run"))
+    assert {item.item_id for item in serving} == {f"macro-{month}" for month in PLAN.months.evaluation}
+    assert len(serving) == 180 and len(evaluation_items()) == 40
+    assert {item.item_id for item in evaluation_items()} == {f"macro-{month}" for month in PLAN.months.probe_evaluation}
+    with pytest.raises(ExecutionError, match="gated sampling arm only"):
+        macro_items(PLAN, MACRO_ITEMS, stage="pilot", arm="serving")
+    # The probe arm refuses an evaluation month outside its frozen subset before any request.
+    outside = next(month for month in PLAN.months.evaluation if month not in PLAN.months.probe_evaluation)
+    item = next(item for item in serving if item.item_id == f"macro-{outside}")
+    with pytest.raises(ExecutionError, match="not an item and rendering the plan sizes"):
+        execute_items(PLAN, (item,), arm="sampling", stage="full_run", client=None, ledger=None, calibrators={})
 
 
 # ---------- the serving arm and a weak calibrator (8.1, 8.10) ----------

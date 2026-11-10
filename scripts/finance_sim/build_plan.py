@@ -11,9 +11,15 @@ and 7.3 sections) and writes, under the private root ``runs/finance-sim/``:
   execution order, each carrying ``plan_sha256``, validated against the serving
   manifest's reviewed ceiling;
 - ``plan/receipt.json``: the plan's ``plan_sha256``, the items and returns file
-  hashes, the recomputed EDGAR file hashes, the arm-to-registry-id map and the
-  serving limits with the plan, manifest and stage-limit hashes the approval
-  checks. Every reference to the plan is ``plan_sha256``, never a file hash.
+  hashes, the recomputed EDGAR file hashes, the arm-to-registry-id map, the arm
+  roles (serving primary, sampling probe), the evaluation and probe evaluation
+  month counts and the serving limits with the plan, manifest and stage-limit
+  hashes the approval checks. Every reference to the plan is ``plan_sha256``,
+  never a file hash.
+
+Each arm's GGUF artifact digest is frozen from its provider profile's declared
+digest at build time (``ArmPlan.artifact_digest``); the fit and evidence
+settings are the plan's (``ArmPlan.fit``, ``ArmPlan.evidence``).
 
 Refusals, before any request or write: a frozen plan already at the target (a
 plan is frozen once), a private root inside the repository but outside ``runs/``
@@ -179,14 +185,26 @@ def edgar_rows(edgar_dir: Path | str = item_assembly.DEFAULT_EDGAR_DIR) -> tuple
 
 
 def arm_facts(profiles: Mapping[str, str] = plan_module.ARM_PROFILES) -> dict[str, dict[str, Any]]:
-    """What the plan freezes from each arm's provider profile."""
+    """What the plan freezes from each arm's provider profile, the declared GGUF artifact digest included.
+
+    The plan's digest is the one the profile declares now; from the freeze on,
+    the host checks compare against the plan, never the profile. A
+    full-distribution host that keeps another number of alternatives than the
+    plan's frozen evidence settings is refused.
+    """
     facts = {}
     for arm, profile_id in profiles.items():
         profile = load_profile(profile_id)
         parameters = profile.model_config.parameters
+        identity = profile.model_config.local_identity
+        host = profile.full_distribution
+        if host is not None and host.top_k_keep != plan_module.EVIDENCE_TOP_K_KEEP:
+            raise PlanBuildError(f"profile {profile.profile_id}: the full-distribution host keeps top_k_keep "
+                                 f"{host.top_k_keep} alternatives; the plan freezes {plan_module.EVIDENCE_TOP_K_KEEP}")
         facts[arm] = {"profile_id": profile.profile_id, "served_model": profile.model_config.model,
                       "top_logprobs": parameters.get("top_logprobs"), "max_tokens": parameters.get("max_tokens"),
-                      "estimate_sources": profile.estimate_sources}
+                      "estimate_sources": profile.estimate_sources,
+                      "artifact_digest": None if identity is None else identity.declared.artifact_digest}
     return facts
 
 
@@ -319,6 +337,8 @@ def build(*, environ: Mapping[str, str] | None = None, private_root: Path | str 
         stage_paths.append(path)
         entry["path"] = path.relative_to(root).as_posix()
     split = frozen.months
+    evaluation_counts = plan_module.evaluation_month_counts(frozen, plan_module.SERVING_ARM)
+    probe_counts = plan_module.evaluation_month_counts(frozen, plan_module.SAMPLING_ARM)
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "status": "frozen",
@@ -332,6 +352,7 @@ def build(*, environ: Mapping[str, str] | None = None, private_root: Path | str 
                                  "sha256": _sha256_bytes(paths.realized_returns.read_bytes())},
         },
         "arms": dict(frozen.arms.registry_ids),
+        "arm_roles": {arm: arm_plan.role for arm, arm_plan in frozen.arms.arms.items()},
         "excluded_models": dict(frozen.excluded_models),
         "edgar_files": edgar_receipt,
         "serving_limits": serving,
@@ -340,8 +361,9 @@ def build(*, environ: Mapping[str, str] | None = None, private_root: Path | str 
         "counts": {
             "months": len(split.months), "calibration": len(split.calibration), "pilot": len(split.pilot),
             "evaluation": len(split.evaluation),
-            "pre_cutoff_evaluation": frozen.pilot.pre_cutoff_evaluation_months,
-            "post_cutoff_evaluation": frozen.pilot.post_cutoff_evaluation_months,
+            "pre_cutoff_evaluation": evaluation_counts[0], "post_cutoff_evaluation": evaluation_counts[1],
+            "probe_evaluation": len(split.probe_evaluation),
+            "probe_evaluation_pre_cutoff": probe_counts[0], "probe_evaluation_post_cutoff": probe_counts[1],
             "excluded_months": len(assembly.excluded_months),
             "realized_missing": sum(item.outcome.realized is None for item in assembly.macro),
             "edgar_calibration": len(frozen.edgar.calibration_memorized) + len(frozen.edgar.calibration_control),

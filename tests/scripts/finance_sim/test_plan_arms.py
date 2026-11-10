@@ -97,10 +97,84 @@ def test_the_sampling_arm_freezes_the_six_variants_its_temperature_and_its_seed_
     assert sampling.variants == SIX and dict(sampling.missing_variants) == {}
     assert sampling.temperature == 0.7
     assert sampling.seed_base == plan_module.SAMPLING_SEED_BASE and type(sampling.seed_base) is int
-    assert (sampling.draws, sampling.min_parsed, sampling.gated) == (32, 24, True)
+    # The probe arm (user decision 2026-11-10): 8 draws per rendering with at least 6 parsed.
+    assert (sampling.draws, sampling.min_parsed, sampling.gated) == (8, 6, True)
+    assert dict(sampling.calibration_draws) == {"macro": 8, "edgar": 4}
     assert sampling.estimate_sources == ("top_k", "full_distribution")
     assert (sampling.profile_id, sampling.served_model) == ("llamacpp-gemma3-4b", "gemma3:4b")
     assert "sampling distribution" in sampling.measures
+
+
+def test_the_plan_records_each_arms_role_with_the_users_reason_and_what_it_supplies(plan):
+    sampling, serving = plan.arms.arms["sampling"], plan.arms.arms["serving"]
+    assert (serving.role, sampling.role) == ("primary", "probe")
+    for arm in (sampling, serving):
+        assert arm.role_reason == plan_module.ROLE_REASON
+        assert "we don't have 44h of time. so modal it is" in arm.role_reason
+        assert "1-2h local is fine" in arm.role_reason and "2026-11-10" in arm.role_reason
+    assert "pre-registered tests" in serving.supplies and "achieved power" in serving.supplies
+    assert "full evaluation set" in serving.supplies
+    assert "convergence" in sampling.supplies and "full_distribution" in sampling.supplies
+    assert "probe evaluation months" in sampling.supplies and "pilot and power gate" in sampling.supplies
+    payload = plan.to_dict()["arms"]["arms"]
+    assert (payload["serving"]["role"], payload["sampling"]["role"]) == ("primary", "probe")
+
+
+def test_each_arm_freezes_its_gguf_digest_and_its_fit_and_evidence_settings(plan):
+    sampling, serving = plan.arms.arms["sampling"], plan.arms.arms["serving"]
+    assert sampling.artifact_digest == "sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1"
+    assert serving.artifact_digest is None  # the serving weights are pinned by the manifest digest
+    for arm in (sampling, serving):
+        assert (arm.fit.min_auc, arm.fit.min_valid) == (0.6, 50)
+    assert (sampling.evidence.timeout_s, sampling.evidence.top_k_keep, sampling.evidence.host_busy_retries,
+            sampling.evidence.host_busy_wait_s) == (600.0, 100, 5, 60.0)
+    assert serving.evidence is None  # no full-distribution source on the serving arm
+    payload = plan.to_dict()["arms"]["arms"]
+    assert payload["sampling"]["fit"] == {"min_auc": 0.6, "min_valid": 50}
+    assert payload["sampling"]["evidence"] == {"timeout_s": 600.0, "top_k_keep": 100, "host_busy_retries": 5,
+                                               "host_busy_wait_s": 60.0}
+    assert payload["sampling"]["artifact_digest"] == sampling.artifact_digest and payload["serving"]["evidence"] is None
+
+
+@pytest.mark.parametrize(("arm", "changes", "message"), [
+    ("sampling", {"artifact_digest": None}, "artifact_digest"),
+    ("sampling", {"artifact_digest": "f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1"},
+     "artifact_digest"),
+    ("sampling", {"evidence": None}, "evidence"),
+    ("serving", {"evidence": plan_module.EvidencePlan()}, "evidence"),
+    ("sampling", {"calibration_draws": {"macro": 8}}, "calibration_draws"),
+    ("sampling", {"calibration_draws": {"macro": 8, "edgar": 0}}, "calibration_draws"),
+    ("sampling", {"role": "confirmatory"}, "role"),
+    ("sampling", {"supplies": ""}, "supplies"),
+    ("sampling", {"fit": {"min_auc": 0.6, "min_valid": 50}}, "fit"),
+])
+def test_the_new_arm_fields_are_validated(plan, arm, changes, message):
+    with pytest.raises((TypeError, ValueError), match=message):
+        replace(plan.arms.arms[arm], **changes)
+
+
+@pytest.mark.parametrize("changes", [
+    {"min_auc": 1.5}, {"min_auc": float("nan")}, {"min_valid": 0}, {"min_valid": True},
+])
+def test_fit_settings_validate_their_values(changes):
+    with pytest.raises((TypeError, ValueError)):
+        plan_module.FitPlan(**changes)
+
+
+@pytest.mark.parametrize("changes", [
+    {"timeout_s": 0}, {"timeout_s": float("inf")}, {"top_k_keep": 0}, {"host_busy_retries": -1},
+    {"host_busy_wait_s": -1.0}, {"host_busy_retries": True},
+])
+def test_evidence_settings_validate_their_values(changes):
+    with pytest.raises((TypeError, ValueError)):
+        plan_module.EvidencePlan(**changes)
+
+
+def test_the_roles_are_fixed_the_serving_arm_primary_and_the_sampling_arm_probe(plan):
+    with pytest.raises(ValueError, match="probe"):
+        replace(plan.arms, arms={**plan.arms.arms, "sampling": replace(plan.arms.arms["sampling"], role="primary")})
+    with pytest.raises(ValueError, match="primary"):
+        replace(plan.arms, arms={**plan.arms.arms, "serving": replace(plan.arms.arms["serving"], role="probe")})
 
 
 def test_the_serving_arm_freezes_no_adjustment_and_top_k_and_lists_its_full_distribution_variants_as_missing(plan):
@@ -143,7 +217,7 @@ def test_an_arm_whose_model_is_excluded_or_not_in_the_split_is_refused():
     ("serving", {"variants": SIX, "missing_variants": {}}, "variants"),
     ("sampling", {"seed_base": None}, "seed_base"),
     ("serving", {"seed_base": 7}, "seed_base"),
-    ("sampling", {"seed_base": 2**31 - 10}, "seed_base"),
+    ("sampling", {"seed_base": 2**31 - 5}, "seed_base"),
     ("sampling", {"seed_base": -1}, "seed_base"),
     ("sampling", {"min_parsed": 33}, "min_parsed"),
     ("sampling", {"draws": 1, "min_parsed": 1}, "draws"),
@@ -180,18 +254,62 @@ def test_sampling_request_limits_match_one_recorded_ensemble_per_item_and_render
         "calibration": {"macro": len(split.calibration) * 2,
                         "edgar": len(edgar.calibration_memorized) + len(edgar.calibration_control)},
         "pilot": {"macro": len(split.pilot) * 2},
-        "full_run": {"macro": len(split.evaluation) * 2},
+        "full_run": {"macro": len(split.probe_evaluation) * 2},
         "negative_control": {"edgar": len(edgar.negative_control)},
     }
+    # The probe arm: 8 draws per rendering everywhere except the EDGAR calibration rows, which take 4.
+    group_draws = {"calibration": {"macro": 8, "edgar": 4}, "pilot": {"macro": 8}, "full_run": {"macro": 8},
+                   "negative_control": {"edgar": 8}}
     for name, stage in sampling.items():
-        draws = 8 if name == "pilot" else 32
-        assert dict(stage.ensembles) == ensembles[name] and stage.draws == draws
-        assert stage.max_requests == sum(ensembles[name].values()) * draws
+        assert dict(stage.ensembles) == ensembles[name] and stage.draws == 8
+        assert stage.group_draws() == group_draws[name]
+        assert stage.max_requests == sum(count * group_draws[name][group] for group, count in ensembles[name].items())
         assert stage.max_output_tokens == stage.max_requests * 512
         assert stage.extra_requests == 0 and stage.max_usd is None
-    assert [stage.max_requests for stage in sampling.values()] == [(48 + 140) * 32, 24 * 8, 180 * 32, 40 * 32]
+    assert dict(sampling["calibration"].draws_by_group) == {"edgar": 4}
+    assert [stage.max_requests for stage in sampling.values()] == [48 * 8 + 140 * 4, 24 * 8, 40 * 8, 40 * 8]
+    assert [stage.max_requests for stage in sampling.values()] == [944, 192, 320, 320]
+    assert [stage.max_output_tokens for stage in sampling.values()] == [483328, 98304, 163840, 163840]
     # One ensemble feeds all six variants, so six variants never multiply the requests.
-    assert sum(stage.max_requests for stage in sampling.values()) == 13248
+    assert sum(stage.max_requests for stage in sampling.values()) == 1776
+
+
+def test_the_probe_arm_runs_its_frozen_probe_months_and_the_primary_arm_every_evaluation_month(plan):
+    assert plan_module.full_run_months(plan, "sampling") == plan.months.probe_evaluation
+    assert plan_module.full_run_months(plan, "serving") == plan.months.evaluation
+    assert len(plan.months.probe_evaluation) == 20 and set(plan.months.probe_evaluation) < set(plan.months.evaluation)
+    assert dict(stages(plan, "serving")["full_run"].ensembles) == {"macro": 180}
+    assert dict(stages(plan, "sampling")["full_run"].ensembles) == {"macro": 40}
+
+
+def test_every_probe_stage_fits_the_bound_of_two_and_a_half_hours(plan):
+    assert plan.limits.probe_stage_max_seconds == 9000
+    sampling = stages(plan, "sampling")
+    # ceil(requests x 6 x 1.25) + 300: calibration 7,080 + 300, pilot 1,440 + 300, the others 2,400 + 300.
+    assert [stage.max_seconds for stage in sampling.values()] == [7380, 1740, 2700, 2700]
+    assert all(stage.max_seconds <= 9000 for stage in sampling.values())
+    assert sum(stage.max_seconds for stage in sampling.values()) == 14520
+    rule = plan.limits.rule
+    assert "probe_stage_max_seconds" in rule and "probe_time_headroom" in rule and "probe_request_timeout" in rule
+
+
+def test_a_probe_stage_above_its_bound_is_refused(plan):
+    with pytest.raises(ValueError, match="probe_stage_max_seconds"):
+        size_limits(plan.months, plan.edgar, plan.arms, plan.pilot, plan.limits.manifest,
+                    sampling_seconds_per_generation=8)  # calibration: ceil(944 x 8 x 1.25) + 300 = 9740 s
+    with pytest.raises(ValueError, match="probe_stage_max_seconds"):
+        size_limits(plan.months, plan.edgar, plan.arms, plan.pilot, plan.limits.manifest,
+                    probe_stage_max_seconds=5000)
+
+
+def test_a_stage_budget_validates_its_per_group_draws(plan):
+    calibration = stages(plan, "sampling")["calibration"]
+    with pytest.raises(ValueError, match="draws_by_group"):
+        replace(calibration, draws_by_group={"edgar": 8})  # the same as draws: not an override
+    with pytest.raises(ValueError, match="draws_by_group"):
+        replace(calibration, draws_by_group={"smoke": 4})
+    with pytest.raises(ValueError, match="max_requests"):
+        replace(calibration, draws_by_group={})
 
 
 def test_serving_request_and_token_limits_follow_the_same_ensembles_plus_one_eligibility_post(plan):
@@ -210,13 +328,29 @@ def test_full_distribution_evidence_calls_do_not_count_against_max_requests_and_
     rule = plan.to_dict()["limits"]["evidence_requests"]
     assert "do not count against max_requests" in rule and "own timeout" in rule
     sampling = stages(plan, "sampling")
-    assert sampling["full_run"].max_requests == len(plan.months.evaluation) * 2 * 32
+    assert sampling["full_run"].max_requests == len(plan.months.probe_evaluation) * 2 * 8
 
 
-def test_sampling_time_limits_use_the_frozen_seconds_per_generation(plan):
-    for stage in plan.limits.stages["sampling"]:
-        assert stage.max_seconds == stage.max_requests * plan.limits.sampling_seconds_per_generation
-    assert plan.limits.sampling_seconds_per_generation == 12
+def test_sampling_time_limits_use_the_frozen_seconds_per_generation_with_headroom_and_one_timeout(plan):
+    limits = plan.limits
+    for stage in limits.stages["sampling"]:
+        expected = math.ceil(stage.max_requests * limits.sampling_seconds_per_generation * limits.probe_time_headroom)
+        assert stage.max_seconds == expected + limits.probe_request_timeout_seconds
+    # The design's planning rate of 6 s per generation on the iGPU (user decision 2026-11-10), a headroom of 1.25
+    # and the arm's 300 s client timeout, so the last admission (elapsed plus timeout) still fits.
+    assert (limits.sampling_seconds_per_generation, limits.probe_time_headroom,
+            limits.probe_request_timeout_seconds) == (6, 1.25, 300)
+    payload = plan.to_dict()["limits"]
+    assert (payload["probe_time_headroom"], payload["probe_request_timeout_seconds"]) == (1.25, 300)
+
+
+@pytest.mark.parametrize(("changes", "message"), [
+    ({"probe_time_headroom": 0.9}, "probe_time_headroom"), ({"probe_time_headroom": float("nan")}, "probe_time_headroom"),
+    ({"probe_request_timeout_seconds": 0}, "probe_request_timeout_seconds"),
+])
+def test_the_probe_time_headroom_and_timeout_are_validated(plan, changes, message):
+    with pytest.raises((TypeError, ValueError), match=message):
+        size_limits(plan.months, plan.edgar, plan.arms, plan.pilot, plan.limits.manifest, **changes)
 
 
 def test_every_sampling_stage_converts_to_the_ledger_limits_of_task_7_5(plan):
@@ -347,8 +481,27 @@ def test_the_pilot_freezes_12_months_times_8_draws_per_rendering_with_its_own_mi
     assert pilot.min_parsed <= pilot.draws
     assert pilot.months == len(plan.months.pilot)
     assert pilot.renderings == ("identifying", "anonymised") and pilot.noise_variant == "ensemble_top_k"
-    assert (pilot.pre_cutoff_evaluation_months, pilot.post_cutoff_evaluation_months) == (68, 22)
-    assert "excluded from the confirmatory analysis" in pilot.rule
+    # The gate simulates the power of the gated (probe) arm's own full run: its 15 and 5 probe evaluation months.
+    assert (pilot.pre_cutoff_evaluation_months, pilot.post_cutoff_evaluation_months) == (15, 5)
+    assert "excluded from the confirmatory analysis" in pilot.rule and "probe evaluation months" in pilot.rule
+
+
+def test_the_pilot_freezes_its_gate_policy_inform_so_the_probe_arm_proceeds_with_its_expected_power(plan):
+    assert plan.pilot.gate_policy == plan_module.PILOT_GATE_POLICY == "inform"
+    assert plan_module.PILOT_GATE_POLICIES == ("inform", "block")
+    assert plan.to_dict()["pilot"]["gate_policy"] == "inform"
+    assert replace(plan.pilot, gate_policy="block").gate_policy == "block"
+    with pytest.raises(ValueError, match="gate_policy"):
+        replace(plan.pilot, gate_policy="warn")
+
+
+def test_the_evaluation_month_counts_of_each_arm_follow_its_full_run_months(plan):
+    assert plan_module.evaluation_month_counts(plan, "sampling") == (15, 5) == (
+        plan.pilot.pre_cutoff_evaluation_months, plan.pilot.post_cutoff_evaluation_months)
+    # The primary arm's achieved-power report uses every evaluation month.
+    assert plan_module.evaluation_month_counts(plan, "serving") == (68, 22)
+    with pytest.raises(ValueError, match="arm"):
+        plan_module.evaluation_month_counts(plan, "local")
 
 
 @pytest.mark.parametrize("changes", [
@@ -550,7 +703,17 @@ def _forge_stage(payload):
 def _forge_ensembles(payload):
     stage = payload["limits"]["stages"]["sampling"][2]
     stage["ensembles"]["macro"] += 1
-    stage["max_requests"] += 32
+    stage["max_requests"] += stage["draws"]
+
+
+def _forge_group_draws(payload):
+    stage = payload["limits"]["stages"]["sampling"][0]
+    stage["draws_by_group"]["edgar"] = 3
+    stage["max_requests"] -= 140
+
+
+def _forge_digest(payload):
+    payload["arms"]["arms"]["sampling"]["artifact_digest"] = "sha256:" + "0" * 63
 
 
 def _forge_seconds(payload):
@@ -573,6 +736,7 @@ def _forge_variants(payload):
 @pytest.mark.parametrize(("forge", "message"), [
     (_forge_stage, "sizing rule"), (_forge_ensembles, "sizing rule"), (_forge_seconds, "sizing rule"),
     (_forge_registry, "included model"), (_forge_pilot, "min_parsed"), (_forge_variants, "variants"),
+    (_forge_group_draws, "sizing rule"), (_forge_digest, "artifact_digest"),
 ])
 def test_load_validates_a_consistently_rehashed_full_plan(plan, tmp_path, forge, message):
     payload = plan.to_dict()
@@ -617,18 +781,35 @@ SECTION_CHANGES = {
     "arms.arms.measures": lambda p: _rearm(p, "serving", measures="serving nondeterminism, restated"),
     "arms.arms.temperature": lambda p: _rearm(p, "sampling", temperature=0.8),
     "arms.arms.seed_base": lambda p: _rearm(p, "sampling", seed_base=2000),
-    "arms.arms.draws": lambda p: _rearm(p, "sampling", draws=40),
-    "arms.arms.min_parsed": lambda p: _rearm(p, "sampling", min_parsed=25),
+    # Re-sized with the probe arm (8 draws, stages of at most two hours): draws 10, min_parsed 7, pilot draws 7.
+    "arms.arms.draws": lambda p: _rearm(p, "sampling", draws=10),
+    "arms.arms.min_parsed": lambda p: _rearm(p, "sampling", min_parsed=7),
     "arms.arms.top_logprobs": lambda p: _rearm(p, "sampling", top_logprobs=10),
     "arms.arms.max_tokens": lambda p: _rearm(p, "sampling", max_tokens=256),
     "arms.arms.missing_variants": lambda p: _rearm(p, "serving", missing_variants={
         name: reason + " (restated)" for name, reason in p.arms.arms["serving"].missing_variants.items()}),
-    "pilot.draws": lambda p: _resize(p, pilot=replace(p.pilot, draws=10)),
+    "arms.arms.role_reason": lambda p: _rearm(p, "serving", role_reason=p.arms.arms["serving"].role_reason + " (restated)"),
+    "arms.arms.supplies": lambda p: _rearm(p, "sampling", supplies=p.arms.arms["sampling"].supplies + " (restated)"),
+    "arms.arms.artifact_digest": lambda p: _rearm(p, "sampling", artifact_digest="sha256:" + "1" * 64),
+    "arms.arms.calibration_draws": lambda p: _rearm(p, "sampling", calibration_draws={"macro": 8, "edgar": 3}),
+    "arms.arms.fit.min_auc": lambda p: _rearm(p, "sampling", fit=plan_module.FitPlan(min_auc=0.65)),
+    "arms.arms.fit.min_valid": lambda p: _rearm(p, "serving", fit=plan_module.FitPlan(min_valid=60)),
+    "arms.arms.evidence.timeout_s": lambda p: _rearm(p, "sampling", evidence=plan_module.EvidencePlan(timeout_s=900.0)),
+    "arms.arms.evidence.top_k_keep": lambda p: _rearm(p, "sampling", evidence=plan_module.EvidencePlan(top_k_keep=50)),
+    "arms.arms.evidence.host_busy_retries": lambda p: _rearm(
+        p, "sampling", evidence=plan_module.EvidencePlan(host_busy_retries=3)),
+    "arms.arms.evidence.host_busy_wait_s": lambda p: _rearm(
+        p, "sampling", evidence=plan_module.EvidencePlan(host_busy_wait_s=30.0)),
+    "pilot.draws": lambda p: _resize(p, pilot=replace(p.pilot, draws=7)),
     "pilot.min_parsed": lambda p: replace(p, pilot=replace(p.pilot, min_parsed=7)),
     "pilot.noise_variant": lambda p: replace(p, pilot=replace(p.pilot, noise_variant="ensemble_full_distribution")),
     "pilot.rule": lambda p: replace(p, pilot=replace(p.pilot, rule=p.pilot.rule + " (restated)")),
+    "pilot.gate_policy": lambda p: replace(p, pilot=replace(p.pilot, gate_policy="block")),
     "limits.manifest": _remanifest,
-    "limits.sampling_seconds_per_generation": lambda p: _resize(p, sampling_seconds_per_generation=13),
+    "limits.sampling_seconds_per_generation": lambda p: _resize(p, sampling_seconds_per_generation=7),
+    "limits.probe_stage_max_seconds": lambda p: _resize(p, probe_stage_max_seconds=8000),
+    "limits.probe_time_headroom": lambda p: _resize(p, probe_time_headroom=1.2),
+    "limits.probe_request_timeout_seconds": lambda p: _resize(p, probe_request_timeout_seconds=400),
     "limits.weight_staging_seconds": lambda p: _resize(p, weight_staging_seconds=1800),
     "limits.controller_cores": lambda p: _resize(p, controller_cores=0.25),
     "limits.controller_memory_gib": lambda p: _resize(p, controller_memory_gib=0.25),
@@ -661,6 +842,8 @@ FIXED_CHANGES = {
     "arms.arms.variants": lambda p: replace(p.arms.arms["serving"], variants=SERVING_FOUR[:3]),
     "arms.arms.gated": lambda p: replace(p.arms, arms={**p.arms.arms, "serving": replace(
         p.arms.arms["serving"], gated=True)}),
+    "arms.arms.role": lambda p: replace(p.arms, arms={**p.arms.arms, "sampling": replace(
+        p.arms.arms["sampling"], role="primary")}),
     "pilot.pre_cutoff_evaluation_months": lambda p: replace(p, pilot=replace(p.pilot, pre_cutoff_evaluation_months=1)),
     "pilot.post_cutoff_evaluation_months": lambda p: replace(p, pilot=replace(p.pilot,
                                                                               post_cutoff_evaluation_months=1)),
@@ -675,7 +858,9 @@ FIXED_CHANGES = {
 
 def test_the_7_3_change_tables_cover_every_field_of_every_7_3_section():
     expected = {f"arms.{f.name}" for f in fields(StudyArms) if f.name != "arms"}
-    expected |= {f"arms.arms.{f.name}" for f in fields(ArmPlan)}
+    expected |= {f"arms.arms.{f.name}" for f in fields(ArmPlan) if f.name not in ("fit", "evidence")}
+    expected |= {f"arms.arms.fit.{f.name}" for f in fields(plan_module.FitPlan)}
+    expected |= {f"arms.arms.evidence.{f.name}" for f in fields(plan_module.EvidencePlan)}
     expected |= {f"pilot.{f.name}" for f in fields(PilotSettings)}
     expected |= {f"limits.{f.name}" for f in fields(PlanLimits)}
     expected |= {f"scored_probability.{f.name}" for f in fields(ScoredProbability)}

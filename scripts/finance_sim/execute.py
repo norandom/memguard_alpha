@@ -18,9 +18,11 @@ client is called.
 Evidence pass (full-distribution source only, after all generation and outside
 the ledger session, with the full-distribution host loaded alone). One
 ``evidence_batch`` request per item and rendering carries the replies of its
-parsed draws in draw order, with the timeout and kept alternatives of
-:class:`~scripts.finance_sim.calibrate.EvidenceSettings` (by default the full
-calibrator's own, whose ``top_k_keep`` it must keep). ``host_busy`` is retried
+parsed draws in draw order, with the settings of
+:class:`~scripts.finance_sim.calibrate.EvidenceSettings`: by default the timeout,
+busy retries and wait the frozen plan sets for the arm (``ArmPlan.evidence``) and
+the kept alternatives the full-distribution calibrator was fitted on, which any
+other settings must keep too. ``host_busy`` is retried
 a bounded number of times after a wait; retries that run out, any other host
 failure, a client timeout or a malformed batch raise
 :class:`~scripts.finance_sim.calibrate.EvidenceUnavailableError`. The stage
@@ -153,6 +155,7 @@ from scripts.finance_sim.plan import (
     ArmPlan,
     StudyPlan,
     ensure_unchanged,
+    full_run_months,
     require_complete,
     sha256_of,
     variant_parts,
@@ -354,15 +357,27 @@ def _macro_item_sha256(item: MacroItem) -> str:
     return sha256_of({"prompt_sha256": entry["prompt_sha256"], "row_sha256": entry["row_sha256"]})
 
 
-def macro_items(plan: StudyPlan, items: Iterable[MacroItem], *, stage: str) -> tuple[ExecutionItem, ...]:
+def macro_items(plan: StudyPlan, items: Iterable[MacroItem], *, stage: str,
+                arm: str | None = None) -> tuple[ExecutionItem, ...]:
     """Both renderings of every macro month of ``stage`` (evaluation or pilot months), in plan order.
 
-    Each month's item must be present and equal to the item the plan froze
-    (its row and prompt hashes), so a changed row or prompt is refused before
-    any request. Items of other months are ignored.
+    The full run's months follow the arm's role (:func:`~scripts.finance_sim.plan.full_run_months`):
+    with ``arm`` they are that arm's (the probe arm's frozen probe evaluation
+    months, the primary arm's every evaluation month); without it, every
+    evaluation month, a superset of the probe arm's. Pilot months belong to the
+    gated arm only. Each month's item must be present and equal to the item the
+    plan froze (its row and prompt hashes), so a changed row or prompt is
+    refused before any request. Items of other months are ignored.
     """
     require_complete(plan)
-    months = {"full_run": plan.months.evaluation, "pilot": plan.months.pilot}.get(stage)
+    if arm is not None and arm not in ARMS:
+        raise ExecutionError(f"arm must be one of {list(ARMS)} or None; got {arm!r}")
+    if stage == "pilot" and arm not in (None, plan.pilot.arm):
+        raise ExecutionError(f"the pilot runs on the gated {plan.pilot.arm} arm only; the {arm} arm has no pilot")
+    if stage == "full_run":
+        months = plan.months.evaluation if arm is None else full_run_months(plan, arm)
+    else:
+        months = {"pilot": plan.months.pilot}.get(stage)
     if months is None:
         raise ExecutionError(f"macro items run in the full_run and pilot stages; got {stage!r}")
     by_id: dict[str, MacroItem] = {}
@@ -395,7 +410,7 @@ def planned_keys(plan: StudyPlan, arm: str, stage: str) -> tuple[tuple[str, str]
     context = _stage(plan, arm, stage)
     if stage == "negative_control":
         return tuple((row_id, OUTLOOK) for row_id in plan.edgar.negative_control)
-    months = plan.months.pilot if stage == "pilot" else plan.months.evaluation
+    months = plan.months.pilot if stage == "pilot" else full_run_months(plan, arm)
     renderings = plan.pilot.renderings if stage == "pilot" else KIND_RENDERINGS[context.kind]
     return tuple((macro_item_id(month), rendering) for month in months for rendering in renderings)
 
@@ -557,17 +572,27 @@ def _check_calibrators(context: _Stage, calibrators: Mapping[str, CalibrationRec
 
 def _evidence_settings(context: _Stage, records: Mapping[str, CalibrationRecord],
                        evidence: EvidenceSettings | None) -> EvidenceSettings | None:
-    """The evidence pass settings: the full calibrator's by default; ``top_k_keep`` must stay the calibrator's."""
+    """The evidence pass settings, by default the frozen plan's; ``top_k_keep`` must stay the calibrator's.
+
+    The timeout, the busy retries and their wait are the arm's frozen
+    ``ArmPlan.evidence``; the alternatives kept per position are those the
+    full-distribution calibrator was fitted on (the plan's, when it was fitted
+    with the plan's settings), because its estimates are defined on them.
+    """
     if not context.full:
         return None
-    frozen = records[FULL_DISTRIBUTION].evidence_settings
-    chosen = frozen if evidence is None else evidence
-    if not isinstance(chosen, EvidenceSettings):
+    fitted = records[FULL_DISTRIBUTION].evidence_settings
+    if evidence is None:
+        frozen = context.arm_plan.evidence
+        evidence = EvidenceSettings(timeout_s=frozen.timeout_s, top_k_keep=fitted.top_k_keep,
+                                    host_busy_retries=frozen.host_busy_retries,
+                                    host_busy_wait_s=frozen.host_busy_wait_s)
+    if not isinstance(evidence, EvidenceSettings):
         raise TypeError("evidence must be EvidenceSettings or None")
-    if chosen.top_k_keep != frozen.top_k_keep:
-        raise ExecutionError(f"the evidence pass must keep the {frozen.top_k_keep} alternatives the full-distribution "
-                             f"calibrator was fitted on; got top_k_keep {chosen.top_k_keep}")
-    return chosen
+    if evidence.top_k_keep != fitted.top_k_keep:
+        raise ExecutionError(f"the evidence pass must keep the {fitted.top_k_keep} alternatives the full-distribution "
+                             f"calibrator was fitted on; got top_k_keep {evidence.top_k_keep}")
+    return evidence
 
 
 def _labels(context: _Stage, evidence: EvidenceSettings | None) -> dict[str, SourceLabel]:

@@ -43,8 +43,10 @@ from scripts.finance_sim.calibrate import (
     HOST_BUSY_RETRIES,
     HOST_BUSY_WAIT_S,
     IDENTIFYING,
+    INTERRUPTED,
     MACRO,
     OUTLOOK,
+    CalibrationDraw,
     CalibrationError,
     DrawSettings,
     EdgarRelease,
@@ -61,6 +63,9 @@ from scripts.finance_sim.calibrate import (
     full_distribution_row,
     macro_corpus,
     plan_corpus_layout,
+    plan_draw_settings,
+    plan_evidence_settings,
+    plan_fit_settings,
     request_allowance,
     run_calibration,
     split_seed,
@@ -72,7 +77,17 @@ from scripts.finance_sim.limits import (
     RequestAllowance,
     StudyLimits,
 )
-from scripts.finance_sim.plan import EDGAR_FILES, EdgarRow, MonthClass, PlanChangedError, StudyPlan, freeze_plan
+from scripts.finance_sim.plan import (
+    EDGAR_FILES,
+    EdgarRow,
+    FitPlan,
+    MonthClass,
+    PlanChangedError,
+    StudyPlan,
+    freeze_plan,
+    load_serving_manifest,
+    study_arms,
+)
 
 GEMMA = "google/gemma-3-4b-it"
 CREATED_AT = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
@@ -109,7 +124,7 @@ def month_range(first: str, last: str) -> list[str]:
 MONTHS = month_range("2016-01", "2026-06")
 
 
-def frozen_plan(seed: int = SEED) -> StudyPlan:
+def frozen_plan(seed: int = SEED, **sections) -> StudyPlan:
     months = [MonthClass(month, {GEMMA: month <= "2024-08"}) for month in MONTHS]
     rows = [EdgarRow(f"cal-mem-{i:03d}", 1, "calibration") for i in range(40)]
     rows += [EdgarRow(f"cal-ctl-{i:03d}", 0, "calibration") for i in range(100)]
@@ -118,7 +133,20 @@ def frozen_plan(seed: int = SEED) -> StudyPlan:
     items = {f"macro-{month}": digest(f"macro-{month}") for month in MONTHS}
     items |= {f"edgar-{row.row_id}": digest(row.row_id) for row in rows}
     return freeze_plan(months, rows, seed=seed, created_at=CREATED_AT, items=items,
-                       edgar_files={name: digest(name) for name in EDGAR_FILES})
+                       edgar_files={name: digest(name) for name in EDGAR_FILES}, **sections)
+
+
+#: The small frozen calibration of the complete plan below: 2 draws per macro rendering, 1 per EDGAR row.
+COMPLETE_DRAWS = {MACRO: 2, EDGAR: 1}
+COMPLETE_PLANNED = 2 * 24 * COMPLETE_DRAWS[MACRO] + 140 * COMPLETE_DRAWS[EDGAR]
+
+
+def complete_plan(seed: int = SEED) -> StudyPlan:
+    """The plan with its 7.3 sections, the sampling arm's calibration made small for the fakes."""
+    arms = study_arms()
+    sampling = replace(arms.arms["sampling"], calibration_draws=COMPLETE_DRAWS, fit=FitPlan(min_auc=0.6, min_valid=10))
+    return frozen_plan(seed, arms=replace(arms, arms={**arms.arms, "sampling": sampling}),
+                       serving_manifest=load_serving_manifest())
 
 
 PLAN = frozen_plan()
@@ -204,7 +232,7 @@ class FakeHost:
     """
 
     def __init__(self, budget: CallBudget, *, configuration: ModelConfig | None = None, signal: bool = True,
-                 prose=(), failures=None, events: list | None = None) -> None:
+                 prose=(), failures=None, events: list | None = None, crash_at: int | None = None) -> None:
         self.config = configuration or model_config()
         self.budget = budget
         self._control = RequestControl(self.config, budget, clock=Clock())
@@ -212,6 +240,7 @@ class FakeHost:
         self.prose = set(prose)
         self.failures = dict(failures or {})
         self.events = events
+        self.crash_at = crash_at
         self.calls: list[tuple[str, dict]] = []
         self.replies: dict[tuple[str, object], ModelResponse] = {}
 
@@ -222,6 +251,8 @@ class FakeHost:
             self.events.append("generate")
 
         def operation() -> ModelResponse:
+            if index == self.crash_at:
+                raise ProcessDied  # after on_request and after the ledger admitted the request
             if index in self.failures:
                 raise self.failures[index]
             content = OUTLOOK_REPLY if "Press release:" in prompt else MACRO_REPLY
@@ -289,6 +320,10 @@ class FakeFullDistribution:
 
 class Interrupted(Exception):
     """A simulated interruption of the runner after a draw was recorded."""
+
+
+class ProcessDied(BaseException):
+    """A simulated death of the runner process while a request is in flight (nothing catches it)."""
 
 
 @pytest.fixture(autouse=True)
@@ -734,6 +769,149 @@ def test_an_interrupted_calibration_resumes_from_its_recorded_draws_without_repe
     sent = {(digest(prompt), parameters["seed"]) for prompt, parameters in resumed.host.calls}
     assert not sent & {(draw.prompt_sha256, draw.seed) for draw in recorded}
     assert len(resumed.run.records) == 2
+
+
+def test_an_interrupted_draw_carries_no_reply_the_empty_hash_and_the_draws_seed_and_temperature():
+    prompt = macro_corpus(PLAN, macro_rows()).prompts[0]
+    draw = CalibrationDraw.interrupted(prompt, 1, seed=101, temperature=0.7, sources=("top_k", "full_distribution"))
+    assert (draw.kind, draw.item_id, draw.rendering, draw.label, draw.prompt_sha256, draw.draw_index) == (
+        MACRO, prompt.item_id, prompt.rendering, prompt.label, prompt.prompt_sha256, 1)
+    assert (draw.failure_code, draw.response_sha256, draw.response_text, draw.seed, draw.temperature) == (
+        INTERRUPTED, digest(""), None, 101, 0.7)
+    assert INTERRUPTED == "request_error:interrupted"
+    assert dict(draw.features) == dict(draw.evidence_ref) == {"top_k": None, "full_distribution": None}
+    assert not draw.evidence_pending
+    assert CalibrationDraw.from_dict(json.loads(json.dumps(draw.to_dict(), allow_nan=False))) == draw
+    edgar = edgar_corpus(PLAN, edgar_releases()).prompts[0]
+    assert CalibrationDraw.interrupted(edgar, 0, seed=100, temperature=0.7, sources=("top_k",)).kind == EDGAR
+    with pytest.raises(CalibrationError):
+        CalibrationDraw.interrupted(prompt, -1, seed=100, temperature=0.7, sources=("top_k",))
+
+
+def test_an_interrupted_draw_is_refused_unless_it_carries_the_draws_seed_temperature_and_sources(tmp_path):
+    corpus = macro_corpus(PLAN, macro_rows())
+    prompt = corpus.prompts[0]
+    for number, draw in enumerate((
+            CalibrationDraw.interrupted(prompt, 0, seed=SETTINGS.seed_base + 1, temperature=0.7, sources=("top_k",)),
+            CalibrationDraw.interrupted(prompt, 0, seed=SETTINGS.seed_base, temperature=0.5, sources=("top_k",)),
+            CalibrationDraw.interrupted(prompt, 0, seed=SETTINGS.seed_base, temperature=0.7,
+                                        sources=("top_k", "full_distribution")))):
+        ledger = open_ledger(tmp_path / f"budget-{number}.json")
+        host = FakeHost(LedgerCallBudget(ledger))
+        with ledger, pytest.raises(CalibrationError, match="recorded draw"):
+            collect_draws(corpus, SETTINGS, client=host, ledger=ledger, sources=("top_k",), recorded=[draw])
+        assert host.calls == []
+
+
+def test_a_request_in_flight_when_the_process_dies_is_passed_back_interrupted_and_the_stage_still_completes(
+        tmp_path):
+    plan = complete_plan()
+    # Zero slack: the stage's limits admit exactly its planned requests and their output reservations.
+    limits = study_limits(plan, max_requests=COMPLETE_PLANNED, max_output_tokens=COMPLETE_PLANNED * 64)
+    requests: list = []   # the recorder's request lines, written before each send
+    outcomes: dict = {}   # its outcome lines, the latest version of each draw
+
+    def on_request(prompt, index, seed) -> None:
+        requests.append((prompt, index, seed))
+
+    def on_draw(draw) -> None:
+        outcomes[draw.key] = draw
+
+    def run(ledger, host, recorded=()):
+        return run_calibration(plan, arm="sampling", macro_rows=macro_rows(plan), edgar_releases=edgar_releases(plan),
+                               client=host, ledger=ledger, sources=("top_k", "full_distribution"),
+                               full_distribution=FakeFullDistribution(), recorded=recorded, on_request=on_request,
+                               on_draw=on_draw, calibrators_dir=tmp_path / "calibrators", sleep=lambda seconds: None)
+
+    crash = 61  # a macro request: the stage drew 61 of its draws when the process died with the 62nd in flight
+    ledger = open_ledger(tmp_path / "budget.json", plan=plan, limits=limits)
+    first = FakeHost(LedgerCallBudget(ledger), crash_at=crash)
+    with pytest.raises(ProcessDied):
+        run(ledger, first)
+    assert (len(first.calls), len(requests), len(outcomes)) == (crash + 1, crash + 1, crash)
+    lost = [(prompt, index, seed) for prompt, index, seed in requests
+            if (MACRO, prompt.item_id, prompt.rendering, index) not in outcomes]
+    assert len(lost) == 1
+    interrupted = [CalibrationDraw.interrupted(prompt, index, seed=seed, temperature=0.7,
+                                               sources=("top_k", "full_distribution")) for prompt, index, seed in lost]
+    resumed = open_ledger(tmp_path / "budget.json", plan=plan, limits=limits)
+    second = FakeHost(LedgerCallBudget(resumed))
+    outcome = run(resumed, second, recorded=[*outcomes.values(), *interrupted])
+    sent = [(prompt, parameters["seed"]) for prompt, parameters in first.calls + second.calls]
+    assert len(sent) == len(set(sent)) == COMPLETE_PLANNED
+    assert len(requests) == COMPLETE_PLANNED  # one request line per send, the lost one included
+    assert resumed.counters["requests"] == COMPLETE_PLANNED and resumed.status == "complete"
+    prompt, index, seed = lost[0]
+    draw = next(draw for draw in outcome.draws[MACRO] if draw.key == (MACRO, prompt.item_id, prompt.rendering, index))
+    assert (draw.failure_code, draw.seed, draw.temperature, draw.response_sha256, draw.response_text) == (
+        INTERRUPTED, seed, 0.7, digest(""), None)
+    assert len(outcome.records) == 4
+    counts = outcome.records[(MACRO, "top_k")].counts
+    assert (counts["draws"], counts["failed_draws"]) == (2 * 24 * COMPLETE_DRAWS[MACRO], 1)
+
+
+# ---------- the frozen plan's draw, fit and evidence settings ----------
+
+def test_a_complete_plan_supplies_the_draw_fit_and_evidence_settings_of_each_arm():
+    plan = complete_plan()
+    assert plan_draw_settings(plan, "sampling", MACRO) == DrawSettings(draws=2, temperature=0.7, seed_base=1000)
+    assert plan_draw_settings(plan, "sampling", EDGAR) == DrawSettings(draws=1, temperature=0.7, seed_base=1000)
+    assert plan_draw_settings(plan, "serving", EDGAR) == DrawSettings(draws=32, temperature=0.0, seed_base=None)
+    assert plan_fit_settings(plan, "sampling") == FitSettings(min_auc=0.6, min_valid=10)
+    assert plan_fit_settings(plan, "serving") == FitSettings(min_auc=0.6, min_valid=50)
+    assert plan_evidence_settings(plan, "sampling") == EvidenceSettings(timeout_s=600.0, top_k_keep=100,
+                                                                        host_busy_retries=5, host_busy_wait_s=60.0)
+    assert plan_evidence_settings(plan, "serving") is None
+    for read in (lambda: plan_fit_settings(PLAN, "sampling"), lambda: plan_evidence_settings(PLAN, "sampling"),
+                 lambda: plan_draw_settings(PLAN, "sampling", MACRO)):
+        with pytest.raises(ValueError, match="lacks"):
+            read()
+
+
+def test_calibration_on_a_complete_plan_draws_fits_and_requests_evidence_with_its_frozen_settings(tmp_path):
+    plan = complete_plan()
+    ledger = open_ledger(tmp_path / "budget.json", plan=plan)
+    host, full = FakeHost(LedgerCallBudget(ledger)), FakeFullDistribution()
+    run = run_calibration(plan, arm="sampling", macro_rows=macro_rows(plan), edgar_releases=edgar_releases(plan),
+                          client=host, ledger=ledger, sources=("top_k", "full_distribution"), full_distribution=full,
+                          calibrators_dir=tmp_path / "calibrators", sleep=lambda seconds: None)
+    assert len(host.calls) == ledger.counters["requests"] == COMPLETE_PLANNED
+    edgar_seeds = [parameters["seed"] for prompt, parameters in host.calls if "Press release:" in prompt]
+    assert len(edgar_seeds) == 140 and set(edgar_seeds) == {1000}
+    for (kind, source), record in run.records.items():
+        assert record.draw_settings == plan_draw_settings(plan, "sampling", kind)
+        assert record.fit_settings == FitSettings(min_auc=0.6, min_valid=10)
+        expected = plan_evidence_settings(plan, "sampling") if source == "full_distribution" else None
+        assert record.evidence_settings == expected
+    assert {(top_k_keep, timeout_s) for _, _, top_k_keep, timeout_s in full.batch_calls} == {(100, 600.0)}
+
+
+def test_settings_passed_explicitly_are_used_as_given_and_recorded_in_every_calibrator(tmp_path):
+    plan = complete_plan()
+    ledger = open_ledger(tmp_path / "budget.json", plan=plan)
+    host, full = FakeHost(LedgerCallBudget(ledger)), FakeFullDistribution()
+    per_kind = {MACRO: DrawSettings(draws=1, temperature=0.7, seed_base=1000),
+                EDGAR: DrawSettings(draws=2, temperature=0.7, seed_base=1000)}
+    fit, evidence = FitSettings(min_auc=0.55, min_valid=12), EvidenceSettings(timeout_s=900.0)
+    run = run_calibration(plan, arm="sampling", macro_rows=macro_rows(plan), edgar_releases=edgar_releases(plan),
+                          client=host, ledger=ledger, sources=("top_k", "full_distribution"), full_distribution=full,
+                          settings=per_kind, fit=fit, evidence=evidence, calibrators_dir=tmp_path / "calibrators",
+                          sleep=lambda seconds: None)
+    assert len(host.calls) == 2 * 24 * 1 + 140 * 2
+    for (kind, source), record in run.records.items():
+        assert record.draw_settings == per_kind[kind] != plan_draw_settings(plan, "sampling", kind)
+        assert record.fit_settings == fit != plan_fit_settings(plan, "sampling")
+        assert record.evidence_settings == (evidence if source == "full_distribution" else None)
+    assert {timeout_s for *_, timeout_s in full.batch_calls} == {900.0}
+
+
+def test_a_plan_without_its_arms_needs_explicit_draw_settings(tmp_path):
+    ledger = open_ledger(tmp_path / "budget.json")
+    host = FakeHost(LedgerCallBudget(ledger))
+    with pytest.raises(CalibrationError, match="draw settings"):
+        run_calibration(PLAN, arm="sampling", macro_rows=macro_rows(), edgar_releases=edgar_releases(), client=host,
+                        ledger=ledger, sources=("top_k",), fit=FIT, calibrators_dir=tmp_path / "calibrators")
+    assert host.calls == []
 
 
 def test_recorded_draws_from_another_corpus_or_setting_are_refused(tmp_path, calibrated):
