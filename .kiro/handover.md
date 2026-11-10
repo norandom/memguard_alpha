@@ -1,16 +1,17 @@
 # Handover: memorization-adjusted-finance-sim
 
-Written 2026-11-10 at the end of the session. The repository is
+Written 2026-11-10 at the end of the session, brought current at about 16:00 local time during the user's three-hour absence. The repository is
 `norandom/recall_guard` (local folder `D:\Source\memguard_alpha`, branch `main`).
-Last code commit: `0efa54d`. CI is green on every commit since `7260deb` (five
+Last code commit: `c50495e` (task 7.4). CI is green on every commit since `7260deb` (five
 jobs, Windows included).
 
 ## State
 
-- Spec: `.kiro/specs/memorization-adjusted-finance-sim/`. 21 of 42 sub-tasks are
-  `[x]`: groups 1 to 5 complete, 6.1 to 6.3 done. Task 6.4 (batch evidence and
-  memory guard) was added on 2026-11-10 and is half done (see below). Tasks 7.1
-  onward are untouched.
+- Spec: `.kiro/specs/memorization-adjusted-finance-sim/`. 29 of 42 sub-tasks are
+  `[x]`: groups 1 to 6 complete (6.4 included, with the one-load gate and the
+  two-pass exactness check), 7.1 to 7.6 and 8.1 done. Task 7.7 (guarded execution
+  of study items) is in progress with an implementer; 7.8 to 7.12, 8.2 to 8.4,
+  9.x and 10.x remain.
 - `tasks.md` ends with "## Implementation Notes", the running memory of every
   decision, pin, port, flake and follow-up. Read it before dispatching anything.
 - `design.md` carries concrete contracts through 8.4, so 7.x and 8.x should
@@ -18,53 +19,23 @@ jobs, Windows included).
 - Full-suite baseline on `main` (native uv): 4092 passed, 20 skipped, plus the
   chore's 13 tests (`0efa54d`), so 4105 expected before 6.4's new tests.
 
-## Working tree: task 6.4, phase 1 done, phase 2 not run
+## Working tree
 
-Uncommitted, written by an Opus implementer, not yet reviewed. Treat it as a
-draft: inspect, review, then commit, or discard with `git checkout --` and `rm`.
+Task 7.7 (`scripts/finance_sim/execute.py`, tests `test_execute*.py`) may be
+present, written by an Opus implementer and not yet reviewed: treat it as a draft
+(inspect, review with kiro-review on Opus medium, then commit, or discard). Nothing
+else is uncommitted; no host is running.
 
-Modified: `recall_guard/core/full_distribution.py`, `recall_guard/core/profiles.py`,
-`recall_guard/core/provider_profiles/llamacpp-gemma3-4b.json`,
-`scripts/llamacpp_native.py`, `scripts/serve_full_distribution.py`,
-`scripts/serve_full_distribution.ps1`.
-New: `scripts/soak_full_distribution.py`, `tests/core/test_full_distribution_batch.py`,
-`tests/core/test_host_memory_floor.py`,
-`tests/scripts/test_full_distribution_batch_exactness.py`,
-`tests/scripts/test_serve_full_distribution_batch.py`,
-`tests/scripts/test_serve_full_distribution_gateway_guard.py`,
-`tests/scripts/test_serve_full_distribution_memory_guard.py`,
-`tests/scripts/test_soak_full_distribution.py`.
+## How the afternoon ran (keep this loop)
 
-Phase-1 evidence (logs under `runs/finance-sim/validation/task-6.4-*.log`): RED
-and GREEN logs per behavioural change, focused set 361 passed (`task-6.4-test.log`),
-ruff clean, architecture check OK, soak-sampler timing flake fixed
-(`task-6.4-stability-soak.log`), one WinError 5 pwsh launch flake seen once and
-not reproducible (the known Store alias flake). The implementer's final Status
-Report was never produced because the session ended; the facts above come from
-its interim reports.
-
-Phase 2 never started: the RAM gate cleared at 12:32Z and the session ended.
-Steps, in order, on a quiet machine:
-
-1. Preflight: nothing listening on 11560/11570/11571/11580/11581, no model host
-   process, free RAM at least 12 GiB (two loads), no other session's Dagger or
-   Compose job in the Podman VM (`podman ps`).
-2. Batch exactness against the 11560 reference llama-server (two single pairs plus
-   one prompt with two responses; per-item timing; agreement within 1e-4 and
-   identical ranks), receipt under `runs/finance-sim/hosts/full-distribution/exactness/`.
-   See `scripts/serve_full_distribution.py --help` for the batch flag the
-   implementer added and `tests/scripts/test_full_distribution_batch_exactness.py`.
-3. Stop the reference server; verify it is gone.
-4. Start the host through `scripts/serve_full_distribution.ps1` (faulthandler
-   launch, gateway memory logging); run the 30-minute soak with
-   `scripts/soak_full_distribution.py` through the gateway (bearer by name);
-   receipt under `runs/finance-sim/hosts/full-distribution/soak/`; then `stop` and
-   verify with Get-NetTCPConnection and Get-Process that nothing remains.
-5. Only after the host is down: full suite `uv run --no-sync pytest -q -p no:cacheprovider`
-   (expected about 4105 plus 6.4's new tests, 20 skipped).
-6. Independent review (kiro-review, Opus medium), mark 6.4 `[x]`, notes in
-   `tasks.md`, commit the files listed above with `tasks.md`, push.
-
+Host-free tasks ran two or three at a time in disjoint modules, each with its own
+Opus implementer (xhigh) and an Opus reviewer (medium); the parent verified the
+evidence, marked the task, committed explicit paths and pushed; CI (five jobs)
+served as the full-suite gate per push, with one local full suite per wave. Design
+questions were settled by the parent and written into design.md ("Amendments",
+"decision 2026-11-10" markers) and the tasks.md Implementation Notes, which now
+carry a forward-notes entry per task (7.1 to 7.6, 7.4, 8.1, 6.4): read them before
+dispatching 7.8 onward.
 ## Do this first
 
 Corrections from the user at session end, to apply before anything else:
@@ -85,12 +56,15 @@ Corrections from the user at session end, to apply before anything else:
 2. Check the machine is quiet: `podman ps` (other sessions' Dagger engines live in
    the Podman VM, process `vmmemWSL`, and held 6 GB for an hour today), free RAM,
    no listeners on the host ports.
-3. Finish 6.4 phase 2 as listed, either by re-dispatching an Opus xhigh
-   implementer with that list and the file list, or by hand.
-4. Then 7.1 onward (study pipeline on fakes, no hosts, no network): one Opus
-   xhigh implementer per task, kiro-review on Opus medium, the parent verifies the
-   evidence, marks the task, commits explicit paths, pushes. 7.1 was dispatched
-   today and stopped before it wrote any file.
+3. If 7.7 is in the tree unreviewed, review and commit it (see "Working tree").
+4. Then the next waves on fakes, no hosts, no network: 7.8 (pilot and power gate)
+   and 7.9 (negative control) and 7.12 (convergence) once 7.7 is committed; then
+   7.10 and 7.11 (analysis) after 7.8; then 8.2, 8.3, 8.4 (figures and replay);
+   then 9.1 (the live wiring: container-to-host gateway route, stop output
+   captured to files, calibration run) and the 9.2 freeze, which still needs the
+   user's decisions listed in the notes (12 s per generation time bound, freezing
+   FitSettings and EvidenceSettings and the GGUF digest in the plan, the Modal
+   manifest endpoint before any approval). Modal (9.4) only with the approval record.
 5. Tooling on this workstation: use PowerShell for shell work, not Git Bash (the
    user's instruction at the end of this session; Git Bash also showed fork and
    heredoc failures all day).
@@ -164,4 +138,6 @@ explicit paths, never `git add -A`; commit messages end with
 
 `cd7a0f4` repository rename, `d7991d7` 5.1, `761b9c7` Podman environment docs,
 `9a6d781` 5.2, `7260deb` Windows CI fix, `5d6444e` 6.1, `1277cc2` 6.2,
-`f8e6429` spec: 6.4 and execution split, `9cd14a5` 6.3, `0efa54d` upstream chore.
+`f8e6429` spec: 6.4 and execution split, `9cd14a5` 6.3, `0efa54d` upstream chore,
+`645fb5a` 7.2, `6fae278` 7.1, `0d386d1` 7.5, `340cc7f` 8.1, `b2009c5` 7.3,
+`3e78d53` 6.4, `8dc3f0f` test threshold fix, `2273ea7` 7.6, `c50495e` 7.4.
