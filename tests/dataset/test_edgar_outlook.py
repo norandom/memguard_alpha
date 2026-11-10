@@ -65,6 +65,16 @@ def test_outlook_definition_parses_the_json_example_into_the_outlook_and_its_sig
     assert outlook_definition.decide(vector) == 1
 
 
+def test_outlook_definition_parses_the_fenced_answer_the_live_model_returns():
+    # Gemma 3 4B through llama-server wraps the object in one ```json fence (fix 9.2a).
+    vector = outlook_definition.parse_response('```json\n{\n  "outlook": 0.2\n}\n```\n')
+
+    assert vector == {"outlook": 0.2} and list(vector) == ["outlook"]
+    assert outlook_definition.decide(vector) == 1
+    with pytest.raises(DecisionParseError, match="code fence"):
+        outlook_definition.parse_response('```json\n{"outlook": 0.2}\n```\nThe outlook is positive.')
+
+
 @pytest.mark.parametrize("text", ['{"outlook": -1}', '{"outlook": 1}', '{"outlook": 0}', '{"outlook": -0.35}'])
 def test_outlook_definition_accepts_the_closed_bounds_and_off_grid_values(text):
     vector = outlook_definition.parse_response(text)

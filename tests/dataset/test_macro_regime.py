@@ -370,6 +370,18 @@ def test_regime_definition_parses_a_json_answer_into_the_spread_and_its_sign():
     assert regime_definition.decide(vector) == 1
 
 
+def test_regime_definition_parses_the_fenced_answer_the_live_model_returns():
+    # Gemma 3 4B through llama-server wraps the object in one ```json fence (fix 9.2a).
+    fenced = "```json\n" + json.dumps(DEFENSIVE, indent=2) + "\n```\n"
+
+    vector = regime_definition.parse_response(fenced)
+
+    assert vector == regime_definition.parse_response(answer(DEFENSIVE))
+    assert regime_definition.decide(vector) == 1
+    with pytest.raises(DecisionParseError, match="code fence"):
+        regime_definition.parse_response(fenced + "The regime is defensive.")
+
+
 @pytest.mark.parametrize(("text", "message"), [
     (answer(DEFENSIVE, inflation=1.2), "outside"),
     (answer(DEFENSIVE, risk_appetite=-1.01), "outside"),

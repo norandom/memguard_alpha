@@ -160,7 +160,7 @@ def test_extractor_must_return_a_mapping():
     [
         ("[0.1, 0.2]", "must be a JSON object; got list"),
         ("0.5", "must be a JSON object; got float"),
-        ("```json\n{}\n```", "not valid JSON"),
+        ("```json\n{}", "one JSON object inside one closed code fence"),
         ('{"gold": NaN}', "non-finite JSON constant NaN"),
         ('{"gold": 1e999}', "'gold' must be finite"),
         ('{"gold": true}', "'gold' must be a number"),
@@ -176,6 +176,129 @@ def test_parse_json_components_is_strict(text, fragment):
 def test_parse_json_components_returns_floats():
     assert parse_json_components('{"a": 1, "b": -0.25}') == {"a": 1.0, "b": -0.25}
     assert all(type(value) is float for value in parse_json_components('{"a": 1}').values())
+
+
+# -- one optional code fence around the object (fix 9.2a) ---------------------
+
+# The reply Gemma 3 4B gave through llama-server in the first live calibration stage, byte for byte:
+# a correct object inside one markdown fence. Every one of the 944 draws was recorded as parse_error.
+LIVE_FENCED_REPLY = '```json\n{\n  "equity": 0.3,\n  "gold": 0.15,\n  "bonds": 0.45,\n  "cash": 0.1\n}\n```\n'
+LIVE_COMPONENTS = {"equity": 0.3, "gold": 0.15, "bonds": 0.45, "cash": 0.1}
+OBJECT = '{"equity": 0.3, "gold": 0.15}'
+
+
+def test_live_fenced_reply_is_the_recorded_shape():
+    assert len(LIVE_FENCED_REPLY) == 80
+    assert LIVE_FENCED_REPLY.startswith("```json\n{\n") and LIVE_FENCED_REPLY.endswith("\n}\n```\n")
+
+
+def test_parse_json_components_accepts_the_live_fenced_reply():
+    parsed = parse_json_components(LIVE_FENCED_REPLY)
+    assert parsed == LIVE_COMPONENTS
+    assert list(parsed) == ["equity", "gold", "bonds", "cash"]
+    assert all(type(value) is float for value in parsed.values())
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"```json\n{OBJECT}\n```",
+        f"```JSON\n{OBJECT}\n```\n",
+        f"```\n{OBJECT}\n```",
+        f"\n  ```json  \n{OBJECT}\n  ```  \n\n",
+        f"```json\r\n{OBJECT}\r\n```\r\n",
+        '```json\n{\n  "equity": 0.3,\n\n  "gold": 0.15\n}\n```',
+    ],
+)
+def test_one_fence_with_optional_tag_and_surrounding_whitespace_is_unwrapped(text):
+    assert parse_json_components(text) == {"equity": 0.3, "gold": 0.15}
+
+
+def test_fenced_reply_parses_through_the_definition_like_the_bare_object():
+    definition = _definition()
+    bare = '{"gold": 0.3, "equity": -0.2}'
+    assert definition.parse_response(f"```json\n{bare}\n```\n") == definition.parse_response(bare)
+
+
+@pytest.mark.parametrize(
+    ("text", "fragment"),
+    [
+        ('```json\n{"equity": 0.1, "gold": 0.2, "gold": -0.9}\n```', r"duplicate keys \['gold'\]"),
+        ('```json\n{"gold": NaN}\n```', "non-finite JSON constant NaN"),
+        ('```json\n{"gold": Infinity}\n```', "non-finite JSON constant Infinity"),
+        ("```json\n[0.1, 0.2]\n```", "must be a JSON object; got list"),
+        ("```json\n0.5\n```", "must be a JSON object; got float"),
+        ('```json\n{"gold": true}\n```', "'gold' must be a number"),
+        ('```json\n{"gold": "0.2"}\n```', "'gold' must be a number"),
+        ('```json\n{"gold": 1e999}\n```', "'gold' must be finite"),
+        ("```json\n\n```", "not valid JSON"),
+    ],
+)
+def test_strictness_is_unchanged_inside_the_fence(text, fragment):
+    with pytest.raises(DecisionParseError, match=fragment):
+        parse_json_components(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "fragment"),
+    [
+        ("```json\n{}\n```", r"missing components \['equity', 'gold'\]"),
+        ('```json\n{"equity": 0.1}\n```', r"missing components \['gold'\]"),
+        ('```json\n{"equity": 0.1, "gold": 0.2, "cash": 0.0}\n```', r"undeclared components \['cash'\]"),
+        ('```json\n{"equity": 0.1, "gold": 1.2}\n```', r"'gold'=1.2 outside \[-1.0, 1.0\]"),
+    ],
+)
+def test_definition_strictness_is_unchanged_inside_the_fence(text, fragment):
+    with pytest.raises(DecisionParseError, match=fragment):
+        _definition().parse_response(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"Here are the loadings: {OBJECT}",
+        f"{OBJECT}\nThese sum to less than one.",
+        f"{OBJECT} {OBJECT}",
+        f"Here you go:\n```json\n{OBJECT}\n```",
+        f"```json\n{OBJECT}\n```\nValues sum to 0.45.",
+        f"```json\n{OBJECT}\n```\n```json\n{OBJECT}\n```",
+        f"```json\n{OBJECT}\n{OBJECT}\n```",
+        f"```json\n{OBJECT}\n",
+        f"```json\n{OBJECT}",
+        f"{OBJECT}\n```",
+        f"```json\n```json\n{OBJECT}\n```\n```",
+        f"```json\n```\n{OBJECT}\n```",
+        f"```json {OBJECT}```",
+        f"```json\n{OBJECT}```",
+    ],
+    ids=[
+        "prose-before-object",
+        "prose-after-object",
+        "two-objects",
+        "prose-before-fence",
+        "text-after-closing-fence",
+        "two-fenced-objects",
+        "two-objects-in-one-fence",
+        "unclosed-fence",
+        "unclosed-fence-no-newline",
+        "closing-fence-only",
+        "nested-fences",
+        "fence-inside-fence",
+        "fence-markers-on-the-object-line",
+        "closing-fence-not-on-its-own-line",
+    ],
+)
+def test_everything_but_one_object_in_one_fence_is_refused(text):
+    with pytest.raises(DecisionParseError) as caught:
+        parse_json_components(text)
+    # The message names the problem and never echoes the reply.
+    assert "equity" not in str(caught.value)
+
+
+def test_fence_refusal_names_the_shape_without_echoing_the_reply():
+    with pytest.raises(DecisionParseError, match="not one JSON object inside one closed code fence") as caught:
+        parse_json_components(f"```json\n{OBJECT}\n```\nValues sum to 0.45.")
+    assert "0.45" not in str(caught.value)
 
 
 # -- adjustment ---------------------------------------------------------------

@@ -29,10 +29,21 @@ from __future__ import annotations
 import json
 import math
 import numbers
+import re
 from collections.abc import Callable, Hashable, Mapping
 from dataclasses import dataclass
 
 DecisionVector = Mapping[str, float]
+
+_FENCE = "```"
+
+# Exactly one markdown code fence around the whole reply: an opening fence line of
+# three backticks with an optional language tag (json, JSON, ...), the body, and a
+# closing fence of three backticks on its own line; only whitespace outside either.
+_FENCED_REPLY = re.compile(
+    r"\s*```[ \t]*[A-Za-z0-9_.+-]*[ \t]*\r?\n(?P<body>.*?)\r?\n[ \t]*```\s*",
+    re.DOTALL,
+)
 
 
 class DecisionDefinitionError(ValueError):
@@ -162,8 +173,33 @@ class DecisionDefinition:
         return vector
 
 
+def _unwrap_fence(text: str) -> str:
+    """The body of a reply that is exactly one closed code fence; any other reply is returned as is.
+
+    Instruction-tuned hosts answer a correct object wrapped in one markdown fence
+    (the first live calibration stage lost every draw to it). The fence is the
+    only tolerance: the body still goes through the strict parser, so a second
+    object, prose, or a fence nested inside the body is refused there, since
+    backticks are not JSON. A reply that carries a fence marker without being one
+    closed fence around one body (prose before the opening fence, text after the
+    closing fence, an unclosed fence) is refused here by shape, without echoing it.
+    """
+    match = _FENCED_REPLY.fullmatch(text)
+    if match is not None:
+        return match.group("body")
+    if text.lstrip().startswith(_FENCE) or text.rstrip().endswith(_FENCE):
+        raise DecisionParseError("response is not one JSON object inside one closed code fence")
+    return text
+
+
 def parse_json_components(text: str) -> dict[str, float]:
     """Strict JSON object of numbers; duplicate keys, non-objects and non-numbers are refused.
+
+    The object may be wrapped in exactly one markdown code fence (three backticks
+    with an optional language tag, a closing fence on its own line, whitespace
+    around either); see :func:`_unwrap_fence`. Nothing else is extracted: prose
+    before or after the object, two objects, or text after the closing fence
+    are refused as before.
 
     ``json.loads`` keeps the last of two equal keys, which would let a reply that
     states two different loadings for one component pass as either. The pairs
@@ -182,6 +218,7 @@ def parse_json_components(text: str) -> dict[str, float]:
 
     if not isinstance(text, str):
         raise DecisionParseError(f"response must be a string; got {type(text).__name__}")
+    text = _unwrap_fence(text)
     try:
         parsed = json.loads(text, object_pairs_hook=unique_object, parse_constant=no_constant)
     except DecisionParseError:
