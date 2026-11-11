@@ -124,6 +124,7 @@ from scripts.finance_sim.replay import (  # noqa: E402
     PUBLISHED_HEADER,
     REPLY_LABEL,
     SVG_CREATOR,
+    WARNING_LABELS,
     Probe,
     ReplayError,
     ReplayInputs,
@@ -138,6 +139,7 @@ from scripts.finance_sim.replay import (  # noqa: E402
     main,
     month_end_closes,
     number_tokens,
+    partition_leaks,
     replay,
     replay_probes,
     reply_probes,
@@ -146,6 +148,7 @@ from scripts.finance_sim.replay import (  # noqa: E402
     svg_version,
     text_probe,
     value_probe,
+    warning_records,
 )
 from tests.scripts.finance_sim.test_convergence import (  # noqa: E402
     ALLOWANCE,
@@ -741,6 +744,7 @@ def test_published_tables_carry_the_citations_and_only_derived_statistics(study,
     assert find_leaks(files, probes) == []
     guard = replayed.manifest["guard"]
     assert guard["items_probed"] is True and guard["leaks"] == 0 and guard["files_scanned"] == len(files)
+    assert guard["warnings"] == [] and guard["warning_labels"] == [DTB3_LABEL] == sorted(WARNING_LABELS)
     assert guard["closes_probed"] is True and guard["dtb3_probed"] is True and guard["required"] is False
     assert (guard["fmp_bodies"], guard["priced_symbols"], guard["dtb3_bodies"]) == (len(PRICE_SYMBOLS),
                                                                                   len(PRICE_SYMBOLS), 1)
@@ -759,7 +763,8 @@ def test_published_tables_carry_the_citations_and_only_derived_statistics(study,
 
 
 def test_the_licensing_guard_fails_on_a_planted_leak(study, replayed, tmp_path):
-    """A raw BAA10Y level in a CSV, a DTB3 run in a markdown, an FMP close in an SVG, a reply in a markdown."""
+    """A raw BAA10Y level in a CSV, a DTB3 run in a markdown, an FMP close in an SVG, a reply in a markdown: all
+    four are found; the BAA10Y level, the close and the reply refuse, the DTB3 run (public data) only warns."""
     copy = tmp_path / "published"
     shutil.copytree(replayed.published, copy)
     level = macro_row(MONTHS[7]).raw["baa10y"]
@@ -786,6 +791,15 @@ def test_the_licensing_guard_fails_on_a_planted_leak(study, replayed, tmp_path):
         ("gap.csv", "BAA10Y raw levels (FRED, Moody's)"), ("reliability.md", DTB3_LABEL),
         ("convergence-light.svg", CLOSES_LABEL), ("draws.md", REPLY_LABEL)}
     assert all(leak.found not in str(leak) for leak in own), "a leak prints no matched value"
+    # DTB3 is public data: its match is advisory (a manifest warning by file, label and count), the others refuse.
+    refusing, warnings = partition_leaks(own)
+    assert {(leak.path.name, leak.label) for leak in refusing} == {
+        ("gap.csv", "BAA10Y raw levels (FRED, Moody's)"), ("convergence-light.svg", CLOSES_LABEL),
+        ("draws.md", REPLY_LABEL)}
+    assert warnings and {(leak.path.name, leak.label) for leak in warnings} == {("reliability.md", DTB3_LABEL)}
+    # The fixture's rates repeat every 23 months, so the planted run matches every identical run probe.
+    assert warning_records(warnings) == [{"file": "reliability.md", "label": DTB3_LABEL, "count": len(warnings)}]
+    assert all(leak.found not in json.dumps(warning_records(warnings)) for leak in warnings)
     # The replay's own guard: an items.json whose raw level equals a derived number of a published table refuses
     # the replay, removes the published tree, keeps the private documents and names no value.
     planted = next(float(cell) for row in csv_rows(replayed.published / "gap.csv") for cell in row.values()
@@ -902,6 +916,121 @@ def test_month_end_closes_of_a_daily_fmp_body_are_probed_and_a_daily_run_alone_w
     captured = capsys.readouterr()
     assert CLOSES_LABEL in captured.err and run[1] not in captured.err
     assert not (tmp_path / "planted-cli" / "docs").exists()
+
+
+def short_run(tokens: tuple[str, ...], *, minimum: float = 0.0, decimals: int = 2) -> list[str]:
+    """Three distinct consecutive plain number tokens (no exponent, under eight characters, at most ``decimals``
+    decimals, each at least ``minimum``): a rate-like run a cached FRED body can carry, probed as a run only."""
+    for index in range(len(tokens) - 2):
+        window = tokens[index:index + 3]
+        if len(set(window)) == 3 and all("." in text and "e" not in text and len(text) < 8 and float(text) >= minimum
+                                         and len(text.split(".")[1]) <= decimals for text in window):
+            return list(window)
+    raise AssertionError("the figure carries no short run of three distinct number tokens")
+
+
+def planted_dtb3_cache(study: SimpleNamespace, replayed: SimpleNamespace, tmp_path: Path) -> tuple[Path, list[str]]:
+    """A copy of the fixture's FRED cache whose DTB3 body carries, as three consecutive rates, a run of short number
+    tokens that the published gap figure carries (SVG coordinates): the real 9.3 finding, planted."""
+    svg = replayed.published / "gap-light.svg"
+    run = short_run(number_tokens(svg.read_text(encoding="utf-8")))
+    planted = tmp_path / "fred"
+    shutil.copytree(study.fred_cache, planted)
+    body_path = next(planted.glob(f"{CASH_SERIES}_current_*.json"))
+    body = json.loads(body_path.read_text(encoding="utf-8"))
+    for offset, text in enumerate(run):
+        body["observations"][10 + offset]["value"] = text
+    body_path.write_text(json.dumps(body), encoding="utf-8")
+    return planted, run
+
+
+def test_a_dtb3_run_a_published_file_carries_is_recorded_as_a_warning_and_the_replay_publishes(
+        study, replayed, tmp_path, capsys):
+    """DTB3 (the FRED H.15 three-month bill rate) is public data, not a licensed series: a run of its rates that a
+    published SVG carries as coordinates is recorded in replay.json under guard.warnings (file, label, count), the
+    published tree is written and the exit code is 0, also under --require-guard; the warning names no rate."""
+    planted, run = planted_dtb3_cache(study, replayed, tmp_path)
+    inputs = inputs_of(study, fred_cache=planted)
+    own = replay_probes(inputs)
+    assert own.dtb3_probed and own.dtb3_bodies == 1
+    svg = replayed.published / "gap-light.svg"
+    leaks = find_leaks([svg], own.probes)
+    assert {leak.label for leak in leaks} == {DTB3_LABEL} and ", ".join(run) in {leak.found for leak in leaks}
+    refusing, warnings = partition_leaks(leaks)
+    assert refusing == [] and warnings == leaks
+    assert warning_records(warnings) == [{"file": "gap-light.svg", "label": DTB3_LABEL, "count": len(leaks)}]
+    out_root = tmp_path / "warned"
+    output = replay(inputs, out_root, require_guard=True)
+    guard = output.manifest["guard"]
+    assert guard["required"] is True and guard["dtb3_probed"] is True and guard["leaks"] == 0
+    assert guard["warning_labels"] == [DTB3_LABEL] and guard["probes"][DTB3_LABEL] == own.counts()[DTB3_LABEL]
+    assert {record["label"] for record in guard["warnings"]} == {DTB3_LABEL}
+    assert {record["file"] for record in guard["warnings"]} >= {"gap-light.svg", "gap-dark.svg"}
+    assert all(set(record) == {"file", "label", "count"} and record["count"] >= 1 for record in guard["warnings"])
+    assert all(text not in json.dumps(guard["warnings"]) for text in run)
+    assert (out_root / MANIFEST_NAME).exists()
+    assert json.loads((out_root / MANIFEST_NAME).read_text(encoding="utf-8"))["guard"]["warnings"] == guard["warnings"]
+    written = out_root / PUBLISHED_DIR
+    assert sorted(path.name for path in written.iterdir()) == sorted(path.name for path in replayed.published.iterdir())
+    assert {leak.label for leak in find_leaks([written / "gap-light.svg"], own.probes)} == {DTB3_LABEL}, \
+        "the figure that carries the run is published as rendered"
+    args = cli_args(study, tmp_path / "warned-cli")
+    args[args.index("--fred-cache") + 1] = str(planted)
+    assert main([*args, "--require-guard"]) == 0
+    captured = capsys.readouterr()
+    assert "advisory" in captured.err and f"gap-light.svg: {DTB3_LABEL} (" in captured.err
+    assert all(text not in captured.err for text in run)
+    assert (tmp_path / "warned-cli" / PUBLISHED_DIR).is_dir() and (tmp_path / "warned-cli" / MANIFEST_NAME).exists()
+
+
+def test_a_planted_baa10y_level_or_fmp_close_still_refuses_beside_a_dtb3_warning(study, replayed, tmp_path, capsys):
+    """The advisory label loosens nothing else. With the DTB3 run planted in the FRED cache, a BAA10Y raw level
+    planted in items.json or an FMP close planted in the FMP cache refuses the replay as before: the published tree
+    removed, no manifest, exit 2, the refusal counting and naming the refusing matches only and never a value."""
+    planted_fred, _ = planted_dtb3_cache(study, replayed, tmp_path)
+    files = published_text_files(replayed.published)
+    level = next(float(cell) for row in csv_rows(replayed.published / "gap.csv") for cell in row.values()
+                 if len(cell) >= 8 and cell.replace("-", "").replace(".", "").isdigit())
+    record = json.loads(study.items_path.read_text(encoding="utf-8"))
+    for index in range(3):
+        record["macro_items"][index]["row"]["raw"]["baa10y"] = level
+    items_path = tmp_path / "items-planted.json"
+    items_path.write_text(json.dumps(record), encoding="utf-8")
+    inputs = inputs_of(study, items_path=items_path, fred_cache=planted_fred)
+    refusing, warnings = partition_leaks(find_leaks(files, replay_probes(inputs).probes))
+    assert {leak.label for leak in refusing} == {"BAA10Y raw levels (FRED, Moody's)"}
+    assert {leak.label for leak in warnings} == {DTB3_LABEL}
+    out_root = tmp_path / "baa10y"
+    with pytest.raises(ReplayError, match="licensing probe") as refusal:
+        replay(inputs, out_root, require_guard=True)
+    message = str(refusal.value)
+    assert message.startswith(f"{len(refusing)} licensing probe(s)")
+    assert "gap.csv: BAA10Y raw levels (FRED, Moody's) (" in message
+    assert DTB3_LABEL not in message and repr(level) not in message and f"{level:.6g}" not in message
+    assert not (out_root / "docs").exists() and (out_root / PRIVATE_DIR).is_dir()
+    assert not (out_root / MANIFEST_NAME).exists()
+    svg = replayed.published / "gap-light.svg"
+    single = next(text for text in number_tokens(svg.read_text(encoding="utf-8")) if len(text) >= 8 and float(text) > 1)
+    planted_fmp = tmp_path / "fmp"
+    shutil.copytree(study.fmp_cache, planted_fmp)
+    world = next(planted_fmp.glob(f"{PRICE_SYMBOLS['world_equity']}_*.json"))
+    rows = json.loads(world.read_text(encoding="utf-8"))
+    rows[5]["adjClose"] = float(single)
+    world.write_text(json.dumps(rows), encoding="utf-8")
+    inputs = inputs_of(study, fmp_cache=planted_fmp, fred_cache=planted_fred)
+    out_root = tmp_path / "close"
+    with pytest.raises(ReplayError, match="licensing probe") as refusal:
+        replay(inputs, out_root, require_guard=True)
+    message = str(refusal.value)
+    assert f"gap-light.svg: {CLOSES_LABEL} (" in message and DTB3_LABEL not in message and single not in message
+    assert not (out_root / "docs").exists() and not (out_root / MANIFEST_NAME).exists()
+    args = cli_args(study, tmp_path / "close-cli")
+    args[args.index("--fmp-cache") + 1] = str(planted_fmp)
+    args[args.index("--fred-cache") + 1] = str(planted_fred)
+    assert main([*args, "--require-guard"]) == 2
+    captured = capsys.readouterr()
+    assert CLOSES_LABEL in captured.err and "advisory" not in captured.err and single not in captured.err
+    assert not (tmp_path / "close-cli" / "docs").exists()
 
 
 def test_require_guard_refuses_before_writing_unless_every_private_source_was_probed(study, tmp_path, capsys):

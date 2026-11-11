@@ -42,12 +42,20 @@ read with the item assembly's own parser, per symbol in date order, both the
 daily series and the study's month-end series, the last close of each calendar
 month as ``items.realized_returns`` takes it) and the DTB3 rates of the cached
 FRED body, each as single values where they are distinctive and as runs of
-consecutive values, and for the reply text of every recorded draw. A match
-removes the published tree and refuses the replay, naming the file, the series
-and the count, never the value. The probes are counted in the manifest by
-label, never listed. With ``--require-guard`` (the publication run of task
-9.5) the replay refuses before writing anything unless the items, one FMP body
-per priced symbol and the DTB3 body were all there to probe.
+consecutive values, and for the reply text of every recorded draw. A match on
+a refusing label removes the published tree and refuses the replay, naming the
+file, the series and the count, never the value. DTB3 is public data (the FRED
+H.15 three-month bill rate, not a licensed series; the design's licensing rule
+names BAA10Y and the FMP closes), so its label is advisory
+(:data:`WARNING_LABELS`): a match is recorded in the manifest under
+``guard.warnings`` by file, label and count, and the replay publishes. The 9.3
+replay of the real records showed why: the rates are short two-decimal
+numbers, and runs of three of them coincide with SVG style numbers, glyph
+transform scale factors and the reliability diagram's bin edges (fix 9.3a).
+The probes are counted in the manifest by label, never listed. With
+``--require-guard`` (the publication run of task 9.5) the replay refuses before
+writing anything unless the items, one FMP body per priced symbol and the DTB3
+body were all there to probe; the DTB3 body stays required.
 
 Matplotlib is imported only when the figures render, so importing this module
 loads no plotting library.
@@ -152,6 +160,12 @@ RETURNS_LABEL = "realized returns (from FMP adjusted closes and DTB3)"
 CLOSES_LABEL = "FMP adjusted closes (licensed)"
 DTB3_LABEL = "DTB3 rates (FRED, current vintage)"
 REPLY_LABEL = "reply text of a recorded draw"
+#: The labels whose matches are advisory: recorded in the manifest as ``guard.warnings`` (file, label, count),
+#: never a refusal. DTB3 is the FRED H.15 three-month Treasury bill rate, public data and not a licensed series
+#: (the design's licensing rule names BAA10Y and the FMP closes); its rates are still probed because the match
+#: is informative. Every other label (the macro rows' raw FRED levels, BAA10Y among them, the realized returns,
+#: the FMP closes and the reply text) removes the published tree and refuses.
+WARNING_LABELS: frozenset[str] = frozenset({DTB3_LABEL})
 
 
 class ReplayError(ValueError):
@@ -234,6 +248,22 @@ def leak_summary(leaks: Sequence[Leak]) -> str:
     for leak in leaks:
         counts[str(leak)] = counts.get(str(leak), 0) + 1
     return "; ".join(f"{key} ({count})" for key, count in counts.items())
+
+
+def partition_leaks(leaks: Sequence[Leak]) -> tuple[list[Leak], list[Leak]]:
+    """The leaks that refuse the replay, then the advisory ones (a label in :data:`WARNING_LABELS`), in order."""
+    refusing = [leak for leak in leaks if leak.label not in WARNING_LABELS]
+    warnings = [leak for leak in leaks if leak.label in WARNING_LABELS]
+    return refusing, warnings
+
+
+def warning_records(leaks: Sequence[Leak]) -> list[dict[str, Any]]:
+    """The manifest's ``guard.warnings``: one record per file and label with the match count, sorted; no value."""
+    counts: dict[tuple[str, str], int] = {}
+    for leak in leaks:
+        key = (leak.path.name, leak.label)
+        counts[key] = counts.get(key, 0) + 1
+    return [{"file": file, "label": label, "count": count} for (file, label), count in sorted(counts.items())]
 
 
 def _number_text(value: object) -> str | None:
@@ -588,8 +618,11 @@ def replay(inputs: ReplayInputs, out_root: str | Path, *, require_guard: bool = 
     negative-control reports, the probe arm's convergence tables); the figures
     and the published markdown copies follow; then every SVG's metadata is
     checked against the pin and every published file against the probes. A
-    leak removes the published tree and refuses; the private documents stay
-    for inspection. No request is sent: nothing here builds a client.
+    leak on a refusing label removes the published tree and refuses; the
+    private documents stay for inspection. A match on an advisory label
+    (:data:`WARNING_LABELS`) is recorded in the manifest under
+    ``guard.warnings`` by file, label and count, and the replay publishes. No
+    request is sent: nothing here builds a client.
     """
     if not isinstance(inputs, ReplayInputs):
         raise TypeError(f"inputs must be ReplayInputs; got {type(inputs).__name__}")
@@ -629,11 +662,12 @@ def replay(inputs: ReplayInputs, out_root: str | Path, *, require_guard: bool = 
     for path in published_paths:
         if path.suffix == ".svg":
             check_svg_version(path.read_text(encoding="utf-8"), path)
-    leaks = find_leaks([path for path in published_paths if path.suffix in PUBLISHED_SUFFIXES], guard.probes)
-    if leaks:
+    refusing, warnings = partition_leaks(
+        find_leaks([path for path in published_paths if path.suffix in PUBLISHED_SUFFIXES], guard.probes))
+    if refusing:
         shutil.rmtree(root / PUBLISHED_DIR.parts[0])
-        raise ReplayError(f"{len(leaks)} licensing probe(s) matched a published file, so nothing is published "
-                          f"(file: series (matches)): {leak_summary(leaks)}")
+        raise ReplayError(f"{len(refusing)} licensing probe(s) matched a published file, so nothing is published "
+                          f"(file: series (matches)): {leak_summary(refusing)}")
     manifest = {
         "schema": REPLAY_SCHEMA, "plan_sha256": plan.plan_sha256, "matplotlib": version,
         "svg_creator": SVG_CREATOR, "arms": list(DEFAULT_ARMS), "probe_arm": PROBE_ARM,
@@ -646,7 +680,7 @@ def replay(inputs: ReplayInputs, out_root: str | Path, *, require_guard: bool = 
                   "fmp_bodies": guard.fmp_bodies, "priced_symbols": len(PRICE_SYMBOLS),
                   "dtb3_bodies": guard.dtb3_bodies, "probes": guard.counts(),
                   "files_scanned": sum(1 for path in published_paths if path.suffix in PUBLISHED_SUFFIXES),
-                  "leaks": 0},
+                  "leaks": 0, "warning_labels": sorted(WARNING_LABELS), "warnings": warning_records(warnings)},
     }
     _write_text(root / MANIFEST_NAME, json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n")
     return ReplayOutput(root=root, manifest=manifest, private=tuple(private_paths), published=tuple(published_paths))
@@ -677,7 +711,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     published file differs from the ``--compare`` directory (the differing
     files listed), 2 refused (another plan, an unpinned matplotlib, a used
     output root, records that do not belong to the plan, or a licensing probe
-    found in a published file).
+    on a refusing label found in a published file). Advisory matches
+    (``guard.warnings`` in the manifest) are summarised on stderr by file,
+    label and count and do not change the exit code.
     """
     parser = argparse.ArgumentParser(description="Offline worked-example replay (task 8.4): both pre-registered "
                                                  "analyses, the negative-control report, the convergence tables and "
@@ -715,6 +751,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_REFUSED
     for path in (*output.private, *output.published, output.root / MANIFEST_NAME):
         print(path)
+    warnings = output.manifest["guard"]["warnings"]
+    if warnings:
+        summary = "; ".join(f"{record['file']}: {record['label']} ({record['count']})" for record in warnings)
+        print(f"replay: {sum(record['count'] for record in warnings)} advisory licensing match(es) recorded in "
+              f"{MANIFEST_NAME} as guard.warnings (file: series (matches)): {summary}", file=sys.stderr)
     if differing:
         print(f"replay: {len(differing)} published file(s) differ from {args.compare}: {', '.join(differing)}",
               file=sys.stderr)
@@ -742,6 +783,7 @@ __all__ = [
     "SERIES_SPAN",
     "SERIES_WINDOW",
     "SVG_CREATOR",
+    "WARNING_LABELS",
     "GuardProbes",
     "Leak",
     "Probe",
@@ -760,6 +802,7 @@ __all__ = [
     "main",
     "month_end_closes",
     "number_tokens",
+    "partition_leaks",
     "published_markdown",
     "replay",
     "replay_probes",
@@ -769,6 +812,7 @@ __all__ = [
     "svg_version",
     "text_probe",
     "value_probe",
+    "warning_records",
 ]
 
 
