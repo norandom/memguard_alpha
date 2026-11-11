@@ -2,7 +2,9 @@
 
 An adopter calls the API with either evidence source from ``recall_guard``
 alone: the guarded-decision functions and types, the decision definitions, the
-recorded-draw results and the sources. The existing root exports keep their
+recorded-draw results and the sources. The qualification catalogue and the
+selection interface (qualified-model-catalogue, task 2.2) follow as one further
+block, pinned the same way. The existing root exports keep their
 names and order; the lean-import test in tests/harness/test_scorer.py guards
 that ``import recall_guard`` still loads no matplotlib.
 """
@@ -47,6 +49,30 @@ GUARDED_DECISION_EXPORTS = (
 )
 GUARDED_DECISION_NAMES = tuple(name for name, _module in GUARDED_DECISION_EXPORTS)
 
+#: The catalogue and selection block of ``recall_guard.__all__``, in order, with the defining module of each name.
+CATALOGUE_SELECTION_EXPORTS = (
+    # catalogue
+    ("Mode", "recall_guard.core.catalogue"),
+    ("Status", "recall_guard.core.catalogue"),
+    ("Catalogue", "recall_guard.core.catalogue"),
+    ("CatalogueEntry", "recall_guard.core.catalogue"),
+    ("ModeRecord", "recall_guard.core.catalogue"),
+    ("Qualification", "recall_guard.core.catalogue"),
+    ("CatalogueError", "recall_guard.core.catalogue"),
+    ("load_catalogue", "recall_guard.core.catalogue"),
+    ("qualify", "recall_guard.core.catalogue"),
+    # selection
+    ("Selection", "recall_guard.harness.selection"),
+    ("SelectedDecision", "recall_guard.harness.selection"),
+    ("SelectionError", "recall_guard.harness.selection"),
+    ("select", "recall_guard.harness.selection"),
+    ("guarded_select", "recall_guard.harness.selection"),
+)
+CATALOGUE_SELECTION_NAMES = tuple(name for name, _module in CATALOGUE_SELECTION_EXPORTS)
+
+#: The blocks added after the existing exports were pinned; every other name of ``__all__`` is an existing one.
+ADDED_NAMES = GUARDED_DECISION_NAMES + CATALOGUE_SELECTION_NAMES
+
 #: ``recall_guard.__all__`` before task 5.2; these names and their order must not change.
 EXISTING_EXPORTS = (
     "MemoryGuardedScorer", "GuardedScore", "ConfigurationError", "RecallWorkflow", "WorkflowResult",
@@ -77,11 +103,28 @@ def test_guarded_decision_block_follows_the_facade_block_in_declared_order():
     assert tuple(exported[start:start + len(GUARDED_DECISION_NAMES)]) == GUARDED_DECISION_NAMES
 
 
+@pytest.mark.parametrize("name, module", CATALOGUE_SELECTION_EXPORTS)
+def test_catalogue_and_selection_name_is_exported_from_the_root_as_the_module_object(name, module):
+    assert name in recall_guard.__all__
+    assert getattr(recall_guard, name) is getattr(importlib.import_module(module), name)
+
+
+def test_catalogue_and_selection_block_follows_the_guarded_decision_block_in_declared_order():
+    exported = list(recall_guard.__all__)
+    start = exported.index(GUARDED_DECISION_NAMES[-1]) + 1
+    assert tuple(exported[start:start + len(CATALOGUE_SELECTION_NAMES)]) == CATALOGUE_SELECTION_NAMES
+
+
+def test_added_blocks_share_no_name_with_each_other_or_the_existing_exports():
+    assert len(ADDED_NAMES) == len(set(ADDED_NAMES))
+    assert set(ADDED_NAMES).isdisjoint(EXISTING_EXPORTS)
+
+
 def test_existing_root_exports_and_their_order_are_unchanged():
     exported = list(recall_guard.__all__)
     assert len(exported) == len(set(exported))
-    assert tuple(name for name in exported if name not in GUARDED_DECISION_NAMES) == EXISTING_EXPORTS
-    assert set(exported) == set(EXISTING_EXPORTS) | set(GUARDED_DECISION_NAMES)
+    assert tuple(name for name in exported if name not in ADDED_NAMES) == EXISTING_EXPORTS
+    assert set(exported) == set(EXISTING_EXPORTS) | set(ADDED_NAMES)
 
 
 def test_every_root_export_resolves():

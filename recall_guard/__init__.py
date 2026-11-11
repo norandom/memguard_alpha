@@ -108,6 +108,21 @@ from recall_guard.harness.guarded_decision import (
 )
 from recall_guard.mia.estimate_source import EstimateSource, SourceLabel
 
+# isort: split
+# qualification catalogue and selection: importing them reads no catalogue file
+from recall_guard.core.catalogue import (
+    Catalogue,
+    CatalogueEntry,
+    CatalogueError,
+    Mode,
+    ModeRecord,
+    Qualification,
+    Status,
+    load_catalogue,
+    qualify,
+)
+from recall_guard.harness.selection import SelectedDecision, Selection, SelectionError, guarded_select, select
+
 __all__ = [
     # façade (the headline surface)
     "MemoryGuardedScorer",
@@ -148,6 +163,23 @@ __all__ = [
     "SourceLabel",
     "FullDistributionClient",
     "FullDistributionEvidence",
+    # qualification catalogue and selection
+    #   catalogue
+    "Mode",
+    "Status",
+    "Catalogue",
+    "CatalogueEntry",
+    "ModeRecord",
+    "Qualification",
+    "CatalogueError",
+    "load_catalogue",
+    "qualify",
+    #   selection
+    "Selection",
+    "SelectedDecision",
+    "SelectionError",
+    "select",
+    "guarded_select",
     # ensemble surface (opt-in; see EnsembleSpec)
     "EnsembledScore",
     "EnsembleSpec",
