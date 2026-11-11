@@ -1,0 +1,219 @@
+{
+  "schema": "recall-guard-catalogue/1",
+  "rule": {"min_auc": 0.6, "min_valid": 50, "alpha": 0.05},
+  "entries": [
+    {
+      "entry_id": "llamacpp-gemma3-4b",
+      "profile_id": "llamacpp-gemma3-4b",
+      "model": "gemma3:4b",
+      "route": "llama.cpp server, local",
+      "weights_identity": "sha256:fixture-gemma3-4b",
+      "weights_group": "gemma3-4b",
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["entropy", "top1_probability"],
+          "features_unavailable": [],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "documents published before the cutoff",
+                "fenced": "documents published after the cutoff",
+                "date_range": "any date before against any date after the cutoff"
+              },
+              "quality": {
+                "holdout_auc": 0.9,
+                "interval_low": 0.85,
+                "interval_high": 0.95,
+                "interval_method": "row_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 200,
+                "n_fenced": 200,
+                "n_prompts": null,
+                "permutation_p": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": "sha256:fixture-document",
+              "evidence": {"register_ids": ["R26"], "method": "document_likelihood"}
+            },
+            {
+              "boundary": {
+                "domain": "financial_time_series",
+                "exposed": "months inside the training range",
+                "fenced": "months after the training cutoff",
+                "date_range": "24 months before to 12 months after the cutoff"
+              },
+              "quality": {
+                "holdout_auc": 0.71,
+                "interval_low": 0.64,
+                "interval_high": 0.78,
+                "interval_method": "prompt_clustered_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 120,
+                "n_fenced": 110,
+                "n_prompts": 40,
+                "permutation_p": 0.001
+              },
+              "cutoff": {
+                "inside_mean": 0.62,
+                "after_mean": 0.41,
+                "difference": 0.21,
+                "interval_low": 0.09,
+                "interval_high": 0.33,
+                "p_value": 0.004,
+                "n_inside": 120,
+                "n_after": 110
+              },
+              "calibrator_fingerprint": "sha256:fixture-series",
+              "evidence": {"register_ids": ["R43", "R40"], "method": "reply_features"}
+            }
+          ]
+        },
+        "logits": {
+          "available": true,
+          "unavailable_reason": null,
+          "requires": "a llama.cpp server started with the same GGUF file",
+          "features": ["entropy", "top1_probability"],
+          "features_unavailable": [],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "financial_time_series",
+                "exposed": "months inside the training range",
+                "fenced": "months after the training cutoff",
+                "date_range": "24 months before to 12 months after the cutoff"
+              },
+              "quality": {
+                "holdout_auc": 0.55,
+                "interval_low": 0.47,
+                "interval_high": 0.63,
+                "interval_method": "prompt_clustered_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 120,
+                "n_fenced": 110,
+                "n_prompts": 40,
+                "permutation_p": 0.2
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {"register_ids": ["R43"], "method": "reply_features"}
+            }
+          ]
+        }
+      }
+    },
+    {
+      "entry_id": "ollama-gemma3-4b",
+      "profile_id": "ollama-gemma3-4b",
+      "model": "gemma3:4b",
+      "route": "Ollama, local",
+      "weights_identity": null,
+      "weights_group": "gemma3-4b",
+      "modes": {
+        "logprobs": {
+          "available": true,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        },
+        "logits": {
+          "available": false,
+          "unavailable_reason": "the route returns at most the top 20 tokens",
+          "requires": "a route that returns the full next-token distribution, such as llama.cpp",
+          "features": [],
+          "features_unavailable": ["tail_mass"],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "oga-phi4-mini",
+      "profile_id": null,
+      "model": "phi4-mini",
+      "route": "ONNX Runtime GenAI, in process",
+      "weights_identity": null,
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": false,
+          "unavailable_reason": "the runtime has no logprobs field in its replies",
+          "requires": null,
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        },
+        "logits": {
+          "available": true,
+          "unavailable_reason": null,
+          "requires": "in-process access to the logits of each generated token",
+          "features": ["entropy", "top1_probability"],
+          "features_unavailable": [],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "financial_time_series",
+                "exposed": "months inside the training range",
+                "fenced": "months after the training cutoff",
+                "date_range": "24 months before to 12 months after the cutoff"
+              },
+              "quality": {
+                "holdout_auc": 0.68,
+                "interval_low": 0.61,
+                "interval_high": 0.75,
+                "interval_method": "prompt_clustered_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 90,
+                "n_fenced": 80,
+                "n_prompts": 30,
+                "permutation_p": 0.002
+              },
+              "cutoff": {
+                "inside_mean": 0.58,
+                "after_mean": 0.44,
+                "difference": 0.14,
+                "interval_low": 0.05,
+                "interval_high": 0.23,
+                "p_value": 0.01,
+                "n_inside": 90,
+                "n_after": 80
+              },
+              "calibrator_fingerprint": "sha256:fixture-oga",
+              "evidence": {"register_ids": ["R41"], "method": "reply_features"}
+            }
+          ]
+        }
+      }
+    },
+    {
+      "entry_id": "closed-route",
+      "profile_id": null,
+      "model": "closed-model",
+      "route": "hosted chat API without token probabilities",
+      "weights_identity": null,
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": false,
+          "unavailable_reason": "the API returns text only",
+          "requires": null,
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        },
+        "logits": {
+          "available": false,
+          "unavailable_reason": "the weights are not published",
+          "requires": "published weights and a runtime that exposes logits",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    }
+  ]
+}
