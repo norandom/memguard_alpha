@@ -25,6 +25,8 @@ from recall_guard.dataset.macro_regime import ASSETS, MACRO_AXES, MacroRow, regi
 from recall_guard.harness import front as front_module
 from recall_guard.harness.front import (
     LIMIT_CALIBRATOR_MISMATCH,
+    LIMIT_DRAWS_MISSING,
+    LIMIT_ESTIMATE_UNAVAILABLE,
     LIMIT_NO_CALIBRATOR,
     WORKED_EXAMPLE_REPLY,
     FixedEvidence,
@@ -343,6 +345,36 @@ def test_the_logits_mode_runs_through_the_front_with_the_fixed_host(catalogue, s
     assert result.mode is Mode.LOGITS and result.status is catalogue.qualification(LLAMACPP, Mode.LOGITS).status
     assert (client.requests, host.requests) == (8, 8)
     assert host.calls == ((prompt, WORKED_EXAMPLE_REPLY),) * 8
+
+
+def test_a_fixed_host_without_evidence_leaves_the_answer_without_an_estimate(catalogue, scorer, no_network):
+    prompt, definition = worked_example()
+    full = bound(scorer, EstimateSource.FULL_DISTRIBUTION)
+    client = FixedReplies([WORKED_EXAMPLE_REPLY] * 8, config=model_config())
+    host = FixedEvidence([])  # every evidence request raises the request error
+
+    result = ask(prompt, definition, entry=LLAMACPP, mode=Mode.LOGITS, client=client, calibrator=full,
+                 full_distribution=host, catalogue=catalogue, draws=8, min_parsed=8)
+
+    assert result.failure is None
+    assert result.answer == json.loads(WORKED_EXAMPLE_REPLY)
+    assert (result.p_memorized, result.corrected) == (None, None)
+    assert LIMIT_ESTIMATE_UNAVAILABLE in result.limits
+    assert (client.requests, host.requests) == (8, 0)
+
+
+@pytest.mark.parametrize("calibrated", [True, False])
+def test_fixed_replies_that_run_out_above_min_parsed_answer_with_the_missing_draws_limit(
+        catalogue, series, calibrated):
+    prompt, definition = worked_example()
+    client = FixedReplies([fixed_reply(WORKED_EXAMPLE_REPLY, TOKENS)] * 20, config=model_config())
+
+    result = ask(prompt, definition, entry=LLAMACPP, client=client, catalogue=catalogue, min_parsed=16,
+                 calibrator=series if calibrated else None)
+
+    assert result.failure is None and result.answer == json.loads(WORKED_EXAMPLE_REPLY)
+    assert (result.draws_asked, result.draws_used) == (32, 20)
+    assert result.limits == ((LIMIT_DRAWS_MISSING,) if calibrated else (LIMIT_NO_CALIBRATOR, LIMIT_DRAWS_MISSING))
 
 
 # -- the worked example (11.10) -----------------------------------------------------

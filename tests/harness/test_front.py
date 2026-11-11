@@ -34,6 +34,7 @@ from recall_guard.harness.front import (
     CHOICE_QUALIFIED_TIE,
     LIMIT_CALIBRATOR_MISMATCH,
     LIMIT_CALIBRATOR_NOT_RECORDED,
+    LIMIT_DRAWS_MISSING,
     LIMIT_ESTIMATE_UNAVAILABLE,
     LIMIT_NAMED_MODE_NOT_QUALIFIED,
     LIMIT_NO_CALIBRATOR,
@@ -283,8 +284,69 @@ def test_the_limit_phrases_are_fixed():
     assert LIMIT_ESTIMATE_UNAVAILABLE == "the recall estimate could not be computed"
     assert LIMIT_WEAK_CALIBRATOR == "the adjustment was skipped for a weak calibrator"
     assert LIMIT_CALIBRATOR_MISMATCH == "the supplied calibrator was fitted for another model or settings"
+    assert LIMIT_DRAWS_MISSING == "some draws failed or could not be read"
     phrases = [value for name, value in vars(front_module).items() if name.startswith("LIMIT_")]
-    assert len(phrases) == len(set(phrases)) == 7
+    assert len(phrases) == len(set(phrases)) == 8
+
+
+@pytest.mark.parametrize("calibrated", [True, False])
+def test_limit_for_draws_that_failed_or_could_not_be_read(catalogue, series, calibrated):
+    # Eight draws asked: the first request fails, the last reply does not parse, six are used.
+    client = ScriptedClient(UNIMODAL[:7] + ["no"], failures={0: TimeoutError()})
+    result = front(LLAMACPP, catalogue=catalogue, client=client, min_parsed=6,
+                   calibrator=series if calibrated else None)
+
+    assert result.failure is None and result.answer is not None
+    assert len(client.calls) == 8
+    assert (result.draws_asked, result.draws_used) == (8, 6)
+    assert result.limits == ((LIMIT_DRAWS_MISSING,) if calibrated else (LIMIT_NO_CALIBRATOR, LIMIT_DRAWS_MISSING))
+    assert (result.p_memorized is not None) is calibrated
+
+
+def test_limit_for_missing_draws_after_a_calibrator_mismatch(catalogue, series):
+    other = dataclasses.replace(model_config(), model="another-model")
+    client = ScriptedClient(UNIMODAL[:7] + ["no"], configuration=other)
+    result = front(LLAMACPP, catalogue=catalogue, client=client, calibrator=series, min_parsed=6)
+
+    assert result.limits == (LIMIT_CALIBRATOR_MISMATCH, LIMIT_DRAWS_MISSING)
+    assert (result.draws_asked, result.draws_used) == (8, 7)
+
+
+def test_a_complete_ensemble_reports_its_draws_and_no_missing_draw(catalogue, series):
+    for result in (front(LLAMACPP, catalogue=catalogue, calibrator=series), front(LLAMACPP, catalogue=catalogue)):
+        assert (result.draws_asked, result.draws_used) == (8, 8)
+        assert LIMIT_DRAWS_MISSING not in result.limits
+
+
+def test_a_failure_reports_no_draw_counts(catalogue):
+    for result in (front(CLOSED, catalogue=catalogue), front(LLAMACPP, catalogue=catalogue, contents=UNREADABLE)):
+        assert result.failure is not None
+        assert (result.draws_asked, result.draws_used) == (None, None)
+
+
+def test_the_draw_counts_are_the_last_fields_and_have_defaults():
+    names = [field.name for field in dataclasses.fields(FrontAnswer)]
+    assert names[-2:] == ["draws_asked", "draws_used"]
+    assert names[:-2] == ["entry_id", "mode", "mode_choice", "status", "reason", "answer", "p_memorized",
+                          "corrected", "limits", "failure", "selected"]
+    bare = FrontAnswer(entry_id="e", mode=None, mode_choice="", status=None, reason="", answer=None,
+                       p_memorized=None, corrected=None, limits=(), failure=None, selected=None)
+    assert (bare.draws_asked, bare.draws_used) == (None, None)
+
+
+@pytest.mark.parametrize("error", [
+    RequestError("HTTP 500", status_code=500, code="host_error"),
+    RequestError("the response could not be tokenised", code="tokenisation_failed"),
+])
+def test_a_logits_host_that_fails_on_evidence_still_answers_without_an_estimate(catalogue, full, error):
+    host = FakeFullDistribution(refuse=dict.fromkeys(range(8), error))
+    result = front(LLAMACPP, catalogue=catalogue, mode=Mode.LOGITS, calibrator=full, full_distribution=host)
+
+    assert result.failure is None and len(host.calls) == 8
+    assert (result.answer, result.p_memorized, result.corrected) == (CONSENSUS, None, None)
+    assert result.selected.decision.status == "estimate_unavailable"
+    assert result.limits == (LIMIT_NAMED_MODE_NOT_QUALIFIED, LIMIT_ESTIMATE_UNAVAILABLE)
+    assert (result.draws_asked, result.draws_used) == (8, 8)
 
 
 def test_limit_for_a_calibrator_other_than_the_recorded_one(catalogue, top_k):
@@ -354,21 +416,71 @@ def test_without_a_calibrator_the_draws_and_the_reduction_are_the_guards(catalog
     assert result.answer is spy.spy_return.decision
 
 
-def test_the_front_imports_no_private_name():
-    tree = ast.parse(Path(front_module.__file__).read_text(encoding="utf-8"))
-    imported = [alias.name for node in ast.walk(tree) if isinstance(node, ast.Import | ast.ImportFrom)
-                for alias in node.names]
-    modules = [node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+def private_reaches(source: str) -> list[str]:
+    """The private names of other modules or objects that ``source`` imports or reaches through an attribute.
 
-    assert imported and modules
-    private = [name for name in imported + modules
-               if any(part.startswith("_") for part in name.split(".")) and name != "__future__"]
-    assert private == []
-    # Nor is a private name of another module reached through an attribute.
-    reached = [node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
-               and node.attr.startswith("_") and not node.attr.startswith("__")]
-    assert reached == []
+    A name is private when a dotted part of it starts with an underscore and is
+    not a dunder name. An object's access to its own private attributes
+    (``self._x``, ``cls._x``) is not a reach into another module.
+    """
+    def private(name: str) -> bool:
+        return any(part.startswith("_") and not (part.startswith("__") and part.endswith("__"))
+                   for part in name.split("."))
+
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = [node.module or "", *(alias.name for alias in node.names)]
+        elif isinstance(node, ast.Attribute) and not (
+                isinstance(node.value, ast.Name) and node.value.id in {"self", "cls"}):
+            names = [node.attr]
+        else:
+            continue
+        found.extend(name for name in names if private(name))
+    return found
+
+
+def test_the_front_imports_no_private_name():
+    source = Path(front_module.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    assert [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+    # No private name of another module is imported, or reached through an attribute.
+    assert private_reaches(source) == []
     assert not hasattr(front_module, "GuardIdentity")
+
+
+@pytest.mark.parametrize("source, refused", [
+    ("from recall_guard.harness.guarded_decision import _estimate\n", ["_estimate"]),
+    ("from recall_guard.harness._hidden import name\n", ["recall_guard.harness._hidden"]),
+    ("import recall_guard.harness._hidden\n", ["recall_guard.harness._hidden"]),
+    ("from recall_guard.harness import guarded_decision as guard\nguard._estimate()\n", ["_estimate"]),
+    ("def read(other):\n    return other._private\n", ["_private"]),
+    ("class A:\n    def read(self, other):\n        return self._own + other._theirs\n", ["_theirs"]),
+    ("class A:\n    def read(self):\n        return self.client._fixed\n", ["_fixed"]),
+    ("def read(other):\n    return other.__mangled\n", ["__mangled"]),
+])
+def test_the_private_name_check_refuses_a_private_name_of_another_module_or_object(source, refused):
+    assert private_reaches(source) == refused
+
+
+@pytest.mark.parametrize("source", [
+    "from __future__ import annotations\nimport threading\nfrom recall_guard.core.catalogue import Mode\n",
+    "class A:\n    def __init__(self):\n        self._own = 1\n    def read(self):\n        return self._own\n",
+    "class A:\n    @classmethod\n    def make(cls):\n        return cls._registry\n",
+    "class A:\n    def freeze(self):\n        object.__setattr__(self, 'x', 1)\n        return self._fixed.served\n",
+])
+def test_the_private_name_check_allows_public_names_and_an_objects_own_private_attributes(source):
+    assert private_reaches(source) == []
+
+
+def test_the_fixed_doubles_keep_their_state_in_ordinary_private_attributes():
+    for double in (front_module.FixedReplies(["a"]), front_module.FixedEvidence([])):
+        names = set(vars(double)) | set(vars(vars(double)["_fixed"]))
+        assert not [name for name in names if "__" in name]
+        assert {"_fixed", "_items", "_served"} <= names
 
 
 def test_without_a_calibrator_the_logits_mode_needs_no_full_distribution_host(catalogue):

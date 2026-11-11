@@ -36,7 +36,9 @@ leaves both modes.
 A status never refuses an answer: a not qualified or not tested entry and mode
 still answers, uncorrected and marked. ``limits`` states what limited the
 answer, in fixed phrases (the ``LIMIT_*`` constants); it is empty when nothing
-did.
+did. An answer that rests on fewer draws than were asked for, because a
+request failed or a reply could not be read, says so there, and
+``draws_asked`` and ``draws_used`` give the counts.
 
 When no answer can be produced, the :class:`FrontAnswer` carries a
 :class:`FrontFailure` with the step that failed (``entry``, ``mode``,
@@ -113,6 +115,7 @@ LIMIT_CALIBRATOR_NOT_RECORDED = "the supplied calibrator is not the recorded one
 LIMIT_CALIBRATOR_MISMATCH = "the supplied calibrator was fitted for another model or settings"
 LIMIT_ESTIMATE_UNAVAILABLE = "the recall estimate could not be computed"
 LIMIT_WEAK_CALIBRATOR = "the adjustment was skipped for a weak calibrator"
+LIMIT_DRAWS_MISSING = "some draws failed or could not be read"
 
 _MODE_OF_SOURCE = MappingProxyType(
     {EstimateSource.TOP_K: Mode.LOGPROBS, EstimateSource.FULL_DISTRIBUTION: Mode.LOGITS}
@@ -170,9 +173,14 @@ class FrontAnswer:
     answer. ``selected`` is the selection interface's result, untouched; it is
     None when no calibrator was used.
 
+    ``draws_asked`` is the size of the ensemble the answer was asked with and
+    ``draws_used`` the number of draws it rests on: those whose request
+    returned a reply that read into the definition. When ``draws_used`` is
+    smaller, ``limits`` holds :data:`LIMIT_DRAWS_MISSING`.
+
     With ``failure`` set there is no answer, estimate, correction or
-    ``selected``; ``mode`` and ``status`` are what was known when the step
-    failed.
+    ``selected`` and no draw count; ``mode`` and ``status`` are what was known
+    when the step failed.
     """
 
     entry_id: str
@@ -186,6 +194,8 @@ class FrontAnswer:
     limits: tuple[str, ...]
     failure: FrontFailure | None
     selected: SelectedDecision | None
+    draws_asked: int | None = None
+    draws_used: int | None = None
 
 
 def _listing(entry: CatalogueEntry, catalogue: Catalogue) -> str:
@@ -425,13 +435,14 @@ def ask(
                 mismatched = True
         if selected is None:
             plain = decide_without_estimate(prompt, definition, client=client, draws=draws, min_parsed=min_parsed)
-            answer, why, replies = plain.decision, plain.reason, plain.n_replies
+            answer, why, replies, parsed = plain.decision, plain.reason, plain.n_replies, plain.n_parsed
         else:
             decision = selected.decision
             answer = None if decision.status == "failed" else decision.decision
             why = decision.reason
             replies = sum(1 for draw in decision.draws
                           if not (draw.failure_code or "").startswith(REQUEST_ERROR_PREFIX))
+            parsed = sum(1 for draw in decision.draws if draw.parsed is not None)
     except (RequestError, BudgetExhaustedError) as error:
         return failed("request", f"{type(error).__name__}: {error}", _REMEDY_REQUEST)
     if answer is None:
@@ -444,11 +455,13 @@ def ask(
     if qualification.status is not Status.QUALIFIED:
         limits.append(LIMIT_NAMED_MODE_NOT_QUALIFIED if _qualified_modes(record, catalogue)
                       else LIMIT_NO_QUALIFIED_MODE)
+    # A draw whose request failed or whose reply did not read into the definition is missing from the answer.
+    missing = [LIMIT_DRAWS_MISSING] if parsed < draws else []
     if selected is None:
         limits.append(LIMIT_CALIBRATOR_MISMATCH if mismatched else LIMIT_NO_CALIBRATOR)
         return FrontAnswer(entry_id=entry, mode=chosen, mode_choice=choice, status=status, reason=reason,
-                           answer=answer, p_memorized=None, corrected=None, limits=tuple(limits),
-                           failure=None, selected=None)
+                           answer=answer, p_memorized=None, corrected=None, limits=(*limits, *missing),
+                           failure=None, selected=None, draws_asked=draws, draws_used=parsed)
     decision = selected.decision
     if qualification.status is Status.QUALIFIED and selected.status is not Status.QUALIFIED:
         limits.append(LIMIT_CALIBRATOR_NOT_RECORDED)
@@ -458,7 +471,8 @@ def ask(
         limits.append(LIMIT_WEAK_CALIBRATOR)
     return FrontAnswer(entry_id=selected.entry_id, mode=selected.mode, mode_choice=choice, status=selected.status,
                        reason=selected.reason, answer=selected.answer, p_memorized=selected.p_memorized,
-                       corrected=selected.corrected, limits=tuple(limits), failure=None, selected=selected)
+                       corrected=selected.corrected, limits=(*limits, *missing), failure=None, selected=selected,
+                       draws_asked=draws, draws_used=parsed)
 
 
 # -- offline use: fixed replies, fixed evidence and the worked example ---------------
@@ -526,42 +540,38 @@ def fixed_reply(
 
 
 class _Fixed:
-    """Given items handed out in order, one or several per request, optionally repeating.
-
-    The state of this class and of the two fixed doubles is kept under
-    name-mangled attributes, so nothing outside the class reads it.
-    """
+    """Given items handed out in order, one or several per request, optionally repeating."""
 
     def __init__(self, items: tuple, *, cycle: bool, what: str, code: str) -> None:
         if not isinstance(cycle, bool):
             raise TypeError("cycle must be a bool")
         if cycle and not items:
             raise ValueError(f"cycle=True needs at least one {what}")
-        self.__items = items
-        self.__cycle = cycle
-        self.__what = what
-        self.__code = code
-        self.__served = 0
-        self.__lock = threading.Lock()
+        self._items = items
+        self._cycle = cycle
+        self._what = what
+        self._code = code
+        self._served = 0
+        self._lock = threading.Lock()
 
     def take(self, count: int, note: Callable[[], None]) -> tuple:
         """The next ``count`` items, or a RequestError that serves none; ``note`` records the request."""
-        with self.__lock:
-            given = len(self.__items)
-            if not self.__cycle and self.__served + count > given:
+        with self._lock:
+            given = len(self._items)
+            if not self._cycle and self._served + count > given:
                 raise RequestError(
-                    f"The fixed {self.__what} are used up: {given} were given and {self.__served} served, and this "
+                    f"The fixed {self._what} are used up: {given} were given and {self._served} served, and this "
                     f"request asks for {count} more. Give more, or pass cycle=True to repeat them.",
-                    code=self.__code,
+                    code=self._code,
                 )
-            taken = tuple(self.__items[(self.__served + offset) % given] for offset in range(count))
-            self.__served += count
+            taken = tuple(self._items[(self._served + offset) % given] for offset in range(count))
+            self._served += count
             note()
             return taken
 
     @property
     def served(self) -> int:
-        return self.__served
+        return self._served
 
 
 class FixedReplies(CompletionClient):
@@ -600,24 +610,24 @@ class FixedReplies(CompletionClient):
                 raise TypeError(f"replies must hold texts or FixedReply records; got {type(reply).__name__}")
             records.append(FixedReply(reply) if isinstance(reply, str) else reply)
         self.config = config
-        self.__fixed = _Fixed(tuple(records), cycle=cycle, what="replies", code="fixed_replies_exhausted")
-        self.__prompts: list[str] = []
+        self._fixed = _Fixed(tuple(records), cycle=cycle, what="replies", code="fixed_replies_exhausted")
+        self._prompts: list[str] = []
 
     @property
     def requests(self) -> int:
         """How many requests were served."""
-        return self.__fixed.served
+        return self._fixed.served
 
     @property
     def prompts(self) -> tuple[str, ...]:
         """The prompts of the served requests, in order, as they arrived."""
-        return tuple(self.__prompts)
+        return tuple(self._prompts)
 
     def generate(self, prompt: str, **parameters: ParameterValue) -> ModelResponse:
         """The next reply. ``parameters`` are reported as requested settings and change nothing else."""
         if not isinstance(prompt, str):
             raise TypeError("prompt must be a string")
-        (reply,) = self.__fixed.take(1, lambda: self.__prompts.append(prompt))
+        (reply,) = self._fixed.take(1, lambda: self._prompts.append(prompt))
         return ModelResponse(reply.text, reply.token_evidence, reply.usage, reply.finish_reason,
                              requested_settings={**self.config.parameters, **parameters})
 
@@ -649,18 +659,18 @@ class FixedEvidence:
         items = tuple(evidence)
         if not all(isinstance(item, FullDistributionEvidence) for item in items):
             raise TypeError("evidence must hold FullDistributionEvidence values")
-        self.__fixed = _Fixed(items, cycle=cycle, what="evidence objects", code="fixed_evidence_exhausted")
-        self.__calls: list[tuple[str, str]] = []
+        self._fixed = _Fixed(items, cycle=cycle, what="evidence objects", code="fixed_evidence_exhausted")
+        self._calls: list[tuple[str, str]] = []
 
     @property
     def requests(self) -> int:
         """How many evidence objects were served."""
-        return self.__fixed.served
+        return self._fixed.served
 
     @property
     def calls(self) -> tuple[tuple[str, str], ...]:
         """The ``(prompt_text, response_text)`` pair of each evidence object served, in order."""
-        return tuple(self.__calls)
+        return tuple(self._calls)
 
     def credential_problem(self) -> None:
         """None: the fixed host needs no bearer."""
@@ -677,8 +687,8 @@ class FixedEvidence:
             raise TypeError("prompt_text must be a string")
         if not isinstance(response_texts, list | tuple) or not all(isinstance(text, str) for text in response_texts):
             raise TypeError("response_texts must be a list or tuple of strings")
-        return self.__fixed.take(len(response_texts),
-                                lambda: self.__calls.extend((prompt_text, text) for text in response_texts))
+        return self._fixed.take(len(response_texts),
+                                lambda: self._calls.extend((prompt_text, text) for text in response_texts))
 
 
 #: The macro state of the worked example. Synthetic: the values are invented to be plausible z-scores and
@@ -726,6 +736,7 @@ __all__ = [
     "FAILURE_STEPS",
     "LIMIT_CALIBRATOR_MISMATCH",
     "LIMIT_CALIBRATOR_NOT_RECORDED",
+    "LIMIT_DRAWS_MISSING",
     "LIMIT_ESTIMATE_UNAVAILABLE",
     "LIMIT_NAMED_MODE_NOT_QUALIFIED",
     "LIMIT_NO_CALIBRATOR",
