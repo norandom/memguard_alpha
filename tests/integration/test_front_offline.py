@@ -2,14 +2,17 @@
 
 Every test enters through ``ask`` with fixed replies and a fixture catalogue
 and reads the ``FrontAnswer`` a person would read. This file imports the
-package root, pytest and the standard library only. The recall calibration
-comes from the fixtures ``fitted_scorer`` and ``fitted_config`` of
+package root, pytest and the standard library only. The phrases of ``limits``
+and ``mode_choice`` are compared with the names of ``recall_guard.front``
+(``front.LIMIT_*``, ``front.CHOICE_*``), as a person would. The recall
+calibration comes from the fixtures ``fitted_scorer`` and ``fitted_config`` of
 ``conftest.py``, because fitting one offline needs names the root does not
 export.
 
-No test uses a key, a network or a model host: for every test of the file,
-opening a socket is refused and recorded, and the test fails if one was tried;
-credential-like variables are removed from the process environment.
+No test uses a key, a network or a model host: every test of the file runs
+under the directory's ``offline`` fixture (``conftest.py``), which refuses and
+records each way to a network and fails the test if one was tried, and removes
+credential-like variables from the process environment.
 """
 
 from __future__ import annotations
@@ -40,10 +43,14 @@ from recall_guard import (
     Status,
     ask,
     fixed_reply,
+    front,
     load_catalogue,
     parse_json_components,
     worked_example,
 )
+
+#: For the self-test of the offline fixture, which runs an inner test session.
+pytest_plugins = ["pytester"]
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "catalogue" / "catalogue_fixture.json"
 
@@ -55,18 +62,8 @@ RECORDED = "sha256:fixture-series"
 #: The variable the llama.cpp profile names for its credential and for its full-distribution host's bearer.
 CREDENTIAL = "LOCAL_MODEL_API_KEY"
 
-#: The fixed phrases a person reads in ``mode_choice`` and ``limits``.
-NAMED = "named by the caller"
-QUALIFIED_MODE = "the entry's qualified mode"
-CALIBRATED_MODE = "no qualified mode; the mode a calibrator was supplied for"
-LOGPROBS_OFFERED = "no qualified mode and no calibrator; logprobs is offered"
-LOGITS_LEFT = "no qualified mode and no calibrator; logprobs is not offered, so logits"
-NO_QUALIFIED_MODE = "no qualified mode for the entry"
-NAMED_MODE_NOT_QUALIFIED = "the named mode is not qualified"
-NO_CALIBRATOR = "no calibrator supplied"
-NOT_THE_RECORDED_CALIBRATOR = "the supplied calibrator is not the recorded one"
-CALIBRATOR_FOR_ANOTHER_MODEL = "the supplied calibrator was fitted for another model or settings"
-DRAWS_MISSING = "some draws failed or could not be read"
+#: ``socket.socket`` as a library that was imported before the offline fixture ran holds it.
+BOUND_SOCKET = socket.socket
 
 #: Five output tokens with three alternatives each, as the calibration's settings ask for.
 TOKENS = [("x", [("x", -0.2), ("y", -1.2), ("z", -2.1)])] * 5
@@ -78,23 +75,8 @@ SECRET = "s3cr3t-Value-0451"
 # -- no key, no network, no model host ------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def offline(monkeypatch):
-    """Refuse and record every socket; remove credential-like variables. Yields the record of attempts."""
-    attempts: list[str] = []
-
-    def refuse(*args, **kwargs):
-        attempts.append(f"socket{args!r}")
-        raise OSError("the offline integration tests open no socket")
-
-    monkeypatch.setattr(socket, "socket", refuse)
-    monkeypatch.setattr(socket, "create_connection", refuse)
-    for name in list(os.environ):
-        if re.search(r"KEY|TOKEN|SECRET|PASSWORD|BEARER|CREDENTIAL", name, re.IGNORECASE):
-            monkeypatch.delenv(name)
-    yield attempts
-    # The guard records a failed request on its draw, so a refused socket need not surface as an error.
-    assert attempts == [], "a socket was opened"
+#: Every test of the file runs under the directory's offline fixture (conftest.py).
+pytestmark = pytest.mark.usefixtures("offline")
 
 
 # -- what the tests ask with ---------------------------------------------------------
@@ -215,8 +197,8 @@ def test_a_not_qualified_entry_still_answers_uncorrected_with_its_status_and_the
         assert (result.status, result.reason) == (Status.NOT_QUALIFIED, expected.reason)
         assert result.corrected is None
     assert with_estimate.p_memorized is not None
-    assert with_estimate.limits == (NAMED_MODE_NOT_QUALIFIED,)
-    assert without.limits == (NAMED_MODE_NOT_QUALIFIED, NO_CALIBRATOR)
+    assert with_estimate.limits == (front.LIMIT_NAMED_MODE_NOT_QUALIFIED,)
+    assert without.limits == (front.LIMIT_NAMED_MODE_NOT_QUALIFIED, front.LIMIT_NO_CALIBRATOR)
 
 
 def test_a_not_tested_entry_still_answers_uncorrected_with_its_status(catalogue, own, fitted_config):
@@ -228,8 +210,8 @@ def test_a_not_tested_entry_still_answers_uncorrected_with_its_status(catalogue,
         assert (result.status, result.reason) == (Status.NOT_TESTED, "no quality record")
         assert result.corrected is None
     assert with_estimate.p_memorized is not None
-    assert with_estimate.limits == (NO_QUALIFIED_MODE,)
-    assert without.limits == (NO_QUALIFIED_MODE, NO_CALIBRATOR)
+    assert with_estimate.limits == (front.LIMIT_NO_QUALIFIED_MODE,)
+    assert without.limits == (front.LIMIT_NO_QUALIFIED_MODE, front.LIMIT_NO_CALIBRATOR)
 
 
 # -- the calibrator (11.6, 11.8) ------------------------------------------------------
@@ -243,7 +225,7 @@ def test_a_calibrator_other_than_the_recorded_one_gives_the_estimate_and_no_corr
     assert result.mode is Mode.LOGPROBS
     assert result.p_memorized is not None and result.corrected is None
     assert result.status is not Status.QUALIFIED and "fingerprint" in result.reason
-    assert result.limits == (NOT_THE_RECORDED_CALIBRATOR,)
+    assert result.limits == (front.LIMIT_CALIBRATOR_NOT_RECORDED,)
 
 
 def test_a_calibrator_fitted_for_another_model_gives_the_answer_without_an_estimate_and_asks_once(
@@ -259,7 +241,7 @@ def test_a_calibrator_fitted_for_another_model_gives_the_answer_without_an_estim
 
         assert (result.p_memorized, result.corrected) == (None, None)
         assert result.status is Status.QUALIFIED  # the catalogue's status for the entry and mode
-        assert result.limits == (CALIBRATOR_FOR_ANOTHER_MODEL,)
+        assert result.limits == (front.LIMIT_CALIBRATOR_MISMATCH,)
         assert client.requests == 8  # the model was asked once: eight draws, eight requests
 
 
@@ -270,8 +252,19 @@ def test_without_a_calibrator_the_answer_comes_with_the_catalogue_status_and_no_
     assert (result.entry_id, result.mode) == (LLAMACPP, Mode.LOGPROBS)
     assert (result.status, result.reason) == (Status.QUALIFIED, "all four checks passed")
     assert (result.p_memorized, result.corrected) == (None, None)
-    assert result.limits == (NO_CALIBRATOR,)
+    assert result.limits == (front.LIMIT_NO_CALIBRATOR,)
     assert client.requests == 8
+
+
+def test_a_weak_calibrator_gives_the_estimate_and_says_the_adjustment_was_skipped(
+        catalogue, recorded, fitted_config):
+    assert not recorded.is_weak
+    weak = dataclasses.replace(recorded, mcs=dataclasses.replace(recorded.mcs, is_weak=True))
+    result = answered(run(LLAMACPP, replies(fitted_config), catalogue=catalogue, calibrator=weak))
+
+    assert (result.mode, result.status) == (Mode.LOGPROBS, Status.QUALIFIED)
+    assert result.p_memorized is not None and result.corrected is None
+    assert result.limits == (front.LIMIT_WEAK_CALIBRATOR,)
 
 
 # -- both modes -----------------------------------------------------------------------
@@ -287,7 +280,7 @@ def test_the_logprobs_mode_estimates_from_the_token_evidence_of_the_replies(cata
     assert with_evidence.p_memorized is not None and with_evidence.corrected is not None
     # Replies without token evidence leave nothing to estimate from, and the answer says so.
     assert (text_only.p_memorized, text_only.corrected) == (None, None)
-    assert text_only.limits == ("the recall estimate could not be computed",)
+    assert text_only.limits == (front.LIMIT_ESTIMATE_UNAVAILABLE,)
 
 
 def test_the_logits_mode_estimates_from_the_evidence_of_a_full_distribution_host(
@@ -313,7 +306,7 @@ def test_a_logits_host_that_returns_no_evidence_leaves_the_answer_without_an_est
                           calibrator=for_logits, full_distribution=FixedEvidence([])))
 
     assert (result.p_memorized, result.corrected) == (None, None)
-    assert result.limits == (NAMED_MODE_NOT_QUALIFIED, "the recall estimate could not be computed")
+    assert result.limits == (front.LIMIT_NAMED_MODE_NOT_QUALIFIED, front.LIMIT_ESTIMATE_UNAVAILABLE)
 
 
 # -- the mode choice (11.4) -----------------------------------------------------------
@@ -325,10 +318,10 @@ def test_with_no_mode_named_a_qualified_mode_is_chosen_first(catalogue, for_logi
     with_other = answered(run(LLAMACPP, replies(fitted_config), catalogue=catalogue, calibrator=for_logits))
     logits_only = answered(run(OGA, replies(fitted_config), catalogue=catalogue))
 
-    assert (plain.mode, plain.mode_choice) == (Mode.LOGPROBS, QUALIFIED_MODE)
-    assert (with_other.mode, with_other.mode_choice) == (Mode.LOGPROBS, QUALIFIED_MODE)
+    assert (plain.mode, plain.mode_choice) == (Mode.LOGPROBS, front.CHOICE_QUALIFIED)
+    assert (with_other.mode, with_other.mode_choice) == (Mode.LOGPROBS, front.CHOICE_QUALIFIED)
     assert (logits_only.mode, logits_only.mode_choice, logits_only.status) == (
-        Mode.LOGITS, QUALIFIED_MODE, Status.QUALIFIED)
+        Mode.LOGITS, front.CHOICE_QUALIFIED, Status.QUALIFIED)
 
 
 def test_with_no_qualified_mode_the_mode_a_calibrator_was_supplied_for_is_chosen(
@@ -336,28 +329,56 @@ def test_with_no_qualified_mode_the_mode_a_calibrator_was_supplied_for_is_chosen
     result = answered(run(LLAMACPP, replies(fitted_config), catalogue=none_qualified, calibrator=for_logits,
                           full_distribution=host()))
 
-    assert (result.mode, result.mode_choice) == (Mode.LOGITS, CALIBRATED_MODE)
+    assert (result.mode, result.mode_choice) == (Mode.LOGITS, front.CHOICE_CALIBRATED)
     assert result.p_memorized is not None
 
 
 def test_with_no_qualified_mode_and_no_calibrator_logprobs_is_chosen_if_offered(none_qualified, fitted_config):
     result = answered(run(LLAMACPP, replies(fitted_config), catalogue=none_qualified))
 
-    assert (result.mode, result.mode_choice) == (Mode.LOGPROBS, LOGPROBS_OFFERED)
-    assert result.limits == (NO_QUALIFIED_MODE, NO_CALIBRATOR)
+    assert (result.mode, result.mode_choice) == (Mode.LOGPROBS, front.CHOICE_LOGPROBS)
+    assert result.limits == (front.LIMIT_NO_QUALIFIED_MODE, front.LIMIT_NO_CALIBRATOR)
 
 
 def test_with_no_qualified_mode_no_calibrator_and_no_logprobs_logits_is_chosen(none_qualified, fitted_config):
     result = answered(run(OGA, replies(fitted_config), catalogue=none_qualified))
 
-    assert (result.mode, result.mode_choice, result.status) == (Mode.LOGITS, LOGITS_LEFT, Status.NOT_TESTED)
+    assert (result.mode, result.mode_choice, result.status) == (Mode.LOGITS, front.CHOICE_LOGITS, Status.NOT_TESTED)
+
+
+def test_with_both_modes_qualified_logprobs_is_preferred_and_the_choice_says_so(logits_qualified, fitted_config):
+    result = answered(run(LLAMACPP, replies(fitted_config), catalogue=logits_qualified))
+
+    assert logits_qualified.qualification(LLAMACPP, Mode.LOGITS).status is Status.QUALIFIED
+    assert (result.mode, result.mode_choice, result.status) == (
+        Mode.LOGPROBS, front.CHOICE_QUALIFIED_TIE, Status.QUALIFIED)
+    assert "logprobs preferred" in result.mode_choice
+
+
+def test_with_no_qualified_mode_and_calibrators_for_both_modes_logprobs_is_preferred_and_the_choice_says_so(
+        none_qualified, own, for_logits, fitted_config):
+    result = answered(run(LLAMACPP, replies(fitted_config), catalogue=none_qualified,
+                          calibrator={Mode.LOGPROBS: own, Mode.LOGITS: for_logits}))
+
+    assert (result.mode, result.mode_choice) == (Mode.LOGPROBS, front.CHOICE_CALIBRATED_TIE)
+    assert "logprobs preferred" in result.mode_choice
+    # The logprobs calibrator was the one used: an estimate, and no correction without a qualified status.
+    assert result.p_memorized is not None and result.corrected is None
+    assert result.status is not Status.QUALIFIED and result.limits == (front.LIMIT_NO_QUALIFIED_MODE,)
+
+
+def test_every_phrase_a_result_can_carry_has_a_public_name():
+    limits = {value for name, value in vars(front).items() if name.startswith("LIMIT_")}
+    choices = {value for name, value in vars(front).items() if name.startswith("CHOICE_")}
+    assert set(front.LIMITS) == limits and len(front.LIMITS) == len(limits)
+    assert set(front.MODE_CHOICES) == choices and len(front.MODE_CHOICES) == len(choices)
 
 
 @pytest.mark.parametrize("named", [Mode.LOGITS, "logits"])
 def test_a_named_mode_is_used_even_when_another_mode_is_the_qualified_one(catalogue, fitted_config, named):
     result = answered(run(LLAMACPP, replies(fitted_config), catalogue=catalogue, mode=named))
 
-    assert (result.mode, result.mode_choice) == (Mode.LOGITS, NAMED)
+    assert (result.mode, result.mode_choice) == (Mode.LOGITS, front.CHOICE_NAMED)
     assert result.status is Status.NOT_QUALIFIED
 
 
@@ -378,7 +399,7 @@ def test_the_worked_example_runs_end_to_end_with_one_fixed_reply(catalogue):
     assert client.requests == 32 and (result.draws_asked, result.draws_used) == (32, 32)
     assert [sent.encode("utf-8") for sent in client.prompts] == [prompt.encode("utf-8")] * 32
     assert (result.entry_id, result.mode, result.status) == (LLAMACPP, Mode.LOGPROBS, Status.QUALIFIED)
-    assert result.limits == (NO_CALIBRATOR,)
+    assert result.limits == (front.LIMIT_NO_CALIBRATOR,)
 
 
 def test_any_prompt_with_its_own_decision_definition_runs_the_same_way(catalogue, recorded, fitted_config):
@@ -426,7 +447,7 @@ def test_a_named_mode_the_entry_does_not_offer_fails_at_the_mode_step_and_lists_
     result = run(OLLAMA, client, catalogue=catalogue, mode=named)
 
     detail, remedy = no_answer(result, "mode")
-    assert result.mode_choice == NAMED
+    assert result.mode_choice == front.CHOICE_NAMED
     assert "logits" in detail
     assert "name a mode the entry offers" in remedy and "logprobs is not_tested" in remedy
     assert "logits is not_tested (not offered)" in remedy
@@ -507,7 +528,8 @@ def test_an_answer_that_rests_on_fewer_draws_than_asked_says_so_and_counts_them(
 
     assert result.failure is None and result.answer == EXAMPLE_ANSWER
     assert (result.draws_asked, result.draws_used) == (32, 18)
-    assert result.limits == ((DRAWS_MISSING,) if calibrated else (NO_CALIBRATOR, DRAWS_MISSING))
+    expected = (front.LIMIT_DRAWS_MISSING,) if calibrated else (front.LIMIT_NO_CALIBRATOR, front.LIMIT_DRAWS_MISSING)
+    assert result.limits == expected
     assert (result.p_memorized is not None) is calibrated
     assert client.requests == 20
 
@@ -516,7 +538,7 @@ def test_a_complete_ensemble_counts_every_draw_and_reports_none_missing(catalogu
     result = answered(run(LLAMACPP, replies(fitted_config), catalogue=catalogue, calibrator=recorded))
 
     assert (result.draws_asked, result.draws_used) == (8, 8)
-    assert DRAWS_MISSING not in result.limits
+    assert front.LIMIT_DRAWS_MISSING not in result.limits
 
 
 # -- no credential value in a result --------------------------------------------------
@@ -555,15 +577,95 @@ def test_no_result_carries_the_value_of_a_credential(catalogue, recorded, for_lo
 # -- the rules of this file -----------------------------------------------------------
 
 
-def test_a_socket_is_refused_and_recorded_so_no_test_of_this_file_reaches_a_network(offline):
+def test_each_way_to_a_network_is_refused_and_recorded_so_no_test_of_this_file_reaches_one(offline):
+    address = ("127.0.0.1", 9)
     with pytest.raises(OSError, match="offline"):
         socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     with pytest.raises(OSError, match="offline"):
-        socket.create_connection(("127.0.0.1", 9))
+        socket.create_connection(address)
+    with pytest.raises(OSError, match="offline"):
+        socket.getaddrinfo("localhost", 80)
+    # A socket class bound before the fixture ran still makes a socket; the socket cannot leave the process.
+    bound = BOUND_SOCKET(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        for attempt in (lambda: bound.connect(address), lambda: bound.connect_ex(address),
+                        lambda: bound.sendto(b"x", address)):
+            with pytest.raises(OSError, match="offline"):
+                attempt()
+    finally:
+        bound.close()
 
-    assert len(offline) == 2  # every other test of the file fails at teardown if this record is not empty
+    assert len(offline) == 6  # every other test of the file fails at teardown if this record is not empty
     offline.clear()
     assert not [name for name in os.environ if re.search(r"KEY|TOKEN|SECRET|PASSWORD|BEARER|CREDENTIAL", name, re.I)]
+
+
+#: The inner session's conftest: the directory's ``offline`` fixture, imported from this repository.
+INNER_CONFTEST = """
+import sys
+
+sys.path.insert(0, {root!r})
+
+from tests.integration.conftest import offline  # noqa: E402, F401
+"""
+
+#: Inner tests under the fixture: three that try a connection and one that does not.
+INNER_TESTS = """
+import socket
+
+import pytest
+
+BOUND_SOCKET = socket.socket  # bound before the fixture runs, as an already imported library holds it
+
+pytestmark = pytest.mark.usefixtures("offline")
+
+
+def test_connects():
+    socket.create_connection(("127.0.0.1", 9))
+
+
+def test_connects_and_swallows_the_error():
+    try:
+        socket.create_connection(("127.0.0.1", 9))
+    except OSError:
+        pass
+
+
+def test_connects_through_a_socket_class_bound_earlier():
+    sock = BOUND_SOCKET(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.connect(("127.0.0.1", 9))
+    except OSError:
+        pass
+    finally:
+        sock.close()
+
+
+def test_stays_in_the_process():
+    assert sorted([3, 1, 2]) == [1, 2, 3]
+"""
+
+
+def test_the_offline_fixture_fails_a_test_that_attempts_a_network_connection(pytester):
+    """A fresh process, so the inner module binds the real ``socket.socket`` before the fixture runs."""
+    root = str(Path(__file__).resolve().parents[2])
+    pytester.makeconftest(INNER_CONFTEST.format(root=root))
+    pytester.makepyfile(test_inner=INNER_TESTS)
+
+    result = pytester.runpytest_subprocess("-rA", "-p", "no:cacheprovider")
+
+    # The attempt fails its test; a swallowed attempt still fails it, at teardown, with the attempt named.
+    result.assert_outcomes(passed=3, failed=1, errors=3)
+    for line in ("FAILED test_inner.py::test_connects - OSError: *",
+                 "ERROR test_inner.py::test_connects - *",
+                 "ERROR test_inner.py::test_connects_and_swallows_the_error - *",
+                 "ERROR test_inner.py::test_connects_through_a_socket_class_bound_earlier - *",
+                 "PASSED test_inner.py::test_stays_in_the_process",
+                 "*AssertionError: a network connection was attempted: *create_connection*",
+                 "*AssertionError: a network connection was attempted: *socket.connect*"):
+        result.stdout.fnmatch_lines([line])
+    # The test that attempted nothing has no error: the fixture fails attempts, not every test.
+    result.stdout.no_fnmatch_line("ERROR test_inner.py::test_stays_in_the_process*")
 
 
 def test_this_file_imports_the_package_root_pytest_and_the_standard_library_only():

@@ -124,7 +124,11 @@ from recall_guard.core.catalogue import (
 from recall_guard.harness.selection import SelectedDecision, Selection, SelectionError, guarded_select, select
 
 # isort: split
-# the front: importing it reads no catalogue file and no provider profile
+# the front: importing it reads no catalogue file and no provider profile. ``front`` is the module itself:
+# its LIMIT_* and CHOICE_* phrases (and the tuples LIMITS and MODE_CHOICES) are what a result's ``limits``
+# and ``mode_choice`` hold. ``ModelConfig`` is the configuration a ``FixedReplies`` client stands for.
+from recall_guard.core.completion import ModelConfig
+from recall_guard.harness import front
 from recall_guard.harness.front import (
     WORKED_EXAMPLE_REPLY,
     FixedEvidence,
@@ -206,6 +210,8 @@ __all__ = [
     "FixedEvidence",
     "worked_example",
     "WORKED_EXAMPLE_REPLY",
+    "ModelConfig",
+    "front",
     # ensemble surface (opt-in; see EnsembleSpec)
     "EnsembledScore",
     "EnsembleSpec",

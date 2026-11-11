@@ -1021,3 +1021,36 @@ def test_a_mismatched_calibrator_with_unreadable_replies_fails_at_the_reply_step
 
     assert "0 of 8 draws parsed" in failed(result, "reply").detail
     assert len(other.calls) == 8
+
+
+# -- the phrases as two tuples (task 7.3b) -------------------------------------------
+
+
+@pytest.mark.parametrize("prefix, collected", [("LIMIT_", "LIMITS"), ("CHOICE_", "MODE_CHOICES")])
+def test_every_phrase_constant_is_in_its_tuple_once_and_in_the_modules_public_names(prefix, collected):
+    constants = {name: value for name, value in vars(front_module).items() if name.startswith(prefix)}
+    phrases = getattr(front_module, collected)
+
+    assert isinstance(phrases, tuple) and len(constants) == 8
+    assert len(phrases) == len(set(phrases)) == len(constants)
+    assert set(phrases) == set(constants.values())
+    assert all(isinstance(phrase, str) and phrase for phrase in phrases)
+    assert set(constants) | {collected} <= set(front_module.__all__)
+
+
+def test_the_two_tuples_hold_the_phrases_in_a_fixed_order():
+    assert front_module.LIMITS == (
+        LIMIT_NO_QUALIFIED_MODE, LIMIT_NAMED_MODE_NOT_QUALIFIED, LIMIT_NO_CALIBRATOR, LIMIT_CALIBRATOR_NOT_RECORDED,
+        LIMIT_CALIBRATOR_MISMATCH, LIMIT_ESTIMATE_UNAVAILABLE, LIMIT_WEAK_CALIBRATOR, front_module.LIMIT_DRAWS_MISSING)
+    assert front_module.MODE_CHOICES == (
+        CHOICE_NAMED, CHOICE_QUALIFIED, CHOICE_QUALIFIED_TIE, CHOICE_CALIBRATED, CHOICE_CALIBRATED_TIE,
+        CHOICE_LOGPROBS, CHOICE_LOGITS, front_module.CHOICE_NONE)
+
+
+def test_the_modules_public_names_are_listed_once_and_all_exist():
+    listed = front_module.__all__
+    assert len(listed) == len(set(listed))
+    assert [name for name in listed if not hasattr(front_module, name)] == []
+    for name in ("ask", "choose_mode", "FrontAnswer", "FrontFailure", "FixedReplies", "FixedReply", "fixed_reply",
+                 "FixedEvidence", "worked_example", "WORKED_EXAMPLE_REPLY", "FAILURE_STEPS"):
+        assert name in listed

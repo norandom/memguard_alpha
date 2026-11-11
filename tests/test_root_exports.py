@@ -86,6 +86,11 @@ FRONT_EXPORTS = (
     ("FixedEvidence", "recall_guard.harness.front"),
     ("worked_example", "recall_guard.harness.front"),
     ("WORKED_EXAMPLE_REPLY", "recall_guard.harness.front"),
+    # what a person needs beside them (task 7.3b): the configuration a fixed-reply client stands for, and the
+    # front module itself, whose LIMIT_* and CHOICE_* phrases a result's limits and mode_choice are compared
+    # with. The module is pinned like a name: it is the attribute ``front`` of its package.
+    ("ModelConfig", "recall_guard.core.completion"),
+    ("front", "recall_guard.harness"),
 )
 FRONT_NAMES = tuple(name for name, _module in FRONT_EXPORTS)
 
@@ -144,6 +149,16 @@ def test_front_block_follows_the_catalogue_and_selection_block_in_declared_order
     exported = list(recall_guard.__all__)
     start = exported.index(CATALOGUE_SELECTION_NAMES[-1]) + 1
     assert tuple(exported[start:start + len(FRONT_NAMES)]) == FRONT_NAMES
+
+
+def test_the_front_module_at_the_root_gives_the_limit_and_mode_choice_phrases():
+    front = recall_guard.front
+    assert front is importlib.import_module("recall_guard.harness.front")
+    assert front.LIMIT_NO_CALIBRATOR in front.LIMITS and front.CHOICE_NAMED in front.MODE_CHOICES
+    assert set(front.LIMITS) == {value for name, value in vars(front).items() if name.startswith("LIMIT_")}
+    assert set(front.MODE_CHOICES) == {value for name, value in vars(front).items() if name.startswith("CHOICE_")}
+    assert recall_guard.ask is front.ask
+    assert recall_guard.ModelConfig is front.ModelConfig  # the type FixedReplies(config=...) takes
 
 
 def test_importing_the_root_with_the_front_loads_no_plotting_library_and_reads_no_data_file():

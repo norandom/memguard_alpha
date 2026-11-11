@@ -117,6 +117,30 @@ LIMIT_ESTIMATE_UNAVAILABLE = "the recall estimate could not be computed"
 LIMIT_WEAK_CALIBRATOR = "the adjustment was skipped for a weak calibrator"
 LIMIT_DRAWS_MISSING = "some draws failed or could not be read"
 
+#: Every ``mode_choice`` phrase, in the order of the rules; a result's ``mode_choice`` is one of them.
+MODE_CHOICES = (
+    CHOICE_NAMED,
+    CHOICE_QUALIFIED,
+    CHOICE_QUALIFIED_TIE,
+    CHOICE_CALIBRATED,
+    CHOICE_CALIBRATED_TIE,
+    CHOICE_LOGPROBS,
+    CHOICE_LOGITS,
+    CHOICE_NONE,
+)
+
+#: Every ``limits`` phrase, in a fixed order; each item of a result's ``limits`` is one of them.
+LIMITS = (
+    LIMIT_NO_QUALIFIED_MODE,
+    LIMIT_NAMED_MODE_NOT_QUALIFIED,
+    LIMIT_NO_CALIBRATOR,
+    LIMIT_CALIBRATOR_NOT_RECORDED,
+    LIMIT_CALIBRATOR_MISMATCH,
+    LIMIT_ESTIMATE_UNAVAILABLE,
+    LIMIT_WEAK_CALIBRATOR,
+    LIMIT_DRAWS_MISSING,
+)
+
 _MODE_OF_SOURCE = MappingProxyType(
     {EstimateSource.TOP_K: Mode.LOGPROBS, EstimateSource.FULL_DISTRIBUTION: Mode.LOGITS}
 )
@@ -742,6 +766,8 @@ __all__ = [
     "LIMIT_NO_CALIBRATOR",
     "LIMIT_NO_QUALIFIED_MODE",
     "LIMIT_WEAK_CALIBRATOR",
+    "LIMITS",
+    "MODE_CHOICES",
     "WORKED_EXAMPLE_REPLY",
     "WORKED_EXAMPLE_ROW",
     "FixedEvidence",

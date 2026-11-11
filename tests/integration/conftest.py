@@ -1,26 +1,38 @@
-"""Fixtures of the integration tests: one recall calibration, fitted offline.
+"""Fixtures of the integration tests: the offline guard and one recall calibration, fitted offline.
 
 The integration tests enter through ``recall_guard.ask`` and import the
-package root only. Fitting a calibration without a model host needs names the
-root does not export (the configuration and capability types of
-``recall_guard.core.completion``), so the fit lives here, behind two fixtures:
-``fitted_config``, the model configuration the calibration was fitted for, and
-``fitted_scorer``, the fitted scorer. Nothing here opens a connection.
+package root only. Two things live here for them:
+
+* ``offline``: refuses and records every way out of the process to a network
+  and removes credential-like variables. A test file asks for it (for every
+  test with ``pytestmark = pytest.mark.usefixtures("offline")``, or per test);
+  it is not applied to the whole directory, because the demo tests start a
+  notebook kernel, which talks to the test over local sockets.
+* ``fitted_config`` and ``fitted_scorer``: the model configuration a recall
+  calibration was fitted for, and the fitted scorer. Nothing here opens a
+  connection.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
+import re
+import socket
 
 import pytest
 
-from recall_guard import MemoryGuardedScorer
+from recall_guard import MemoryGuardedScorer, ModelConfig
+
+# Why these internal imports remain: fitting a calibrator offline needs a client that reports its
+# capabilities without a request, and the capability and response types are not root names. With a real
+# host none of them is needed: the root's ``MemoryGuardedScorer`` (``calibrate``) and
+# ``SourceCalibrator.from_scorer`` suffice.
 from recall_guard.core.completion import (
     CapabilityEvidence,
     CapabilityReport,
     CapabilityStatus,
     FeatureChoices,
-    ModelConfig,
     ModelResponse,
     TokenAlternative,
     TokenEvidence,
@@ -28,6 +40,42 @@ from recall_guard.core.completion import (
 
 #: Three alternatives per token: what the calibration requests and what the tests' fixed replies carry.
 SETTINGS = {"max_tokens": 512, "temperature": 0.0, "logprobs": True, "top_logprobs": 3}
+
+#: Names of environment variables that may hold a credential; the offline guard removes them.
+CREDENTIAL_LIKE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|BEARER|CREDENTIAL", re.IGNORECASE)
+#: What every refusal of the offline guard says.
+OFFLINE_REFUSAL = "the offline integration tests open no socket"
+
+
+@pytest.fixture
+def offline(monkeypatch):
+    """Refuse and record every way to a network; remove credential-like variables. Yields the record.
+
+    Refused: creating a socket (``socket.socket``), ``socket.create_connection``, name resolution
+    (``socket.getaddrinfo``), and ``connect``, ``connect_ex`` and ``sendto`` of the socket class itself, so
+    that a library that bound ``socket.socket`` before this fixture ran is still caught when it connects.
+    Each refusal raises OSError and is recorded; the test fails at teardown if the record is not empty,
+    because a caller may swallow the error (the guard records a failed request on its draw).
+    """
+    attempts: list[str] = []
+
+    def refuser(what: str):
+        def refuse(*args, **kwargs):
+            attempts.append(f"{what}{args!r}")
+            raise OSError(OFFLINE_REFUSAL)
+        return refuse
+
+    # The class first, while the name still leads to it; then the module's names.
+    for method in ("connect", "connect_ex", "sendto"):
+        monkeypatch.setattr(socket.socket, method, refuser(f"socket.{method}"))
+    monkeypatch.setattr(socket, "socket", refuser("socket"))
+    monkeypatch.setattr(socket, "create_connection", refuser("create_connection"))
+    monkeypatch.setattr(socket, "getaddrinfo", refuser("getaddrinfo"))
+    for name in list(os.environ):
+        if CREDENTIAL_LIKE.search(name):
+            monkeypatch.delenv(name)
+    yield attempts
+    assert attempts == [], f"a network connection was attempted: {attempts}"
 
 
 class CalibrationHost:
