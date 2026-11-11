@@ -611,6 +611,20 @@ def test_snapshot_has_observed_runtime_and_no_claimed_hardware(monkeypatch, tmp_
     json.dumps(snapshot)
 
 
+def test_startup_tail_keeps_the_most_recent_error_lines_and_caps_each_line():
+    import io
+
+    noise = b"(EngineCore pid=9) WARNING CUDA capability note " + b"n" * 600 + b"\n"
+    log = io.BytesIO(noise * 40 + b"(EngineCore pid=9) ERROR root cause\n(EngineCore pid=9) RuntimeError: real cause\n"
+                     + b"INFO shutting down\n" * 200)
+    detail = serve.startup_tail(log)
+    errors, _, last = detail.partition("\n\nlast bytes:\n")
+    assert errors.startswith("error lines:\n[earlier error lines dropped]\n")
+    assert errors.endswith("(EngineCore pid=9) ERROR root cause\n(EngineCore pid=9) RuntimeError: real cause")
+    assert all(len(line) <= serve.STARTUP_LINE_BYTES for line in errors.splitlines())
+    assert len(errors) <= serve.STARTUP_ERROR_BYTES + 64 and last.endswith("INFO shutting down")
+
+
 def test_startup_failure_reports_the_engine_output_tail_before_any_request(monkeypatch):
     monkeypatch.setattr(serve, "require_operator_python", lambda: None)
     observed_id = "ap-" + "b" * 22
@@ -624,9 +638,11 @@ def test_startup_failure_reports_the_engine_output_tail_before_any_request(monke
         "app_id": app_id, "app_name": plan.target.app, "environment": plan.target.environment, "phase": phase})
 
     def popen(command, *, stdout, stderr):
-        # The engine prints its diagnostics and exits before it ever listens.
+        # The engine prints its diagnostics and exits before it ever listens: the engine core's root cause
+        # comes early, then filler, then the API server's own final error.
         assert stderr is subprocess.STDOUT
-        stdout.write(b"INFO engine starting\n" + b"x" * 5000 + b"\nValueError: unrecognized arguments: --no-such-flag\n")
+        stdout.write(b"INFO engine starting\n(EngineCore pid=9) ERROR root cause: CUDA out of memory\n"
+                     + b"x" * 5000 + b"\nValueError: unrecognized arguments: --no-such-flag\n")
         return SimpleNamespace(poll=lambda: 2, terminate=lambda: None, wait=lambda **kwargs: None)
 
     monkeypatch.setattr(subprocess, "Popen", popen)
@@ -640,7 +656,10 @@ def test_startup_failure_reports_the_engine_output_tail_before_any_request(monke
         service.start()
     failure = sdk.store[("startup_failure", observed_id, service.instance_id)]
     assert failure["exit_code"] == 2 and failure["detail"].endswith("unrecognized arguments: --no-such-flag")
-    assert len(failure["detail"]) <= serve.STARTUP_TAIL_BYTES and "engine starting" not in failure["detail"]
+    assert len(failure["detail"]) <= serve.STARTUP_TAIL_BYTES + serve.STARTUP_ERROR_BYTES + 100
+    assert "engine starting" not in failure["detail"]
+    # The root cause beyond the tail is kept through the error-line scan, ahead of the last bytes.
+    assert failure["detail"].index("CUDA out of memory") < failure["detail"].index("last bytes:")
     assert [value.get("phase") for value in sdk.store.values()] == ["starting", "failed", None]
     assert "x" * 100 in str(raised.value)
     # The provenance reader ignores the failure row, so the tail never reaches a receipt built from it.

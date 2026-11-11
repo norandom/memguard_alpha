@@ -478,10 +478,18 @@ def _weight_format(artifacts) -> list[str]:
 
 #: Bytes of the engine's output kept in a startup failure: enough for the final traceback, never a request.
 STARTUP_TAIL_BYTES = 4096
+#: Bytes of error-like lines kept from the whole startup output: the engine core's root cause precedes the
+#: API server's own traceback by more than the tail holds.
+STARTUP_ERROR_BYTES = 12288
+#: How much of the startup output is scanned for error-like lines.
+STARTUP_SCAN_BYTES = 8 * 1024 * 1024
+#: Bytes kept of one error-like line, so a config dump cannot use the whole budget.
+STARTUP_LINE_BYTES = 512
+_ERROR_LINE = re.compile(rb"ERROR|Error|error|Traceback|Exception|CRITICAL|CUDA|out of memory|OOM|Killed")
 
 
 def startup_tail(log) -> str:
-    """The last bytes of the engine's output file, read only after a failed startup.
+    """Error-like lines of the engine's output, then its last bytes, read only after a failed startup.
 
     No request has been sent at that point, so the text can hold engine
     diagnostics only; it reaches the raised error and the control-plane store,
@@ -490,8 +498,21 @@ def startup_tail(log) -> str:
     log.flush()
     log.seek(0, os.SEEK_END)
     size = log.tell()
-    log.seek(max(0, size - STARTUP_TAIL_BYTES))
-    return log.read().decode("utf-8", errors="replace").strip()
+    log.seek(max(0, size - STARTUP_SCAN_BYTES))
+    data = log.read()
+    matches = [line[:STARTUP_LINE_BYTES] for line in data.splitlines() if _ERROR_LINE.search(line)]
+    # The root cause is the engine core's last error, so the budget keeps the most recent lines.
+    kept: list[bytes] = []
+    size = 0
+    for line in reversed(matches):
+        size += len(line) + 1
+        if size > STARTUP_ERROR_BYTES:
+            kept.append(b"[earlier error lines dropped]")
+            break
+        kept.append(line)
+    kept.reverse()
+    text = b"error lines:\n" + b"\n".join(kept) + b"\n\nlast bytes:\n" + data[-STARTUP_TAIL_BYTES:]
+    return text.decode("utf-8", errors="replace").strip()
 
 
 def server_command(plan: Plan) -> list[str]:
