@@ -1,7 +1,8 @@
 """The one academic figure style (qualified-model-catalogue task 1.2; Requirements 8.2, 8.4, 8.5, 8.6, 8.8).
 
 Style values, series styles that differ without colour, the numbered caption,
-and a render under the style that is grey only and byte-stable.
+a render under the style that is grey only and byte-stable, and the helpers
+every figure module shares to render and write a figure.
 """
 
 from __future__ import annotations
@@ -9,6 +10,9 @@ from __future__ import annotations
 import io
 import itertools
 import re
+import subprocess
+import sys
+from pathlib import Path
 
 import matplotlib
 
@@ -74,6 +78,11 @@ def test_rc_uses_a_serif_typeface_shipped_with_matplotlib() -> None:
     assert rc["font.family"] == "serif"
     assert rc["font.serif"] == ["DejaVu Serif"]
     assert rc["mathtext.fontset"] == "stix"
+
+
+def test_rc_sizes_a_label_shared_by_the_panels_like_an_axis_label() -> None:
+    rc = academic_rc()
+    assert rc["figure.labelsize"] == rc["axes.labelsize"] == rc["font.size"] == 9.0
 
 
 def test_rc_has_no_grid_and_no_top_or_right_spine() -> None:
@@ -185,3 +194,87 @@ def test_a_render_under_the_style_uses_grey_levels_only() -> None:
 
 def test_a_render_under_the_style_is_byte_stable() -> None:
     assert _render() == _render()
+
+
+def test_panel_labels_are_lower_case_letters_in_parentheses() -> None:
+    assert [figure_style.panel_label(index) for index in (0, 1, 5, 25)] == ["(a)", "(b)", "(f)", "(z)"]
+    for index in (-1, 26, True, 1.0):
+        with pytest.raises(ValueError, match="index"):
+            figure_style.panel_label(index)
+
+
+def test_a_panel_label_sits_outside_the_plot_area_above_its_top_left_corner() -> None:
+    with matplotlib.rc_context(academic_rc()):
+        figure = Figure(figsize=(figure_style.FIGURE_WIDTH_IN, 3.0), layout="constrained")
+        panels = figure.subplots(1, 2)
+        labels = [figure_style.label_panel(axes, index) for index, axes in enumerate(panels)]
+        figure.draw_without_rendering()
+        assert [label.get_text() for label in labels] == ["(a)", "(b)"]
+        assert [label.get_gid() for label in labels] == ["panel-label-a", "panel-label-b"]
+        for axes, label in zip(panels, labels, strict=True):
+            extent, frame = label.get_window_extent(), axes.bbox
+            assert extent.y0 > frame.y1, "above the plot area, not inside it"
+            assert abs(extent.x0 - frame.x0) < 1.0, "at the left edge of the plot area"
+            assert extent.y1 <= figure.bbox.y1, "the layout keeps the label on the page"
+            assert axes.get_title() == ""
+
+
+def test_the_figure_width_is_a_full_text_column() -> None:
+    assert figure_style.FIGURE_WIDTH_IN == 7.2
+
+
+def test_the_style_module_holds_the_helpers_every_figure_module_shares() -> None:
+    for name in ("figure_rc", "figure_svg", "lay_out", "freeze_layout", "write_outputs", "FigureError",
+                 "DERIVED_ONLY", "FIGURES_DIR"):
+        assert name in figure_style.__all__ and hasattr(figure_style, name), name
+    assert issubclass(figure_style.FigureError, ValueError)
+    root = Path(__file__).resolve().parents[3]
+    assert figure_style.FIGURES_DIR == root / "docs" / "assets" / "finance-sim"
+    assert figure_style.DERIVED_ONLY.startswith("Derived statistics only")
+    # The complete rcParams of a render: matplotlib's own defaults under the style, nothing of the process.
+    with matplotlib.rc_context({"savefig.format": "pdf", "lines.markersize": 12.0}):
+        rc = figure_style.figure_rc()
+    assert rc["savefig.format"] == "png" and rc["lines.markersize"] == 5.0 and "backend" not in rc
+    assert {key: rc[key] for key in academic_rc()} == academic_rc()
+
+
+def test_figure_svg_is_byte_stable_and_freezes_the_layout() -> None:
+    from matplotlib.layout_engine import PlaceHolderLayoutEngine
+
+    def render() -> str:
+        with matplotlib.rc_context(figure_style.figure_rc()):
+            figure = Figure(figsize=(4.0, 3.0), layout="constrained")
+            axes = figure.subplots()
+            axes.plot([0, 1], [0, 1], **series_style(0))
+            axes.set_xlabel("Horizon (months)")
+            axes.set_ylabel("Accuracy (share correct)")
+            assert figure_style.lay_out(figure) is figure
+        text = figure_style.figure_svg(figure)
+        assert isinstance(figure.get_layout_engine(), PlaceHolderLayoutEngine)
+        return text
+
+    svg = render()
+    assert svg == render() and "<dc:date>" not in svg and "<text" not in svg
+
+
+def test_outputs_are_written_once_and_a_different_output_is_refused(tmp_path: Path) -> None:
+    first, second = tmp_path / "assets" / "figure.md", tmp_path / "assets" / "figure.csv"
+    texts = {first: "caption\n", second: "a,b\n"}
+    assert figure_style.write_outputs(texts) == (first, second)
+    assert first.read_bytes() == b"caption\n" and second.read_bytes() == b"a,b\n"
+    assert figure_style.write_outputs(texts) == (first, second)  # the same output again is a no-op
+    with pytest.raises(figure_style.FigureError, match="refusing to replace"):
+        figure_style.write_outputs({second: "a,b\n", first: "another caption\n"})
+    assert first.read_bytes() == b"caption\n" and not list(first.parent.glob("*.tmp"))
+
+
+def test_the_style_module_imports_without_matplotlib() -> None:
+    code = ("import sys\n"
+            "import scripts.finance_sim.figure_style\n"
+            "heavy = sorted(m for m in sys.modules if m.split('.')[0] == 'matplotlib')\n"
+            "assert not heavy, heavy\n"
+            "print('lean-ok')\n")
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                            cwd=Path(__file__).resolve().parents[3])
+    assert result.returncode == 0, result.stderr
+    assert "lean-ok" in result.stdout

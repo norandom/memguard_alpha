@@ -43,6 +43,7 @@ from scripts.finance_sim import run_study
 from scripts.finance_sim.calibrate import CALIBRATION_STAGE, CalibrationDraw, CalibrationError, calibrator_path
 from scripts.finance_sim.convergence import read_evidence_file
 from scripts.finance_sim.execute import ExecutionDraw, load_result, macro_items, planned_keys, result_path
+from scripts.finance_sim.figures import PUBLISHED_FIGURES
 from scripts.finance_sim.limits import (
     EXIT_COMPLETE,
     EXIT_INCOMPLETE,
@@ -652,7 +653,9 @@ def test_the_replay_under_require_guard_reproduces_the_analyses_byte_for_byte(st
     for path in analyses:
         assert (private / path.name).read_bytes() == path.read_bytes(), path.name
     published = replayed.root / PUBLISHED_DIR
-    assert len([path for path in published.iterdir() if path.suffix == ".svg"]) == 8
+    # One SVG per published figure, named by the figure modules' own set: no themed variant beside it.
+    assert sorted(path.name for path in published.iterdir() if path.suffix == ".svg") == sorted(
+        f"{name}.svg" for name in PUBLISHED_FIGURES)
     assert all(Path(line).is_relative_to(study.base) for line in replayed.stdout.splitlines())
 
 

@@ -1,40 +1,51 @@
-"""Convergence figure F4 of the worked example (task 8.3; Requirements 10.5 and 10.6).
+"""Convergence figure (Figure 4) of the worked example.
 
 No request is sent and nothing is recomputed: every number comes from the
-stored convergence tables of task 7.12
+stored convergence tables
 (``runs/finance-sim/analysis/convergence-<arm>-<stage>.json``,
 :func:`~scripts.finance_sim.convergence.table_path`), one per analysed stage
-(``full_run``, the positive control, and ``negative_control``) of the arm that
-records full-distribution evidence (the probe arm).
+(``full_run``, the macro prompts, and ``negative_control``, the EDGAR
+releases) of the arm that records full-distribution evidence.
 
-Form (design: Figures, F4): lines, small multiples by feature (``loss``,
-``min_k``, ``min_k_pp``, ``zlib_ratio`` and the estimate) and a separate mass
-panel; x is k on a log scale, y the absolute difference to the
-full-distribution value (the ``features`` rows of evidence ``host_top_k``:
-mean and maximum over the compared draws) or the probability mass the first k
-alternatives cover (the ``mass`` rows: mean and minimum). With two stages that
-is at most four direct-labelled lines per panel; they need palette slot 4,
-whose light step is below 3:1 contrast, so direct labels, marker shape and
-line style carry identity there, and the table carries every value. The
-served row (evidence ``served_top_k``) uses the generation host's own top-k
-through the top-k calibrator, a different calibrator, so it is a separate open
-marker at the served k, never joined to the lines. A k above the kept count is
-not drawn and is named in the caption. The caption states that values compare
-only within one model and one set of weights, and the figure refuses tables of
-different weights.
+The figure carries one message: how fast the recall estimate computed from
+the first k alternatives per token approaches the estimate from logits (the
+kept top alternatives of the next-token vector, with the stored kept count in
+the label). Three panels in one row, labelled (a) to (c)
+above their plot areas, in the one academic style
+(:mod:`scripts.finance_sim.figure_style`): the absolute difference to the
+value from logits for Min-K%++ and for the recall estimate, and the
+probability mass the first k alternatives cover; x is k on a log scale. Per
+stage one line joins the means over the compared draws and one the worst
+draw; with two stages that is at most four lines per panel, told apart by
+marker shape, line style and grey level and named in one legend above the
+panels. The served values (the route's own top alternatives through the
+calibrator of logprobs, a different calibrator) are one separate marker per
+stage at the served k, never joined to the lines: the mean only, because the
+mean and the worst draw would be two markers in one place; the worst draw is
+in the table.
 
-Outputs, style and the write-once rule are those of
-:mod:`scripts.finance_sim.figures`: ``convergence-light.svg``,
-``convergence-dark.svg``, ``convergence.csv`` and ``convergence.md``; derived
-statistics only. Matplotlib is imported inside the functions that draw.
+What is not plotted, and why. Loss, Min-K% and the zlib ratio use only the
+logprob of each generated token, which truncation keeps exact, so their
+differences are zero at every k by construction: the caption says so in one
+clause, a note below the table gives the reason and the table keeps their
+rows. Min-K%++ at k = 1 is undefined (one alternative has no spread; the
+stored value only reflects the floor on the standard deviation): the point is
+not plotted, the caption says so, and the table keeps the stored value with a
+note. A k above the kept count is not drawn and is a row of the table with
+its reason. The figure refuses tables of different
+weights; a note below the table states that values compare only within one
+model and one set of weights.
+
+Outputs and the write-once rule are those of
+:mod:`scripts.finance_sim.figures`: ``convergence.svg``, ``convergence.csv``
+and ``convergence.md``; derived statistics only. Matplotlib is imported inside
+the functions that draw.
 """
 
 from __future__ import annotations
 
 import argparse
-import math
 import sys
-import textwrap
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,78 +62,86 @@ from scripts.finance_sim.convergence import (
     TABLE_SCHEMA,
     table_path,
 )
+from scripts.finance_sim.figure_style import (
+    FIGURE_WIDTH_IN,
+    FIGURES_DIR,
+    FigureError,
+    caption,
+    figure_rc,
+    label_panel,
+    lay_out,
+    panel_label,
+    series_style,
+    write_outputs,
+)
 from scripts.finance_sim.figures import (
     _HEX64,
-    _RC,
-    _TITLE_LINE_IN,
-    _WIDTH_IN,
     CONVERGENCE,
-    DERIVED_ONLY,
     DRAWN,
     EDGAR_SOURCE,
     EXIT_REFUSED,
     EXIT_WRITTEN,
-    FIGURES_DIR,
+    FIGURE_NUMBERS,
     FMP_STUDY_SOURCE,
     FRED_SOURCE,
     MISSING,
-    ROLE_PURPOSE,
-    FigureError,
     FigureTable,
-    _around,
     _count,
     _flat,
-    _grouped,
+    _listed,
     _number,
-    _obstacles,
-    _place_text,
     _read_json,
     _real,
-    _style_axes,
     _text,
-    _theme_rc,
+    evidence_label,
     figure_texts,
-    write_outputs,
+    rounded,
+    route_label,
 )
 from scripts.finance_sim.limits import ARMS, SAMPLING_ARM
-from scripts.finance_sim.plan import FULL_DISTRIBUTION, StudyPlan, load_plan
+from scripts.finance_sim.plan import FULL_DISTRIBUTION, TOP_K, StudyPlan, load_plan
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-    from recall_guard.harness.plots import FigureTheme
-
-#: The arm with full-distribution evidence (7.12 refuses the serving arm).
+#: The arm with full-distribution evidence (the convergence analysis refuses the other).
 DEFAULT_CONVERGENCE_ARM = SAMPLING_ARM
 STAGE_NAMES: Mapping[str, str] = {"full_run": "full run", "negative_control": "negative control"}
-FEATURE_NAMES: Mapping[str, str] = {"loss": "Loss", "min_k": "Min-K%", "min_k_pp": "Min-K%++",
-                                    "zlib_ratio": "zlib ratio", "estimate": "p_memorized estimate"}
-#: The two statistics drawn per stage: the line style tells them apart (solid, dashed).
+FEATURE_NAMES: Mapping[str, str] = {"loss": "loss", "min_k": "Min-K%", "min_k_pp": "Min-K%++",
+                                    "zlib_ratio": "the zlib ratio", "estimate": "the recall estimate"}
+#: The two statistics drawn per stage, the mean over draws and the worst draw: marker, line style and grey level
+#: tell them apart.
 FEATURE_STATISTICS: tuple[tuple[str, str], ...] = (("mean_abs_diff", "mean"), ("max_abs_diff", "max"))
 MASS_STATISTICS: tuple[tuple[str, str], ...] = (("mean_mass", "mean"), ("min_mass", "min"))
-#: Short stage names of the direct labels, by the prompts each stage scores (the caption spells them out).
-STAGE_SHORT: Mapping[str, str] = {"full_run": "macro", "negative_control": "EDGAR"}
+#: Stage names of the legend and the caption, by the prompts each stage scores.
+STAGE_SHORT: Mapping[str, str] = {"full_run": "macro prompts", "negative_control": "EDGAR releases"}
 MASS = "mass"
+#: The panels in order, (a) to (c): the two quantities that change with k, then the mass.
+PLOTTED: tuple[str, ...] = ("min_k_pp", "estimate", MASS)
+#: What each panel shows, for the caption, and the y label of every panel with its unit.
+PANEL_NAMES: Mapping[str, str] = {"min_k_pp": "Min-K%++", "estimate": "the recall estimate",
+                                  MASS: "the mass covered"}
+Y_LABELS: Mapping[str, str] = {
+    "min_k_pp": "absolute difference to logits,\nMin-K%++ (z-score units)",
+    "estimate": "absolute difference to logits,\nrecall estimate (probability)",
+    MASS: "probability mass covered\n(share)",
+}
+#: Features computed from the logprob of each generated token alone, which the truncation keeps exact.
+ACTUAL_TOKEN_FEATURES: tuple[str, ...] = ("loss", "min_k", "zlib_ratio")
+#: The feature that needs the spread of the alternatives, and the k at which there is none.
+SPREAD_FEATURE, NO_SPREAD_K = "min_k_pp", 1
+UNDEFINED_NOTE = ("undefined at k = 1: one alternative has no spread, so the stored value reflects only the floor "
+                  "on the standard deviation; not plotted")
+ZERO_NOTE, UNPLOTTED_NOTE = "zero at every k by construction; not plotted", "not plotted"
 CONVERGENCE_COLUMNS: tuple[str, ...] = (
-    "arm", "role", "stage", "kind", "quantity", "evidence", "k", "n", "mean_abs_diff", "max_abs_diff",
-    "share_within", "mean_mass", "min_mass", "drawn", "missing")
-#: At most four lines per panel: two stages times two statistics, palette slots 1 to 4 in this order.
+    "arm", "route", "role", "stage", "kind", "quantity", "evidence", "k", "n", "mean_abs_diff", "max_abs_diff",
+    "share_within", "mean_mass", "min_mass", "drawn", "missing", "note")
+#: At most four lines per panel: two stages times two statistics, series styles 0 to 3 in this order; the served
+#: markers of the stages take the next styles.
 MAX_LINES = 4
-_PANEL_IN, _FRAME_IN = 2.05, 1.15
-_MARKER_PT, _SERVED_PT, _LINE_PT = 5.0, 7.5, 1.4
-_LABEL_PT = 6.5
-_BOX_PAD_PT, _LABEL_CHARS = 0.8, 26
-#: A label's surface box keeps this much space from every marker as drawn (its path at the marker size: a diamond
-#: reaches 0.71 of the size from its centre, a circle 0.5) and from every other label's box.
-_CLEARANCE_PT = 3.0
-#: The served label's distance from its marker's centre, nearest ring first.
-_SERVED_RINGS_PT = (6.0, 10.0, 14.0, 24.0)
-#: The whole-vocabulary label sits this far above (or below) its line: clear of a marker centred on the line.
-_REFERENCE_OFFSET_PT = 10.0
-#: The share of the mass axis kept above the whole-vocabulary line: room for the labels placed there.
-_MASS_HEADROOM = 0.25
-_TITLE_CHARS = 52
+#: Figure size in inches: the legend, one row of three panels and the x label below them.
+_SIZE_IN = (FIGURE_WIDTH_IN, 3.6)
 
 
 # ---------- plain data ----------
@@ -339,365 +358,292 @@ def _cells(**values: object) -> tuple[str, ...]:
     return tuple(cell(values.get(column)) for column in CONVERGENCE_COLUMNS)
 
 
+def is_plotted(quantity: str, k: int) -> bool:
+    """Whether the figure plots ``quantity`` at ``k``: a panel's quantity, and not Min-K%++ without a spread."""
+    return quantity in PLOTTED and not (quantity == SPREAD_FEATURE and k == NO_SPREAD_K)
+
+
+def _feature_note(row: AgreementRow, zero: Sequence[str]) -> str | None:
+    """Why a stored features row with values is not plotted, for the table; None when it is plotted or missing."""
+    if row.missing_reason is not None or is_plotted(row.feature, row.k):
+        return None
+    if row.feature == SPREAD_FEATURE:
+        return UNDEFINED_NOTE
+    return ZERO_NOTE if row.feature in zero and row.evidence == HOST_TOP_K else UNPLOTTED_NOTE
+
+
 def convergence_table(stages: Iterable[ConvergenceStage], plan: StudyPlan | None = None) -> FigureTable:
-    """F4's table (every stored features and mass row of each stage, missing stages with the reason) and caption."""
+    """Figure 4's table (every stored features and mass row of each stage, missing stages with the reason), its
+    caption and its notes. With ``plan`` the rows and the caption name the serving route."""
     stages = _checked_stages(stages)
     role = None if plan is None else plan.arms.arms[stages[0].arm].role
+    route = None if plan is None else route_label(plan, stages[0].arm)
+    drawn = [stage for stage in stages if stage.status == DRAWN]
+    zero = _zero_by_construction(drawn)
     rows = []
     for stage in stages:
-        head = {"arm": stage.arm, "role": role, "stage": stage.stage, "kind": stage.kind}
+        head = {"arm": stage.arm, "route": route, "role": role, "stage": stage.stage, "kind": stage.kind}
         if stage.status != DRAWN:
             rows.append(_cells(**head, drawn=False, missing=stage.reason))
             continue
         for row in stage.features:
             rows.append(_cells(**head, quantity=row.feature, evidence=row.evidence, k=row.k, n=row.n,
                                mean_abs_diff=row.mean_abs_diff, max_abs_diff=row.max_abs_diff,
-                               share_within=row.share_within, drawn=row.missing_reason is None,
-                               missing=row.missing_reason or row.missing))
+                               share_within=row.share_within,
+                               drawn=row.missing_reason is None and is_plotted(row.feature, row.k),
+                               missing=row.missing_reason or row.missing, note=_feature_note(row, zero)))
         for row in stage.mass:
             rows.append(_cells(**head, quantity=MASS, evidence=row.evidence, k=row.k, n=row.n_draws,
                                mean_mass=row.mean_mass, min_mass=row.min_mass, drawn=row.missing_reason is None,
                                missing=row.missing_reason or row.missing))
-    return FigureTable(name=CONVERGENCE, caption=_convergence_caption(stages, role), columns=CONVERGENCE_COLUMNS,
-                       rows=tuple(rows))
+    return FigureTable(name=CONVERGENCE, caption=_convergence_caption(stages, route), columns=CONVERGENCE_COLUMNS,
+                       rows=tuple(rows), notes=_convergence_notes(drawn), sources=_convergence_sources(drawn))
 
 
-def _convergence_caption(stages: Sequence[ConvergenceStage], role: str | None) -> str:
+def _zero_by_construction(drawn: Sequence[ConvergenceStage]) -> list[str]:
+    """The actual-token features whose stored host rows are zero at every k in every drawn stage."""
+    found = []
+    for feature in ACTUAL_TOKEN_FEATURES:
+        rows = [row for stage in drawn for row in stage.agreement(HOST_TOP_K, feature) if row.missing_reason is None]
+        if rows and all(row.mean_abs_diff == 0.0 and row.max_abs_diff == 0.0 for row in rows):
+            found.append(feature)
+    return found
+
+
+def _sentence(names: Sequence[str]) -> str:
+    """The names as the subject of a sentence: listed, the first letter a capital."""
+    text = _listed(names)
+    return text[0].upper() + text[1:]
+
+
+def _plotted_points(stage: ConvergenceStage, quantity: str) -> list[AgreementRow | MassRow]:
+    """The stored truncation rows of ``quantity`` the figure plots for ``stage``, by k."""
+    rows = stage.coverage(HOST_TOP_K) if quantity == MASS else stage.agreement(HOST_TOP_K, quantity)
+    mean = (MASS_STATISTICS if quantity == MASS else FEATURE_STATISTICS)[0][0]
+    return sorted((row for row in rows if row.missing_reason is None and getattr(row, mean) is not None
+                   and is_plotted(quantity, row.k)), key=lambda row: row.k)
+
+
+def _key_numbers(drawn: Sequence[ConvergenceStage]) -> tuple[int, float, float] | None:
+    """The k the caption quotes, the largest mean difference of the estimate there and the smallest mean mass.
+
+    The k is the served k, where truncated logits and served logprobs hold the
+    same number of alternatives; without a served k among the plotted points
+    it is the smallest plotted k above one alternative. A k at which every
+    kept alternative is used is never quoted: its difference is zero by
+    construction.
+    """
+    if not drawn:
+        return None
+    estimate = [{row.k: row.mean_abs_diff for row in _plotted_points(stage, "estimate")} for stage in drawn]
+    mass = [{row.k: row.mean_mass for row in _plotted_points(stage, MASS)} for stage in drawn]
+    kept = {stage.kept for stage in drawn}
+    common = sorted(k for k in set.intersection(*(set(found) for found in (*estimate, *mass)))
+                    if k not in kept and k != NO_SPREAD_K)
+    if not common:
+        return None
+    served = {stage.served_k for stage in drawn}
+    k = next((k for k in common if served == {k}), common[0])
+    return k, max(found[k] for found in estimate), min(found[k] for found in mass)
+
+
+def _one(values: Iterable[int | None]) -> int | None:
+    """The one count every drawn stage states, or None when they state none or different ones."""
+    found = set(values)
+    return found.pop() if len(found) == 1 else None
+
+
+def _full_ks(drawn: Sequence[ConvergenceStage]) -> list[int]:
+    """The k values at which a drawn stage uses every kept alternative, so its differences are zero by construction."""
+    return sorted({stage.kept for stage in drawn if stage.kept is not None and stage.kept in stage.ks})
+
+
+def _convergence_caption(stages: Sequence[ConvergenceStage], route: str | None) -> str:
+    """Figure 4's caption: the difference at the quoted k, the draws, the panels, what is zero by construction.
+
+    The label of logits is built from the kept count the tables store
+    (:func:`~scripts.finance_sim.figures.evidence_label`). Why a value is zero
+    by construction and what the served marker is are notes below the table
+    (:func:`_convergence_notes`); a k above the kept count is a row of the
+    table.
+    """
     drawn = [stage for stage in stages if stage.status == DRAWN]
-    first = drawn[0] if drawn else None
-    arm = stages[0].arm
-    role_text = "" if role is None else f" ({role} role, {ROLE_PURPOSE.get(role, role)})"
-    parts = ["Figure F4. Top-k versus full-distribution agreement as k grows."]
-    if first is not None:
-        parts.append(
-            f"Data: the stored convergence tables (task 7.12; read, not recomputed) of the {arm} arm{role_text}, model "
-            f"{first.model}, plan {first.plan_sha256[:12]}; per feature and k, the mean and the maximum over the "
-            "compared draws of the absolute difference between the value from each draw's full-distribution evidence "
-            "truncated to its first k alternatives and the value from the full distribution, and the probability "
-            "mass the first k alternatives cover (mean and minimum over draws).")
-        parts.append(f"Estimator: {first.estimator}")
-        parts.append(f"Scope: {first.scope}")
-        served = sorted({stage.served_k for stage in drawn if stage.served_k is not None})
-        parts.append(f"The served row (the generation host's own top-{', '.join(map(str, served))} logprobs through "
-                     "the top-k calibrator, a different calibrator) is a separate open marker at k = "
-                     f"{', '.join(map(str, served))}, not joined to the lines.")
-        sizes = "; ".join(
-            f"{stage.name}: {stage.n_draws} draws of {stage.n_items} items ({stage.n_missing_draws} draws and "
-            f"{stage.n_missing_items} planned items missing), {stage.kept} kept alternatives of a {stage.n_vocab}-token "
-            f"vocabulary covering a mean mass of {_number(stage.full_mean_mass)} (minimum "
-            f"{_number(stage.full_min_mass)})" for stage in drawn)
-        parts.append(f"Sample size: {sizes}.")
-        parts.append("Interval: none; the tables report the mean and the maximum absolute difference over draws and "
-                     f"the share of draws within {_number(first.tolerance)} (in the table), and no interval.")
-        parts.append(first.comparability)
-    above = [(stage.name, f"k {', '.join(map(str, stage.above_kept))} above the {stage.kept} alternatives the "
-              "evidence keeps") for stage in drawn if stage.above_kept]
-    if above:
-        parts.append(f"Not drawn: {_grouped(above)}; the table lists these rows as missing.")
-    other = [(f"{stage.name} {row.evidence} k {row.k} {row.feature}", row.missing_reason) for stage in drawn
-             for row in stage.features if row.missing_reason is not None and row.k not in stage.above_kept]
-    if other:
-        parts.append(f"Missing: {_grouped(other)}.")
-    absent = [(stage.name, _flat(stage.reason)) for stage in stages if stage.status != DRAWN]
-    if absent:
-        parts.append(f"Missing (not drawn): {_grouped(absent)}.")
-    parts.append("Encoding: one colour, marker shape and direct label per line (stage and statistic, palette slots 1 "
-                 "to 4 in order): macro is the full run (the macro prompts of the positive control), EDGAR the "
-                 "negative control (the EDGAR releases); solid lines are means, dashed lines the maximum (max, "
-                 "agreement) or the minimum (min, mass); identical lines share one label; open markers are the served "
-                 "row; the muted line marks no difference (agreement) or the whole vocabulary (mass); the x axis is "
-                 "logarithmic.")
+    key = _key_numbers(drawn)
+    logits = evidence_label(FULL_DISTRIBUTION, _one(stage.kept for stage in drawn))
+    if not drawn:
+        message = "No convergence table is stored, so nothing is plotted"
+    elif key is None:
+        message = (f"The recall estimate from the first k alternatives per token against the estimate from {logits}, "
+                   "as k grows")
+    else:
+        k, difference, mass = key
+        message = (f"The recall estimate from the first k alternatives per token is within {rounded(difference)} on "
+                   f"average of that from {logits} at k = {k}, where the mean mass covered is at least "
+                   f"{rounded(mass)}")
+    sizes = _listed([f"{stage.n_draws} draws of {stage.n_items} {STAGE_SHORT[stage.stage]}" for stage in drawn]
+                    ) if drawn else "no compared draws"
+    if route is not None and drawn:
+        sizes += f" on {route}"
+    letters = [panel_label(index) for index in range(len(PLOTTED))]
+    panels = _listed([f"{letter} {PANEL_NAMES[quantity]}" for letter, quantity in zip(letters, PLOTTED, strict=True)])
+    notes = [f"{panels}; no interval is drawn."]
+    if drawn:
+        zero = _zero_by_construction(drawn)
+        pieces = [f"at k = {_listed([str(k) for k in _full_ks(drawn)])}"] if _full_ks(drawn) else []
+        if zero:
+            pieces.append(f"{'at every k, ' if pieces else 'at every k '}for "
+                          f"{_listed([FEATURE_NAMES[feature] for feature in zero])} (not plotted)")
+        if pieces:
+            notes.append(f"By construction the differences are zero {' and, '.join(pieces)}.")
+        other = [feature for feature in ACTUAL_TOKEN_FEATURES if feature not in zero]
+        if other:
+            several = len(other) > 1
+            notes.append(f"{_sentence([FEATURE_NAMES[feature] for feature in other])} {'are' if several else 'is'} "
+                         f"not plotted{' either' if zero else ''} (see the table).")
+        if any(row.k == NO_SPREAD_K and row.missing_reason is None
+               for stage in drawn for row in stage.agreement(HOST_TOP_K, SPREAD_FEATURE)):
+            notes.append(f"{FEATURE_NAMES[SPREAD_FEATURE]} is not plotted at k = {NO_SPREAD_K} (see the table).")
+        if any(row.missing_reason is not None and row.k not in stage.above_kept
+               for stage in drawn for row in (*stage.features, *stage.mass)):
+            notes.append("Some points are missing (see the table).")
+    for stage in stages:
+        if stage.status != DRAWN:
+            name = STAGE_SHORT.get(stage.stage, stage.name)
+            notes.append(f"{name[0].upper()}{name[1:]} are not drawn (see the table).")
+    return caption(FIGURE_NUMBERS[CONVERGENCE], message, n=sizes, interval=" ".join(notes))
+
+
+def _convergence_notes(drawn: Sequence[ConvergenceStage]) -> tuple[str, ...]:
+    """The lines below Figure 4's table: what a row compares, why some differences are zero by construction, what
+    the served marker is, and within what the values compare."""
+    if not drawn:
+        return ()
+    first = drawn[0]
+    kept = _one(stage.kept for stage in drawn)
+    notes = [
+        "A difference is the absolute difference to the value from logits, over the compared draws; the worst draw "
+        "is the largest difference or the smallest mass.",
+        f"A truncated row keeps the first k of the {'' if kept is None else f'{kept} '}alternatives stored per token "
+        "and the calibrator of logits; the served row uses the route's own top alternatives through the calibrator "
+        "of logprobs.",
+    ]
+    zero = _zero_by_construction(drawn)
+    reasons = []
+    if zero:
+        several = len(zero) > 1
+        reasons.append(f"{_sentence([FEATURE_NAMES[feature] for feature in zero])} use{'' if several else 's'} only "
+                       "the logprob of each generated token, which truncation keeps exact")
+    if _full_ks(drawn):
+        reasons.append(f"at k = {_listed([str(k) for k in _full_ks(drawn)])} every kept alternative is used")
+    if reasons:
+        text = "; ".join(reasons)
+        notes.append(f"{text[0].upper()}{text[1:]}.")
+    served = _one(stage.served_k for stage in drawn)
+    if served is not None:
+        notes.append(f"The figure shows the mean of the served row as a separate marker at k = {served}; its worst "
+                     "draw is in the table.")
+    notes.append(f"Values compare only within one model and one set of weights ({first.model}, weights "
+                 f"{first.model_digest}).")
+    return tuple(notes)
+
+
+def _convergence_sources(drawn: Sequence[ConvergenceStage]) -> tuple[str, ...]:
     kinds = {stage.kind for stage in drawn}
-    sources = [*([FRED_SOURCE] if MACRO in kinds else []), *([EDGAR_SOURCE] if kinds - {MACRO} else []),
-               FMP_STUDY_SOURCE]
-    parts += [f"Sources: {'; '.join(sources)}.", DERIVED_ONLY]
-    return " ".join(parts)
+    return (*((FRED_SOURCE,) if MACRO in kinds else ()), *((EDGAR_SOURCE,) if kinds - {MACRO} else ()),
+            FMP_STUDY_SOURCE)
 
 
 # ---------- drawing ----------
 
-@dataclass(frozen=True)
-class _Series:
-    """One line of a panel: its stage, statistic, palette slot, points and the served value."""
-
-    key: str
-    label: str
-    slot: int
-    dashed: bool
-    ks: tuple[int, ...]
-    values: tuple[float, ...]
-    served_k: int | None
-    served: float | None
+def _plain(value: float, _position: object = None) -> str:
+    """A tick value written in full, without an exponent: no offset text stands above an axis."""
+    text = f"{value:.10f}".rstrip("0").rstrip(".")
+    return "0" if text in ("", "-0") else text
 
 
-def _series(drawn: Sequence[ConvergenceStage], feature: str) -> list[_Series]:
-    statistics = MASS_STATISTICS if feature == MASS else FEATURE_STATISTICS
-    found = []
+def _draw_panel(axes: Axes, quantity: str, drawn: Sequence[ConvergenceStage], ks: Sequence[int]) -> None:
+    """One panel: per stage a line of the means and one of the worst draw over k, and the served mean as a marker."""
+    from matplotlib.ticker import FuncFormatter, NullLocator
+
+    statistics = MASS_STATISTICS if quantity == MASS else FEATURE_STATISTICS
+    values: list[float] = []
     for index, stage in enumerate(drawn):
-        if feature == MASS:
-            host, served_rows = stage.coverage(HOST_TOP_K), stage.coverage(SERVED_TOP_K)
-        else:
-            host, served_rows = stage.agreement(HOST_TOP_K, feature), stage.agreement(SERVED_TOP_K, feature)
-        for position, (field_name, name) in enumerate(statistics):
-            points = [(row.k, getattr(row, field_name)) for row in sorted(host, key=lambda row: row.k)
-                      if row.missing_reason is None and getattr(row, field_name) is not None]
-            served = next((getattr(row, field_name) for row in served_rows if row.missing_reason is None), None)
-            found.append(_Series(key=f"{stage.stage}-{field_name}", label=f"{STAGE_SHORT[stage.stage]}, {name}",
-                                 slot=2 * index + position, dashed=position == 1,
-                                 ks=tuple(k for k, _ in points), values=tuple(value for _, value in points),
-                                 served_k=stage.served_k, served=served))
-    return found
-
-
-def _groups(series: Sequence[_Series]) -> list[list[_Series]]:
-    """Lines with identical points, which one label names together."""
-    groups: dict[tuple[tuple[int, ...], tuple[float, ...]], list[_Series]] = {}
-    for line in series:
-        if line.ks:
-            groups.setdefault((line.ks, line.values), []).append(line)
-    return list(groups.values())
-
-
-def _group_label(group: Sequence[_Series], total: int) -> str:
-    """The label of identical lines: their names, or "all lines" when every line of the panel is among them."""
-    if len(group) == total > 1:
-        text = "all lines"
-    else:
-        text = " = ".join(line.label for line in group)
-    if all(value == 0.0 for value in group[0].values):
-        text += ": 0 at every k"
-    return textwrap.fill(text, width=_LABEL_CHARS)
-
-
-def _draw_panel(axes: Axes, feature: str, series: Sequence[_Series], style: FigureTheme, theme: str) -> None:
-    from recall_guard.harness.plots import PAPER_MARKERS, figure_theme
-
-    palette = figure_theme(theme).palette
-    _style_axes(axes, style)
-    ks = sorted({k for line in series for k in (*line.ks, *([line.served_k] if line.served is not None else []))
-                 if k is not None})
-    if ks:
-        # From the first k rightwards only: the direct labels take the space left of it (_label_column).
-        reference = 1.0 if feature == MASS else 0.0
-        axes.plot([ks[0], ks[-1] * 1.6], [reference, reference], color=style.muted, linewidth=1.0, linestyle="-",
-                  marker="none", zorder=1, gid=f"convergence-reference-{feature}")
-    for line in series:
-        colour, marker = palette[line.slot], PAPER_MARKERS[line.slot]
-        if line.ks:
-            axes.plot(line.ks, line.values, color=colour, linewidth=_LINE_PT, linestyle="--" if line.dashed else "-",
-                      marker=marker, markersize=_MARKER_PT, markerfacecolor=colour, markeredgecolor=colour,
-                      zorder=3, gid=f"convergence-{feature}-{line.key}")
-        if line.served is not None and line.served_k is not None:
-            axes.plot([line.served_k], [line.served], linestyle="none", marker=marker, markersize=_SERVED_PT,
-                      markerfacecolor=style.surface, markeredgecolor=colour, markeredgewidth=1.4, zorder=4,
-                      gid=f"convergence-served-{feature}-{line.key}")
-    values = [value for line in series for value in (*line.values, line.served) if value is not None]
-    if feature == MASS:
-        bottom = min([*values, 0.0]) - 0.05
-        axes.set_ylim(bottom, 1.0 + _MASS_HEADROOM * (1.0 - bottom))
+        points = _plotted_points(stage, quantity)
+        for position, (field_name, _) in enumerate(statistics):
+            found = [(row.k, getattr(row, field_name)) for row in points if getattr(row, field_name) is not None]
+            if found:
+                axes.plot([k for k, _ in found], [value for _, value in found], zorder=3, clip_on=False,
+                          gid=f"convergence-{quantity}-{stage.stage}-{field_name}",
+                          **series_style(2 * index + position))
+                values += [value for _, value in found]
+        served_rows = stage.coverage(SERVED_TOP_K) if quantity == MASS else stage.agreement(SERVED_TOP_K, quantity)
+        served = next((getattr(row, statistics[0][0]) for row in served_rows if row.missing_reason is None), None)
+        if served is not None and stage.served_k is not None:
+            axes.plot([stage.served_k], [served], zorder=4, clip_on=False,
+                      gid=f"convergence-served-{quantity}-{stage.stage}",
+                      **{**series_style(MAX_LINES + index), "linestyle": "none"})
+            values.append(served)
+    if quantity == MASS:
+        axes.set_ylim(min([*values, 0.0]) - 0.05, 1.05)
     else:
         top = max([*values, 0.0])
-        top = top * 1.3 if top > 0 else 1.0
+        top = top * 1.15 if top > 0 else 1.0
         axes.set_ylim(-0.06 * top, top)
     axes.set_xscale("log")
     if ks:
-        axes.set_xlim(ks[0] / 1.6, ks[-1] * 1.6)
-        axes.set_xticks(ks, labels=[str(k) for k in ks])
-        axes.xaxis.set_minor_locator(_no_ticks())
-    title = (f"{FEATURE_NAMES[feature]}: absolute difference to the full distribution" if feature != MASS
-             else "Probability mass the first k alternatives cover")
-    axes.set_title(textwrap.fill(title, width=_TITLE_CHARS), loc="left", color=style.ink)
-    axes.set_ylabel("mass covered" if feature == MASS else "absolute difference", fontsize=_RC["axes.labelsize"])
+        axes.set_xlim(ks[0] / 1.5, ks[-1] * 1.5)
+        axes.set_xticks(list(ks), labels=[str(k) for k in ks])
+        axes.xaxis.set_minor_locator(NullLocator())
+    axes.yaxis.set_major_formatter(FuncFormatter(_plain))
+    axes.set_ylabel(Y_LABELS[quantity])
 
 
-def _no_ticks() -> Any:
-    from matplotlib.ticker import NullLocator
+def _legend(figure: Figure, drawn: Sequence[ConvergenceStage]) -> None:
+    """The figure's one legend, above the panels: per stage its two lines and the marker of its served mean."""
+    from matplotlib.lines import Line2D
 
-    return NullLocator()
-
-
-def _marker_boxes(axes: Axes, clearance_pt: float = 0.0, *, k: float | None = None) -> list[Any]:
-    """Every visible marker of ``axes`` as drawn, as a display-space box padded by ``clearance_pt``.
-
-    The marker's path at the marker size (a diamond reaches 0.71 of the size
-    from its centre, a circle or a square 0.5) plus half the edge width, so a
-    label kept clear of these boxes is clear of what is drawn; the half-size
-    boxes of :func:`~scripts.finance_sim.figures._obstacles` understate a
-    diamond. With ``k``, only the points at that x. Call after the layout is
-    fixed.
-    """
-    from matplotlib.markers import MarkerStyle
-    from matplotlib.transforms import Bbox
-
-    scale = axes.figure.dpi / 72.0
-    boxes = []
-    for line in axes.lines:
-        marker = line.get_marker()
-        if not line.get_visible() or marker in (None, "None", "none", "", " "):
-            continue
-        marker_style = MarkerStyle(marker)
-        reach = marker_style.get_path().transformed(marker_style.get_transform()).get_extents()
-        size = line.get_markersize() * scale
-        edge = (line.get_markeredgewidth() / 2.0 + clearance_pt) * scale
-        points = line.get_xydata()
-        for (x, _), (cx, cy) in zip(points, line.get_transform().transform(points), strict=True):
-            if k is None or x == k:
-                boxes.append(Bbox.from_extents(cx + reach.x0 * size - edge, cy + reach.y0 * size - edge,
-                                               cx + reach.x1 * size + edge, cy + reach.y1 * size + edge))
-    return boxes
+    handles = []
+    for index, stage in enumerate(drawn):
+        name = STAGE_SHORT[stage.stage]
+        handles += [
+            Line2D([], [], label=f"{name}, mean over draws", **series_style(2 * index)),
+            Line2D([], [], label=f"{name}, worst draw", **series_style(2 * index + 1)),
+            Line2D([], [], label=f"{name}, {evidence_label(TOP_K, stage.served_k)}, mean",
+                   **{**series_style(MAX_LINES + index), "linestyle": "none"}),
+        ]
+    figure.legend(handles=handles, loc="outside upper center", ncols=max(len(drawn), 1))
 
 
-def _marker_reach(axes: Axes, k: int) -> float:
-    """How far left of their centre the markers drawn at ``k`` reach, in pixels (0 without a marker there)."""
-    centre = axes.transData.transform((k, 0.0))[0]
-    return max((centre - box.x0 for box in _marker_boxes(axes, k=k)), default=0.0)
+def plot_convergence(stages: Sequence[ConvergenceStage]) -> Figure:
+    """Figure 4: how the values from the first k alternatives approach the values from logits as k grows.
 
-
-def _label_box(label: Any, renderer: Any, scale: float) -> Any:
-    """A placed label as an obstacle: its surface box plus the clearance the next label keeps from it."""
-    return label.get_window_extent(renderer).padded((_BOX_PAD_PT + _CLEARANCE_PT) * scale)
-
-
-def _label_column(axes: Axes, feature: str, series: Sequence[_Series], style: FigureTheme, renderer: Any) -> None:
-    """Direct labels in a column left of the lines' first points, where the lines lie furthest apart.
-
-    Runs after the layout is fixed: the x axis is extended to the left just
-    enough for the widest label (the axes box does not move), each label is
-    set beside its line's first point with its box ``_CLEARANCE_PT`` clear of
-    the markers drawn there, and the column is spread vertically so no two
-    boxes come closer than that and all stay inside the frame. A label moved
-    off its point gets a thin leader to it. Identical lines share one label.
-    """
-    groups = _groups(series)
-    if not groups:
-        return
-    scale = axes.figure.dpi / 72.0
-    texts = [_group_label(group, len(series)) for group in groups]
-    style_kwargs = {"fontsize": _LABEL_PT, "linespacing": 1.1}
-    probes = [axes.text(0.0, 0.0, text, transform=axes.transAxes, **style_kwargs) for text in texts]
-    sizes = [probe.get_window_extent(renderer) for probe in probes]
-    for probe in probes:
-        probe.remove()
-    first_k = min(line.ks[0] for group in groups for line in group)
-    # From the first points' centre to a label's right edge: the markers' reach there (the same under any x
-    # limits), the clearance, then the label's own box pad.
-    gap = _marker_reach(axes, first_k) + (_CLEARANCE_PT + _BOX_PAD_PT) * scale
-    low, high = axes.get_xlim()
-    share = min((max(size.width for size in sizes) + gap + 4.0 * scale) / axes.bbox.width, 0.55)
-    span = math.log(high) - math.log(first_k)
-    axes.set_xlim(math.exp(math.log(first_k) - share / (1.0 - share) * span), high)
-    point_x = axes.transData.transform((first_k, 0.0))[0]
-    targets = [float(axes.transData.transform((group[0].ks[0], group[0].values[0]))[1]) for group in groups]
-    heights = [size.height + 2.0 * _BOX_PAD_PT * scale for size in sizes]
-    frame = axes.bbox
-    positions: dict[int, float] = {}
-    floor = frame.y0 + scale
-    for index in sorted(range(len(groups)), key=lambda i: targets[i]):
-        centre = max(targets[index], floor + heights[index] / 2.0)
-        positions[index] = centre
-        floor = centre + heights[index] / 2.0 + _CLEARANCE_PT * scale
-    overflow = floor - _CLEARANCE_PT * scale - (frame.y1 - scale)
-    if overflow > 0:
-        positions = {index: centre - overflow for index, centre in positions.items()}
-    inverse = axes.transData.inverted()
-    for index, (group, text) in enumerate(zip(groups, texts, strict=True)):
-        x, y = inverse.transform((point_x - gap, positions[index]))
-        axes.annotate(text, (x, y), ha="right", va="center", color=style.ink, zorder=5, annotation_clip=False,
-                      in_layout=False, gid=f"convergence-label-{feature}-{index}",
-                      bbox={"facecolor": style.surface, "edgecolor": "none", "pad": _BOX_PAD_PT}, **style_kwargs)
-        if abs(positions[index] - targets[index]) > 2.0 * scale:
-            line = group[0]
-            axes.plot([x, line.ks[0]], [y, line.values[0]], color=style.secondary_ink, linewidth=0.6, linestyle="-",
-                      marker="none", zorder=2, gid=f"convergence-leader-{feature}-{index}")
-
-
-def _place_line_labels(axes: Axes, feature: str, series: Sequence[_Series], style: FigureTheme,
-                       renderer: Any) -> None:
-    """Direct labels: the line column, then one label for the served markers and one for the mass reference.
-
-    The two single labels are placed by their boxes (:func:`_place_text`)
-    against the lines, the markers as drawn and the labels placed before,
-    each kept ``_CLEARANCE_PT`` away. The served label tries the rings of
-    ``_SERVED_RINGS_PT`` around the served markers, highest marker first. The
-    whole-vocabulary label goes to the right end of its line, above it, which
-    neither the column, the served label nor the lines that approach the line
-    from below reach; earlier points along the line are its fallbacks.
-    """
-    _label_column(axes, feature, series, style, renderer)
-    scale = axes.figure.dpi / 72.0
-    paths, _ = _obstacles(axes)
-    boxes = _marker_boxes(axes, _CLEARANCE_PT)
-    boxes += [_label_box(text, renderer, scale) for text in axes.texts]
-    served = [(line.served_k, line.served) for line in series if line.served is not None and line.served_k is not None]
-    if served:
-        k = served[0][0]
-        # Nearest first; farther rings clear lines that converge at the served k.
-        candidates = [placement for offset in _SERVED_RINGS_PT
-                      for anchor in sorted(served, key=lambda point: -point[1]) for placement in _around(anchor, offset)]
-        # Only the estimate goes through a calibrator; the features and the mass are the host's top-k alone.
-        text = f"served top-{k}\n(top-k calibrator)" if feature == "estimate" else f"served top-{k}"
-        label = _place_text(axes, text, candidates, renderer, paths=paths,
-                            boxes=boxes, fontsize=_LABEL_PT, color=style.secondary_ink, zorder=5,
-                            gid=f"convergence-served-label-{feature}", linespacing=1.1,
-                            bbox={"facecolor": style.surface, "edgecolor": "none", "pad": _BOX_PAD_PT})
-        boxes.append(_label_box(label, renderer, scale))
-    if feature == MASS:
-        low, high = axes.get_xlim()
-        end = (high, 1.0)
-        candidates = [(end, -3.0, _REFERENCE_OFFSET_PT, "right", "bottom"),
-                      (end, -3.0, -_REFERENCE_OFFSET_PT, "right", "top")]
-        anchors = [(math.exp(math.log(low) + share * (math.log(high) - math.log(low))), 1.0)
-                   for share in (0.55, 0.3, 0.05)]
-        candidates += [(anchor, 0.0, _REFERENCE_OFFSET_PT, "left", "bottom") for anchor in anchors]
-        candidates += [(anchor, 0.0, -_REFERENCE_OFFSET_PT, "left", "top") for anchor in anchors]
-        _place_text(axes, "whole vocabulary", candidates, renderer, paths=paths, boxes=boxes, fontsize=_LABEL_PT,
-                    color=style.secondary_ink, zorder=5, gid="convergence-reference-label",
-                    bbox={"facecolor": style.surface, "edgecolor": "none", "pad": _BOX_PAD_PT})
-
-
-def plot_convergence(stages: Sequence[ConvergenceStage], *, theme: str = "light") -> Figure:
-    """F4: agreement per feature and mass covered as k grows, one line per stage and statistic (Requirement 10.5).
-
-    ``stages`` are plain data read from the stored tables
+    Three panels in one row in the academic style, labelled (a) to (c) above
+    their plot areas, with one legend above them and one x label below:
+    Min-K%++, the recall estimate, and the probability mass covered. Per
+    stage one line joins the means and one the worst draw; the served mean is
+    a separate marker. ``stages`` are plain data read from the stored tables
     (:func:`convergence_stages`); missing stages are not drawn. Raises
     :class:`FigureError` when every stage is missing. Returns a matplotlib
-    Figure (no pyplot, no global state); labels are placed after the layout.
+    Figure (no pyplot, no global state).
     """
     import matplotlib
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
-
-    from recall_guard.harness.plots import figure_theme
 
     stages = _checked_stages(stages)
     drawn = [stage for stage in stages if stage.status == DRAWN]
     if not drawn:
         raise FigureError("nothing to draw: every convergence table is missing (see the table)")
-    style = figure_theme(theme)
-    quantities = (*FEATURES, MASS)
-    rows = math.ceil(len(quantities) / 2)
-    with matplotlib.rc_context(_theme_rc(theme)):
-        figure = Figure(figsize=(_WIDTH_IN, rows * (_PANEL_IN + 2 * _TITLE_LINE_IN) + _FRAME_IN),
-                        layout="constrained")
-        grid = figure.subplots(rows, 2, squeeze=False)
-        cells = list(grid.ravel())
-        drawn_series = {}
-        for axes, quantity in zip(cells, quantities, strict=False):
-            drawn_series[quantity] = _series(drawn, quantity)
-            _draw_panel(axes, quantity, drawn_series[quantity], style, theme)
-        for axes in cells[len(quantities):]:
-            axes.set_axis_off()
-        figure.supxlabel("k, alternatives kept per position (log scale)")
-        digest = str(drawn[0].model_digest)
-        figure.suptitle(
-            "Top-k versus full-distribution agreement as k grows\n"
-            f"Values compare only within one model and one set of weights: {drawn[0].model}, {digest[:19]}",
-            x=0.01, ha="left")
-        renderer = FigureCanvasAgg(figure).get_renderer()
-        figure.draw_without_rendering()
-        for axes, quantity in zip(cells, quantities, strict=False):
-            _place_line_labels(axes, quantity, drawn_series[quantity], style, renderer)
-        figure.draw_without_rendering()
+    ks = sorted({row.k for stage in drawn for quantity in PLOTTED for row in _plotted_points(stage, quantity)}
+                | {stage.served_k for stage in drawn if stage.served_k is not None})
+    with matplotlib.rc_context(figure_rc()):
+        figure = Figure(figsize=_SIZE_IN, layout="constrained")
+        cells = list(figure.subplots(1, len(PLOTTED), squeeze=False).ravel())
+        for index, (axes, quantity) in enumerate(zip(cells, PLOTTED, strict=True)):
+            _draw_panel(axes, quantity, drawn, ks)
+            label_panel(axes, index)
+        figure.supxlabel("alternatives kept per token, k (count, log scale)")
+        _legend(figure, drawn)
+        lay_out(figure)
     return figure
 
 
@@ -706,10 +652,9 @@ def plot_convergence(stages: Sequence[ConvergenceStage], *, theme: str = "light"
 def render_convergence(plan: StudyPlan, *, arm: str = DEFAULT_CONVERGENCE_ARM,
                        stages: Sequence[str] = CONVERGENCE_STAGES, analysis_dir: str | Path = CONVERGENCE_DIR,
                        out_dir: str | Path = FIGURES_DIR) -> tuple[Path, ...]:
-    """Render F4 from the stored convergence tables of ``plan`` and write its four files once."""
+    """Render F4 from the stored convergence tables of ``plan`` and write its three files once."""
     found = convergence_stages(plan, arm=arm, stages=stages, analysis_dir=analysis_dir)
-    texts = figure_texts(CONVERGENCE, convergence_table(found, plan),
-                         lambda theme: plot_convergence(found, theme=theme), out_dir)
+    texts = figure_texts(CONVERGENCE, convergence_table(found, plan), lambda: plot_convergence(found), out_dir)
     return write_outputs(texts)
 
 
@@ -720,8 +665,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     plan, a malformed table, tables of different weights, nothing to draw, or
     a different figure at the output path).
     """
-    parser = argparse.ArgumentParser(description="Convergence figure F4 (task 8.3), from the stored convergence "
-                                                 "tables; sends no request.")
+    parser = argparse.ArgumentParser(description="Convergence figure, from the stored convergence tables; sends no "
+                                                 "request.")
     parser.add_argument("--plan", type=Path, required=True, help="the frozen plan.json")
     parser.add_argument("--plan-sha256", required=True, help="the plan hash the tables carry")
     parser.add_argument("--arm", default=DEFAULT_CONVERGENCE_ARM, choices=ARMS)
@@ -748,6 +693,7 @@ __all__ = [
     "FEATURE_NAMES",
     "MASS",
     "MAX_LINES",
+    "PLOTTED",
     "STAGE_NAMES",
     "AgreementRow",
     "ConvergenceStage",
@@ -755,6 +701,7 @@ __all__ = [
     "convergence_stage",
     "convergence_stages",
     "convergence_table",
+    "is_plotted",
     "main",
     "plot_convergence",
     "read_convergence_stage",

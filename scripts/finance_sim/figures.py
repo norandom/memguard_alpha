@@ -1,63 +1,70 @@
-"""Accuracy-gap and reliability figures of the worked example (task 8.2).
+"""Accuracy-gap and reliability figures of the worked example (Figures 1 and 2).
 
-Requirements 10.2, 10.3 and 10.6 (design: Figures, F1 and F2). No request is
-sent and nothing is recomputed from item results: every number comes from a
-stored output of an earlier task.
+No request is sent and nothing is recomputed from item results: every number
+comes from a stored output of an earlier step.
 
-F1 ``gap`` (Requirement 10.2). Read from the pre-registered analysis JSON of
-task 7.10 (``runs/finance-sim/analysis/pre-registered-<arm>-full_run.json``,
+Figure 1 ``gap``. Read from the stored pre-registered analysis
+(``runs/finance-sim/analysis/pre-registered-<arm>-full_run.json``,
 :func:`~scripts.finance_sim.analysis.analysis_path`), never recomputed: per
 variant, the pre-cutoff minus post-cutoff difference of identifying minus
-anonymised accuracy (``did_accuracy_gap``) with its moving-block bootstrap
-interval, raw and Holm-adjusted p-values, month counts, ``dropped_resamples``
-and ``missing_months``, beside the two period differences that make it up.
-Dot and interval, one panel per arm (small multiples, shared x axis): the
-serving arm's none and top-k variants are the pre-registered tests, the probe
-arm's six variants a small paired check; the arm's achieved power is reported
-with its label and its Monte Carlo standard error, and the conditional note of
-the analysis stands beside any probe-arm panel or any variant with dropped
-resamples. A variant the analysis reports as missing (the serving arm's
-full-distribution variants, too few months) is listed in the table and the
-caption and not drawn.
+anonymised accuracy with its moving-block bootstrap interval, raw and
+Holm-adjusted p-values, month counts, dropped resamples and missing months,
+beside the two period differences that make it up. Dot and interval bar, one
+panel, the variants side by side per serving route. A variant the analysis
+reports as missing is listed in the table, named in the caption and not
+drawn. The caption states that the adjusted variants cannot differ from the
+unadjusted one in accuracy by construction; the achieved power is a note
+below the table.
 
-F2 ``reliability`` (Requirement 10.3). Read from the calibrator files of task
-7.6 (``runs/finance-sim/calibrators/<arm>/<source>/<macro|edgar>.json``, loaded
+Figure 2 ``reliability``. Read from the stored calibrator files
+(``runs/finance-sim/calibrators/<arm>/<source>/<macro|edgar>.json``, loaded
 with :func:`~scripts.finance_sim.calibrate.load_calibrator` against the frozen
-plan): the held-out probabilities and labels each calibrator retained, binned by
-:func:`recall_guard.harness.plots.reliability_curve` with the bins of the local
-report's held-out calibration and the same gate
-(``CALIBRATION_MIN_PER_CLASS`` held-out draws per class); below it the panel says
-"insufficient", where the report shows null. One calibrator per arm, kind and
-estimate source serves both draw modes of its adjustment, so each panel names
-the two variants it serves; the no-adjustment variants carry no estimate. A
-calibrator the arm cannot have (the serving arm's full distribution) or one not
-fitted yet is listed as missing and not drawn.
+plan): the held-out probabilities and labels each calibrator retained, binned
+by :func:`recall_guard.harness.plots.reliability_curve` with the bins of the
+local report's held-out calibration and the same gate
+(``CALIBRATION_MIN_PER_CLASS`` held-out draws per class). One panel per
+calibration set; each bin is a marker with the Wilson score interval of its
+observed share (the bin's draw count is its n), never joined by a line, the
+two evidence modes told apart by marker and a small horizontal offset. A
+calibrator below the gate, one the route cannot have, or one not fitted yet is
+not drawn; the caption says so and the table gives the reason.
 
-Outputs (design: Figures layout). Each figure is written to
-``docs/assets/finance-sim/`` (:data:`FIGURES_DIR`) as ``<figure>-light.svg``,
-``<figure>-dark.svg``, ``<figure>.csv`` and ``<figure>.md``, the markdown being
-the CSV rendered below the caption line that states the data, the sample size
-and the interval method. Tables carry derived statistics only: no reply text,
-no realized returns, no raw licensed series; the captions cite Moody's for
-BAA10Y and FMP for the prices behind the outcomes. A figure's files are
-written once: the same output again is a no-op and a different one is refused,
-never replaced (remove the old files first). Renders are byte-stable: no
-timestamp in the SVG metadata, a fixed SVG hash salt, glyphs as paths, and
-every figure is built, laid out, measured and saved under matplotlib's own
-defaults plus the theme (:func:`_default_rc`), never under the process's
-global rcParams, so the same data gives the same bytes in any process.
+Words on a published figure. A route is named as data, by the plan's profile
+and temperature (:func:`route_label`); the two evidence modes are "logprobs"
+(the top alternatives the route serves per token) and "logits" (the top
+alternatives kept from the next-token vector, never the whole vector), each
+labelled with its stored count by :func:`evidence_label`; a prompt is the
+"identifying prompt" or the "anonymised prompt". The column names of the
+tables stay the data keys other code reads.
 
-Style (task 8.1, recall_guard.harness.plots). The validated ``STUDY_PALETTE`` and
-``STUDY_PALETTE_DARK`` through :func:`~recall_guard.harness.plots.figure_theme`;
-identity never by colour alone: marker shape and fill from
-:func:`~recall_guard.harness.plots.variant_style`, direct labels (the rows of F1,
-the panel titles of F2), at most ``ALL_PAIRS_SLOT_CAP`` colours where marks sit
-side by side, and the ``muted`` token applied explicitly to the zero line and the
-diagonal. The design places ``plot_gap`` and ``plot_reliability`` in plots.py;
-this module holds them instead, beside their data, as the sibling modules
-``figures_draws`` (F3) and ``figures_convergence`` (F4) of task 8.3 hold theirs,
-built on the shared helpers here: the chrome (``_RC``, ``_style_axes``), the
-label placement after layout (:func:`_place_text`), the table and the outputs.
+Outputs. Each figure is written to ``docs/assets/finance-sim/``
+(:data:`FIGURES_DIR`) as one ``<figure>.svg`` with ``<figure>.csv``, the table
+view of the plotted values, and ``<figure>.md``: the caption, the CSV rendered
+as a table, then the notes of the table, one line of sources and the
+derived-only line. The caption is the numbered caption of the one figure style
+(:func:`scripts.finance_sim.figure_style.caption`): "Figure N.", the one
+message with its key number, the sample size, what the interval is, and what
+cannot differ by construction, in at most :data:`CAPTION_LIMIT` characters;
+definitions and methods are notes below the table, and a fact is stated once
+per file. The words for an interval are looked up by the
+method the stored output states (:func:`interval_wording`), so a caption
+cannot name another interval than the one that was computed. Tables carry
+derived statistics only: no reply text, no realized returns, no raw licensed
+series; the sources line cites Moody's for BAA10Y and FMP for the prices
+behind the outcomes. A figure's files are written once: the same output again
+is a no-op and a different one is refused, never replaced (remove the old
+files first). Renders are byte-stable (see
+:func:`scripts.finance_sim.figure_style.figure_svg`).
+
+Style (Requirement 8; the one style of
+:mod:`scripts.finance_sim.figure_style`, which also holds the helpers every
+figure module shares and this module re-exports). A figure reads as in a
+quantitative journal article: a white page, black axes and text, a serif
+typeface, both axes labelled with the quantity and its unit, series told apart
+by marker shape and grey level and named in one legend outside the plot area,
+interval bars where a value has an interval. Nothing is written inside a plot
+area. The sibling modules ``figures_draws`` (Figures 3 and 8) and
+``figures_convergence`` (Figure 4) build on the table and the outputs here.
 
 Matplotlib is imported inside the functions that draw, so importing this module
 (or ``recall_guard``) never imports it.
@@ -70,16 +77,16 @@ import csv
 import io
 import json
 import math
-import os
 import re
 import sys
-import textwrap
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from recall_guard.core.consensus import wilson_interval
+from recall_guard.core.significance import BLOCK_BOOTSTRAP_METHOD
 from recall_guard.harness.local_reporting import CALIBRATION_BINS, CALIBRATION_MIN_PER_CLASS
 from scripts.finance_sim.analysis import (
     ACCURACY_POST,
@@ -88,25 +95,42 @@ from scripts.finance_sim.analysis import (
     ANALYSIS_DIR,
     ANALYSIS_SCHEMA,
     COMPUTED,
-    CONDITIONAL_NOTE,
     DID,
     analysis_path,
 )
 from scripts.finance_sim.calibrate import (
     CALIBRATORS_DIR,
-    HOLDOUT_FRACTION,
+    CLUSTERED_METHOD,
     CalibrationRecord,
     calibrator_path,
     load_calibrator,
+)
+from scripts.finance_sim.figure_style import (
+    DERIVED_ONLY,
+    FIGURE_WIDTH_IN,
+    FIGURES_DIR,
+    SVG_HASH_SALT,
+    FigureError,
+    _default_rc,  # noqa: F401  (tests reach it here)
+    caption,
+    figure_rc,
+    figure_svg,
+    freeze_layout,
+    label_panel,
+    lay_out,
+    panel_label,
+    series_style,
+    write_outputs,
 )
 from scripts.finance_sim.limits import ARMS, SAMPLING_ARM, SERVING_ARM
 from scripts.finance_sim.pilot import CONFIRMATORY_STAGE
 from scripts.finance_sim.plan import (
     CALIBRATION_KINDS,
     ESTIMATE_SOURCES,
-    PRIMARY_ROLE,
-    PROBE_ROLE,
+    FULL_DISTRIBUTION,
+    NO_ADJUSTMENT,
     ROLES,
+    TOP_K,
     VARIANTS,
     StudyPlan,
     load_plan,
@@ -117,80 +141,76 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-    from recall_guard.harness.plots import FigureTheme, ReliabilityBin
+    from recall_guard.harness.plots import ReliabilityBin
 
-ROOT = Path(__file__).resolve().parents[2]
-#: The docs figure folder (design: Figures layout); tests write under tmp_path instead.
-FIGURES_DIR = ROOT / "docs" / "assets" / "finance-sim"
 GAP, RELIABILITY = "gap", "reliability"
 #: The figures this module renders, in render order.
 FIGURE_NAMES: tuple[str, ...] = (GAP, RELIABILITY)
-#: The draw-distribution and convergence figures of task 8.3, rendered by the sibling modules
-#: ``figures_draws`` and ``figures_convergence`` with these helpers.
-DRAWS, CONVERGENCE = "draws", "convergence"
-#: Every figure of the worked example (design: Figures layout), each with its four files in ``FIGURES_DIR``.
-PUBLISHED_FIGURES: tuple[str, ...] = (GAP, RELIABILITY, DRAWS, CONVERGENCE)
-#: Panel order: the primary (serving) arm first, then the probe (sampling) arm.
+#: The figures of the sibling modules: ``figures_draws`` renders the first-draw figure and the draw-spread figure,
+#: ``figures_convergence`` the convergence figure, with the helpers here.
+DRAWS, CONVERGENCE, DRAW_SPREAD = "draws", "convergence", "draw-spread"
+#: Every figure of the worked example, each with its three files in ``FIGURES_DIR``.
+PUBLISHED_FIGURES: tuple[str, ...] = (GAP, RELIABILITY, DRAWS, CONVERGENCE, DRAW_SPREAD)
+#: The number each caption starts with ("Figure N."); 5, 6 and 7 are the figures of ``figures_catalogue``.
+FIGURE_NUMBERS: Mapping[str, int] = MappingProxyType({GAP: 1, RELIABILITY: 2, DRAWS: 3, CONVERGENCE: 4,
+                                                      DRAW_SPREAD: 8})
+#: A caption is at most this many characters: one message, the sample size, the interval, what cannot differ.
+#: Definitions and methods are notes below the table.
+CAPTION_LIMIT = 600
+#: Order of the routes on a figure: the plan's serving arm first, then its sampling arm.
 DEFAULT_ARMS: tuple[str, ...] = (SERVING_ARM, SAMPLING_ARM)
-#: Figure themes in render order, as ``recall_guard.harness.plots.THEMES`` (not imported: matplotlib stays lazy).
-THEMES: tuple[str, ...] = ("light", "dark")
 EXIT_WRITTEN, EXIT_REFUSED = 0, 2
-#: Panel statuses of F2: drawn with its bins, shown without bins below the report's gate, or not drawn.
+#: Statuses of a Figure 2 calibrator: drawn with its bins, listed without bins below the gate, or missing.
 DRAWN, INSUFFICIENT, MISSING = "drawn", "insufficient", "missing"
-#: Fixed salt of the SVG element ids, so a rerender is byte-identical.
-SVG_HASH_SALT = "memorization-adjusted-finance-sim"
 
-#: What each arm role supplies to the figure (plan: ARM_SUPPLIES, design "Arm sizing decision").
-ROLE_PURPOSE: Mapping[str, str] = MappingProxyType({PRIMARY_ROLE: "the pre-registered tests",
-                                                    PROBE_ROLE: "a small paired check"})
-#: Text names of the adjustments, as the direct labels of ``variant_style`` spell them.
-ADJUSTMENT_NAMES: Mapping[str, str] = MappingProxyType({"none": "no adjustment", "top_k": "top-k",
-                                                        "full_distribution": "full distribution"})
-#: Text names of the calibration kinds and the control each calibrator adjusts.
-KIND_NAMES: Mapping[str, str] = MappingProxyType({"macro": "Macro calibrator, positive control",
-                                                  "edgar": "EDGAR calibrator, negative control"})
-DERIVED_ONLY = "Derived statistics only: no reply text, no realized returns and no raw licensed series."
+#: The two evidence modes behind a recall estimate, as every label spells them (:func:`evidence_label` adds what
+#: each one holds).
+EVIDENCE_NAMES: Mapping[str, str] = MappingProxyType({TOP_K: "logprobs", FULL_DISTRIBUTION: "logits"})
+#: The Wilson bound of an all-control or all-memorized bin is 0 or 1 up to floating point; within this distance it
+#: is written as exactly 0 or 1.
+_BOUND_TOLERANCE = 1e-12
+#: Text names of the adjustments, of the draw modes and of the calibration sets, as the legends spell them.
+ADJUSTMENT_NAMES: Mapping[str, str] = MappingProxyType({
+    NO_ADJUSTMENT: "unadjusted", **{source: f"adjusted with {name}" for source, name in EVIDENCE_NAMES.items()}})
+MODE_NAMES: Mapping[str, str] = MappingProxyType({"single": "single draw", "ensemble": "ensemble"})
+KIND_NAMES: Mapping[str, str] = MappingProxyType({"macro": "macro prompts", "edgar": "EDGAR releases"})
+#: What a caption calls an interval, by the method the stored output states on it.
+INTERVAL_WORDING: Mapping[str, str] = MappingProxyType({
+    BLOCK_BOOTSTRAP_METHOD: "moving-block bootstrap over months",
+    CLUSTERED_METHOD: "prompt-clustered bootstrap",
+})
+#: Confidence of the Wilson score interval on a reliability bin's observed share.
+RELIABILITY_CONFIDENCE = 0.95
 FRED_SOURCE = ("macro rows from FRED (Federal Reserve Bank of St. Louis) as known on each decision date, including "
                "BAA10Y, Moody's Seasoned Baa Corporate Bond Yield Relative to Yield on 10-Year Treasury Constant "
                "Maturity, copyright Moody's, cited and not reproduced")
 FMP_SOURCE = ("realized next-month returns from Financial Modeling Prep (FMP) end-of-day adjusted closes (licensed, "
               "not published) with DTB3 from FRED as the cash leg")
 EDGAR_SOURCE = "EDGAR outlook prompts from SEC EDGAR filings"
-#: F2 uses no price: FMP is cited for the study's outcomes, as the design cites Moody's and FMP in every caption.
+#: Figures 2, 3, 4 and 8 use no price: FMP is cited for the study's outcomes, as every published table cites it.
 FMP_STUDY_SOURCE = ("the study's outcomes come from Financial Modeling Prep (FMP) end-of-day adjusted closes "
                     "(licensed, not published), and no FMP value enters this figure")
 
 GAP_COLUMNS: tuple[str, ...] = (
-    "arm", "role", "variant", "draw_mode", "adjustment", "gap", "interval_low", "interval_high", "p_raw", "p_holm",
-    "months", "pre_cutoff_months", "post_cutoff_months", "missing_months", "dropped_resamples",
+    "arm", "route", "role", "variant", "draw_mode", "adjustment", "gap", "interval_low", "interval_high", "p_raw",
+    "p_holm", "months", "pre_cutoff_months", "post_cutoff_months", "missing_months", "dropped_resamples",
     "accuracy_difference_pre_cutoff", "accuracy_difference_post_cutoff", "statuses", "missing")
 RELIABILITY_COLUMNS: tuple[str, ...] = (
-    "arm", "role", "kind", "source", "variants", "status", "holdout_prompts", "holdout_draws", "memorized_draws",
-    "control_draws", "ece", "holdout_auc", "auc_interval_low", "auc_interval_high", "weak", "bin_low", "bin_high",
-    "bin_count", "mean_predicted", "observed_share", "reason")
+    "arm", "route", "role", "kind", "source", "variants", "status", "holdout_prompts", "holdout_draws",
+    "memorized_draws", "control_draws", "ece", "holdout_auc", "auc_interval_low", "auc_interval_high", "weak",
+    "bin_low", "bin_high", "bin_count", "mean_predicted", "observed_share", "share_interval_low",
+    "share_interval_high", "reason")
 
-#: Chrome shared by both figures, on top of the theme's rcParams (fonts ship with matplotlib, glyphs as paths).
-_RC: Mapping[str, Any] = MappingProxyType({
-    "font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans"], "font.size": 8.0, "axes.titlesize": 8.0,
-    "axes.labelsize": 8.0, "xtick.labelsize": 7.5, "ytick.labelsize": 7.5, "legend.fontsize": 7.5,
-    "figure.titlesize": 9.5, "figure.labelsize": 8.0, "axes.linewidth": 0.8, "svg.fonttype": "path",
-    "svg.hashsalt": SVG_HASH_SALT})
-_WIDTH_IN = 7.2
-_TITLE_LINE_IN = 0.15
-_GAP_ROW_IN, _GAP_PANEL_IN, _GAP_FRAME_IN = 0.3, 0.3, 1.25
-_GROUP_GAP = 0.5
-_RELIABILITY_PANEL_IN, _RELIABILITY_FRAME_IN = 2.95, 0.9
-_MARKER_PT, _MARKER_EDGE_PT, _INTERVAL_PT = 7.0, 1.5, 1.8
-_AREA_MIN, _AREA_MAX = 36.0, 320.0
-#: Count labels: gap between marker edge and label, half the marker's surface ring, and a zorder above the
-#: diagonal (1) and below the markers (3); a label keeps this much space from the diagonal, so it reads clear.
-_COUNT_GAP_PT, _MARKER_RING_PT, _COUNT_ZORDER = 2.0, 0.75, 2.5
-_LINE_CLEARANCE_PT = 3.0
+#: Figure sizes in inches (width, height): Figure 1 with its legend beside the panel; Figure 2 with one square panel
+#: per calibration set and the legend below them.
+_GAP_SIZE_IN, _RELIABILITY_HEIGHT_IN = (FIGURE_WIDTH_IN, 3.3), 3.9
+#: The variants of one route stand side by side within this share of the route's place on the x axis.
+_GAP_DODGE = 0.72
+#: Distance on the x axis between the markers of the two evidence modes in one reliability bin.
+_RELIABILITY_DODGE = 0.02
+#: Reference lines (no gap, perfect calibration): thin and grey, behind the data.
+_REFERENCE_GREY, _REFERENCE_PT = "0.4", 0.7
 _HEX64 = re.compile(r"[0-9a-f]{64}")
-
-
-class FigureError(ValueError):
-    """An input or output the figures refuse; nothing is written for it."""
 
 
 # ---------- shared helpers ----------
@@ -216,14 +236,85 @@ def _markdown_cell(value: str) -> str:
     return _flat(value).replace("|", "\\|")
 
 
+def rounded(value: float, *, signed: bool = False) -> str:
+    """A number in a caption: three decimals; a nonzero value that would round to zero keeps two significant digits."""
+    number = float(value)
+    if number == 0:
+        return "0.000"
+    sign = "+" if signed else ""
+    if round(abs(number), 3) == 0:
+        return f"{number:{sign}.2g}"
+    return f"{number:{sign}.3f}"
+
+
+def route_label(plan: StudyPlan, arm: str) -> str:
+    """The serving route of ``arm`` as data: the plan's profile for it and the temperature it draws at."""
+    if arm not in plan.arms.arms:
+        raise FigureError(f"unknown arm {arm!r}; expected one of {list(plan.arms.arms)}")
+    arm_plan = plan.arms.arms[arm]
+    return f"{arm_plan.profile_id} at temperature {float(arm_plan.temperature):g}"
+
+
+def evidence_label(source: str, count: int | None = None) -> str:
+    """An evidence mode as a legend, a caption or a note introduces it, with the stored number of alternatives.
+
+    Logprobs are the top ``count`` alternatives the route serves per token.
+    Logits are the top ``count`` alternatives kept from the next-token vector:
+    the estimate never uses the whole vector, so no label says it does.
+    Without a stored count the label says which alternatives without a number.
+    """
+    name = EVIDENCE_NAMES.get(source, source)
+    if source == TOP_K:
+        return f"{name} (served alternatives per token)" if count is None else f"{name} (top {count})"
+    if source == FULL_DISTRIBUTION:
+        return (f"{name} (kept alternatives of the next-token vector)" if count is None
+                else f"{name} (top {count} of the next-token vector)")
+    return name
+
+
+def _route_tick(route: str) -> str:
+    """A route as a tick label: the profile on one line, the temperature below it."""
+    return route.replace(" at temperature ", "\nat temperature ")
+
+
+def interval_wording(methods: Iterable[str | None], what: str,
+                     wording: Mapping[str, str] = INTERVAL_WORDING) -> str | None:
+    """What a caption calls the intervals of ``what``, by the methods the stored output states; None without one.
+
+    Raises:
+        FigureError: a method without wording here, or intervals that need different words.
+    """
+    found = sorted({method for method in methods if method is not None})
+    unknown = [method for method in found if method not in wording]
+    if unknown:
+        raise FigureError(f"the caption of {what} has no wording for the interval method {unknown[0]!r}; it "
+                          f"describes {sorted(wording)}")
+    words = sorted({wording[method] for method in found})
+    if len(words) > 1:
+        raise FigureError(f"the intervals of {what} are of different kinds ({words}); the caption names one")
+    return words[0] if words else None
+
+
+def _listed(names: Sequence[str]) -> str:
+    """``a``, ``a and b`` or ``a, b and c``."""
+    names = list(names)
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
 @dataclass(frozen=True)
 class FigureTable:
-    """The table of one figure: derived statistics in rows of text, with the caption above it in markdown."""
+    """The table of one figure: derived statistics in rows of text, the caption above it, notes and sources below.
+
+    ``notes`` are the lines a reader of the table needs and the caption does
+    not carry; ``sources`` the data citations of the figure, stated once.
+    """
 
     name: str
     caption: str
     columns: tuple[str, ...]
     rows: tuple[tuple[str, ...], ...]
+    notes: tuple[str, ...] = ()
+    sources: tuple[str, ...] = ()
 
     def to_csv(self) -> str:
         buffer = io.StringIO()
@@ -233,13 +324,17 @@ class FigureTable:
         return buffer.getvalue()
 
     def to_markdown(self) -> str:
-        """The CSV rendered as a markdown table below the caption line."""
+        """The caption, the CSV rendered as a markdown table, then the notes, the sources and the derived-only line."""
 
         def line(values: Iterable[str]) -> str:
             return "| " + " | ".join(_markdown_cell(value) for value in values) + " |"
 
         lines = [_flat(self.caption), "", line(self.columns), "|" + "|".join("---" for _ in self.columns) + "|"]
         lines += [line(row) for row in self.rows]
+        lines += ["", *(_flat(note) for note in self.notes)]
+        if self.sources:
+            lines.append(f"Sources: {'; '.join(self.sources)}.")
+        lines.append(DERIVED_ONLY)
         return "\n".join(lines) + "\n"
 
 
@@ -291,63 +386,19 @@ def _percent(confidence: float) -> str:
     return f"{confidence * 100:g}"
 
 
-def _default_rc() -> dict[str, Any]:
-    """matplotlib's own defaults for every style key, so a render starts from the same rcParams in every process.
-
-    The plot functions build, lay out and measure a figure inside
-    ``matplotlib.rc_context`` with these defaults under the theme and the
-    chrome (:func:`_theme_rc`), and :func:`figure_svg` saves under them, so
-    whatever the process set before is overlaid, not inherited: a paper style
-    (``recall_guard.harness.plots.configure_paper_style`` leaves
-    ``savefig.format`` at ``pdf``, which is the renderer
-    ``Figure.draw_without_rendering`` lays the figure out and measures its
-    text with, and ``savefig.bbox`` at ``tight``, which re-crops the saved
-    file), a style sheet or a user's matplotlibrc. The keys matplotlib keeps
-    out of a style (``STYLE_BLACKLIST``: the backend, interactive mode, window
-    and directory settings) stay as they are; the backend cannot be reset at
-    runtime, and none of them reaches a render. The fonts are the ones shipped
-    with matplotlib (``_RC``) and nothing here touches the font manager.
-    """
-    import matplotlib
-    from matplotlib.style.core import STYLE_BLACKLIST
-
-    return {key: value for key, value in matplotlib.rcParamsDefault.items() if key not in STYLE_BLACKLIST}
-
-
-def _theme_rc(theme: str) -> dict[str, Any]:
-    """The complete rcParams a figure of ``theme`` is built, laid out, measured and saved under.
-
-    matplotlib's defaults (:func:`_default_rc`), then the theme's colours and
-    cycle, then the shared chrome (``_RC``); nothing of the process's state.
-    """
-    from recall_guard.harness.plots import figure_theme
-
-    return {**_default_rc(), **figure_theme(theme).rc_params(), **_RC}
-
-
-def _style_axes(axes: Axes, style: FigureTheme) -> None:
-    """Recessive chrome set on the axes itself, so ticks created later keep it: hairline grid, no box."""
-    axes.tick_params(colors=style.baseline, labelcolor=style.secondary_ink, labelsize=_RC["xtick.labelsize"])
-    axes.grid(color=style.gridline, linewidth=0.6, linestyle="-")
-    axes.set_axisbelow(True)
-    for side in ("top", "right"):
-        axes.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        axes.spines[side].set_color(style.baseline)
-
-
-# ---------- F1: the accuracy gap, from the stored pre-registered analysis ----------
+# ---------- Figure 1: the accuracy gap, from the stored pre-registered analysis ----------
 
 @dataclass(frozen=True)
 class GapPoint:
     """One variant's accuracy gap as the stored analysis gives it, or the reason it has none (``missing``).
 
     ``statistic`` is the pre-cutoff minus post-cutoff difference of identifying
-    minus anonymised accuracy, ``low`` and ``high`` its interval, ``p_value``
-    and ``p_holm`` its raw and Holm-adjusted two-sided p-values. ``months``
-    counts the months used (``pre_cutoff_months`` and ``post_cutoff_months`` by
-    period), ``missing_months`` the planned months without the value in both
-    renderings, ``dropped_resamples`` the resamples whose period cell was empty.
+    minus anonymised accuracy, ``low`` and ``high`` its interval by
+    ``interval_method``, ``p_value`` and ``p_holm`` its raw and Holm-adjusted
+    two-sided p-values. ``months`` counts the months used
+    (``pre_cutoff_months`` and ``post_cutoff_months`` by period),
+    ``missing_months`` the planned months without the value for both prompts,
+    ``dropped_resamples`` the resamples whose period cell was empty.
     ``pre_difference`` and ``post_difference`` are the two cells of the gap.
     ``statuses`` counts the variant's guarded statuses over the analysed items.
     """
@@ -369,6 +420,7 @@ class GapPoint:
     post_difference: float | None
     statuses: Mapping[str, int] = field(default_factory=lambda: MappingProxyType({}))
     missing: str | None = None
+    interval_method: str | None = None
 
     @property
     def drawn(self) -> bool:
@@ -377,7 +429,11 @@ class GapPoint:
 
 @dataclass(frozen=True)
 class GapPanel:
-    """One arm's panel of F1: the arm, its role, its months, the analysis settings, its points and its power."""
+    """One route's part of Figure 1: its months, the analysis settings, its points and its power.
+
+    ``route`` is the serving route the panel is labelled by
+    (:func:`route_label`); a panel without it is read but cannot be drawn.
+    """
 
     plan_sha256: str
     arm: str
@@ -393,6 +449,7 @@ class GapPanel:
     power_approximation: str | None
     power_n_sim: int | None
     power_effect_size: float | None
+    route: str | None = None
 
     def point(self, variant: str) -> GapPoint:
         for point in self.points:
@@ -442,9 +499,10 @@ def _gap_point(variant: str, did: Mapping[str, Any], pre: Mapping[str, Any] | No
                post: Mapping[str, Any] | None) -> GapPoint:
     mode, adjustment = variant_parts(variant)
     interval = did["interval"]
-    low = high = None
+    low = high = method = None
     if interval is not None:
         low, high = _real(interval["lo"], f"{variant} interval lo"), _real(interval["hi"], f"{variant} interval hi")
+        method = _text(interval["method"], f"{variant} interval method")
     statistic = _real(did["statistic"], f"{variant} statistic")
     missing = did["missing"]
     if missing is not None:
@@ -468,15 +526,16 @@ def _gap_point(variant: str, did: Mapping[str, Any], pre: Mapping[str, Any] | No
         post_difference=None if post is None else _real(post["statistic"], f"{variant} post-cutoff difference"),
         statuses=MappingProxyType({_text(key, "status"): _count(value, "status count")
                                    for key, value in statuses.items()}),
-        missing=missing)
+        missing=missing, interval_method=method)
 
 
-def gap_panel(data: Mapping[str, Any], *, plan_sha256: str | None = None) -> GapPanel:
-    """The F1 panel of one stored pre-registered analysis (the 7.10 JSON payload), read and checked, not recomputed.
+def gap_panel(data: Mapping[str, Any], *, plan_sha256: str | None = None, route: str | None = None) -> GapPanel:
+    """One route's stored pre-registered analysis (its JSON payload), read and checked, not recomputed.
 
+    ``route`` is the label of the serving route (:func:`route_label`).
     Refuses another schema, an arm outside the study, a stage other than the
     full run, another plan than ``plan_sha256`` (when given), and an analysis
-    without a computed ``did_accuracy_gap``.
+    without a computed accuracy gap.
     """
     if not isinstance(data, Mapping):
         raise FigureError(f"the analysis must be a JSON object; got {type(data).__name__}")
@@ -526,7 +585,7 @@ def gap_panel(data: Mapping[str, Any], *, plan_sha256: str | None = None) -> Gap
         else:
             values = recorded
         return GapPanel(
-            plan_sha256=sha, arm=arm, role=role, model=_text(data["model"], "model"),
+            plan_sha256=sha, arm=arm, role=role, model=_text(data["model"], "model"), route=route,
             planned_months=_count(data["planned_months"], "planned_months"),
             pre_cutoff_months=_count(data["pre_cutoff_months"], "pre_cutoff_months"),
             post_cutoff_months=_count(data["post_cutoff_months"], "post_cutoff_months"),
@@ -540,9 +599,9 @@ def gap_panel(data: Mapping[str, Any], *, plan_sha256: str | None = None) -> Gap
         raise FigureError(f"the {arm} arm's analysis is malformed: {exc!r}") from None
 
 
-def read_gap_panel(path: str | Path, *, plan_sha256: str | None = None) -> GapPanel:
-    """The F1 panel of the analysis JSON at ``path`` (duplicate keys and non-finite numbers refused)."""
-    return gap_panel(_read_json(Path(path)), plan_sha256=plan_sha256)
+def read_gap_panel(path: str | Path, *, plan_sha256: str | None = None, route: str | None = None) -> GapPanel:
+    """The panel of the analysis JSON at ``path`` (duplicate keys and non-finite numbers refused)."""
+    return gap_panel(_read_json(Path(path)), plan_sha256=plan_sha256, route=route)
 
 
 def _checked_gap_panels(panels: Iterable[GapPanel]) -> tuple[GapPanel, ...]:
@@ -561,6 +620,10 @@ def _checked_gap_panels(panels: Iterable[GapPanel]) -> tuple[GapPanel, ...]:
             raise FigureError(f"the {arm} arm is given twice")
     if len({json.dumps(dict(panel.settings), sort_keys=True) for panel in panels}) != 1:
         raise FigureError("the accuracy-gap panels carry different analysis settings")
+    for panel in panels:
+        if not panel.route:
+            raise FigureError(f"the accuracy-gap figure labels a panel by its serving route; the {panel.arm} panel "
+                              "carries none (see route_label)")
     return panels
 
 
@@ -568,208 +631,206 @@ def _statuses(point: GapPoint) -> str:
     return "; ".join(f"{status} {count}" for status, count in point.statuses.items())
 
 
-def _power_text(panel: GapPanel) -> str:
-    if panel.power is None:
-        return f"achieved power missing: {panel.power_reason}"
-    text = f"achieved power {panel.power:.3f}"
-    if panel.power_effect_size is not None:
-        text += f" for the pre-registered effect {panel.power_effect_size:g}"
-    error = panel.power_monte_carlo_error
-    if error is not None:
-        text += f" (Monte Carlo standard error {error:.3f} over {panel.power_n_sim} simulations)"
-    return text
+def _variant_label(variant: str) -> str:
+    mode, adjustment = variant_parts(variant)
+    return f"{MODE_NAMES[mode]}, {ADJUSTMENT_NAMES[adjustment]}"
 
 
-def _grouped(entries: Iterable[tuple[str, str]]) -> str:
-    """``key, key: reason; key: reason`` with the keys of one reason together, in order of first appearance."""
-    groups: dict[str, list[str]] = {}
-    for key, reason in entries:
-        groups.setdefault(reason, []).append(key)
-    return "; ".join(f"{', '.join(keys)}: {reason}" for reason, keys in groups.items())
+#: The variant whose gap the caption states: the ensemble without adjustment, the reference of its draw mode.
+_REFERENCE_VARIANT = f"ensemble_{NO_ADJUSTMENT}"
+
+
+def _stated_point(panel: GapPanel) -> GapPoint | None:
+    """The variant whose gap the caption states for ``panel``: the reference, else the first drawn; None without."""
+    drawn = panel.drawn_points
+    return next((point for point in drawn if point.variant == _REFERENCE_VARIANT), drawn[0] if drawn else None)
+
+
+def _gap_key(panel: GapPanel, name: str) -> tuple[str, str | None]:
+    """The gap the caption states for ``panel``, named ``name``, and its variant (None when none has a value)."""
+    point = _stated_point(panel)
+    if point is None:
+        return f"no variant has a value on {name}", None
+    interval = "no interval" if point.low is None or point.high is None else (
+        f"{rounded(point.low, signed=True)} to {rounded(point.high, signed=True)}")
+    return f"{rounded(point.statistic, signed=True)} ({interval}) on {name}", point.variant
+
+
+def _gap_sizes(panels: Sequence[GapPanel], short: Mapping[str | None, str]) -> str:
+    """The months the stated gap of each route rests on, by period; the planned months only where they differ.
+
+    The first route is written in full ("88 of 90 planned months (67 on or
+    before the cutoff, 21 after)"), the next ones as the same numbers in the
+    same order ("20 (15, 5)"). The counts are those of the stated variant
+    (:func:`_stated_point`), never the plan's.
+    """
+    sizes = []
+    for panel in panels:
+        point = _stated_point(panel)
+        where = f" on {short[panel.route]}" if len(panels) > 1 else ""
+        if point is None:
+            sizes.append(f"no month with a value{where}")
+            continue
+        planned = "" if point.months == panel.planned_months else f" of {panel.planned_months} planned"
+        if any(" on or before the cutoff" in size for size in sizes):
+            sizes.append(f"{point.months}{planned} ({point.pre_cutoff_months}, {point.post_cutoff_months}){where}")
+        else:
+            sizes.append(f"{point.months}{planned} months ({point.pre_cutoff_months} on or before the cutoff, "
+                         f"{point.post_cutoff_months} after){where}")
+    return "; ".join(sizes)
+
+
+def short_routes(routes: Iterable[str | None]) -> dict[str | None, str]:
+    """Each route by its profile alone, where that still tells the routes apart; otherwise in full.
+
+    A caption names a route in full once, with its temperature, and by this
+    short name after that.
+    """
+    routes = list(dict.fromkeys(routes))
+    short = {route: str(route).split(" at temperature ")[0] for route in routes}
+    return short if len(set(short.values())) == len(short) else {route: str(route) for route in routes}
+
+
+def _absent_variants(panel: GapPanel) -> list[str]:
+    """The variants of ``panel`` without a value, an adjustment missing in every draw mode named once."""
+    absent = [point for point in panel.points if not point.drawn]
+    names = []
+    for adjustment in dict.fromkeys(point.adjustment for point in absent):
+        group = [point for point in absent if point.adjustment == adjustment]
+        modes = {point.mode for point in panel.points if point.adjustment == adjustment}
+        if len(group) > 1 and {point.mode for point in group} == modes:
+            names.append(f"both variants {ADJUSTMENT_NAMES[adjustment]}")
+        else:
+            names += [_variant_label(point.variant) for point in group]
+    return names
 
 
 def _gap_caption(panels: Sequence[GapPanel]) -> str:
+    """Figure 1's caption: the stated gap per route, the months it rests on, the interval, what cannot differ.
+
+    A route is named by its profile where that tells the routes apart
+    (:func:`short_routes`); the x axis and the table carry its temperature.
+    """
     settings = panels[0].settings
-    models = ", ".join(dict.fromkeys(panel.model for panel in panels))
-    parts = [
-        "Figure F1. Accuracy gap before and after adjustment, positive control (identifying versus anonymised "
-        "FRED macro prompts).",
-        f"Data: the stored pre-registered analysis (task 7.10; read, not recomputed) of the {CONFIRMATORY_STAGE} "
-        f"stage, model {models}, plan {panels[0].plan_sha256[:12]}, pilot items excluded; per variant, the "
-        "pre-cutoff minus post-cutoff difference of identifying minus anonymised accuracy (did_accuracy_gap), the "
-        "no-adjustment variants beside the top-k and full-distribution adjustments.",
-    ]
+    short = short_routes(panel.route for panel in panels)
+    keys = [_gap_key(panel, short[panel.route]) for panel in panels]
+    variants = {variant for _, variant in keys if variant is not None}
+    if variants == {_REFERENCE_VARIANT}:
+        subject, numbers = ", unadjusted ensemble", _listed([text for text, _ in keys])
+    else:
+        subject, numbers = "", _listed([text if variant is None else f"{text} ({_variant_label(variant)})"
+                                        for text, variant in keys])
+    message = ("Accuracy gap (identifying minus anonymised prompt, before minus after the training cutoff)"
+               f"{subject}: {numbers}")
+    kind = interval_wording((point.interval_method for panel in panels for point in panel.drawn_points),
+                            "the accuracy gap")
+    notes = ["No interval is stored for the gap." if kind is None else (
+        f"Bars and parentheses: {_percent(settings['confidence'])} percent {kind.replace(' over months', '')} "
+        "intervals.")]
+    notes.append("The adjusted variants of a draw mode cannot differ from its unadjusted one by construction.")
     for panel in panels:
-        parts.append(f"{panel.arm.capitalize()} arm ({panel.role} role, {ROLE_PURPOSE.get(panel.role, panel.role)}): "
-                     f"{panel.planned_months} planned months ({panel.pre_cutoff_months} on or before the model's "
-                     f"cutoff, {panel.post_cutoff_months} after); {_power_text(panel)}.")
-    approximations = list(dict.fromkeys(panel.power_approximation for panel in panels if panel.power_approximation))
-    parts += [f"Achieved power is read as {approximation}." for approximation in approximations]
-    parts += [
-        "Sample size: months per variant in the table (a month counts when both renderings carry the value; the "
-        "months without it are counted per variant, with their reasons in the stored analysis).",
-        f"Interval: {_percent(settings['confidence'])} percent non-circular moving-block percentile bootstrap over "
-        f"months, block length {settings['block_length']} months, {settings['n_resamples']} resamples, seed "
-        f"{settings['seed']}; p raw is two-sided from the kept resamples, Holm-adjusted across the variants of each "
-        f"arm (alpha {settings['alpha']:g}); the two period differences are measurements without a p-value.",
-        "Encoding: marker shape gives the adjustment (circle no adjustment, square top-k, triangle full "
-        "distribution), an open marker a single draw and a filled one the ensemble; each row is labelled; the "
-        "vertical line marks no gap.",
-    ]
-    missing = []
+        absent = _absent_variants(panel)
+        if absent:
+            notes.append(f"Not drawn on {short[panel.route]}: {'; '.join(absent)}.")
+    return caption(FIGURE_NUMBERS[GAP], message, n=_gap_sizes(panels, short), interval=" ".join(notes))
+
+
+def _gap_notes(panels: Sequence[GapPanel]) -> tuple[str, ...]:
+    """The lines below Figure 1's table: why the adjusted variants cannot differ, what the evidence modes are, the
+    bootstrap and what its interval is conditional on, the p-values of the columns and the achieved power."""
+    settings = panels[0].settings
+    conditional = (" The intervals are conditional on the resamples with months on both sides of the cutoff."
+                   if any(panel.max_dropped for panel in panels) else "")
+    powers = []
     for panel in panels:
-        reasons: dict[str, list[str]] = {}
-        for point in panel.points:
-            if not point.drawn:
-                reasons.setdefault(_flat(point.missing), []).append(point.variant)
-        missing += [f"{panel.arm} {', '.join(variants)}: {reason}" for reason, variants in reasons.items()]
-    if missing:
-        parts.append(f"Missing (not drawn): {'; '.join(missing)}.")
-    if any(panel.role == PROBE_ROLE or panel.max_dropped for panel in panels):
-        dropped = "; ".join(f"{panel.arm}: up to {panel.max_dropped} of {settings['n_resamples']}" for panel in panels)
-        parts.append(f"{CONDITIONAL_NOTE} Dropped resamples per variant are in the table ({dropped}).")
-    parts += [f"Sources: {FRED_SOURCE}; {FMP_SOURCE}.", DERIVED_ONLY]
-    return " ".join(parts)
+        if panel.power is None:
+            powers.append(f"not available on {panel.route}")
+            continue
+        error = panel.power_monte_carlo_error
+        detail = "" if error is None else (f" (Monte Carlo standard error {error:.3f}, {panel.power_n_sim} "
+                                           "simulations)")
+        powers.append(f"{panel.power:.3f} on {panel.route}{detail}")
+    return (
+        "An adjustment scales the size of a call and never changes its direction.",
+        f"The adjustments use the recall estimate from {evidence_label(TOP_K)} or from "
+        f"{evidence_label(FULL_DISTRIBUTION)}.",
+        f"The bootstrap resamples blocks of {settings['block_length']} months, {settings['n_resamples']} times.",
+        "The raw p-value is two-sided, from the kept resamples; the Holm p-value adjusts it across the variants of "
+        f"one route (alpha {settings['alpha']:g}). The two period differences are measurements without a p-value.",
+        f"Achieved power for the pre-registered effect {settings['effect_size']:g}, a t-test approximation under "
+        f"independent months: {'; '.join(powers)}.",
+        "A month counts for a variant when both prompts carry the value; the other planned months are counted as "
+        f"missing. A dropped resample held no month on one side of the cutoff.{conditional}",
+    )
 
 
 def gap_table(panels: Iterable[GapPanel]) -> FigureTable:
-    """F1's table (one row per arm and variant, missing ones included with the reason) and its caption."""
+    """Figure 1's table (one row per route and variant, missing ones included with the reason) and its caption."""
     panels = _checked_gap_panels(panels)
     rows = []
     for panel in panels:
         for point in panel.points:
             rows.append((
-                panel.arm, panel.role, point.variant, point.mode, point.adjustment, _number(point.statistic),
+                panel.arm, panel.route, panel.role, point.variant, point.mode, point.adjustment,
+                _number(point.statistic),
                 _number(point.low), _number(point.high), _number(point.p_value), _number(point.p_holm),
                 _number(point.months), _number(point.pre_cutoff_months), _number(point.post_cutoff_months),
                 _number(point.missing_months), _number(point.dropped_resamples), _number(point.pre_difference),
                 _number(point.post_difference), _statuses(point), "" if point.missing is None else _flat(point.missing)))
-    return FigureTable(name=GAP, caption=_gap_caption(panels), columns=GAP_COLUMNS, rows=tuple(rows))
+    return FigureTable(name=GAP, caption=_gap_caption(panels), columns=GAP_COLUMNS, rows=tuple(rows),
+                       notes=_gap_notes(panels), sources=(FRED_SOURCE, FMP_SOURCE))
 
 
-def _gap_title(panel: GapPanel, n_resamples: int) -> str:
-    lines = [f"{panel.arm.capitalize()} arm, {panel.role} role: {ROLE_PURPOSE.get(panel.role, panel.role)}",
-             f"{panel.planned_months} planned months: {panel.pre_cutoff_months} pre-cutoff, "
-             f"{panel.post_cutoff_months} post-cutoff",
-             "Achieved power missing (see the caption)" if panel.power is None
-             else f"Achieved power {panel.power:.2f} (t-test approximation)"]
-    absent = [point for point in panel.points if not point.drawn]
-    if absent:
-        names = ", ".join(dict.fromkeys(ADJUSTMENT_NAMES.get(point.adjustment, point.adjustment) for point in absent))
-        noun = "variant" if len(absent) == 1 else "variants"
-        lines.append(f"Not drawn: {len(absent)} missing {noun} ({names}); see the table")
-    if panel.max_dropped:
-        lines.append(f"Intervals conditional on the kept resamples: up to {panel.max_dropped} of {n_resamples} "
-                     "dropped; see the caption")
-    return "\n".join(lines)
+def _gap_offset(variant: str) -> float:
+    """Where a variant stands within its route's place on the x axis: the variants side by side, in plan order."""
+    return (VARIANTS.index(variant) - (len(VARIANTS) - 1) / 2.0) * _GAP_DODGE / len(VARIANTS)
 
 
-def _gap_positions(points: Sequence[GapPoint]) -> list[float]:
-    """Row positions top to bottom, with a little space between the single-draw and the ensemble rows."""
-    positions: list[float] = []
-    previous: str | None = None
-    position = 0.0
-    for point in points:
-        if previous is not None:
-            position += 1.0 + (_GROUP_GAP if point.mode != previous else 0.0)
-        positions.append(position)
-        previous = point.mode
-    return positions
+def plot_gap(panels: Sequence[GapPanel]) -> Figure:
+    """Figure 1: the accuracy gap of each variant with its interval bar, the variants side by side per route.
 
-
-def _gap_limit(panels: Sequence[GapPanel]) -> float:
-    values = [abs(value) for panel in panels for point in panel.drawn_points
-              for value in (point.statistic, point.low, point.high) if value is not None]
-    return max(max(values, default=0.0) * 1.1, 0.05)
-
-
-def _draw_gap_panel(axes: Axes, panel: GapPanel, style: FigureTheme, theme: str, limit: float,
-                    n_resamples: int) -> None:
-    from recall_guard.harness.plots import variant_style
-
-    _style_axes(axes, style)
-    axes.grid(axis="y", visible=False)
-    axes.spines["left"].set_visible(False)
-    axes.tick_params(axis="y", length=0)
-    axes.axvline(0.0, color=style.muted, linewidth=1.0, zorder=1, gid=f"gap-zero-{panel.arm}")
-    points = panel.drawn_points
-    positions = _gap_positions(points)
-    labels = []
-    for position, point in zip(positions, points, strict=True):
-        variant = variant_style(point.adjustment, point.mode, theme=theme)
-        labels.append(variant.label)
-        if point.low is not None and point.high is not None:
-            axes.hlines(position, point.low, point.high, colors=variant.color, linewidth=_INTERVAL_PT, zorder=2,
-                        gid=f"gap-interval-{panel.arm}-{point.variant}")
-        marker = {key: value for key, value in variant.marker_kwargs().items() if key != "label"}
-        axes.plot([point.statistic], [position], markersize=_MARKER_PT, markeredgewidth=_MARKER_EDGE_PT, zorder=3,
-                  gid=f"gap-{panel.arm}-{point.variant}", **marker)
-    if points:
-        axes.set_yticks(positions, labels=labels)
-        axes.set_ylim(positions[-1] + 0.7, positions[0] - 0.7)
-    else:
-        axes.set_yticks([])
-        axes.set_ylim(1.0, 0.0)
-        axes.text(0.5, 0.5, "No variant drawn: every variant is missing (see the table)", transform=axes.transAxes,
-                  ha="center", va="center", color=style.secondary_ink)
-    axes.set_xlim(-limit, limit)
-    axes.set_title(_gap_title(panel, n_resamples), loc="left", color=style.ink)
-
-
-def plot_gap(panels: Sequence[GapPanel], *, theme: str = "light") -> Figure:
-    """F1: dot and interval per variant, one panel per arm on a shared x axis (Requirement 10.2).
-
-    ``panels`` are plain data read from the stored analyses (:func:`gap_panel`);
-    ``theme`` is ``light`` or ``dark``. Returns a matplotlib Figure (no pyplot,
-    no global state). Missing variants are not drawn.
+    One panel in the academic style: the x axis is the serving route, the y
+    axis the gap, a variant keeps its marker and its place on every route, and
+    a legend beside the panel names the drawn variants. ``panels`` are plain
+    data read from the stored analyses (:func:`gap_panel`). A missing variant
+    is not drawn and leaves its place empty; nothing is written inside the
+    plot (the caption and the table say what is missing). Returns a matplotlib
+    Figure (no pyplot, no global state).
     """
     import matplotlib
     from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
-    from matplotlib.ticker import MaxNLocator
-
-    from recall_guard.harness.plots import figure_theme, variant_style
 
     panels = _checked_gap_panels(panels)
-    style = figure_theme(theme)
-    n_resamples = int(panels[0].settings["n_resamples"])
-    spans = [(_gap_positions(panel.drawn_points) or [0.0])[-1] + 1.4 for panel in panels]
-    title_lines = [_gap_title(panel, n_resamples).count("\n") + 1 for panel in panels]
-    height = sum(span * _GAP_ROW_IN + _GAP_PANEL_IN + _TITLE_LINE_IN * lines
-                 for span, lines in zip(spans, title_lines, strict=True)) + _GAP_FRAME_IN
-    with matplotlib.rc_context(_theme_rc(theme)):
-        figure = Figure(figsize=(_WIDTH_IN, height), layout="constrained")
-        grid = figure.subplots(len(panels), 1, sharex=True, squeeze=False, gridspec_kw={"height_ratios": spans})
-        limit = _gap_limit(panels)
-        for axes, panel in zip(grid[:, 0], panels, strict=True):
-            _draw_gap_panel(axes, panel, style, theme, limit, n_resamples)
-        bottom = grid[-1, 0]
-        bottom.xaxis.set_major_locator(MaxNLocator(nbins=8, symmetric=True))
-        bottom.set_xlabel("Pre-cutoff minus post-cutoff gap of identifying minus anonymised accuracy (share correct)")
+    with matplotlib.rc_context(figure_rc()):
+        figure = Figure(figsize=_GAP_SIZE_IN, layout="constrained")
+        axes = figure.subplots()
+        axes.axhline(0.0, color=_REFERENCE_GREY, linewidth=_REFERENCE_PT, linestyle="-", zorder=1, gid="gap-zero")
+        for place, panel in enumerate(panels):
+            for point in panel.drawn_points:
+                style = {**series_style(VARIANTS.index(point.variant)), "linestyle": "none"}
+                x = place + _gap_offset(point.variant)
+                if point.low is not None and point.high is not None:
+                    # The interval as stored (a percentile interval need not hold the point), capped at both ends.
+                    axes.plot([x, x], [point.low, point.high], color=style["color"], linestyle="-", marker="_",
+                              markeredgecolor=style["color"], zorder=2,
+                              gid=f"gap-interval-{panel.arm}-{point.variant}")
+                axes.plot([x], [point.statistic], zorder=3, gid=f"gap-{panel.arm}-{point.variant}", **style)
+        axes.set_xlim(-0.5, len(panels) - 0.5)
+        axes.set_xticks(range(len(panels)), labels=[_route_tick(panel.route) for panel in panels])
+        axes.tick_params(axis="x", length=0)
+        axes.set_xlabel("serving route")
+        axes.set_ylabel("accuracy gap, before minus after the cutoff\n(difference in share of months correct)")
         drawn = {point.variant for panel in panels for point in panel.drawn_points}
-        by_mode: dict[str, list[Line2D]] = {"single": [], "ensemble": []}
-        for name in VARIANTS:
-            if name in drawn:
-                mode, adjustment = variant_parts(name)
-                variant = variant_style(adjustment, mode, theme=theme)
-                by_mode[mode].append(Line2D([], [], markersize=_MARKER_PT, markeredgewidth=_MARKER_EDGE_PT,
-                                            **variant.marker_kwargs()))
-        confidence = _percent(float(panels[0].settings["confidence"]))
-        key = Line2D([], [], color=style.secondary_ink, linewidth=_INTERVAL_PT, label=f"{confidence} percent interval")
-        # Three equal columns, filled column by column: single-draw variants, ensemble variants, the interval key;
-        # blank entries pad the shorter columns so each variant stays in its draw mode's column.
-        columns = [by_mode["single"], by_mode["ensemble"], [key]]
-        rows = max(len(column) for column in columns)
-        handles = [handle for column in columns for handle in
-                   column + [Line2D([], [], linestyle="none", marker="none", label=" ")
-                             for _ in range(rows - len(column))]]
-        figure.legend(handles=handles, loc="outside lower center", ncols=3, frameon=False)
-        figure.suptitle("Accuracy gap before and after adjustment (positive control)", x=0.01, ha="left")
-        figure.draw_without_rendering()
+        handles = [Line2D([], [], label=_variant_label(variant),
+                          **{**series_style(index), "linestyle": "none"})
+                   for index, variant in enumerate(VARIANTS) if variant in drawn]
+        figure.legend(handles=handles, loc="outside right upper")
+        lay_out(figure)
     return figure
 
 
-# ---------- F2: reliability of the memorization estimate, from the calibrators ----------
+# ---------- Figure 2: reliability of the recall estimate, from the calibrators ----------
 
 @dataclass(frozen=True)
 class HeldOutReliability:
@@ -812,15 +873,20 @@ def held_out_reliability(probabilities: Sequence[float], labels: Sequence[int], 
 
 @dataclass(frozen=True)
 class ReliabilityPanel:
-    """One calibrator's panel of F2: its arm, kind, source, the variants it serves, and its held-out reliability.
+    """One calibrator of Figure 2: its route, calibration set, evidence mode and its held-out reliability.
 
     ``status`` is ``drawn`` (with ``bins`` and ``ece``), ``insufficient``
     (shown without bins, the reason gives the counts) or ``missing`` (not
-    drawn, with the reason). ``holdout_prompts`` and ``holdout_draws`` give the
+    drawn, with the reason). ``route`` is the serving route
+    (:func:`route_label`), ``served_k`` the number of alternatives it
+    serves per token and ``kept`` the number of alternatives of the next-token
+    vector a calibrator of logits was fitted on (its evidence settings; None
+    for logprobs). ``holdout_prompts`` and ``holdout_draws`` give the
     sample, ``n_memorized`` and ``n_control`` its classes; ``auc`` with
     ``auc_low`` and ``auc_high`` is the held-out AUC with the interval the
-    calibration reports (``auc_method``); ``is_weak`` marks a calibrator the
-    guard does not apply.
+    calibration reports (``auc_method`` at ``auc_confidence`` over
+    ``auc_resamples`` resamples); ``is_weak`` marks a calibrator the guard
+    does not apply. ``variants`` are the variants it serves.
     """
 
     plan_sha256: str
@@ -842,14 +908,20 @@ class ReliabilityPanel:
     auc_low: float | None = None
     auc_high: float | None = None
     auc_method: str | None = None
+    auc_confidence: float | None = None
+    auc_resamples: int | None = None
+    route: str | None = None
+    served_k: int | None = None
+    kept: int | None = None
 
     @property
     def key(self) -> str:
         return f"{self.arm}-{self.kind}-{self.source}"
 
     @property
-    def label(self) -> str:
-        return f"{self.arm} {self.kind} {self.source}"
+    def alternatives(self) -> int | None:
+        """The stored number of alternatives behind the estimate: the served k for logprobs, the kept for logits."""
+        return self.served_k if self.source == TOP_K else self.kept
 
 
 def _served_variants(source: str) -> tuple[str, ...]:
@@ -857,8 +929,13 @@ def _served_variants(source: str) -> tuple[str, ...]:
     return tuple(variant for variant in VARIANTS if variant_parts(variant)[1] == source)
 
 
+def _route_fields(plan: StudyPlan, arm: str) -> dict[str, Any]:
+    arm_plan = plan.arms.arms[arm]
+    return {"role": arm_plan.role, "route": route_label(plan, arm), "served_k": arm_plan.top_logprobs}
+
+
 def reliability_panel(record: CalibrationRecord, plan: StudyPlan) -> ReliabilityPanel:
-    """The F2 panel of one loaded calibrator record of ``plan`` (its retained held-out pairs, gated)."""
+    """The Figure 2 panel of one loaded calibrator record of ``plan`` (its retained held-out pairs, gated)."""
     if not isinstance(record, CalibrationRecord):
         raise TypeError(f"record must be a CalibrationRecord; got {type(record).__name__}")
     if record.plan_sha256 != plan.plan_sha256:
@@ -867,14 +944,16 @@ def reliability_panel(record: CalibrationRecord, plan: StudyPlan) -> Reliability
     source = record.source.value
     mcs = record.calibrator.mcs
     interval = record.holdout_auc_interval_by_prompt
-    method = (f"{_percent(float(interval['confidence']))} percent {interval['method']}, {interval['n_resamples']} "
-              f"resamples, seed {interval['seed']}")
     base: dict[str, Any] = {
-        "plan_sha256": record.plan_sha256, "arm": record.arm, "role": plan.arms.arms[record.arm].role,
+        "plan_sha256": record.plan_sha256, "arm": record.arm, **_route_fields(plan, record.arm),
         "kind": record.kind, "source": source, "variants": _served_variants(source),
         "holdout_prompts": record.counts.get("holdout_prompts"), "is_weak": record.calibrator.is_weak,
         "auc": _real(interval["auc"], "auc"), "auc_low": _real(interval["ci_low"], "ci_low"),
-        "auc_high": _real(interval["ci_high"], "ci_high"), "auc_method": method,
+        "auc_high": _real(interval["ci_high"], "ci_high"), "auc_method": _text(interval["method"], "method"),
+        "auc_confidence": _real(interval["confidence"], "confidence"),
+        "auc_resamples": _count(interval["n_resamples"], "n_resamples"),
+        "kept": None if record.evidence_settings is None else _count(record.evidence_settings.top_k_keep,
+                                                                     "top_k_keep"),
     }
     if mcs.holdout_probabilities is None or mcs.holdout_labels is None:
         return ReliabilityPanel(**base, status=MISSING, reason="the calibrator carries no retained held-out pairs")
@@ -887,7 +966,7 @@ def reliability_panel(record: CalibrationRecord, plan: StudyPlan) -> Reliability
 def reliability_panels(plan: StudyPlan, *, arms: Sequence[str] = DEFAULT_ARMS,
                        kinds: Sequence[str] = CALIBRATION_KINDS,
                        calibrators_dir: str | Path = CALIBRATORS_DIR) -> tuple[ReliabilityPanel, ...]:
-    """Every F2 panel of ``arms`` by kind and estimate source, from the calibrator files of the frozen plan.
+    """Every Figure 2 panel of ``arms`` by kind and estimate source, from the calibrator files of the frozen plan.
 
     A source the arm does not offer is missing with the plan's reason for its
     variants; a calibrator file not written yet is missing with its path under
@@ -903,7 +982,7 @@ def reliability_panels(plan: StudyPlan, *, arms: Sequence[str] = DEFAULT_ARMS,
                 raise FigureError(f"unknown calibration kind {kind!r}; expected one of {list(CALIBRATION_KINDS)}")
             for source in ESTIMATE_SOURCES:
                 variants = _served_variants(source)
-                base = {"plan_sha256": plan.plan_sha256, "arm": arm, "role": arm_plan.role, "kind": kind,
+                base = {"plan_sha256": plan.plan_sha256, "arm": arm, **_route_fields(plan, arm), "kind": kind,
                         "source": source, "variants": variants}
                 if source not in arm_plan.estimate_sources:
                     reasons = dict.fromkeys(arm_plan.missing_variants[variant] for variant in variants)
@@ -936,310 +1015,236 @@ def _checked_reliability_panels(panels: Iterable[ReliabilityPanel]) -> tuple[Rel
     return panels
 
 
+def bin_interval(bin_: ReliabilityBin) -> tuple[float, float]:
+    """The Wilson score interval of a bin's observed share at ``RELIABILITY_CONFIDENCE``; the bin's count is n.
+
+    A bound within ``_BOUND_TOLERANCE`` of 0 or 1 is exactly 0 or 1: the lower
+    bound of a bin without a memorized draw is 0 and the upper bound of a bin
+    of memorized draws only is 1, and floating point leaves a residue there.
+    """
+    memorized = round(bin_.observed_share * bin_.count)
+    interval = wilson_interval(memorized, bin_.count, confidence=RELIABILITY_CONFIDENCE)
+    if interval is None:
+        raise FigureError("a reliability bin without a draw has no interval")
+    low, high = (0.0 if abs(bound) <= _BOUND_TOLERANCE else 1.0 if abs(bound - 1.0) <= _BOUND_TOLERANCE
+                 else float(bound) for bound in interval)
+    return low, high
+
+
+def _kinds(panels: Sequence[ReliabilityPanel]) -> tuple[str, ...]:
+    """The calibration sets of ``panels`` in plan order: one panel of the figure each."""
+    present = {panel.kind for panel in panels}
+    return tuple(kind for kind in CALIBRATION_KINDS if kind in present)
+
+
+def _series_keys(panels: Sequence[ReliabilityPanel]) -> list[tuple[str, str]]:
+    """The (arm, estimate source) pairs with a drawn calibrator, in input order: one marker of the legend each."""
+    return list(dict.fromkeys((panel.arm, panel.source) for panel in panels if panel.status == DRAWN))
+
+
+def _reliability_sizes(drawn: Sequence[ReliabilityPanel], letters: Mapping[str, str]) -> str:
+    """The held-out sample of the drawn calibrators, per panel of the figure.
+
+    Where the calibrators of every panel hold the same sample, one statement
+    per panel ("(a) 24 held-out draws of 12 prompts and (b) 70 of 35, per
+    evidence mode"); otherwise each calibrator by its evidence mode (and its
+    route when several are drawn). The unit is written once.
+    """
+    if not drawn:
+        return "no held-out draws drawn"
+    routes = len({panel.route for panel in drawn})
+    groups = [[panel for panel in drawn if panel.kind == kind] for kind in _kinds(drawn)]
+    shared = all(len({(panel.holdout_draws, panel.holdout_prompts) for panel in group}) == 1 for group in groups)
+    written = False
+
+    def sample(panel: ReliabilityPanel) -> str:
+        nonlocal written
+        text = (f"{panel.holdout_draws} of {panel.holdout_prompts}" if written else
+                f"{panel.holdout_draws} held-out draws of {panel.holdout_prompts} prompts")
+        written = True
+        return text
+
+    def lead(group: Sequence[ReliabilityPanel]) -> str:
+        return f"{letters[group[0].kind]} " if letters else ""
+
+    if shared:
+        text = _listed([f"{lead(group)}{sample(group[0])}" for group in groups])
+        if any(len(group) > 1 for group in groups):
+            text += ", per evidence mode" + (" and route" if routes > 1 else "")
+        return text
+    return "; ".join(lead(group) + ", ".join(
+        f"{EVIDENCE_NAMES.get(panel.source, panel.source)}{f' on {panel.route}' if routes > 1 else ''}: "
+        f"{sample(panel)}" for panel in group) for group in groups)
+
+
+def _where(panel: ReliabilityPanel, letters: Mapping[str, str], routes: int) -> str:
+    """A calibrator in a caption: its evidence mode, its panel when there are several, its route when several."""
+    text = EVIDENCE_NAMES.get(panel.source, panel.source)
+    if letters:
+        text += f" in {letters[panel.kind]}"
+    return text if routes < 2 else f"{text} on {panel.route}"
+
+
 def _reliability_caption(panels: Sequence[ReliabilityPanel]) -> str:
-    shown = [panel for panel in panels if panel.status != MISSING]
-    parts = [
-        "Figure F2. Reliability of the memorization estimate per variant, on held-out calibration draws.",
-        f"Data: the held-out draws each calibrator retained when it was fitted (task 7.6), plan "
-        f"{panels[0].plan_sha256[:12]}: p_memorized of the draws of the held-out prompts (a stratified "
-        f"{HOLDOUT_FRACTION * 100:g} percent split by prompt) against their labels (1 memorized, 0 control); macro is "
-        "the FRED macro calibration set (the calibrator of the positive control), edgar the SEC EDGAR calibration "
-        "releases (the calibrator of the negative control).",
-        "One calibrator per arm, kind and estimate source serves both draw modes of its adjustment (the single-draw "
-        "and the ensemble variant); the no-adjustment variants carry no estimate.",
+    kinds = _kinds(panels)
+    letters = {kind: panel_label(index) for index, kind in enumerate(kinds)} if len(kinds) > 1 else {}
+    drawn = [panel for panel in panels if panel.status == DRAWN]
+    routes = list(dict.fromkeys(panel.route for panel in drawn))
+    sets = _listed([f"{letters[kind]} {KIND_NAMES.get(kind, kind)}" if letters else KIND_NAMES.get(kind, kind)
+                    for kind in kinds])
+    eces = [panel.ece for panel in drawn if panel.ece is not None]
+    if not eces:
+        key = "no calibrator has enough held-out draws to be drawn"
+    elif len(eces) == 1:
+        key = f"expected calibration error {rounded(eces[0])}"
+    else:
+        key = f"expected calibration error {rounded(min(eces))} to {rounded(max(eces))}"
+    where = f" on {routes[0]}" if len(routes) == 1 else ""
+    message = (f"Observed share of memorized draws against mean predicted recall probability in {CALIBRATION_BINS} "
+               f"equal-width bins of held-out draws{where}, for {sets}; {key}")
+    notes = [f"Bars are {_percent(RELIABILITY_CONFIDENCE)} percent Wilson score intervals on a bin's observed share "
+             "(n is the bin's draw count), treating the draws of one prompt as independent."]
+    thin = [_where(panel, letters, len({panel.route for panel in panels})) for panel in panels
+            if panel.status == INSUFFICIENT]
+    if thin:
+        notes.append(f"Not drawn, with fewer than {CALIBRATION_MIN_PER_CLASS} held-out draws in a class: "
+                     f"{'; '.join(thin)}.")
+    absent = [panel for panel in panels if panel.status == MISSING]
+    for route in dict.fromkeys(panel.route for panel in absent):
+        if all(panel.status == MISSING for panel in panels if panel.route == route):
+            notes.append(f"No calibrator of {route} is drawn (reasons in the table).")
+        else:
+            names = [_where(panel, letters, 1) for panel in absent if panel.route == route]
+            notes.append(f"Not drawn on {route} (reasons in the table): {'; '.join(names)}.")
+    return caption(FIGURE_NUMBERS[RELIABILITY], message, n=_reliability_sizes(drawn, letters),
+                   interval=" ".join(notes))
+
+
+def _reliability_notes(panels: Sequence[ReliabilityPanel]) -> tuple[str, ...]:
+    """The lines below Figure 2's table: what a row is and what its ECE and AUC columns are."""
+    shown = [panel for panel in panels if panel.status != MISSING and panel.auc_method is not None]
+    notes = [
+        "Each row of a drawn calibrator is one bin with its draw count.",
+        "The expected calibration error (column ece) is the count-weighted mean absolute difference between the "
+        "mean predicted probability and the observed share over the bins; empty bins are omitted.",
+        "One calibrator serves the single-draw and the ensemble variant of its evidence mode; a weak calibrator is "
+        "marked in the table and is not applied.",
     ]
-    if shown:
-        sizes = "; ".join(f"{panel.label}: n {panel.holdout_draws} held-out draws ({panel.n_memorized} memorized, "
-                          f"{panel.n_control} control) from {panel.holdout_prompts} prompts" for panel in shown)
-        parts.append(f"Sample size: {sizes}; the draws of one prompt are not independent.")
-    parts += [
-        f"Bins: {CALIBRATION_BINS} equal-width bins over [0, 1], empty bins omitted, marker area growing with the "
-        "count printed beside each marker; ECE is the count-weighted mean absolute difference between the mean "
-        "predicted p_memorized and the observed memorized share, with the binning of the local report's held-out "
-        "calibration (recall_guard.harness.local_reporting.held_out_calibration), computed only with at least "
-        f"{CALIBRATION_MIN_PER_CLASS} held-out draws per class, otherwise insufficient; the diagonal marks perfect "
-        "calibration.",
-    ]
-    methods = list(dict.fromkeys(panel.auc_method for panel in shown if panel.auc_method))
-    auc = f"the held-out AUC in the table carries its interval: {'; '.join(methods)}" if methods else (
-        "no held-out AUC interval is recorded")
-    parts.append(f"Interval: none on the bins; {auc}.")
-    parts.append("A weak calibrator (held-out AUC below the plan's min_auc) is not applied by the guard; the table "
-                 "marks it.")
-    insufficient = [(panel.label, _flat(panel.reason)) for panel in panels if panel.status == INSUFFICIENT]
-    if insufficient:
-        parts.append(f"Insufficient (shown, no bins): {_grouped(insufficient)}.")
-    missing = [(panel.label, _flat(panel.reason)) for panel in panels if panel.status == MISSING]
-    if missing:
-        parts.append(f"Missing (not drawn): {_grouped(missing)}.")
-    parts += [f"Sources: {FRED_SOURCE}; {EDGAR_SOURCE}; {FMP_STUDY_SOURCE}.", DERIVED_ONLY]
-    return " ".join(parts)
+    kind = interval_wording((panel.auc_method for panel in shown), "the reliability table")
+    if kind is not None:
+        settings = list(dict.fromkeys((panel.auc_confidence, panel.auc_resamples) for panel in shown))
+        detail = "; ".join(f"{_percent(confidence)} percent {kind} interval ({resamples} resamples)"
+                           for confidence, resamples in settings)
+        notes.append(f"The held-out AUC carries a {detail}.")
+    return tuple(notes)
+
+
+def _reliability_sources(panels: Sequence[ReliabilityPanel]) -> tuple[str, ...]:
+    kinds = {panel.kind for panel in panels}
+    return (*((FRED_SOURCE,) if "macro" in kinds else ()), *((EDGAR_SOURCE,) if kinds - {"macro"} else ()),
+            FMP_STUDY_SOURCE)
 
 
 def reliability_table(panels: Iterable[ReliabilityPanel]) -> FigureTable:
-    """F2's table (one row per bin of a drawn panel, one row per other panel with its reason) and its caption."""
+    """Figure 2's table (one row per bin of a drawn panel, one row per other panel with its reason) and caption."""
     panels = _checked_reliability_panels(panels)
     rows = []
     for panel in panels:
         ece = "insufficient" if panel.status == INSUFFICIENT else _number(panel.ece)
-        head = (panel.arm, panel.role, panel.kind, panel.source, "; ".join(panel.variants), panel.status,
+        head = (panel.arm, panel.route, panel.role, panel.kind, panel.source, "; ".join(panel.variants), panel.status,
                 _number(panel.holdout_prompts), _number(panel.holdout_draws), _number(panel.n_memorized),
                 _number(panel.n_control), ece, _number(panel.auc), _number(panel.auc_low), _number(panel.auc_high),
                 _number(panel.is_weak))
         reason = "" if panel.reason is None else _flat(panel.reason)
         if not panel.bins:
-            rows.append((*head, "", "", "", "", "", reason))
+            rows.append((*head, "", "", "", "", "", "", "", reason))
         for bin_ in panel.bins:
+            low, high = bin_interval(bin_)
             rows.append((*head, _number(bin_.low), _number(bin_.high), _number(bin_.count),
-                         _number(bin_.mean_predicted), _number(bin_.observed_share), reason))
+                         _number(bin_.mean_predicted), _number(bin_.observed_share), _number(low), _number(high),
+                         reason))
     return FigureTable(name=RELIABILITY, caption=_reliability_caption(panels), columns=RELIABILITY_COLUMNS,
-                       rows=tuple(rows))
+                       rows=tuple(rows), notes=_reliability_notes(panels), sources=_reliability_sources(panels))
 
 
-def _reliability_title(panel: ReliabilityPanel) -> str:
-    source = ADJUSTMENT_NAMES.get(panel.source, panel.source)
-    lines = [f"{panel.arm.capitalize()} arm ({panel.role}), {source}", KIND_NAMES.get(panel.kind, panel.kind)]
-    ece = "ECE insufficient" if panel.ece is None else f"ECE {panel.ece:.3f}"
-    lines.append(f"{ece}; n {panel.holdout_draws} draws, {panel.holdout_prompts} prompts")
-    if panel.auc is not None:
-        auc = f"Held-out AUC {panel.auc:.2f}"
-        if panel.auc_low is not None and panel.auc_high is not None:
-            auc += f" [{panel.auc_low:.2f}, {panel.auc_high:.2f}]"
-        lines.append(auc + ("; weak, not applied" if panel.is_weak else ""))
-    return "\n".join(lines)
-
-
-def _area(count: int, largest: int) -> float:
-    return _AREA_MIN + (_AREA_MAX - _AREA_MIN) * count / max(largest, 1)
-
-
-def _count_candidates(x: float, y: float, offset: float) -> list[tuple[float, float, str, str]]:
-    """Label offsets in points with their alignment, in order of preference.
-
-    Straight above (below near the top edge), then the other vertical side,
-    then sideways away from the diagonal (left of a bin on or above it, right
-    of a bin below it), then diagonally away from it, then the other side.
-    """
-    up, down = (0.0, offset, "center", "bottom"), (0.0, -offset, "center", "top")
-    left, right = (-offset, 0.0, "right", "center"), (offset, 0.0, "left", "center")
-    lean = 0.75 * offset
-    up_left, down_right = (-lean, lean, "right", "bottom"), (lean, -lean, "left", "top")
-    vertical = [up, down] if y <= 0.85 else [down, up]
-    away, away_diagonally, other = (left, up_left, right) if y >= x else (right, down_right, left)
-    return [*vertical, away, away_diagonally, other]
-
-
-#: One candidate label position: offset in points from the anchor, then horizontal and vertical alignment.
-Candidate = tuple[float, float, str, str]
-#: A candidate with its anchor in data coordinates: ``(anchor, dx, dy, ha, va)``.
-Placement = tuple[tuple[float, float], float, float, str, str]
-
-
-def _place_text(axes: Axes, text: str, candidates: Iterable[Placement], renderer: Any, *,
-                paths: Sequence[Any], boxes: Sequence[Any], clearance_pt: float = _LINE_CLEARANCE_PT,
-                **style: Any) -> Any:
-    """Annotate ``text`` in the first candidate position clear of every obstacle.
-
-    Runs after the layout is fixed. Each candidate of ``candidates`` (in order
-    of preference: an anchor in data coordinates and an offset in points) is
-    drawn, measured in display coordinates with 1 pt of padding and checked
-    against the display-space line ``paths``, the frame of ``axes`` and the
-    display-space ``boxes`` (markers, labels placed before). The first one
-    clear of all three, with ``clearance_pt`` of space from every line, is
-    kept. Where none is, the candidate kept is off the lines by 1 pt, then
-    inside, then off the boxes, and only then away from the lines, in that
-    order. The label is left out of the layout (placing it moves no panel);
-    ``style`` holds the remaining ``Axes.annotate`` keywords. Returns the
-    annotation kept; :func:`placement_fallback` tells whether it is such a
-    fallback (whether a fallback is needed can depend on the platform's font
-    metrics, so tests require full clearance only of the other labels).
-    """
-    scale = axes.figure.dpi / 72.0
-    frame = axes.bbox
-    best: tuple[tuple[bool, bool, bool, bool], Any] | None = None
-    for xy, dx, dy, ha, va in candidates:
-        label = axes.annotate(text, xy, xytext=(dx, dy), textcoords="offset points", ha=ha, va=va,
-                              annotation_clip=False, in_layout=False, **style)
-        measured = label.get_window_extent(renderer)
-        extent = measured.padded(scale)
-        inside = (frame.x0 <= extent.x0 and extent.x1 <= frame.x1 and frame.y0 <= extent.y0
-                  and extent.y1 <= frame.y1)
-        on_line = any(bool(path.intersects_bbox(extent, filled=False)) for path in paths)
-        near_line = any(bool(path.intersects_bbox(measured.padded(clearance_pt * scale), filled=False))
-                        for path in paths)
-        violations = (on_line, not inside, any(extent.overlaps(box) for box in boxes), near_line)
-        if best is None or violations < best[0]:
-            if best is not None:
-                best[1].remove()
-            best = (violations, label)
-        else:
-            label.remove()
-        if not any(violations):
-            break
-    if best is None:
-        raise FigureError(f"no candidate position for the label {text!r}")
-    # A plain attribute of the artist: it is not drawn and leaves the SVG unchanged.
-    best[1].placement_fallback = any(best[0])
-    return best[1]
-
-
-def placement_fallback(label: Any) -> bool:
-    """Whether a label placed by :func:`_place_text` is the fallback (no candidate was clear of everything)."""
-    return bool(getattr(label, "placement_fallback", False))
-
-
-def _obstacles(axes: Axes) -> tuple[list[Any], list[Any]]:
-    """The drawn lines of ``axes`` as display-space paths and its markers as display-space boxes.
-
-    Lines are every visible ``Line2D`` with a line style; markers are the points
-    of every visible ``Line2D`` with a marker (half the marker size plus half
-    its edge) and of every scatter collection (from its areas in points
-    squared). Call after the layout is fixed.
-    """
-    from matplotlib.collections import PathCollection
-    from matplotlib.transforms import Bbox
-
-    scale = axes.figure.dpi / 72.0
-    paths: list[Any] = []
-    boxes: list[Any] = []
-    for line in axes.lines:
-        if not line.get_visible():
+def _draw_reliability(axes: Axes, kind: str, panels: Sequence[ReliabilityPanel],
+                      series: Sequence[tuple[str, str]]) -> None:
+    """One calibration set: the diagonal, and per drawn calibrator its bins as markers with their interval bars."""
+    axes.plot([0.0, 1.0], [0.0, 1.0], color=_REFERENCE_GREY, linewidth=_REFERENCE_PT, linestyle="-", marker="None",
+              zorder=1, gid=f"reliability-diagonal-{kind}")
+    nan = math.nan
+    for panel in panels:
+        if panel.kind != kind or panel.status != DRAWN:
             continue
-        if line.get_linestyle() not in ("None", "none", "", " "):
-            paths.append(line.get_path().transformed(line.get_transform()))
-        if line.get_marker() not in (None, "None", "none", "", " "):
-            half = (line.get_markersize() + line.get_markeredgewidth()) / 2.0 * scale
-            for cx, cy in line.get_transform().transform(line.get_xydata()):
-                boxes.append(Bbox.from_extents(cx - half, cy - half, cx + half, cy + half))
-    for collection in axes.collections:
-        if not isinstance(collection, PathCollection) or not collection.get_visible():
-            continue
-        sizes = collection.get_sizes()
-        centres = collection.get_offset_transform().transform(collection.get_offsets())
-        for index, (cx, cy) in enumerate(centres):
-            area = float(sizes[index % len(sizes)]) if len(sizes) else 36.0
-            half = (math.sqrt(area) / 2.0 + _MARKER_RING_PT) * scale
-            boxes.append(Bbox.from_extents(cx - half, cy - half, cx + half, cy + half))
-    return paths, boxes
-
-
-def _around(xy: tuple[float, float], offset: float) -> list[Placement]:
-    """Candidates around one anchor, in order: right, above, below, left, then the four diagonals."""
-    lean = 0.75 * offset
-    return [(xy, offset, 0.0, "left", "center"), (xy, 0.0, offset, "center", "bottom"),
-            (xy, 0.0, -offset, "center", "top"), (xy, -offset, 0.0, "right", "center"),
-            (xy, lean, lean, "left", "bottom"), (xy, lean, -lean, "left", "top"),
-            (xy, -lean, lean, "right", "bottom"), (xy, -lean, -lean, "right", "top")]
-
-
-def _place_counts(axes: Axes, panel: ReliabilityPanel, style: FigureTheme, largest: int, renderer: Any) -> None:
-    """Print each bin's count beside its marker, clear of the diagonal, of every marker and of the panel edge.
-
-    Runs after the layout is fixed: each candidate position of
-    :func:`_count_candidates` is measured in display coordinates and the first
-    one clear of all three, with ``_LINE_CLEARANCE_PT`` of space from the
-    diagonal, is kept (:func:`_place_text`). Where none is (a bin in the
-    frame's corner), the candidate kept is off the diagonal by 1 pt, then
-    inside, then off the markers, and only then near the diagonal, in that
-    order. The labels are left out of the layout, so placing them moves no
-    panel, and each sits on a surface-coloured backing above the diagonal and
-    below the markers.
-    """
-    from matplotlib.transforms import Bbox
-
-    diagonal = next(line for line in axes.lines if line.get_gid() == f"reliability-diagonal-{panel.key}")
-    path = diagonal.get_path().transformed(diagonal.get_transform())
-    scale = axes.figure.dpi / 72.0
-    points = [(bin_.mean_predicted, bin_.observed_share) for bin_ in panel.bins]
-    centres = axes.transData.transform(points)
-    halves = [(math.sqrt(_area(bin_.count, largest)) / 2.0 + _MARKER_RING_PT) * scale for bin_ in panel.bins]
-    markers = [Bbox.from_extents(cx - half, cy - half, cx + half, cy + half)
-               for (cx, cy), half in zip(centres, halves, strict=True)]
-    for index, (bin_, (x, y)) in enumerate(zip(panel.bins, points, strict=True)):
-        offset = math.sqrt(_area(bin_.count, largest)) / 2.0 + _COUNT_GAP_PT
-        candidates = [((x, y), dx, dy, ha, va) for dx, dy, ha, va in _count_candidates(x, y, offset)]
-        _place_text(axes, str(bin_.count), candidates, renderer, paths=(path,), boxes=markers, fontsize=6.5,
-                    color=style.secondary_ink, zorder=_COUNT_ZORDER,
-                    gid=f"reliability-count-{panel.key}-{index}",
-                    bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 1.0})
-
-
-def _draw_reliability_panel(axes: Axes, panel: ReliabilityPanel, style: FigureTheme, theme: str,
-                            largest: int) -> None:
-    from recall_guard.harness.plots import variant_style
-
-    _style_axes(axes, style)
-    # Explicit marker and line style: the theme's property cycle would otherwise put markers on the diagonal.
-    axes.plot([0.0, 1.0], [0.0, 1.0], color=style.muted, linewidth=1.0, linestyle="-", marker="none", zorder=1,
-              gid=f"reliability-diagonal-{panel.key}")
-    if panel.status == DRAWN:
-        variant = variant_style(panel.source, "ensemble", theme=theme)
-        sizes = [_area(bin_.count, largest) for bin_ in panel.bins]
-        axes.scatter([bin_.mean_predicted for bin_ in panel.bins], [bin_.observed_share for bin_ in panel.bins],
-                     s=sizes, marker=variant.marker, facecolors=variant.color, edgecolors=style.surface,
-                     linewidths=1.5, zorder=3, clip_on=False, gid=f"reliability-{panel.key}")
-        # The count labels are placed by _place_counts once the layout is fixed.
-    else:
-        # Wrapped by hand: the note must stay inside its panel (a long line would cross the next one).
-        note = textwrap.fill(_flat(panel.reason).removeprefix("insufficient: "), width=34)
-        axes.text(0.5, 0.5, f"Insufficient held-out pairs:\n{note}", transform=axes.transAxes, ha="center",
-                  va="center", fontsize=7, color=style.secondary_ink, zorder=4,
-                  bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 3.0})
+        index = series.index((panel.arm, panel.source))
+        style = {**series_style(index), "linestyle": "none"}
+        shift = (index - (len(series) - 1) / 2.0) * _RELIABILITY_DODGE
+        xs = [bin_.mean_predicted + shift for bin_ in panel.bins]
+        intervals = [bin_interval(bin_) for bin_ in panel.bins]
+        # One capped bar per bin; the breaks keep a bar from joining the next bin.
+        axes.plot([value for x in xs for value in (x, x, nan)],
+                  [value for low, high in intervals for value in (low, high, nan)], color=style["color"],
+                  linestyle="-", marker="_", markeredgecolor=style["color"], zorder=2, clip_on=False,
+                  gid=f"reliability-interval-{panel.key}")
+        axes.plot(xs, [bin_.observed_share for bin_ in panel.bins], zorder=3, clip_on=False,
+                  gid=f"reliability-{panel.key}", **style)
     ticks = [0.0, 0.25, 0.5, 0.75, 1.0]
     axes.set_xlim(-0.04, 1.04)
     axes.set_ylim(-0.04, 1.04)
     axes.set_xticks(ticks, labels=["0", "0.25", "0.5", "0.75", "1"])
     axes.set_yticks(ticks, labels=["0", "0.25", "0.5", "0.75", "1"])
     axes.set_box_aspect(1.0)
-    axes.set_title(_reliability_title(panel), loc="left", color=style.ink)
+    axes.set_xlabel("mean predicted recall probability\nin the bin (probability)")
+    axes.set_ylabel("observed share of memorized draws\nin the bin (share)")
 
 
-def plot_reliability(panels: Sequence[ReliabilityPanel], *, theme: str = "light") -> Figure:
-    """F2: reliability diagrams, one panel per calibrator shown, with counts and ECE (Requirement 10.3).
+def plot_reliability(panels: Sequence[ReliabilityPanel]) -> Figure:
+    """Figure 2: one reliability diagram per calibration set, the held-out bins of each calibrator as markers.
 
-    ``panels`` are plain data (:func:`reliability_panels`); missing panels are
-    not drawn and insufficient ones are drawn without bins. Raises
-    :class:`FigureError` when every panel is missing. Returns a matplotlib
-    Figure (no pyplot, no global state).
+    In the academic style: the x axis is the mean predicted recall probability
+    in a bin, the y axis the observed share of memorized draws in it with its
+    Wilson score interval, the thin grey diagonal is perfect calibration. No
+    line joins the bins, so none bridges an empty bin; the evidence modes
+    differ by marker and stand a small distance apart on the x axis, so that
+    coinciding bins stay visible. With several calibration sets the panels are
+    labelled (a), (b) above their plot areas, and one legend below them names
+    the markers. ``panels`` are plain data (:func:`reliability_panels`); a
+    missing or insufficient calibrator is not drawn, and the caption and the
+    table say why. Raises :class:`FigureError` when every panel is missing.
+    Returns a matplotlib Figure (no pyplot, no global state).
     """
     import matplotlib
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
-
-    from recall_guard.harness.plots import figure_theme
+    from matplotlib.lines import Line2D
 
     panels = _checked_reliability_panels(panels)
-    shown = [panel for panel in panels if panel.status != MISSING]
-    if not shown:
+    if all(panel.status == MISSING for panel in panels):
         raise FigureError("nothing to draw: every reliability panel is missing (see the table)")
-    style = figure_theme(theme)
-    columns = 1 if len(shown) == 1 else 2
-    rows = math.ceil(len(shown) / columns)
-    largest = max((bin_.count for panel in shown for bin_ in panel.bins), default=1)
-    width = _WIDTH_IN if columns == 2 else _WIDTH_IN / 2 + 0.4
-    lines = max(_reliability_title(panel).count("\n") + 1 for panel in shown)
-    panel_height = _RELIABILITY_PANEL_IN + _TITLE_LINE_IN * lines
-    title = ("Reliability of the memorization estimate on held-out calibration draws" if columns == 2
-             else "Reliability of the memorization estimate")
-    with matplotlib.rc_context(_theme_rc(theme)):
-        figure = Figure(figsize=(width, rows * panel_height + _RELIABILITY_FRAME_IN), layout="constrained")
-        grid = figure.subplots(rows, columns, squeeze=False)
-        cells = list(grid.ravel())
-        for axes, panel in zip(cells, shown, strict=False):
-            _draw_reliability_panel(axes, panel, style, theme, largest)
-        for axes in cells[len(shown):]:
-            axes.set_axis_off()
-        figure.supxlabel("Mean predicted p_memorized in the bin")
-        figure.supylabel("Observed share memorized in the bin")
-        figure.suptitle(title, x=0.01, ha="left")
-        # Fix the layout first, then place the count labels against the drawn geometry (a per-figure Agg canvas
-        # measures the text; no pyplot, no backend switch).
-        renderer = FigureCanvasAgg(figure).get_renderer()
-        figure.draw_without_rendering()
-        for axes, panel in zip(cells, shown, strict=False):
-            if panel.status == DRAWN:
-                _place_counts(axes, panel, style, largest, renderer)
-        figure.draw_without_rendering()
+    kinds = _kinds(panels)
+    series = _series_keys(panels)
+    several = len({arm for arm, _ in series}) > 1
+    with matplotlib.rc_context(figure_rc()):
+        width = FIGURE_WIDTH_IN if len(kinds) > 1 else FIGURE_WIDTH_IN / 2.0
+        figure = Figure(figsize=(width, _RELIABILITY_HEIGHT_IN), layout="constrained")
+        cells = list(figure.subplots(1, len(kinds), squeeze=False).ravel())
+        for index, (axes, kind) in enumerate(zip(cells, kinds, strict=True)):
+            _draw_reliability(axes, kind, panels, series)
+            if len(kinds) > 1:
+                label_panel(axes, index)
+        handles = []
+        for index, (arm, source) in enumerate(series):
+            # The stored count of the drawn calibrators of this series; a series whose calibrators state different
+            # counts is labelled without one.
+            found = [panel for panel in panels if (panel.arm, panel.source) == (arm, source) and panel.status == DRAWN]
+            counts = {panel.alternatives for panel in found}
+            name = evidence_label(source, counts.pop() if len(counts) == 1 else None)
+            if several:
+                name = f"{name}, {found[0].route}"
+            handles.append(Line2D([], [], label=name, **{**series_style(index), "linestyle": "none"}))
+        handles.append(Line2D([], [], color=_REFERENCE_GREY, linewidth=_REFERENCE_PT, linestyle="-", marker="None",
+                              label="perfect calibration"))
+        figure.legend(handles=handles, loc="outside lower center", ncols=1 if len(kinds) < 2 else len(handles))
+        lay_out(figure)
     return figure
 
 
@@ -1259,96 +1264,19 @@ def _checked_arms(arms: Sequence[str]) -> tuple[str, ...]:
     return arms
 
 
-#: Decimals of the figure fraction kept when the layout is frozen (about 1e-9 of the figure).
-_LAYOUT_DECIMALS = 9
-
-
-def freeze_layout(figure: Figure) -> Figure:
-    """Fix the last layout of ``figure``: positions rounded, layout engine off; returns the same figure.
-
-    The constrained layout can return axes positions that differ in their last
-    bits from one process to the next, and the SVG clip-path ids hash the
-    unrounded clip rectangles, so the same figure would not be byte-identical
-    across processes. After the final layout pass every axes position and
-    every figure-level text position is rounded to ``_LAYOUT_DECIMALS``
-    decimals of the figure (a shift far below a point) and the layout engine
-    is switched off, so saving draws exactly these positions.
-    """
-    for axes in figure.axes:
-        bounds = [round(float(value), _LAYOUT_DECIMALS) for value in axes.get_position().bounds]
-        axes.set_position(bounds, which="both")
-    texts = [*figure.texts, *(text for text in (getattr(figure, name, None) for name in (
-        "_suptitle", "_supxlabel", "_supylabel")) if text is not None)]
-    for text in texts:
-        x, y = text.get_position()
-        text.set_position((round(float(x), _LAYOUT_DECIMALS), round(float(y), _LAYOUT_DECIMALS)))
-    figure.set_layout_engine("none")
-    return figure
-
-
-def figure_svg(figure: Figure) -> str:
-    """The SVG text of ``figure``: glyphs as paths, a fixed id salt and no timestamp, so it is byte-stable.
-
-    The figure's layout is frozen first (:func:`freeze_layout`), and the file
-    is saved under matplotlib's own defaults (:func:`_default_rc`: no tight
-    bounding box, nothing from the process's global rcParams), so the bytes do
-    not depend on the process that renders it.
-    """
-    import matplotlib
-
-    freeze_layout(figure)
-    buffer = io.StringIO()
-    with matplotlib.rc_context({**_default_rc(), "svg.hashsalt": SVG_HASH_SALT, "svg.fonttype": "path"}):
-        figure.savefig(buffer, format="svg", metadata={"Date": None}, facecolor=figure.get_facecolor(),
-                       edgecolor=figure.get_edgecolor())
-    return buffer.getvalue()
-
-
 def figure_paths(name: str, out_dir: str | Path = FIGURES_DIR) -> dict[str, Path]:
-    """The four files of figure ``name`` in ``out_dir``: light and dark SVG, CSV and markdown, in that order."""
+    """The three files of figure ``name`` in ``out_dir``: the SVG, the CSV and the markdown, in that order."""
     if name not in PUBLISHED_FIGURES:
         raise FigureError(f"unknown figure {name!r}; expected one of {list(PUBLISHED_FIGURES)}")
     out = Path(out_dir)
-    return {"light": out / f"{name}-light.svg", "dark": out / f"{name}-dark.svg", "csv": out / f"{name}.csv",
-            "markdown": out / f"{name}.md"}
+    return {"svg": out / f"{name}.svg", "csv": out / f"{name}.csv", "markdown": out / f"{name}.md"}
 
 
-def figure_texts(name: str, table: FigureTable, draw: Callable[[str], Figure],
+def figure_texts(name: str, table: FigureTable, draw: Callable[[], Figure],
                  out_dir: str | Path = FIGURES_DIR) -> dict[Path, str]:
-    """The four files of one figure as text by path: ``draw(theme)`` rendered for each theme, the table twice."""
-    import matplotlib
-
+    """The three files of one figure as text by path: ``draw()`` rendered as SVG, the table as CSV and markdown."""
     paths = figure_paths(name, out_dir)
-    texts = {}
-    for theme in THEMES:
-        with matplotlib.rc_context(_theme_rc(theme)):
-            texts[paths[theme]] = figure_svg(draw(theme))
-    texts[paths["csv"]] = table.to_csv()
-    texts[paths["markdown"]] = table.to_markdown()
-    return texts
-
-
-def _write_text(path: Path, text: str) -> None:
-    """Write atomically: a crash leaves the previous file or the new one, never half of one."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-        stream.write(text)
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
-
-
-def write_outputs(texts: Mapping[Path, str]) -> tuple[Path, ...]:
-    """Write every file once: all are checked first; the same text is a no-op, a different one refused."""
-    for path, text in texts.items():
-        if path.exists() and path.read_text(encoding="utf-8") != text:
-            raise FigureError(f"refusing to replace the different figure output at {path}; remove the old figure "
-                              "files first")
-    for path, text in texts.items():
-        if not path.exists():
-            _write_text(path, text)
-    return tuple(texts)
+    return {paths["svg"]: figure_svg(draw()), paths["csv"]: table.to_csv(), paths["markdown"]: table.to_markdown()}
 
 
 def render_figures(plan: StudyPlan, *, arms: Sequence[str] = DEFAULT_ARMS, figures: Sequence[str] = FIGURE_NAMES,
@@ -1371,13 +1299,12 @@ def render_figures(plan: StudyPlan, *, arms: Sequence[str] = DEFAULT_ARMS, figur
             continue
         if name == GAP:
             gap = tuple(read_gap_panel(analysis_path(arm, CONFIRMATORY_STAGE, analysis_dir),
-                                       plan_sha256=plan.plan_sha256) for arm in arms)
-            texts.update(figure_texts(GAP, gap_table(gap), lambda theme, panels=gap: plot_gap(panels, theme=theme),
-                                      out_dir))
+                                       plan_sha256=plan.plan_sha256, route=route_label(plan, arm)) for arm in arms)
+            texts.update(figure_texts(GAP, gap_table(gap), lambda panels=gap: plot_gap(panels), out_dir))
         else:
             found = reliability_panels(plan, arms=arms, calibrators_dir=calibrators_dir)
             texts.update(figure_texts(RELIABILITY, reliability_table(found),
-                                      lambda theme, panels=found: plot_reliability(panels, theme=theme), out_dir))
+                                      lambda panels=found: plot_reliability(panels), out_dir))
     return write_outputs(texts)
 
 
@@ -1388,12 +1315,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     plan, a missing or malformed analysis, a foreign calibrator, nothing to
     draw, or a different figure at the output path).
     """
-    parser = argparse.ArgumentParser(description="Accuracy-gap and reliability figures (task 8.2), from the stored "
+    parser = argparse.ArgumentParser(description="Accuracy-gap and reliability figures, from the stored "
                                                  "pre-registered analyses and calibrators; sends no request.")
     parser.add_argument("--plan", type=Path, required=True, help="the frozen plan.json")
     parser.add_argument("--plan-sha256", required=True, help="the plan hash the analyses and calibrators carry")
-    parser.add_argument("--arm", action="append", choices=ARMS, help="an arm to draw (repeatable; default both, "
-                                                                      "serving first)")
+    parser.add_argument("--arm", action="append", choices=ARMS, help="an arm of the plan to draw (repeatable; "
+                                                                      "default both, serving first)")
     parser.add_argument("--figure", action="append", choices=FIGURE_NAMES, help="a figure to render (repeatable; "
                                                                                  "default all)")
     parser.add_argument("--analysis-dir", type=Path, default=ANALYSIS_DIR)
@@ -1415,36 +1342,46 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "ADJUSTMENT_NAMES",
+    "CAPTION_LIMIT",
     "CONVERGENCE",
     "DEFAULT_ARMS",
     "DERIVED_ONLY",
     "DRAWN",
     "DRAWS",
+    "DRAW_SPREAD",
+    "EVIDENCE_NAMES",
     "FIGURES_DIR",
     "FIGURE_NAMES",
+    "FIGURE_NUMBERS",
     "GAP",
     "GAP_COLUMNS",
     "INSUFFICIENT",
+    "INTERVAL_WORDING",
     "MISSING",
     "PUBLISHED_FIGURES",
     "RELIABILITY",
     "RELIABILITY_COLUMNS",
-    "ROLE_PURPOSE",
+    "RELIABILITY_CONFIDENCE",
+    "SVG_HASH_SALT",
     "FigureError",
     "FigureTable",
     "GapPanel",
     "GapPoint",
     "HeldOutReliability",
     "ReliabilityPanel",
+    "bin_interval",
+    "evidence_label",
     "figure_paths",
+    "figure_rc",
     "figure_svg",
-    "freeze_layout",
     "figure_texts",
+    "freeze_layout",
     "gap_panel",
     "gap_table",
     "held_out_reliability",
+    "interval_wording",
+    "lay_out",
     "main",
-    "placement_fallback",
     "plot_gap",
     "plot_reliability",
     "read_gap_panel",
@@ -1452,6 +1389,9 @@ __all__ = [
     "reliability_panels",
     "reliability_table",
     "render_figures",
+    "rounded",
+    "route_label",
+    "short_routes",
     "write_outputs",
 ]
 

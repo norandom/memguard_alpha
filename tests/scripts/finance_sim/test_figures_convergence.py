@@ -18,6 +18,7 @@ import csv
 import io
 import json
 import socket
+from dataclasses import replace
 from types import SimpleNamespace
 
 import matplotlib
@@ -25,18 +26,9 @@ import matplotlib
 matplotlib.use("Agg")
 
 import pytest  # noqa: E402
-from matplotlib.colors import to_hex  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
-from matplotlib.text import Annotation, Text  # noqa: E402
-from matplotlib.transforms import Bbox  # noqa: E402
+from matplotlib.text import Annotation  # noqa: E402
 
-from recall_guard.harness.plots import (  # noqa: E402
-    PAPER_MARKERS,
-    STUDY_PALETTE,
-    STUDY_PALETTE_DARK,
-    THEMES,
-    figure_theme,
-)
 from scripts.finance_sim import convergence as convergence_module  # noqa: E402
 from scripts.finance_sim import figures  # noqa: E402
 from scripts.finance_sim.calibrate import DrawSettings, EvidenceSettings, FitSettings, run_calibration  # noqa: E402
@@ -48,11 +40,13 @@ from scripts.finance_sim.execute import (  # noqa: E402
     macro_items,
     planned_keys,
 )
-from scripts.finance_sim.figures import FigureError, figure_paths  # noqa: E402
+from scripts.finance_sim.figure_style import series_style  # noqa: E402
+from scripts.finance_sim.figures import FigureError, figure_paths, route_label  # noqa: E402
 from scripts.finance_sim.figures_convergence import (  # noqa: E402
     FEATURE_NAMES,
     MASS,
     MAX_LINES,
+    PLOTTED,
     convergence_stage,
     convergence_stages,
     main,
@@ -81,9 +75,22 @@ from tests.scripts.finance_sim.test_convergence import (  # noqa: E402
     macro_row,
     write_evidence_file,
 )
+from tests.scripts.finance_sim.test_figures import (  # noqa: E402
+    assert_academic_figure,
+    assert_academic_svg,
+    assert_caption_numbers,
+    assert_journal_caption,
+    assert_notes,
+    is_grey,
+    legend_labels,
+)
 
 FEATURES = ("loss", "min_k", "min_k_pp", "zlib_ratio", "estimate")
 STAGES = ("full_run", "negative_control")
+ROUTE = route_label(PLAN, "sampling")
+#: The statistic each plotted quantity joins by a line: the mean over draws and the worst draw.
+STATISTICS = {"min_k_pp": ("mean_abs_diff", "max_abs_diff"), "estimate": ("mean_abs_diff", "max_abs_diff"),
+              "mass": ("mean_mass", "min_mass")}
 
 
 @pytest.fixture(autouse=True)
@@ -182,6 +189,12 @@ def row(data: dict, evidence: str, k: int, feature: str) -> dict:
         evidence, k, feature))
 
 
+
+def plotted(feature: str, k: int) -> bool:
+    """Min-K%++ is undefined at k = 1, so that point is not plotted; every other stored point is."""
+    return not (feature == "min_k_pp" and k == 1)
+
+
 # ---------- read, never recomputed ----------
 
 def test_every_number_is_read_from_the_stored_tables_and_nothing_is_recomputed(study, monkeypatch):
@@ -203,13 +216,18 @@ def test_every_number_is_read_from_the_stored_tables_and_nothing_is_recomputed(s
              entry["max_abs_diff"], entry["share_within"]) for entry in data["features"]]
         assert [(entry.evidence, entry.k, entry.mean_mass, entry.min_mass) for entry in stage.mass] == [
             (entry["evidence"], entry["k"], entry["mean_mass"], entry["min_mass"]) for entry in data["mass"]]
-    figure = plot_convergence(found, theme="light")
-    for feature in FEATURES:
+    figure = plot_convergence(found)
+    assert PLOTTED == ("min_k_pp", "estimate", MASS)
+    for feature in ("min_k_pp", "estimate"):
         line = by_gid(figure, f"convergence-{feature}-full_run-mean_abs_diff")
         drawn = [entry for entry in study.data["features"] if entry["evidence"] == "host_top_k"
-                 and entry["feature"] == feature and entry["missing_reason"] is None]
+                 and entry["feature"] == feature and entry["missing_reason"] is None and plotted(feature, entry["k"])]
         assert list(line.get_xdata()) == [entry["k"] for entry in drawn]
         assert list(line.get_ydata()) == [entry["mean_abs_diff"] for entry in drawn]
+    mass = [entry for entry in study.data["mass"] if entry["evidence"] == "host_top_k"
+            and entry["missing_reason"] is None]
+    assert list(by_gid(figure, "convergence-mass-full_run-mean_mass").get_ydata()) == [
+        entry["mean_mass"] for entry in mass]
     changed = copy.deepcopy(study.data)
     row(changed, "host_top_k", 1, "min_k_pp")["mean_abs_diff"] = 0.123456
     rows = csv_rows(figure_table([convergence_stage(changed)]).to_csv())
@@ -217,207 +235,169 @@ def test_every_number_is_read_from_the_stored_tables_and_nothing_is_recomputed(s
         "host_top_k", "1", "min_k_pp"))["mean_abs_diff"] == "0.123456"
 
 
-def test_k_above_the_kept_count_is_named_in_the_caption_not_drawn(study, stages):
+def test_k_above_the_kept_count_is_listed_in_the_table_not_drawn(study, stages):
     assert KEEP == 20 and CONVERGENCE_KS == (1, 5, 10, 20, 50, 100)
-    figure = plot_convergence(stages, theme="light")
-    for line in figure.findobj(Line2D):
-        if (line.get_gid() or "").startswith("convergence-") and "reference" not in line.get_gid() and (
-                "leader" not in line.get_gid()):
-            assert max(line.get_xdata()) <= KEEP, line.get_gid()
+    figure = plot_convergence(stages)
+    drawn = [line for line in figure.findobj(Line2D) if (line.get_gid() or "").startswith("convergence-")]
+    assert len(drawn) == 3 * 6  # three panels, four lines and two markers of the served values each
+    for line in drawn:
+        assert max(line.get_xdata()) <= KEEP, line.get_gid()
     caption = figure_table(stages, PLAN).caption
-    assert "Not drawn: full run, negative control: k 50, 100 above the 20 alternatives the evidence keeps" in caption
+    assert "By construction the differences are zero at k = 20 and, at every k, for " in caption
+    assert "exceed" not in caption and "k = 50" not in caption and " 100" not in caption  # the table has those rows
     rows = csv_rows(figure_table(stages, PLAN).to_csv())
     above = [entry for entry in rows if entry["evidence"] == "host_top_k" and entry["k"] in ("50", "100")]
     assert above and {entry["drawn"] for entry in above} == {"no"}
     assert all("above the 20 alternatives" in entry["missing"] for entry in above)
 
 
-def test_the_served_row_is_a_separate_open_marker_at_the_served_k(study, stages):
+def test_the_served_values_are_one_marker_of_the_mean_at_the_served_k_never_joined_to_the_lines(study, stages):
+    """The mean and the worst draw of the served values coincided as two identical markers; the figure plots the
+    mean only, says so, and leaves the worst draw to the table."""
     served_k = stages[0].served_k
     assert served_k == 5
-    for theme in THEMES:
-        style = figure_theme(theme)
-        figure = plot_convergence(stages, theme=theme)
-        for feature in (*FEATURES, MASS):
-            for stage in STAGES:
-                for statistic in (("mean_mass", "min_mass") if feature == MASS else ("mean_abs_diff",
-                                                                                      "max_abs_diff")):
-                    marker = by_gid(figure, f"convergence-served-{feature}-{stage}-{statistic}")
-                    assert list(marker.get_xdata()) == [served_k] and marker.get_linestyle() == "None"
-                    assert to_hex(marker.get_markerfacecolor()) == to_hex(style.surface)  # open
-                    line = by_gid(figure, f"convergence-{feature}-{stage}-{statistic}")
-                    assert marker.get_marker() == line.get_marker()
-                    assert to_hex(marker.get_markeredgecolor()) == to_hex(line.get_color())
-                    if feature != MASS:
-                        source = stored(study, stage)
-                        expected = row(source, "served_top_k", served_k, feature)[statistic]
-                        assert list(marker.get_ydata()) == [expected]
-            # Only the estimate goes through a calibrator, so only its label names one.
-            expected_label = f"served top-{served_k}" + ("\n(top-k calibrator)" if feature == "estimate" else "")
-            assert by_gid(figure, f"convergence-served-label-{feature}").get_text() == expected_label
-    caption = figure_table(stages, PLAN).caption
-    assert "a different calibrator) is a separate open marker at k = 5, not joined to the lines" in caption
+    figure = plot_convergence(stages)
+    present = gids(figure)
+    rows = csv_rows(figure_table(stages, PLAN).to_csv())
+    for feature in PLOTTED:
+        mean, worst = STATISTICS[feature]
+        for index, stage in enumerate(STAGES):
+            marker = by_gid(figure, f"convergence-served-{feature}-{stage}")
+            assert list(marker.get_xdata()) == [served_k] and marker.get_linestyle() == "None"
+            assert marker.get_marker() == series_style(4 + index)["marker"]
+            for statistic in (mean, worst):
+                line = by_gid(figure, f"convergence-{feature}-{stage}-{statistic}")
+                assert marker.get_marker() != line.get_marker()  # its own shape: not a point of the line
+                assert f"convergence-served-{feature}-{stage}-{statistic}" not in present
+            entry = next(entry for entry in rows if (entry["stage"], entry["evidence"], entry["quantity"]) == (
+                stage, "served_top_k", feature))
+            assert [float(value) for value in marker.get_ydata()] == [pytest.approx(float(entry[mean]), rel=1e-5)]
+            assert entry[worst] != "" and entry["drawn"] == "yes"  # the worst draw stays in the table
+            if feature != MASS:
+                assert list(marker.get_ydata()) == [row(stored(study, stage), "served_top_k", served_k, feature)[mean]]
+    # The legend names the marker; that the worst draw is in the table is a note, not caption text.
+    table = figure_table(stages, PLAN)
+    assert "lone marker" not in table.caption and "worst draw is in the table" not in table.caption
+    assert ("The figure shows the mean of the served row as a separate marker at k = 5; its worst draw is in the "
+            "table.") in table.notes
 
 
-def test_at_most_four_lines_per_panel_each_with_its_own_slot_marker_and_direct_label(stages):
-    for theme in THEMES:
-        figure = plot_convergence(stages, theme=theme)
-        palette = STUDY_PALETTE if theme == "light" else STUDY_PALETTE_DARK
-        for feature in (*FEATURES, MASS):
-            statistics = ("mean_mass", "min_mass") if feature == MASS else ("mean_abs_diff", "max_abs_diff")
-            keys = [f"{stage}-{statistic}" for stage in STAGES for statistic in statistics]
-            lines = [by_gid(figure, f"convergence-{feature}-{key}") for key in keys]
-            assert len(lines) == MAX_LINES == 4
-            assert [to_hex(line.get_color()) for line in lines] == [to_hex(colour) for colour in palette[:4]]
-            assert [line.get_marker() for line in lines] == PAPER_MARKERS[:4]
-            assert [line.get_linestyle() for line in lines] == ["-", "--", "-", "--"]
-            # Identity without colour: marker shape and line style differ for every pair of lines.
-            assert len({(line.get_marker(), line.get_linestyle()) for line in lines}) == 4
-            axes = lines[0].axes
-            labels = " ".join(text.get_text() for text in axes.texts if isinstance(text, Annotation)
-                              and (text.get_gid() or "").startswith(f"convergence-label-{feature}-"))
-            flat = labels.replace("\n", " ")
-            assert "all lines" in flat or all(name in flat for name in (
-                ("macro, mean", "macro, min", "EDGAR, mean", "EDGAR, min") if feature == MASS
-                else ("macro, mean", "macro, max", "EDGAR, mean", "EDGAR, max")))
-            assert to_hex(by_gid(figure, f"convergence-reference-{feature}").get_color()) == to_hex(
-                figure_theme(theme).muted)
-        # Truncation leaves the actual-token features unchanged: one label names all four identical lines.
-        for feature in ("loss", "min_k", "zlib_ratio"):
-            texts = [text.get_text().replace("\n", " ") for text in figure.findobj(Annotation)
-                     if (text.get_gid() or "").startswith(f"convergence-label-{feature}-")]
-            assert texts == ["all lines: 0 at every k"]
-        style = figure_theme(theme)
-        tokens = {to_hex(style.ink), to_hex(style.secondary_ink)}
-        for text in figure.findobj(Text):
-            if text.get_text().strip() and text.get_visible():
-                assert to_hex(text.get_color()) in tokens, text.get_text()
+def test_at_most_four_lines_per_panel_told_apart_by_marker_and_line_style_and_named_in_one_legend(stages):
+    figure = plot_convergence(stages)
+    for feature in PLOTTED:
+        keys = [f"{stage}-{statistic}" for stage in STAGES for statistic in STATISTICS[feature]]
+        lines = [by_gid(figure, f"convergence-{feature}-{key}") for key in keys]
+        assert len(lines) == MAX_LINES == 4
+        for slot, line in enumerate(lines):
+            expected = series_style(slot)
+            assert (line.get_marker(), line.get_linestyle()) == (expected["marker"], expected["linestyle"])
+            assert is_grey(line.get_color()) and is_grey(line.get_markerfacecolor())
+        # Identity without colour: marker shape and line style differ for every pair of lines.
+        assert len({line.get_marker() for line in lines}) == len({line.get_linestyle() for line in lines}) == 4
+    assert legend_labels(figure) == [
+        "macro prompts, mean over draws", "macro prompts, worst draw",
+        "macro prompts, logprobs (top 5), mean",
+        "EDGAR releases, mean over draws", "EDGAR releases, worst draw",
+        "EDGAR releases, logprobs (top 5), mean"]
+    # No direct label on a line or a marker: the only texts in the panels are the panel letters.
+    assert sorted(text.get_text() for text in figure.findobj(Annotation)) == ["(a)", "(b)", "(c)"]
+    for artist in figure.findobj(Line2D):
+        assert is_grey(artist.get_color()) and is_grey(artist.get_markeredgecolor()), artist.get_gid()
+
+
+def test_the_figure_has_the_three_panels_that_carry_information_in_the_academic_style(stages, study):
+    for found in (stages, convergence_stages(PLAN, stages=("full_run",), analysis_dir=study.only)):
+        figure = plot_convergence(found)
+        assert_academic_figure(figure, panels=3)
+        assert figure.get_supxlabel() == "alternatives kept per token, k (count, log scale)"
+        assert [axes.get_ylabel() for axes in figure.axes] == [
+            "absolute difference to logits,\nMin-K%++ (z-score units)",
+            "absolute difference to logits,\nrecall estimate (probability)",
+            "probability mass covered\n(share)"]
+        for axes in figure.axes:
+            assert axes.get_xscale() == "log"
+            assert axes.yaxis.get_offset_text().get_text() == ""  # no exponent text above the axis
+            labels = [label.get_text() for label in axes.get_yticklabels()]
+            assert labels and not any("e" in label.lower() for label in labels), labels  # no scientific notation
+        assert_academic_svg(figures.figure_svg(figure))
+
+
+def test_min_k_plus_plus_is_not_plotted_at_k_1_and_the_table_keeps_the_stored_value_with_a_note(study, stages):
+    """One alternative has no spread, so the stored k = 1 value only reflects the floor on the standard deviation."""
+    figure = plot_convergence(stages)
+    for stage in STAGES:
+        stored_row = row(stored(study, stage), "host_top_k", 1, "min_k_pp")
+        assert stored_row["missing_reason"] is None and stored_row["mean_abs_diff"] is not None
+        for statistic in ("mean_abs_diff", "max_abs_diff"):
+            line = by_gid(figure, f"convergence-min_k_pp-{stage}-{statistic}")
+            assert 1 not in list(line.get_xdata()) and list(line.get_xdata()) == [5, 10, 20]
+        assert 1 in list(by_gid(figure, f"convergence-estimate-{stage}-mean_abs_diff").get_xdata())
+    # The axis is scaled to the plotted points, so the unplotted value does not stretch it.
+    plotted_top = max(entry[statistic] for stage in STAGES for entry in stored(study, stage)["features"]
+                      for statistic in ("mean_abs_diff", "max_abs_diff")
+                      if (entry["evidence"], entry["feature"]) == ("host_top_k", "min_k_pp") and entry["k"] in (5, 10, 20))
+    assert figure.axes[0].get_ylim()[1] <= max(plotted_top * 1.2, 1.0)
+    table = figure_table(stages, PLAN)
+    rows = csv_rows(table.to_csv())
+    at_one = [entry for entry in rows if (entry["evidence"], entry["k"], entry["quantity"]) == (
+        "host_top_k", "1", "min_k_pp")]
+    assert len(at_one) == 2
+    for entry in at_one:
+        expected = row(stored(study, entry["stage"]), "host_top_k", 1, "min_k_pp")["mean_abs_diff"]
+        assert entry["mean_abs_diff"] == figures._number(expected) and entry["drawn"] == "no"
+        assert entry["note"] == ("undefined at k = 1: one alternative has no spread, so the stored value reflects only "
+                                 "the floor on the standard deviation; not plotted")
+    assert "Min-K%++ is not plotted at k = 1 (see the table)." in table.caption
+    assert "undefined" not in table.caption and "spread" not in table.caption  # the reason is the table's note
+
+
+def test_features_that_are_zero_by_construction_are_not_plotted_and_stay_in_the_table(study, stages):
+    figure = plot_convergence(stages)
+    table = figure_table(stages, PLAN)
+    rows = csv_rows(table.to_csv())
+    for feature in ("loss", "min_k", "zlib_ratio"):
+        assert not [gid for gid in gids(figure) if f"-{feature}-" in gid]
+        kept = [entry for entry in rows if entry["quantity"] == feature and entry["evidence"] == "host_top_k"
+                and entry["k"] in ("1", "5", "10", "20")]
+        assert len(kept) == 8 and {entry["drawn"] for entry in kept} == {"no"}
+        assert {entry["note"] for entry in kept} == {"zero at every k by construction; not plotted"}
+        assert {float(entry["mean_abs_diff"]) for entry in kept} == {0.0}
+    assert len(rows) == sum(len(stored(study, stage)["features"]) + len(stored(study, stage)["mass"])
+                            for stage in STAGES)
 
 
 def test_one_stage_draws_two_lines_per_panel(study):
     one = convergence_stages(PLAN, stages=("full_run",), analysis_dir=study.analysis_dir)
-    figure = plot_convergence(one, theme="light")
+    figure = plot_convergence(one)
     found = {gid for gid in gids(figure) if gid.startswith("convergence-min_k_pp-")}
     assert found == {"convergence-min_k_pp-full_run-mean_abs_diff", "convergence-min_k_pp-full_run-max_abs_diff"}
 
 
-def _marker_boxes(axes, scale: float) -> list[Bbox]:
-    boxes = []
-    for line in axes.lines:
-        if line.get_marker() in (None, "None", "none", ""):
-            continue
-        half = (line.get_markersize() + line.get_markeredgewidth()) / 2.0 * scale
-        boxes += [Bbox.from_extents(x - half, y - half, x + half, y + half)
-                  for x, y in line.get_transform().transform(line.get_xydata())]
-    return boxes
-
-
-def test_labels_stay_clear_of_lines_markers_each_other_and_the_panel_frame(stages, study):
-    for found in (stages, convergence_stages(PLAN, stages=("full_run",), analysis_dir=study.only)):
-        for theme in THEMES:
-            figure = plot_convergence(found, theme=theme)
-            with matplotlib.rc_context(figures._theme_rc(theme)):  # measured under the figure's own rcParams
-                figure.draw_without_rendering()
-            scale = figure.dpi / 72.0
-            for axes in figure.axes:
-                labels = [text for text in axes.texts if isinstance(text, Annotation)]
-                lines = [line.get_path().transformed(line.get_transform()) for line in axes.lines
-                         if line.get_linestyle() not in ("None", "none", "")
-                         and "leader" not in (line.get_gid() or "")]
-                markers = _marker_boxes(axes, scale)
-                extents = [label.get_window_extent() for label in labels]
-                frame = axes.bbox
-                for index, (label, extent) in enumerate(zip(labels, extents, strict=True)):
-                    where = (theme, label.get_gid(), label.get_text())
-                    assert (frame.x0 <= extent.x0 and extent.x1 <= frame.x1 and frame.y0 <= extent.y0
-                            and extent.y1 <= frame.y1), where
-                    assert not any(extent.overlaps(box) for box in markers), where
-                    assert not any(extent.overlaps(other) for other in extents[index + 1:]), where
-                    # Line labels sit in a column left of every line; the served and reference labels keep 3 pt from
-                    # every line unless they are the by-design fallback (whose box masks the line).
-                    if not figures.placement_fallback(label):
-                        assert not any(path.intersects_bbox(extent.padded(3.0 * scale), filled=False)
-                                       for path in lines), where
-
-
-def high_mass(data: dict) -> dict:
-    """The full run's table with the probe arm's shape of mass: the first alternative carries most of it.
-
-    The mean lines, the served marker and the whole-vocabulary line meet within
-    a hundredth from k 5 on (the figure published from the real tables), which
-    leaves the labels there no room unless they are placed by their boxes.
-    """
-    other = copy.deepcopy(data)
-    mean = {1: 0.95, 5: 0.99, 10: 0.999, 20: 0.9999, 50: 0.99999, 100: 0.999999}
-    low = {1: 0.1, 5: 0.5, 10: 0.9, 20: 0.98, 50: 0.99, 100: 0.995}
-    for row in other["mass"]:
-        if row["mean_mass"] is not None:
-            row["mean_mass"], row["min_mass"] = mean[row["k"]], low[row["k"]]
-    other["full_mean_mass"], other["full_min_mass"] = 0.99999, 0.99
-    return other
-
-
-def _drawn_marker_boxes(axes, scale: float) -> list[tuple[float, Bbox]]:
-    """Every marker as drawn, with its k: the marker's path at the marker size plus half the edge width.
-
-    A diamond reaches 0.71 of the marker size from its centre, a circle or a
-    square 0.5, so the half-size boxes of :func:`_marker_boxes` understate it.
-    """
-    from matplotlib.markers import MarkerStyle
-
-    boxes = []
-    for line in axes.lines:
-        marker = line.get_marker()
-        if marker in (None, "None", "none", ""):
-            continue
-        style = MarkerStyle(marker)
-        reach = style.get_path().transformed(style.get_transform()).get_extents()
-        size, edge = line.get_markersize() * scale, line.get_markeredgewidth() * scale / 2.0
-        points = line.get_xydata()
-        for (k, _), (cx, cy) in zip(points, line.get_transform().transform(points), strict=True):
-            boxes.append((float(k), Bbox.from_extents(cx + reach.x0 * size - edge, cy + reach.y0 * size - edge,
-                                                      cx + reach.x1 * size + edge, cy + reach.y1 * size + edge)))
-    return boxes
-
-
-def test_direct_labels_never_collide_with_each_other_or_with_the_markers(stages, study, tmp_path):
-    """Every direct label, as drawn with its surface box, keeps 2 pt from every other label's box and from every
-    marker as drawn, the k 1 stack of every line included. Checked on the fixture and on the probe arm's shape of
-    mass, where the published figure printed the whole-vocabulary label over the served label."""
-    shaped = tmp_path / "high-mass"
-    shaped.mkdir()
-    full_run = high_mass(stored(study))
-    for stage, data in (("full_run", full_run), ("negative_control", synthetic_negative_control(full_run))):
-        table_path("sampling", stage, shaped).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
-                                                         encoding="utf-8")
-    for found in (stages, convergence_stages(PLAN, analysis_dir=shaped)):
-        assert [stage.status for stage in found] == ["drawn", "drawn"]
-        for theme in THEMES:
-            figure = plot_convergence(found, theme=theme)
-            with matplotlib.rc_context(figures._theme_rc(theme)):  # measured under the figure's own rcParams
-                figure.draw_without_rendering()
-            scale = figure.dpi / 72.0
-            for axes in figure.axes:
-                labels = [text for text in axes.texts if isinstance(text, Annotation)]
-                boxes = [label.get_bbox_patch().get_window_extent() for label in labels]
-                markers = _drawn_marker_boxes(axes, scale)
-                assert any(k == 1.0 for k, _ in markers) or not labels
-                for index, (label, box) in enumerate(zip(labels, boxes, strict=True)):
-                    where = (theme, label.get_gid(), label.get_text())
-                    for other, other_box in zip(labels[index + 1:], boxes[index + 1:], strict=True):
-                        assert not box.padded(scale).overlaps(other_box.padded(scale)), (where, other.get_text())
-                    touched = [k for k, marker in markers if box.padded(2.0 * scale).overlaps(marker)]
-                    assert not touched, (where, touched)
-
-
 # ---------- statements, refusals, missing stages ----------
 
-def test_the_figure_states_that_values_compare_only_within_one_model_and_set_of_weights(study, stages):
-    caption = figure_table(stages, PLAN).caption
-    assert study.data["comparability"] in caption and DIGEST in caption
-    assert "Values compare only within one model and one set of weights" in caption
-    figure = plot_convergence(stages, theme="light")
-    assert "Values compare only within one model and one set of weights" in figure.get_suptitle()
+def test_the_figure_states_what_is_zero_by_construction_and_that_values_compare_within_one_model(study, stages):
+    table = figure_table(stages, PLAN)
+    caption = table.caption
+    assert (f"Values compare only within one model and one set of weights ({study.data['model']}, weights "
+            f"{DIGEST}).") in table.notes
+    assert plot_convergence(stages).get_suptitle() == ""  # the statement is the table's, not a title
+    # Series that cannot differ by construction are named as such (Requirement 8.7), in one sentence; why they
+    # cannot is a note below the table.
+    assert ("By construction the differences are zero at k = 20 and, at every k, for loss, Min-K% and the zlib ratio "
+            "(not plotted).") in caption
+    assert "truncation" not in caption
+    assert ("Loss, Min-K% and the zlib ratio use only the logprob of each generated token, which truncation keeps "
+            "exact; at k = 20 every kept alternative is used.") in table.notes
+    # The statement follows the stored rows: a table whose loss differs somewhere does not carry it for the loss.
+    changed = copy.deepcopy(study.data)
+    row(changed, "host_top_k", 1, "loss")["max_abs_diff"] = 0.5
+    other_caption = figure_table([convergence_stage(changed)]).caption
+    assert ("By construction the differences are zero at k = 20 and, at every k, for Min-K% and the zlib ratio (not "
+            "plotted). Loss is not plotted either (see the table).") in other_caption
+    changed_rows = csv_rows(figure_table([convergence_stage(changed)]).to_csv())
+    assert {entry["note"] for entry in changed_rows if entry["quantity"] == "loss"
+            and entry["evidence"] == "host_top_k" and entry["drawn"] == "no" and entry["k"] != "50"
+            and entry["k"] != "100"} == {"not plotted"}
     other = copy.deepcopy(synthetic_negative_control(study.data))
     other["model_digest"] = "sha256:" + "0" * 64
     with pytest.raises(FigureError, match="different models or weights"):
@@ -426,32 +406,60 @@ def test_the_figure_states_that_values_compare_only_within_one_model_and_set_of_
         figure_table([stages[0], convergence_stage(other)])
 
 
-def test_the_caption_states_data_sample_size_interval_method_and_sources(study, stages):
-    caption = figure_table(stages, PLAN).caption
+def test_the_caption_is_a_journal_caption_with_the_key_numbers_and_the_sample_size(study, stages):
+    table = figure_table(stages, PLAN)
+    caption = table.caption
     data = study.data
-    assert caption.startswith("Figure F4.")
-    assert "stored convergence tables (task 7.12; read, not recomputed) of the sampling arm (probe role" in caption
-    assert (f"full run: {data['n_draws']} draws of {len(data['items'])} items ({len(data['missing_draws'])} draws and "
-            f"{len(data['missing_items'])} planned items missing), {KEEP} kept alternatives of a {data['n_vocab']}-token "
-            "vocabulary") in caption
-    assert "Interval: none" in caption and data["estimator"] in caption and data["scope"] in caption
-    assert "Moody's" in caption and "BAA10Y" in caption and "SEC EDGAR" in caption
-    assert "Financial Modeling Prep (FMP)" in caption and figures.DERIVED_ONLY in caption
-    assert "macro is the full run" in caption and "EDGAR the negative control" in caption
+    assert_journal_caption(caption, 4)
+    at_served = [(row(stored(study, stage), "host_top_k", 5, "estimate")["mean_abs_diff"],
+                  next(entry["mean_mass"] for entry in stored(study, stage)["mass"]
+                       if (entry["evidence"], entry["k"]) == ("host_top_k", 5))) for stage in STAGES]
+    difference, mass = max(value for value, _ in at_served), min(value for _, value in at_served)
+    # The label of logits is built from the kept count the analysis stores: the estimate uses the kept top
+    # alternatives of the next-token vector, never the whole vector.
+    assert {stage.kept for stage in stages} == {data["kept"]} == {KEEP}
+    assert figures.evidence_label("full_distribution", KEEP) == f"logits (top {KEEP} of the next-token vector)"
+    assert (f"Figure 4. The recall estimate from the first k alternatives per token is within "
+            f"{figures.rounded(difference)} on average of that from logits (top {KEEP} of the next-token vector) at "
+            f"k = 5, where the mean mass covered is at least {figures.rounded(mass)}. ") in caption
+    assert len(caption) < 575
+    assert "full next-token" not in table.to_markdown() and "served top-" not in table.to_markdown()
+    assert figure_table([replace(stage, kept=None) for stage in stages]).caption.count(
+        "logits (kept alternatives of the next-token vector)") == 1
+    assert (f" n = {data['n_draws']} draws of {len(data['items'])} macro prompts and {data['n_draws']} draws of "
+            f"{len(data['items'])} EDGAR releases on {ROUTE}. ") in caption
+    assert "(a) Min-K%++, (b) the recall estimate and (c) the mass covered; no interval is drawn." in caption
+    assert caption.index(" n = ") < caption.index("no interval is drawn")
+    # Every number of the caption is a value of the table below it; the number of prompts is the length of the
+    # stored table's items.
+    assert_caption_numbers(table, stored=(len(data["items"]),))
+    # What the earlier caption carried from the analysis's own notes is not caption matter.
+    assert data["estimator"] not in table.to_markdown() and data["scope"] not in table.to_markdown()
+    markdown = table.to_markdown()
+    assert "Moody's" in markdown and "BAA10Y" in markdown and "SEC EDGAR" in markdown
+    assert "Financial Modeling Prep (FMP)" in markdown
+    assert_notes(table)
+    # Without the plan there is no route to name; the caption is still a caption.
+    bare = figure_table(stages).caption
+    assert ROUTE not in bare and f" n = {data['n_draws']} draws of {len(data['items'])} macro prompts and " in bare
+    assert_journal_caption(bare, 4)
 
 
-def test_a_missing_stage_or_an_arm_without_full_distribution_evidence_is_listed_not_drawn(study):
+def test_a_missing_stage_or_a_route_without_logits_is_listed_not_drawn(study):
     found = convergence_stages(PLAN, analysis_dir=study.only)
     assert [stage.status for stage in found] == ["drawn", "missing"]
     assert "no convergence table at convergence-sampling-negative_control.json" in found[1].reason
     table = figure_table(found, PLAN)
-    assert "Missing (not drawn): negative control: no convergence table" in table.caption
+    assert "EDGAR releases are not drawn (see the table)." in table.caption
+    assert_journal_caption(table.caption, 4)
     rows = csv_rows(table.to_csv())
     assert [entry for entry in rows if entry["stage"] == "negative_control"] == [
-        {**{column: "" for column in rows[0]}, "arm": "sampling", "role": "probe", "stage": "negative_control",
-         "drawn": "no", "missing": found[1].reason}]
-    figure = plot_convergence(found, theme="dark")
+        {**{column: "" for column in rows[0]}, "arm": "sampling", "route": ROUTE, "role": "probe",
+         "stage": "negative_control", "drawn": "no", "missing": found[1].reason}]
+    figure = plot_convergence(found)
     assert not [gid for gid in gids(figure) if "negative_control" in gid]
+    assert legend_labels(figure) == ["macro prompts, mean over draws", "macro prompts, worst draw",
+                                     "macro prompts, logprobs (top 5), mean"]
     serving = convergence_stages(PLAN, arm="serving", analysis_dir=study.analysis_dir)
     assert {stage.status for stage in serving} == {"missing"}
     assert {stage.reason for stage in serving} == {SERVING_FULL_DISTRIBUTION_REASON}
@@ -481,15 +489,12 @@ def test_tables_of_another_schema_plan_or_shape_are_refused(study, tmp_path):
 
 # ---------- outputs ----------
 
-def test_the_figure_is_written_in_light_and_dark_svg_with_a_csv_and_markdown_once(study, tmp_path):
+def test_the_figure_is_written_as_one_svg_with_a_csv_and_markdown_once(study, tmp_path):
     out = tmp_path / "assets"
     written = render_convergence(PLAN, analysis_dir=study.analysis_dir, out_dir=out)
     assert list(written) == list(figure_paths("convergence", out).values())
-    assert sorted(path.name for path in out.iterdir()) == ["convergence-dark.svg", "convergence-light.svg",
-                                                           "convergence.csv", "convergence.md"]
-    light = figure_paths("convergence", out)["light"].read_text(encoding="utf-8")
-    dark = figure_paths("convergence", out)["dark"].read_text(encoding="utf-8")
-    assert light != dark and "<dc:date>" not in light and STUDY_PALETTE[3] in light and STUDY_PALETTE_DARK[3] in dark
+    assert sorted(path.name for path in out.iterdir()) == ["convergence.csv", "convergence.md", "convergence.svg"]
+    assert_academic_svg(figure_paths("convergence", out)["svg"].read_text(encoding="utf-8"))
     before = {path: path.read_bytes() for path in written}
     assert render_convergence(PLAN, analysis_dir=study.analysis_dir, out_dir=out) == written
     assert {path: path.read_bytes() for path in written} == before
@@ -497,9 +502,12 @@ def test_the_figure_is_written_in_light_and_dark_svg_with_a_csv_and_markdown_onc
         render_convergence(PLAN, stages=("full_run",), analysis_dir=study.analysis_dir, out_dir=out)
     assert {path: path.read_bytes() for path in written} == before
     markdown = figure_paths("convergence", out)["markdown"].read_text(encoding="utf-8").splitlines()
+    assert markdown[0].startswith("Figure 4. ")
     rows = list(csv.reader(io.StringIO(figure_paths("convergence", out)["csv"].read_text(encoding="utf-8"))))
     assert markdown[1] == "" and markdown[3] == "|" + "|".join("---" for _ in rows[0]) + "|"
-    assert [[value.strip() for value in line.strip("|").split(" | ")] for line in [markdown[2], *markdown[4:]]] == rows
+    end = 3 + len(rows)
+    assert [[value.strip() for value in line.strip("|").split(" | ")] for line in [markdown[2], *markdown[4:end]]] == rows
+    assert markdown[end] == "" and markdown[-1] == figures.DERIVED_ONLY and markdown[-2].startswith("Sources: ")
 
 
 def test_the_svg_bytes_do_not_depend_on_the_process_that_renders_them(stages, tmp_path):
@@ -508,12 +516,13 @@ def test_the_svg_bytes_do_not_depend_on_the_process_that_renders_them(stages, tm
 
     first, second = svg_hashes_in_processes(stages, "figures_convergence", "plot_convergence",
                                             tmp_path / "convergence.pickle", runs=2)
-    assert first == second and len(first) == 2 and first[0] != first[1], (first, second)
+    assert first == second and len(first) == 1 and len(first[0]) == 64, (first, second)
 
 
 def test_the_render_does_not_depend_on_the_processs_global_rc_params(stages, study):
     """The paper style's pdf renderer and tight bounding box, or another font, dpi or marker default left in the
-    process by an earlier test, change nothing: the figure renders under matplotlib's defaults plus the theme."""
+    process by an earlier test, change nothing: the figure renders under matplotlib's defaults plus the academic
+    style."""
     import hashlib
 
     from tests.scripts.finance_sim.test_figures import foreign_rc_params
@@ -521,8 +530,8 @@ def test_the_render_does_not_depend_on_the_processs_global_rc_params(stages, stu
     only = convergence_stages(PLAN, stages=("full_run",), analysis_dir=study.only)
 
     def hashes() -> list[str]:
-        return [hashlib.sha256(figures.figure_svg(plot_convergence(found, theme=theme)).encode("utf-8")).hexdigest()
-                for found in (stages, only) for theme in THEMES]
+        return [hashlib.sha256(figures.figure_svg(plot_convergence(found)).encode("utf-8")).hexdigest()
+                for found in (stages, only)]
 
     clean = hashes()
     with foreign_rc_params():
@@ -546,8 +555,7 @@ def test_the_command_renders_from_the_stored_tables_and_refuses_another_plan(stu
     out = tmp_path / "assets"
     common = ["--plan", str(plan_path), "--analysis-dir", str(study.analysis_dir), "--out-dir", str(out)]
     assert main([*common, "--plan-sha256", PLAN.plan_sha256]) == 0
-    assert sorted(path.name for path in out.iterdir()) == ["convergence-dark.svg", "convergence-light.svg",
-                                                           "convergence.csv", "convergence.md"]
+    assert sorted(path.name for path in out.iterdir()) == ["convergence.csv", "convergence.md", "convergence.svg"]
     assert main([*common, "--plan-sha256", PLAN.plan_sha256]) == 0
     assert main([*common, "--plan-sha256", "0" * 64]) == 2
     assert main([*common[:-1], str(tmp_path / "serving"), "--plan-sha256", PLAN.plan_sha256, "--arm",
@@ -555,4 +563,4 @@ def test_the_command_renders_from_the_stored_tables_and_refuses_another_plan(stu
     assert not (tmp_path / "serving").exists()
     only = tmp_path / "only"
     assert main([*common[:-1], str(only), "--plan-sha256", PLAN.plan_sha256, "--stage", "full_run"]) == 0
-    assert (only / "convergence-light.svg").exists()
+    assert sorted(path.name for path in only.iterdir()) == ["convergence.csv", "convergence.md", "convergence.svg"]

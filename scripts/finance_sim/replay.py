@@ -7,8 +7,9 @@ alone, with no model request: both pre-registered analyses (task 7.10
 the negative-control report (task 7.9
 :func:`~scripts.finance_sim.negative_control.negative_control_from_records`)
 and the convergence analysis (task 7.12
-:func:`~scripts.finance_sim.convergence.convergence_from_records`), then the four
-figures of tasks 8.2 and 8.3 (:func:`~scripts.finance_sim.figures.render_figures`,
+:func:`~scripts.finance_sim.convergence.convergence_from_records`), then the five
+figures (the accuracy gap and the reliability diagram, the first-draw figure with the
+draw-spread figure, and the convergence figure: :func:`~scripts.finance_sim.figures.render_figures`,
 :func:`~scripts.finance_sim.figures_draws.render_draws` on the probe arm with the
 frozen example rule, :func:`~scripts.finance_sim.figures_convergence.render_convergence`),
 all written into one fresh output root.
@@ -16,8 +17,8 @@ all written into one fresh output root.
 Layout under the output root (design: File Structure Plan and the Figures
 layout). The analysis JSON documents carry per-item rows and stay private, so
 they go to ``runs/finance-sim/analysis/`` with the markdown each writer puts
-beside them; the published files go to ``docs/assets/finance-sim/``: the four
-figures (light and dark SVG, CSV and markdown each) and one published copy of
+beside them; the published files go to ``docs/assets/finance-sim/``: the five
+figures (one SVG in the academic style, CSV and markdown each) and one published copy of
 every analysis markdown with the sources above it (Moody's for BAA10Y, FMP for
 the prices, SEC EDGAR for the releases). The root also gets ``replay.json``,
 the manifest with the SHA-256 of every file, the matplotlib version and the
@@ -137,12 +138,12 @@ MIN_VALUE_PROBE = 8
 MIN_TEXT_PROBE = 24
 #: Consecutive values of one series probed together, and how many number tokens apart they may stand.
 SERIES_WINDOW, SERIES_SPAN = 3, 80
-#: The published copy of an analysis markdown carries this above the table.
+#: The published copy of an analysis markdown carries this above the table. It is published text: the sources, what
+#: was done and what stays private, with no task number, script path or private path.
 PUBLISHED_HEADER = (
-    f"Sources: {FRED_SOURCE}; {FMP_SOURCE}; {EDGAR_SOURCE}. Replayed offline from the recorded draws and scores by "
-    "scripts/finance_sim/replay.py (task 8.4) with no model request; the JSON document with the per-item rows stays "
-    "private under runs/finance-sim/analysis/. Derived statistics only: no reply text, no realized return and no "
-    "raw licensed series.")
+    f"Sources: {FRED_SOURCE}; {FMP_SOURCE}; {EDGAR_SOURCE}. Replayed offline from the recorded draws and scores with "
+    "no model request; the per-item rows stay private. Derived statistics only: no reply text, no realized return "
+    "and no raw licensed series.")
 _SVG_CREATOR = re.compile(r"<dc:title>(Matplotlib v[^<]*)</dc:title>")
 #: A number standing on its own: not part of an identifier, a hash, a date or a longer number.
 _NUMBER = re.compile(r"(?<![0-9A-Za-z._-])-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?![0-9A-Za-z._])")
@@ -609,7 +610,7 @@ def check_guard_inputs(guard: GuardProbes) -> None:
 
 
 def replay(inputs: ReplayInputs, out_root: str | Path, *, require_guard: bool = False) -> ReplayOutput:
-    """Rebuild the analyses, the negative-control report, the convergence tables and the four figures offline.
+    """Rebuild the analyses, the negative-control report, the convergence tables and the five figures offline.
 
     Order: the matplotlib pin, the licensing probes (with ``require_guard``,
     every private source must be there: :func:`check_guard_inputs`) and the
@@ -717,7 +718,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     parser = argparse.ArgumentParser(description="Offline worked-example replay (task 8.4): both pre-registered "
                                                  "analyses, the negative-control report, the convergence tables and "
-                                                 "the four figures from recorded draws and scores; sends no request.")
+                                                 "the five figures from recorded draws and scores; sends no request.")
     parser.add_argument("--plan", type=Path, required=True, help="the frozen plan.json")
     parser.add_argument("--plan-sha256", required=True, help="the plan hash the records carry")
     parser.add_argument("--out-root", type=Path, required=True,

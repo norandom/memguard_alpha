@@ -1,51 +1,53 @@
-"""Draw-distribution figure F3 of the worked example (task 8.3; Requirements 10.4 and 10.6).
+"""First-draw figure (Figure 3) and draw-spread figure (Figure 8) of the worked example.
 
-No request is sent and no stored statistic is recomputed. The figure reads two
+No request is sent and no stored statistic is recomputed. Both figures read two
 stored outputs of one arm and one analysed stage (``full_run``, the positive
 control, by default; ``negative_control`` also works):
 
-- the item results of the 7.7 execution
+- the stored item results
   (``runs/finance-sim/results/<arm>/<stage>/<item>.<rendering>.json``, loaded
   with :func:`~scripts.finance_sim.execute.load_result`), for the per-draw
   values of the example item and the per-draw values behind the
   exchangeability baseline;
-- the ensemble metrics of task 7.11
+- the stored ensemble metrics
   (``runs/finance-sim/analysis/ensemble-<arm>-<stage>.json``,
   :func:`~scripts.finance_sim.ensemble_metrics.metrics_path`), for every
   first-draw statistic: each item's first-draw mid-rank, category and verdict,
   the first-draw rate with its Wilson interval, the frozen band, and the items
   whose half-ensemble decisions were unresolved. These are read, never
   recomputed; where both files carry a value (the first draw's mid-rank and
-  category) they must agree, or the figure is refused.
+  category) they must agree, or the figures are refused.
 
-Panels (design: Figures, F3; strip plots, one axis each):
+Each figure carries one message, in one panel, in the one academic style
+(:mod:`scripts.finance_sim.figure_style`): both axes labelled with the quantity
+and its unit, two series in one legend, nothing written inside the plot area.
 
-1. The example item: the summary value of each parsed draw (the defensive
-   spread, or the outlook on the negative control) with the median and the
-   interquartile band of the parsed draws, the first draw marked with a
-   distinct marker and a label, and the ensemble results as stored: the
-   consensus (``ensemble_none``) and the adjusted ensemble decisions.
-2. The same item: ``p_memorized`` of each draw per estimate source the arm
-   computes, with median and band, the first draw marked, and each ensemble
-   variant's ``p_memorized`` as stored.
-3. Every analysed item: the first draw's mid-rank among its ensemble's parsed
-   draws against the frozen band (bounds inclusive), one row per rendering,
-   marker area by the count printed beside it; items whose half-ensemble
-   decisions 7.11 lists as unresolved sit in a row of their own.
-4. The stored first-draw rate (the share of items whose first draw is off)
-   with its interval, overall and per rendering, against the exchangeability
-   baseline: the share expected off if the first draw were exchangeable with
-   the other draws of its ensemble (per item, the share of its parsed draws
-   that would be off in the first draw's place, averaged over the items). With
-   8 distinct values about half of the mid-ranks fall outside [0.25, 0.75], so
-   the reference is not zero.
+Figure 3 ``draws``: how often the first draw of an ensemble differs from what
+the ensemble gives. The stored first-draw rate (the share of items whose first
+draw is off: its category differs from the ensemble's or its mid-rank among
+the ensemble's draws lies outside the frozen band) with its Wilson interval
+bar, for all items and per prompt version, beside the exchangeability
+baseline: the share expected off if the first draw were exchangeable with the
+other draws of its ensemble (per item, the share of its parsed draws that
+would be off in the first draw's place, averaged over the items). With 8
+distinct values about half of the mid-ranks fall outside [0.25, 0.75], so the
+baseline is not zero.
+
+Figure 8 ``draw-spread``: how much repeated answers to one prompt vary. Every
+parsed draw of the example item is one point (its summary value: the defensive
+spread, or the outlook on the negative control), tied draws side by side so
+that each stays visible, beside the stored ensemble decisions: the ensemble
+without adjustment and the adjusted ensembles. The value axis fits the draws,
+so their spread is not flattened.
 
 The example item is the first item in plan order with a decided first draw and
 a consensus summary value unless one is given (the plan freezes no example
-item). Outputs, style and the write-once rule are
-those of :mod:`scripts.finance_sim.figures`: ``draws-light.svg``,
-``draws-dark.svg``, ``draws.csv`` and ``draws.md``; derived statistics only.
-Matplotlib is imported inside the functions that draw.
+item). The table of Figure 3 (``draws.csv``, ``draws.md``) also keeps what the
+earlier four-panel figure tabulated and no figure draws any more: the example
+item's recall estimates per draw and the number of items at each first-draw
+mid-rank. Outputs and the write-once rule are those of
+:mod:`scripts.finance_sim.figures`; one render writes both figures; derived
+statistics only. Matplotlib is imported inside the functions that draw.
 """
 
 from __future__ import annotations
@@ -53,11 +55,11 @@ from __future__ import annotations
 import argparse
 import math
 import sys
-import textwrap
 from collections import Counter
 from collections.abc import Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from recall_guard.core.distribution import summarize_distribution
@@ -70,6 +72,7 @@ from scripts.finance_sim.ensemble_metrics import (
     FIRST_DRAW_RATE,
     HALF_SUMMARY,
     METRICS_SCHEMA,
+    WILSON_METHOD,
     metrics_path,
 )
 from scripts.finance_sim.execute import (
@@ -82,37 +85,39 @@ from scripts.finance_sim.execute import (
     load_result,
     result_path,
 )
+from scripts.finance_sim.figure_style import (
+    FIGURES_DIR,
+    FigureError,
+    caption,
+    figure_rc,
+    lay_out,
+    series_style,
+    write_outputs,
+)
 from scripts.finance_sim.figures import (
     _HEX64,
-    _RC,
-    _TITLE_LINE_IN,
-    _WIDTH_IN,
     ADJUSTMENT_NAMES,
-    DERIVED_ONLY,
+    DRAW_SPREAD,
     DRAWS,
     EDGAR_SOURCE,
+    EVIDENCE_NAMES,
     EXIT_REFUSED,
     EXIT_WRITTEN,
-    FIGURES_DIR,
+    FIGURE_NUMBERS,
     FMP_STUDY_SOURCE,
     FRED_SOURCE,
-    ROLE_PURPOSE,
-    FigureError,
     FigureTable,
-    _around,
     _count,
     _flat,
     _number,
-    _obstacles,
     _percent,
-    _place_text,
     _read_json,
     _real,
-    _style_axes,
     _text,
-    _theme_rc,
     figure_texts,
-    write_outputs,
+    interval_wording,
+    rounded,
+    route_label,
 )
 from scripts.finance_sim.limits import ARMS, SAMPLING_ARM
 from scripts.finance_sim.pilot import CONFIRMATORY_STAGE
@@ -122,39 +127,46 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-    from recall_guard.harness.plots import FigureTheme
-
-#: The arm F3 draws by default: the probe arm samples at temperature 0.7, the serving arm's draws agree by design.
+#: The arm both figures draw by default: it samples at a temperature above zero, the other arm's draws agree by
+#: design.
 DEFAULT_DRAWS_ARM = SAMPLING_ARM
 #: Parsed draws the consensus split check needs (``EnsembleSpec.min_cluster_draws``); fewer cannot be unresolved.
 SPLIT_CHECK_MIN_DRAWS: int = next(item.default for item in fields(EnsembleSpec) if item.name == "min_cluster_draws")
-#: What the summary value of each item kind is, for the axis and the caption.
+#: What the summary value of each item kind is, for the caption, and the label of its axis with the unit.
 SUMMARY_NAMES: Mapping[str, str] = {
-    MACRO: "defensive spread ((gold + cash) minus (equity + tech) tilt of the loadings)",
-    "edgar": "outlook",
+    MACRO: "defensive spread, the gold and cash loadings minus the equity and technology loadings",
+    "edgar": "outlook score of the release",
 }
+SUMMARY_AXES: Mapping[str, str] = {
+    MACRO: "defensive spread\n(difference of loadings)",
+    "edgar": "outlook (score)",
+}
+#: The interval method recorded when the stored rate carries no interval.
+NO_INTERVAL = "no interval was computed"
+#: What the caption calls the interval of the stored first-draw rate, by the method the metrics state on it.
+RATE_INTERVALS: Mapping[str, str] = MappingProxyType({WILSON_METHOD: "Wilson score"})
 DRAWS_COLUMNS: tuple[str, ...] = (
-    "row", "arm", "role", "stage", "item_id", "rendering", "quantity", "draw_index", "value", "first_draw", "median",
-    "q25", "q75", "variant", "status", "first_category", "consensus_category", "first_draw_rank", "outside_band",
-    "category_differs", "off", "halves", "baseline_off", "baseline_outside", "group", "n", "count_off",
-    "count_outside", "count_differs", "count_no_category", "rate", "interval_low", "interval_high", "reason")
+    "row", "arm", "route", "role", "stage", "item_id", "rendering", "quantity", "draw_index", "value", "first_draw",
+    "median", "q25", "q75", "variant", "status", "first_category", "consensus_category", "first_draw_rank",
+    "outside_band", "category_differs", "off", "halves", "baseline_off", "baseline_outside", "group", "n",
+    "count_off", "count_outside", "count_differs", "count_no_category", "rate", "interval_low", "interval_high",
+    "reason")
+#: The table of Figure 8: the example item's draws, their quartiles and the ensemble decisions.
+DRAW_SPREAD_COLUMNS: tuple[str, ...] = (
+    "row", "arm", "route", "role", "stage", "item_id", "rendering", "quantity", "draw_index", "value", "first_draw",
+    "median", "q25", "q75", "n", "variant", "status", "reason")
 IN_HALVES = "in the half-ensemble statistic"
 EXAMPLE_DEFAULT = ("the first item in plan order with a decided first draw and a consensus summary value (the plan "
                    "freezes no example item)")
-_ROW_IN, _PANEL_IN, _FRAME_IN = 0.27, 0.42, 1.0
-#: Panel 3 rows are taller: a first draw whose category differs sits above the others of its rank.
-_RANK_ROW_IN, _DIFFERS_OFFSET = 0.46, 0.34
-_DRAW_PT, _FIRST_PT, _ENSEMBLE_PT, _EDGE_PT = 5.5, 8.0, 7.0, 1.2
-_AREA_MIN, _AREA_MAX = 30.0, 150.0
-#: A stack keeps within this many rows of its row's centre, its markers at least one diameter apart (10 percent
-#: spare); a group that does not fit is one open marker with its count, the first draw ``_APART`` rows above it.
-_SPREAD = 0.3
-_STACK_STEP = 1.1 * (_DRAW_PT + _EDGE_PT) / (_ROW_IN * 72.0)
-_APART = 0.2
-#: Draws closer than this share of the axis span form one group (above one marker width on any panel width).
-_TIE_FRACTION = 0.026
-_LABEL_PT = 6.5
-_TITLE_CHARS = 74
+#: Figure sizes in inches (width, height): one panel each, the legend below it.
+_RATE_SIZE_IN, _SPREAD_SIZE_IN = (4.8, 3.5), (5.4, 3.5)
+#: In Figure 3 the observed share stands this far left of its place and the expected share this far right of it.
+_RATE_DODGE = 0.12
+#: In Figure 8 tied draws stand side by side: this far apart, within this width of the place of the single draws;
+#: draws closer than this share of the range of the draws count as tied.
+_SPREAD_STEP, _SPREAD_WIDTH, _TIE_SHARE = 0.07, 0.6, 0.03
+#: The value axis of Figure 8 is at least this wide, so identical draws do not set a degenerate axis.
+_SPREAD_MIN_RANGE = 0.1
 
 
 # ---------- plain data ----------
@@ -163,7 +175,7 @@ _TITLE_CHARS = 74
 class DrawStrip:
     """One quantity of the example item, per draw index (None for an unparsed draw or a missing estimate).
 
-    ``adjustment`` picks the marker (no adjustment for the summary value, the
+    ``adjustment`` names the quantity (no adjustment for the summary value, the
     estimate source otherwise); ``median``, ``q25`` and ``q75`` summarise the
     parsed draws (linear interpolation, as ``summarize_distribution`` gives
     them), and ``reasons`` names why a draw has no value.
@@ -271,10 +283,15 @@ class RateRow:
 
 @dataclass(frozen=True)
 class DrawsFigure:
-    """Everything F3 shows, read from the stored results and metrics of one arm and stage."""
+    """Everything Figures 3 and 8 show, read from the stored results and metrics of one arm and stage.
+
+    ``route`` is the serving route of the arm as data
+    (:func:`scripts.finance_sim.figures.route_label`).
+    """
 
     plan_sha256: str
     arm: str
+    route: str
     role: str
     stage: str
     kind: str
@@ -299,7 +316,8 @@ class DrawsFigure:
 # ---------- reading ----------
 
 def _group_label(group: str) -> str:
-    return "all items" if group == "all" else f"{group} rendering"
+    """An item group as a label: all items, or the items of one prompt version."""
+    return "all items" if group == "all" else f"{group} prompt"
 
 
 def _mid_rank(values: Sequence[float], value: float) -> float:
@@ -401,25 +419,26 @@ def _mark(result: ItemResult, adjustment: str, quantity: str, label: str, value_
 
 
 def example_item(result: ItemResult, *, chosen: str = EXAMPLE_DEFAULT) -> ExampleItem:
-    """The per-draw values of one stored result and its stored ensemble results (panels 1 and 2)."""
+    """The per-draw values of one stored result and its stored ensemble results (Figure 8 and the tables)."""
     if not any(draw.parsed is not None for draw in result.recorded_draws):
         raise FigureError(f"the example item {result.key} has no parsed draw to show")
     summary_name = "summary value"
-    summary = _strip(result, summary_name, "each draw", NO_ADJUSTMENT)
+    summary = _strip(result, summary_name, "single draw", NO_ADJUSTMENT)
     consensus = result.variant(CONSENSUS_VARIANT)
     distribution = summarize_distribution(result.draws_for(NO_ADJUSTMENT), DEFINITIONS[result.kind])
     rank = None if distribution.summary_value is None else distribution.summary_value.first_draw_rank
     if consensus.first_draw_rank is not None and rank is not None and not math.isclose(
             consensus.first_draw_rank, rank, rel_tol=0.0, abs_tol=1e-12):
         raise FigureError(f"the stored {CONSENSUS_VARIANT} first-draw rank of {result.key} does not match its draws")
-    marks = [_mark(result, NO_ADJUSTMENT, summary_name, "ensemble, no adjustment (consensus)", "summary_value")]
-    marks += [_mark(result, source, summary_name, f"ensemble, {ADJUSTMENT_NAMES[source]} adjusted",
+    marks = [_mark(result, NO_ADJUSTMENT, summary_name, f"ensemble, {ADJUSTMENT_NAMES[NO_ADJUSTMENT]}",
+                   "summary_value")]
+    marks += [_mark(result, source, summary_name, f"ensemble, {ADJUSTMENT_NAMES[source]}",
                     "adjusted_summary_value") for source in ESTIMATE_SOURCES]
     estimates, estimate_marks = [], []
     for source in ESTIMATE_SOURCES:
-        name = ADJUSTMENT_NAMES[source]
+        name = EVIDENCE_NAMES[source]
         if source in result.identities:
-            estimates.append(_strip(result, f"p_memorized {source}", f"{name}, each draw", source))
+            estimates.append(_strip(result, f"p_memorized {source}", f"{name}, single draw", source))
         estimate_marks.append(_mark(result, source, f"p_memorized {source}", f"{name}, ensemble", "p_memorized"))
     return ExampleItem(
         item_id=result.item_id, rendering=result.rendering, chosen=chosen, draws=result.ensemble_draws,
@@ -553,12 +572,13 @@ def draws_figure(plan: StudyPlan, metrics: Mapping[str, Any], results: Iterable[
         interval = next((row["interval"] for row in (first["overall"], *first["by_rendering"].values())
                          if row["interval"] is not None), None)
         return DrawsFigure(
-            plan_sha256=plan.plan_sha256, arm=arm, role=_text(arm_info["role"], "role"), stage=stage, kind=kind,
+            plan_sha256=plan.plan_sha256, arm=arm, route=route_label(plan, arm), role=_text(arm_info["role"], "role"),
+            stage=stage, kind=kind,
             model=_text(arm_info["model"], "model"), control=_flat(metrics["control"]),
             ensemble_draws=_count(settings["draws"], "draws"),
             half_draws=None if settings["half_draws"] is None else _count(settings["half_draws"], "half_draws"),
             band=band, confidence=float(_real(settings["confidence"], "confidence")),
-            interval_method=_flat(interval["method"]) if interval is not None else "no interval was computed",
+            interval_method=_flat(interval["method"]) if interval is not None else NO_INTERVAL,
             example=shown, items=tuple(items), missing_items=missing, rates=tuple(rates), halves_note=halves_note)
     except (KeyError, TypeError, AttributeError, ValueError) as exc:
         if isinstance(exc, FigureError):
@@ -591,7 +611,7 @@ def draws_figure_from_records(plan: StudyPlan, *, arm: str = DEFAULT_DRAWS_ARM, 
     return draws_figure(plan, metrics, results, example=example)
 
 
-# ---------- table and caption ----------
+# ---------- tables and captions ----------
 
 def _cell(value: object) -> str:
     if value is None:
@@ -601,549 +621,339 @@ def _cell(value: object) -> str:
     return _flat(value)
 
 
-def _row(**values: object) -> tuple[str, ...]:
-    return tuple(_cell(values.get(column)) for column in DRAWS_COLUMNS)
+def _row(columns: Sequence[str], **values: object) -> tuple[str, ...]:
+    return tuple(_cell(values.get(column)) for column in columns)
 
 
 def _strips(example: ExampleItem) -> tuple[DrawStrip, ...]:
     return (example.summary, *example.estimates)
 
 
-def draws_table(data: DrawsFigure) -> FigureTable:
-    """F3's table (draws and band of the example item, ensemble values, items, missing items, rates) and caption."""
-    if not isinstance(data, DrawsFigure):
-        raise TypeError(f"data must be a DrawsFigure; got {type(data).__name__}")
-    head = {"arm": data.arm, "role": data.role, "stage": data.stage}
+def _head(data: DrawsFigure) -> dict[str, object]:
+    return {"arm": data.arm, "route": data.route, "role": data.role, "stage": data.stage}
+
+
+def _example_rows(data: DrawsFigure, columns: Sequence[str], strips: Sequence[DrawStrip],
+                  marks: Sequence[EnsembleMark]) -> list[tuple[str, ...]]:
+    """The rows of the example item: every draw of each strip, its quartiles, and the stored ensemble values."""
     example = data.example
-    where = {**head, "item_id": example.item_id, "rendering": example.rendering}
+    where = {**_head(data), "item_id": example.item_id, "rendering": example.rendering}
     rows = []
-    for strip in _strips(example):
+    for strip in strips:
         for index, value in enumerate(strip.values):
-            rows.append(_row(row="draw", **where, quantity=strip.quantity, draw_index=index, value=value,
+            rows.append(_row(columns, row="draw", **where, quantity=strip.quantity, draw_index=index, value=value,
                              first_draw=index == SINGLE_DRAW_INDEX, reason=strip.reasons[index]))
-        rows.append(_row(row="spread", **where, quantity=strip.quantity, median=strip.median, q25=strip.q25,
+        rows.append(_row(columns, row="spread", **where, quantity=strip.quantity, median=strip.median, q25=strip.q25,
                          q75=strip.q75, n=len(strip.present),
                          first_draw_rank=example.first_rank if strip is example.summary else None))
-    for mark in (*example.summary_marks, *example.estimate_marks):
-        rows.append(_row(row="ensemble", **where, quantity=mark.quantity, variant=mark.variant, value=mark.value,
-                         status=mark.status, reason=mark.reason,
+    for mark in marks:
+        rows.append(_row(columns, row="ensemble", **where, quantity=mark.quantity, variant=mark.variant,
+                         value=mark.value, status=mark.status, reason=mark.reason,
                          first_category=example.first_category if mark.variant == CONSENSUS_VARIANT else None,
                          consensus_category=example.consensus_category if mark.variant == CONSENSUS_VARIANT
                          else None))
+    return rows
+
+
+def _sources(data: DrawsFigure) -> tuple[str, ...]:
+    return (FRED_SOURCE if data.kind == MACRO else EDGAR_SOURCE, FMP_STUDY_SOURCE)
+
+
+def _checked(data: object) -> DrawsFigure:
+    if not isinstance(data, DrawsFigure):
+        raise TypeError(f"data must be a DrawsFigure; got {type(data).__name__}")
+    return data
+
+
+def draws_table(data: DrawsFigure) -> FigureTable:
+    """Figure 3's table and caption: the rates with their baselines, the items behind them, the missing items, and
+    what no figure draws: the example item's draws and recall estimates and the number of items at each mid-rank."""
+    data = _checked(data)
+    head = _head(data)
+    example = data.example
+    columns = DRAWS_COLUMNS
+    rows = _example_rows(data, columns, _strips(example), (*example.summary_marks, *example.estimate_marks))
     for item in data.items:
-        rows.append(_row(row="item", **head, item_id=item.item_id, rendering=item.rendering,
+        rows.append(_row(columns, row="item", **head, item_id=item.item_id, rendering=item.rendering,
                          first_category=item.first_category, consensus_category=item.consensus_category,
                          first_draw_rank=item.first_draw_rank, outside_band=item.outside_band,
                          category_differs=item.category_differs, off=item.off, halves=item.halves,
                          baseline_off=item.baseline_off, baseline_outside=item.baseline_outside, n=item.parsed))
+    for rendering, points in rank_counts(data).items():
+        for rank, count in points:
+            rows.append(_row(columns, row="rank_count", **head, rendering=rendering, first_draw_rank=rank, n=count))
     for item_id, rendering, reason in data.missing_items:
-        rows.append(_row(row="missing_item", **head, item_id=item_id, rendering=rendering, reason=reason))
+        rows.append(_row(columns, row="missing_item", **head, item_id=item_id, rendering=rendering, reason=reason))
     for rate in data.rates:
-        rows.append(_row(row="rate", **head, group=rate.group, n=rate.n, count_off=rate.off,
+        rows.append(_row(columns, row="rate", **head, group=rate.group, n=rate.n, count_off=rate.off,
                          count_outside=rate.outside_band, count_differs=rate.category_differs,
                          count_no_category=rate.no_category, rate=rate.rate,
                          interval_low=rate.low, interval_high=rate.high, baseline_off=rate.baseline_off,
                          baseline_outside=rate.baseline_outside, reason=rate.missing))
-    return FigureTable(name=DRAWS, caption=_draws_caption(data), columns=DRAWS_COLUMNS, rows=tuple(rows))
+    return FigureTable(name=DRAWS, caption=_draws_caption(data), columns=columns, rows=tuple(rows),
+                       notes=_draws_notes(data), sources=_sources(data))
 
 
-def _not_drawn(marks: Iterable[EnsembleMark]) -> list[tuple[str, str]]:
-    return [(mark.variant, _flat(mark.reason)) for mark in marks if mark.value is None and mark.reason]
+def draw_spread_table(data: DrawsFigure) -> FigureTable:
+    """Figure 8's table and caption: every draw of the example item, their quartiles and the ensemble decisions."""
+    data = _checked(data)
+    example = data.example
+    rows = _example_rows(data, DRAW_SPREAD_COLUMNS, (example.summary,), example.summary_marks)
+    notes = (f"The value is the {SUMMARY_NAMES[data.kind]}.",
+             "The example is the first item in plan order whose first draw and ensemble both give a value."
+             if example.chosen == EXAMPLE_DEFAULT else "The example was chosen for the figure.",
+             "A draw without a value did not parse; the reason is in its row.",
+             "The quartiles of the parsed draws are interpolated linearly.")
+    return FigureTable(name=DRAW_SPREAD, caption=_spread_caption(data), columns=DRAW_SPREAD_COLUMNS,
+                       rows=tuple(rows), notes=notes, sources=_sources(data))
+
+
+def _rate_interval(data: DrawsFigure) -> str | None:
+    """What the caption calls the stored interval of the rate, or None when the metrics carry none."""
+    methods = [] if data.interval_method == NO_INTERVAL else [data.interval_method]
+    return interval_wording(methods, "the first-draw figure", RATE_INTERVALS)
 
 
 def _draws_caption(data: DrawsFigure) -> str:
-    example = data.example
-    lower, upper = data.band
-    by_rendering = "; ".join(f"{rate.label}: {rate.n}" for rate in data.rates[1:])
-    unresolved = sum(1 for item in data.items if item.halves_unresolved)
-    chosen = EXAMPLE_DEFAULT if example.chosen == EXAMPLE_DEFAULT else "chosen for the figure"
-    parts = [
-        "Figure F3. Per-draw distribution of the decision and of the memorization estimate against the ensemble "
-        "result, and where the first draw falls.",
-        f"Data: the stored item results (task 7.7) of the {data.stage} stage ({data.control}) of the {data.arm} arm "
-        f"({data.role} role, {ROLE_PURPOSE.get(data.role, data.role)}), model {data.model}, plan "
-        f"{data.plan_sha256[:12]}, and the stored ensemble metrics of task 7.11 (read, not recomputed); pilot items "
-        "excluded.",
-        f"Panels 1 and 2 show one example item, {example.item_id} ({example.rendering} rendering; {chosen}): the "
-        f"{SUMMARY_NAMES[data.kind]} of each parsed draw and its p_memorized per estimate source, with the ensemble "
-        "decisions as stored: the consensus (ensemble_none) and the ensemble decisions after each adjustment, and "
-        "each ensemble variant's p_memorized.",
-        f"Panels 3 and 4 cover every analysed item: the first draw's mid-rank among its ensemble's parsed summary "
-        f"values (the share strictly below plus half the share tied, the first draw included) against the frozen "
-        f"band {lower:g} to {upper:g} (bounds inclusive), and the stored first-draw rate: the share of items whose "
-        "first draw is off, its category differing from the consensus or its mid-rank outside the band.",
-        f"Sample size: the example item has {example.draws} draws, {example.parsed} parsed and {example.failed} "
-        f"failed; {len(data.items)} items have a decided first draw ({by_rendering}) and {len(data.missing_items)} "
-        "are missing with their reasons in the table.",
-        "Interval: none on the per-draw values; the shaded band of panels 1 and 2 is the interquartile range of the "
-        "parsed draws (25th to 75th percentile, linear interpolation, as recall_guard.core.distribution summarises "
-        f"them) with the median marked; the first-draw rate carries the stored {data.interval_method} at "
-        f"confidence {data.confidence:g}.",
-        "Reference: the exchangeability baseline is the share of items expected off if the first draw were "
-        "exchangeable with the other draws of its ensemble, under the same inclusion rule as the stored rate: per "
-        "item with a consensus category, the share of its parsed draws that would be off in the first draw's place "
-        "(computed from the stored per-draw values; with eight distinct values about half of the mid-ranks lie "
-        "outside the band, so the reference is not zero); an item whose consensus has no category enters the rate "
-        "only when its first draw lies outside the band, and is then always off, so it counts 1; the baseline "
-        f"averages these over the items. Items without a consensus category: {data.rates[0].no_category} of "
-        f"{data.rates[0].n} (included only when outside the band).",
-    ]
-    halves = (f"Items whose half-ensemble decisions task 7.11 lists as unresolved (missing from the half-ensemble "
-              f"variance with that reason) sit in a row of their own: {unresolved} items.")
-    if data.half_draws is not None and data.half_draws < SPLIT_CHECK_MIN_DRAWS:
-        halves += (f" The consensus split check needs at least {SPLIT_CHECK_MIN_DRAWS} parsed draws, so halves of "
-                   f"{data.half_draws} draws are never assessed; an unmarked item is not shown as resolved.")
+    """Figure 3's caption: the observed share with its interval against the expected one, the items, the interval.
+
+    When a first draw differs and how an item without a category enters are
+    definitions: notes below the table (:func:`_draws_notes`).
+    """
+    overall = data.rates[0]
+    kind = _rate_interval(data)
+    if overall.rate is None:
+        message = "No share of differing first draws is available, because no item has a decided first draw"
     else:
-        halves += " An unmarked item is not shown as resolved: its halves were not listed as unresolved."
+        interval = "no interval" if kind is None or overall.low is None or overall.high is None else (
+            f"{rounded(overall.low)} to {rounded(overall.high)}")
+        expected = "" if overall.baseline_off is None else (
+            f", against {rounded(overall.baseline_off)} expected if the first draw were exchangeable with the "
+            "ensemble's other draws")
+        message = (f"The first draw of an ensemble differs from the ensemble's decision in {rounded(overall.rate)} "
+                   f"of the items ({interval}){expected}")
+    by_prompt = "; ".join(f"{rate.label}: {rate.n}" for rate in data.rates[1:])
+    size = (f"{len(data.items)} items with a decided first draw on {data.route} ({by_prompt}), "
+            f"{data.ensemble_draws} draws per ensemble; {len(data.missing_items)} items without one are listed in "
+            "the table")
+    interval = "No interval is stored for the observed share." if kind is None else (
+        f"Bars and the range in parentheses are {_percent(data.confidence)} percent {kind} intervals; the expected "
+        "share has no interval.")
+    return caption(FIGURE_NUMBERS[DRAWS], message, n=size, interval=interval)
+
+
+def _draws_notes(data: DrawsFigure) -> tuple[str, ...]:
+    """The lines below Figure 3's table: when a first draw differs, what the expected share is, and how to read
+    the rows no figure draws."""
+    lower, upper = data.band
+    unresolved = sum(1 for item in data.items if item.halves_unresolved)
+    notes = [
+        "A first draw differs when its decision category is not the ensemble's or its mid-rank among the "
+        f"ensemble's draws lies outside {lower:g} to {upper:g}.",
+        "An item whose ensemble has no category enters only when its first draw is outside that range, in the "
+        "observed and in the expected share alike; it counts 1 in the expected share.",
+        "The expected share averages, over the items, the share of an item's parsed draws that would differ in the "
+        "first draw's place.",
+        "The rows of kind draw, spread and ensemble hold the example item of Figure 8 with its recall estimates; "
+        "the rows that count ranks give the number of items at each mid-rank of the first draw.",
+        f"Column halves marks an item whose half-ensemble decisions were unresolved ({unresolved} items); an "
+        "unmarked item is not shown as resolved.",
+    ]
+    if data.half_draws is not None and data.half_draws < SPLIT_CHECK_MIN_DRAWS:
+        notes.append(f"Halves of {data.half_draws} draws are never assessed: the split check needs at least "
+                     f"{SPLIT_CHECK_MIN_DRAWS} parsed draws.")
     if data.halves_note:
-        halves += f" Note: {data.halves_note}."
-    parts.append(halves)
-    parts.append("Encoding: an open marker is one draw (circle the summary value, square top-k, triangle full "
-                 "distribution), or, with a count such as ×8 beside it, that many draws too close together to "
-                 "stack apart (the first draw then sits above it), the filled diamond the first draw, a filled "
-                 "marker an ensemble result; rows are "
-                 "labelled; in panel 3 a filled marker lies outside the band, a diamond marks a first draw whose "
-                 "category differs from the consensus, and marker area grows with the count printed beside it; "
-                 "the vertical muted lines mark zero (panel 1), the band bounds (panel 3) and the baseline "
-                 "(panel 4).")
-    not_drawn = _not_drawn((*example.summary_marks, *example.estimate_marks))
-    if not_drawn:
-        parts.append("Not drawn: " + "; ".join(f"{variant}: {reason}" for variant, reason in not_drawn) + ".")
-    sources = [FRED_SOURCE if data.kind == MACRO else EDGAR_SOURCE, FMP_STUDY_SOURCE]
-    parts += [f"Sources: {'; '.join(sources)}.", DERIVED_ONLY]
-    return " ".join(parts)
+        notes.append("The half-ensemble statistic of the unadjusted ensemble was not computed.")
+    return tuple(notes)
+
+
+def _spread_caption(data: DrawsFigure) -> str:
+    example = data.example
+    values = [value for _, value in example.summary.present]
+    consensus = example.summary_marks[0]
+    ensemble = "the unadjusted ensemble gives no value" if consensus.value is None else (
+        f"the unadjusted ensemble gives {rounded(consensus.value, signed=True)}")
+    if len(values) == 1:
+        message = (f"One answer to the example prompt parsed: it gives {rounded(values[0], signed=True)} and "
+                   f"{ensemble}")
+    elif min(values) == max(values):
+        # Identical draws are no spread: the caption says so, with their count.
+        message = (f"Repeated answers to one prompt do not vary in this example: all {example.parsed} parsed draws "
+                   f"equal {rounded(values[0], signed=True)} and {ensemble}")
+    else:
+        median = "" if example.summary.median is None else (
+            f" (median {rounded(example.summary.median, signed=True)})")
+        message = ("Repeated answers to one prompt spread around the ensemble decision: the "
+                   f"{example.parsed} parsed draws of the example range from {rounded(min(values), signed=True)} to "
+                   f"{rounded(max(values), signed=True)}{median} and {ensemble}")
+    size = (f"{example.draws} draws of one prompt ({example.item_id}, {example.rendering} prompt) on {data.route}, "
+            f"{example.parsed} parsed and {example.failed} failed")
+    notes = []
+    absent = [mark.label for mark in example.summary_marks if mark.value is None]
+    if absent:
+        notes.append(f"Not drawn (reason in the table): {'; '.join(absent)}.")
+    notes.append("No interval is drawn: every parsed draw is a point, tied draws side by side.")
+    return caption(FIGURE_NUMBERS[DRAW_SPREAD], message, n=size, interval=" ".join(notes))
 
 
 # ---------- drawing ----------
 
-@dataclass(frozen=True)
-class _StripLayout:
-    """Where one strip's draws go, as (x, row offset): open markers, collapsed stacks with counts, the first draw."""
-
-    opens: tuple[tuple[float, float], ...]
-    stacks: tuple[tuple[float, float, int], ...]
-    first: tuple[float, float] | None
+#: Series styles (``figure_style.series_style`` indexes): in Figure 3 the observed share and the expected share, in
+#: Figure 8 an ensemble decision and a single draw. A solid black marker is what was decided or observed, an open
+#: grey one what it is read against.
+_OBSERVED_STYLE, _EXPECTED_STYLE = 0, 1
+_ENSEMBLE_STYLE, _DRAW_STYLE = 0, 1
 
 
-def _close_groups(present: Sequence[tuple[int, float]], tolerance: float) -> list[list[tuple[int, float]]]:
-    """Draws grouped in value order, a draw joining its neighbour's group when the gap is at most ``tolerance``."""
-    groups: list[list[tuple[int, float]]] = []
-    for index, value in sorted(present, key=lambda pair: (pair[1], pair[0])):
-        if groups and value - groups[-1][-1][1] <= tolerance:
-            groups[-1].append((index, value))
-        else:
-            groups.append([(index, value)])
-    return [sorted(group) for group in groups]
+def _marker(index: int) -> dict[str, object]:
+    """Series style ``index`` as an unconnected marker."""
+    return {**series_style(index), "linestyle": "none"}
 
 
-def strip_layout(present: Sequence[tuple[int, float]], tolerance: float) -> _StripLayout:
-    """Marker positions of one strip: no two open markers touch, and the first draw stays distinct.
-
-    Draws closer than ``tolerance`` form a group. A group stacks vertically,
-    centred on the row in draw-index order, while the step between markers
-    is at least one marker diameter (``_STACK_STEP``); a larger group is
-    drawn as one open marker at its lower median value with the count of its
-    draws (``stacks``), and its first draw, if it holds it, sits apart above
-    it as the distinct first-draw marker.
-    """
-    opens: list[tuple[float, float]] = []
-    stacks: list[tuple[float, float, int]] = []
-    first: tuple[float, float] | None = None
-    for group in _close_groups(present, tolerance):
-        n = len(group)
-        if n == 1 or 2 * _SPREAD / (n - 1) >= _STACK_STEP:
-            for position, (index, value) in enumerate(group):
-                offset = (position - (n - 1) / 2.0) * _STACK_STEP
-                if index == SINGLE_DRAW_INDEX:
-                    first = (value, offset)
-                else:
-                    opens.append((value, offset))
-            continue
-        others = [value for index, value in group if index != SINGLE_DRAW_INDEX]
-        held = len(others) < n
-        if held:
-            first = (group[0][1], -_APART)
-        stacks.append((sorted(others)[(len(others) - 1) // 2], _APART if held else 0.0, len(others)))
-    return _StripLayout(tuple(opens), tuple(stacks), first)
-
-
-def _limits(values: Iterable[float | None], *, include: Iterable[float] = (), minimum: float = 1.0,
-            clip: tuple[float, float] | None = None) -> tuple[float, float]:
-    """Axis limits around ``values`` and ``include``: 8 percent padding, at least ``minimum`` wide, within ``clip``."""
-    found = [value for value in values if value is not None] + list(include)
+def _limits(values: Iterable[float | None], *, minimum: float) -> tuple[float, float]:
+    """Axis limits around ``values``: 8 percent padding, at least ``minimum`` wide."""
+    found = [value for value in values if value is not None]
     low, high = min(found), max(found)
     pad = 0.08 * (high - low)
     low, high = low - pad, high + pad
     if high - low < minimum:
         centre = (low + high) / 2.0
         low, high = centre - minimum / 2.0, centre + minimum / 2.0
-    if clip is not None:
-        if low < clip[0]:
-            low, high = clip[0], max(high, clip[0] + minimum)
-        if high > clip[1]:
-            low, high = min(low, clip[1] - minimum), clip[1]
     return low, high
 
 
-def _wrapped(lines: Iterable[str]) -> str:
-    """Title lines wrapped to the panel width (the row labels take the left of the figure)."""
-    return "\n".join(textwrap.fill(line, width=_TITLE_CHARS, break_on_hyphens=False) for line in lines)
+def _places(axes: Axes, labels: Sequence[str]) -> None:
+    """The x axis of a panel whose places are named groups: one tick per label, no tick marks."""
+    axes.set_xticks(range(len(labels)), labels=list(labels))
+    axes.set_xlim(-0.6, max(len(labels), 1) - 0.4)
+    axes.tick_params(axis="x", length=0)
 
 
-def _draw_strip(axes: Axes, strip: DrawStrip, row: float, style: FigureTheme, theme: str,
-                key: str) -> list[tuple[float, float, int]]:
-    """Draw one strip (band, median, draws, first draw); returns the collapsed stacks to label after layout."""
-    from matplotlib.patches import Rectangle
-
-    from recall_guard.harness.plots import variant_style
-
-    variant = variant_style(strip.adjustment, "single", theme=theme)
-    if strip.q25 is not None and strip.q75 is not None and strip.q75 > strip.q25:
-        axes.add_patch(Rectangle((strip.q25, row - 0.4), strip.q75 - strip.q25, 0.8, facecolor=style.gridline,
-                                 edgecolor="none", zorder=0.5, gid=f"draws-iqr-{key}"))
-    if strip.median is not None:
-        axes.plot([strip.median, strip.median], [row - 0.4, row + 0.4], color=style.secondary_ink, linewidth=1.2,
-                  linestyle="-", marker="none", zorder=1.5, gid=f"draws-median-{key}")
-    low, high = axes.get_xlim()
-    layout = strip_layout(strip.present, _TIE_FRACTION * (high - low))
-    marker = {name: value for name, value in variant.marker_kwargs().items() if name != "label"}
-    for gid, points in ((f"draws-draw-{key}", layout.opens), (f"draws-stack-{key}", layout.stacks)):
-        if points:
-            axes.plot([point[0] for point in points], [row + point[1] for point in points], markersize=_DRAW_PT,
-                      markeredgewidth=_EDGE_PT, zorder=3, gid=gid, **marker)
-    if layout.first is not None:
-        axes.plot([layout.first[0]], [row + layout.first[1]], marker="D", linestyle="none",
-                  markersize=_FIRST_PT * 0.75, color=style.ink, markeredgecolor=style.surface,
-                  markerfacecolor=style.ink, markeredgewidth=0.8, zorder=4, gid=f"draws-first-{key}")
-    return [(x, row + offset, count) for x, offset, count in layout.stacks]
-
-
-def _draw_mark(axes: Axes, mark: EnsembleMark, row: float, theme: str, key: str) -> None:
-    from recall_guard.harness.plots import variant_style
-
-    if mark.value is None:
-        return
-    variant = variant_style(mark.adjustment, "ensemble", theme=theme)
-    marker = {name: value for name, value in variant.marker_kwargs().items() if name != "label"}
-    axes.plot([mark.value], [row], markersize=_ENSEMBLE_PT, markeredgewidth=_EDGE_PT, zorder=3,
-              gid=f"draws-ensemble-{key}-{mark.variant}", **marker)
-
-
-def _rows(axes: Axes, labels: Sequence[str]) -> None:
-    axes.set_yticks(range(len(labels)), labels=list(labels))
-    axes.set_ylim(len(labels) - 0.5, -0.5)
-    axes.grid(axis="y", visible=False)
-    axes.spines["left"].set_visible(False)
-    axes.tick_params(axis="y", length=0)
-
-
-def _example_title(data: DrawsFigure) -> str:
-    example = data.example
-    strip = example.summary
-    if example.summary.first is None:
-        first = "the first draw did not parse (no first-draw marker)"
-    else:
-        rank = "missing" if example.first_rank is None else f"{example.first_rank:.3g}"
-        first = f"first-draw mid-rank {rank}"
-    lines = [f"Example item {example.item_id}, {example.rendering} rendering ({data.arm} arm, {data.stage}): "
-             f"{SUMMARY_NAMES[data.kind].split(' (')[0]} of each draw",
-             f"{example.parsed} of {example.draws} draws parsed; median {_number(strip.median) or 'missing'}, "
-             f"interquartile range {_number(strip.q25) or 'missing'} to {_number(strip.q75) or 'missing'}; {first}"]
-    absent = [mark for mark in example.summary_marks if mark.value is None]
-    if absent:
-        lines.append(f"Not drawn: {', '.join(mark.variant for mark in absent)} (see the caption)")
-    return _wrapped(lines)
-
-
-def _estimate_title(data: DrawsFigure) -> str:
-    example = data.example
-    lines = [f"p_memorized of each draw of {example.item_id}, per estimate source"]
-    for strip in example.estimates:
-        lines.append(f"{ADJUSTMENT_NAMES[strip.adjustment]}: {len(strip.present)} of {example.draws} draws with an "
-                     f"estimate, median {_number(strip.median) or 'missing'}")
-    absent = [mark for mark in example.estimate_marks if mark.value is None]
-    if absent:
-        lines.append(f"Not drawn: {', '.join(mark.variant for mark in absent)} (see the caption)")
-    return _wrapped(lines)
-
-
-def _rank_rows(data: DrawsFigure) -> list[tuple[str, str, bool]]:
-    rows = []
+def rank_counts(data: DrawsFigure) -> dict[str, tuple[tuple[float, int], ...]]:
+    """Per rendering, ``(mid-rank, number of items)`` in rank order: rows of Figure 3's table, not drawn."""
+    found = {}
     for rendering in data.renderings:
-        rows.append((rendering, f"{rendering}", False))
-        if any(item.halves_unresolved and item.rendering == rendering for item in data.items):
-            rows.append((rendering, f"{rendering}, halves unresolved", True))
-    return rows
-
-
-def _rank_groups(data: DrawsFigure) -> list[tuple[int, float, bool, bool, int]]:
-    """``(row, mid-rank, category differs, outside, count)`` per marker of panel 3, in a stable order."""
-    rows = _rank_rows(data)
-    counts: Counter = Counter()
-    for item in data.items:
-        if item.first_draw_rank is None:
-            continue
-        unresolved = bool(item.halves_unresolved)
-        row = rows.index(next(entry for entry in rows if entry[0] == item.rendering and entry[2] == unresolved))
-        counts[(row, item.first_draw_rank, bool(item.category_differs), bool(item.outside_band))] += 1
-    return [(*key, count) for key, count in sorted(counts.items())]
-
-
-def _area(count: int, largest: int) -> float:
-    return _AREA_MIN + (_AREA_MAX - _AREA_MIN) * (count - 1) / max(largest - 1, 1)
-
-
-def _draw_ranks(axes: Axes, data: DrawsFigure, style: FigureTheme, theme: str) -> list[tuple[float, float, int,
-                                                                                                float]]:
-    from matplotlib.patches import Rectangle
-
-    from recall_guard.harness.plots import figure_theme
-
-    palette = figure_theme(theme).palette
-    rows = _rank_rows(data)
-    lower, upper = data.band
-    top, bottom = -0.5 - _DIFFERS_OFFSET / 2.0, len(rows) - 0.5
-    axes.add_patch(Rectangle((lower, top), upper - lower, bottom - top, facecolor=style.gridline, edgecolor="none",
-                             zorder=0.5, gid="draws-band"))
-    for bound, name in ((lower, "lower"), (upper, "upper")):
-        axes.plot([bound, bound], [top, bottom], color=style.muted, linewidth=1.0, linestyle="-",
-                  marker="none", zorder=1, gid=f"draws-band-{name}")
-    groups = _rank_groups(data)
-    largest = max((group[4] for group in groups), default=1)
-    placed = []
-    for row, rank, differs, outside, count in groups:
-        y = row - (_DIFFERS_OFFSET if differs else 0.0)
-        axes.scatter([rank], [y], s=_area(count, largest), marker="D" if differs else "o",
-                     facecolors=palette[0] if outside else style.surface, edgecolors=palette[0], linewidths=1.3,
-                     zorder=3, clip_on=False,
-                     gid=f"draws-rank-{row}-{rank:.6f}-{'differs' if differs else 'same'}")
-        placed.append((rank, y, count, _area(count, largest)))
-    _rows(axes, [label for _, label, _ in rows])
-    axes.set_ylim(bottom, top)
-    axes.set_xlim(-0.03, 1.03)
-    axes.set_xticks([0.0, lower, 0.5, upper, 1.0], labels=["0", f"{lower:g}", "0.5", f"{upper:g}", "1"])
-    return placed
-
-
-def _rank_title(data: DrawsFigure) -> str:
-    overall = data.rates[0]
-    lower, upper = data.band
-    return _wrapped([f"First-draw mid-rank among each ensemble's parsed draws: {len(data.items)} items",
-                     f"Shaded: the frozen band {lower:g} to {upper:g} (bounds inclusive); outside it: "
-                     f"{overall.outside_band} of {overall.n}; category differs from the consensus: "
-                     f"{overall.category_differs}"])
+        counts = Counter(item.first_draw_rank for item in data.items
+                         if item.rendering == rendering and item.first_draw_rank is not None)
+        found[rendering] = tuple(sorted(counts.items()))
+    return found
 
 
 def _plotted_rates(data: DrawsFigure) -> tuple[RateRow, ...]:
-    """The rate rows panel 4 draws: overall and per rendering, or overall only for a single rendering."""
+    """The rate rows Figure 3 draws: all items and each prompt version, or all items only for a single version."""
     return data.rates if len(data.renderings) > 1 else data.rates[:1]
 
 
-def _draw_rates(axes: Axes, data: DrawsFigure, style: FigureTheme, theme: str) -> None:
-    from recall_guard.harness.plots import figure_theme
+def plot_draws(data: DrawsFigure) -> Figure:
+    """Figure 3: the share of items whose first draw differs from the ensemble, against the exchangeable share.
 
-    colour = figure_theme(theme).palette[0]
-    for row, rate in enumerate(_plotted_rates(data)):
-        if rate.low is not None and rate.high is not None:
-            axes.plot([rate.low, rate.high], [row, row], color=colour, linewidth=1.8, linestyle="-", marker="none",
-                      zorder=2, gid=f"draws-rate-interval-{rate.group}")
-        if rate.rate is not None:
-            axes.plot([rate.rate], [row], marker="o", linestyle="none", markersize=_ENSEMBLE_PT, color=colour,
-                      markerfacecolor=colour, markeredgecolor=colour, markeredgewidth=_EDGE_PT, zorder=3,
-                      gid=f"draws-rate-{rate.group}")
-        if rate.baseline_off is not None:
-            axes.plot([rate.baseline_off, rate.baseline_off], [row - 0.38, row + 0.38], color=style.muted,
-                      linewidth=2.0, linestyle="-", marker="none", zorder=1.5, gid=f"draws-baseline-{rate.group}")
-    _rows(axes, [f"{rate.label} (n {rate.n})" for rate in _plotted_rates(data)])
-    axes.set_xlim(-0.03, 1.03)
-
-
-def _rate_title(data: DrawsFigure) -> str:
-    overall = data.rates[0]
-    rate = "missing" if overall.rate is None else f"{overall.rate:.3g}"
-    baseline = "missing" if overall.baseline_off is None else f"{overall.baseline_off:.3g}"
-    return _wrapped([f"Share of items whose first draw is off: {rate} (all items); exchangeability baseline "
-                     f"{baseline}",
-                     f"Dot and line: the stored rate with its {_percent(data.confidence)} percent Wilson interval "
-                     "(two-sided); muted tick: the baseline under the rate's inclusion rule",
-                     f"{overall.no_category} of {overall.n} items have no consensus category: included only when "
-                     "outside the band, so always off (counted 1 in the baseline)"])
-
-
-def _place_draw_labels(axes: Axes, keys: Sequence[tuple[str, float, float]],
-                       stacks: Sequence[tuple[str, float, float, int]], style: FigureTheme, renderer: Any) -> None:
-    """Label each first-draw marker ``first draw`` and each collapsed stack with its count (``×n``).
-
-    Every label is placed clear of lines, markers, the labels placed before
-    it and the frame (:func:`~scripts.finance_sim.figures._place_text`).
-    """
-    scale = axes.figure.dpi / 72.0
-    paths, boxes = _obstacles(axes)
-
-    def rings(anchor: tuple[float, float], offset: float) -> list[Any]:
-        # Nearest first; the farther rings clear neighbouring draws in a crowded row.
-        return [placement for step in (0.0, 7.0, 14.0) for placement in _around(anchor, offset + step)]
-
-    for key, x, y in keys:
-        label = _place_text(axes, "first draw", rings((x, y), _FIRST_PT * 0.75 / 2.0 + 2.5), renderer, paths=paths,
-                            boxes=boxes, fontsize=_LABEL_PT, color=style.ink, zorder=3.5,
-                            gid=f"draws-first-label-{key}",
-                            bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 1.0})
-        boxes.append(label.get_window_extent(renderer).padded(scale))
-    for index, (key, x, y, count) in enumerate(stacks):
-        label = _place_text(axes, f"×{count}", rings((x, y), _DRAW_PT / 2.0 + 2.0), renderer, paths=paths,
-                            boxes=boxes, fontsize=_LABEL_PT, color=style.secondary_ink, zorder=3.5,
-                            gid=f"draws-stack-label-{key}-{index}",
-                            bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 0.8})
-        boxes.append(label.get_window_extent(renderer).padded(scale))
-
-
-def _place_count_labels(axes: Axes, placed: Sequence[tuple[float, float, int, float]], style: FigureTheme,
-                        renderer: Any) -> None:
-    scale = axes.figure.dpi / 72.0
-    paths, boxes = _obstacles(axes)
-    for index, (x, y, count, area) in enumerate(placed):
-        label = _place_text(axes, str(count), _around((x, y), math.sqrt(area) / 2.0 + 2.0), renderer, paths=paths,
-                            boxes=boxes, fontsize=_LABEL_PT, color=style.secondary_ink, zorder=2.5,
-                            gid=f"draws-count-{index}",
-                            bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 0.8})
-        boxes.append(label.get_window_extent(renderer).padded(scale))
-
-
-def _place_baseline_label(axes: Axes, data: DrawsFigure, style: FigureTheme, renderer: Any) -> None:
-    rows = [(row, rate) for row, rate in enumerate(_plotted_rates(data)) if rate.baseline_off is not None]
-    if not rows:
-        return
-    paths, boxes = _obstacles(axes)
-    candidates = [placement for row, rate in rows for placement in _around((rate.baseline_off, row), 4.0)]
-    # Between two rows, beside the upper tick's end: clear of both rows' intervals when those leave no room.
-    candidates += [placement for row, rate in rows[:-1] for placement in (
-        ((rate.baseline_off, row + 0.5), 4.0, 0.0, "left", "center"),
-        ((rate.baseline_off, row + 0.5), -4.0, 0.0, "right", "center"))]
-    _place_text(axes, "exchangeability baseline", candidates, renderer, paths=paths, boxes=boxes, fontsize=_LABEL_PT,
-                color=style.secondary_ink, zorder=2.5, gid="draws-baseline-label",
-                bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 1.0})
-
-
-def _legend(figure: Figure, style: FigureTheme, theme: str) -> None:
-    from matplotlib.lines import Line2D
-    from matplotlib.patches import Patch
-
-    from recall_guard.harness.plots import figure_theme, variant_style
-
-    colour = figure_theme(theme).palette[0]
-    draw = {name: value for name, value in variant_style(NO_ADJUSTMENT, "single", theme=theme).marker_kwargs().items()
-            if name != "label"}
-    handles = [
-        Line2D([], [], markersize=_DRAW_PT, markeredgewidth=_EDGE_PT, label="one parsed draw", **draw),
-        Line2D([], [], marker="D", linestyle="none", markersize=_FIRST_PT * 0.75, color=style.ink,
-               markerfacecolor=style.ink, markeredgecolor=style.surface, label="the first draw (index 0)"),
-        Patch(facecolor=style.gridline, edgecolor="none", label="interquartile range of the parsed draws"),
-        Line2D([], [], color=style.secondary_ink, linewidth=1.2, marker="none", label="median of the parsed draws"),
-        Line2D([], [], marker="o", linestyle="none", markersize=6, color=colour, markerfacecolor=style.surface,
-               markeredgecolor=colour, markeredgewidth=1.3, label="first draw inside the band"),
-        Line2D([], [], marker="o", linestyle="none", markersize=6, color=colour, markerfacecolor=colour,
-               markeredgecolor=colour, label="first draw outside the band"),
-        Line2D([], [], marker="D", linestyle="none", markersize=5.5, color=colour, markerfacecolor=style.surface,
-               markeredgecolor=colour, markeredgewidth=1.3, label="category differs from the consensus"),
-        Line2D([], [], color=colour, linewidth=1.8, marker="o", markersize=5, label="stored rate and interval"),
-        Line2D([], [], color=style.muted, linewidth=2.0, marker="none", label="exchangeability baseline"),
-    ]
-    figure.legend(handles=handles, loc="outside lower center", ncols=3, frameon=False)
-
-
-def plot_draws(data: DrawsFigure, *, theme: str = "light") -> Figure:
-    """F3: per-draw strips of the example item, first-draw mid-ranks and the first-draw rate (Requirement 10.4).
-
-    ``data`` is plain data read from the stored outputs (:func:`draws_figure`);
-    ``theme`` is ``light`` or ``dark``. Returns a matplotlib Figure (no pyplot,
-    no global state); labels are placed after the layout is fixed.
+    One panel in the academic style: per item group (all items, then each
+    prompt version) the stored first-draw rate with its interval bar, and
+    beside it the share expected if the first draw were exchangeable with the
+    other draws of its ensemble. One legend below the panel names the two
+    marks. ``data`` is plain data read from the stored outputs
+    (:func:`draws_figure`). Returns a matplotlib Figure (no pyplot, no global
+    state).
     """
     import matplotlib
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
+    from matplotlib.lines import Line2D
 
-    from recall_guard.harness.plots import figure_theme
+    data = _checked(data)
+    rates = _plotted_rates(data)
+    with matplotlib.rc_context(figure_rc()):
+        figure = Figure(figsize=_RATE_SIZE_IN, layout="constrained")
+        axes = figure.subplots()
+        observed, expected = _marker(_OBSERVED_STYLE), _marker(_EXPECTED_STYLE)
+        for place, rate in enumerate(rates):
+            x = place - _RATE_DODGE
+            if rate.low is not None and rate.high is not None:
+                axes.plot([x, x], [rate.low, rate.high], color=observed["color"], linestyle="-", marker="_",
+                          markeredgecolor=observed["color"], zorder=2, gid=f"draws-rate-interval-{rate.group}")
+            if rate.rate is not None:
+                axes.plot([x], [rate.rate], zorder=3, gid=f"draws-rate-{rate.group}", **observed)
+            if rate.baseline_off is not None:
+                axes.plot([place + _RATE_DODGE], [rate.baseline_off], zorder=3, gid=f"draws-baseline-{rate.group}",
+                          **expected)
+        _places(axes, [f"{rate.label}\n(n = {rate.n})" for rate in rates])
+        axes.set_ylim(-0.03, 1.03)
+        axes.set_xlabel("prompt version")
+        axes.set_ylabel("share of items whose first draw\ndiffers from the ensemble (share)")
+        figure.legend(handles=[Line2D([], [], label="observed", **observed),
+                               Line2D([], [], label="expected if draws were exchangeable", **expected)],
+                      loc="outside lower center", ncols=2)
+        lay_out(figure)
+    return figure
 
-    if not isinstance(data, DrawsFigure):
-        raise TypeError(f"data must be a DrawsFigure; got {type(data).__name__}")
-    style = figure_theme(theme)
+
+def spread_offsets(values: Sequence[float]) -> list[float]:
+    """Where each draw stands across the place of the single draws, so that tied draws are side by side.
+
+    Draws whose values lie within ``_TIE_SHARE`` of the range of the draws
+    count as tied; a group of tied draws is centred on the place, its draws
+    ``_SPREAD_STEP`` apart or closer when the group would pass
+    ``_SPREAD_WIDTH``. A draw without a tie stays at the centre. The value of
+    a draw is never moved.
+    """
+    order = sorted(range(len(values)), key=lambda index: (values[index], index))
+    if not order:
+        return []
+    tolerance = _TIE_SHARE * (values[order[-1]] - values[order[0]])
+    groups: list[list[int]] = []
+    for index in order:
+        if groups and values[index] - values[groups[-1][0]] <= tolerance:
+            groups[-1].append(index)
+        else:
+            groups.append([index])
+    offsets = [0.0] * len(values)
+    for group in groups:
+        step = min(_SPREAD_STEP, _SPREAD_WIDTH / len(group))
+        for position, index in enumerate(group):
+            offsets[index] = (position - (len(group) - 1) / 2.0) * step
+    return offsets
+
+
+def _tick(name: str) -> str:
+    """An adjustment as the second line of a tick label, the evidence mode on a line of its own."""
+    return name.replace("adjusted with ", "adjusted with\n")
+
+
+def plot_draw_spread(data: DrawsFigure) -> Figure:
+    """Figure 8: every parsed draw of the example item as a point, beside the stored ensemble decisions.
+
+    One panel in the academic style: the first place holds the single draws,
+    one point each, tied draws side by side (:func:`spread_offsets`), so the
+    reader sees how much repeated answers to one prompt vary; the next places
+    hold the ensemble decisions as stored, without adjustment and after each
+    adjustment. The value axis fits the values shown. An ensemble without a
+    value is not drawn (the caption names it, the table gives the reason).
+    One legend below the panel names the two marks. Returns a matplotlib
+    Figure (no pyplot, no global state).
+    """
+    import matplotlib
+    from matplotlib.figure import Figure
+    from matplotlib.lines import Line2D
+
+    data = _checked(data)
     example = data.example
-    summary_marks = [mark for mark in example.summary_marks if mark.value is not None]
-    summary_labels = [f"each draw ({example.parsed} of {example.draws} parsed)", *[mark.label for mark in summary_marks]]
-    estimate_rows: list[tuple[str, DrawStrip | EnsembleMark]] = []
-    for source in ESTIMATE_SOURCES:
-        strip = next((strip for strip in example.estimates if strip.adjustment == source), None)
-        if strip is not None:
-            estimate_rows.append((f"{strip.label} ({len(strip.present)} with an estimate)", strip))
-        mark = next(mark for mark in example.estimate_marks if mark.adjustment == source)
-        if mark.value is not None:
-            estimate_rows.append((mark.label, mark))
-    titles = [_example_title(data), _estimate_title(data), _rank_title(data), _rate_title(data)]
-    rows = [len(summary_labels) * _ROW_IN, max(len(estimate_rows), 1) * _ROW_IN,
-            len(_rank_rows(data)) * _RANK_ROW_IN, len(_plotted_rates(data)) * _ROW_IN]
-    spans = [height + _PANEL_IN + _TITLE_LINE_IN * (title.count("\n") + 1)
-             for height, title in zip(rows, titles, strict=True)]
-    with matplotlib.rc_context(_theme_rc(theme)):
-        figure = Figure(figsize=(_WIDTH_IN, sum(spans) + _FRAME_IN), layout="constrained")
-        panels = figure.subplots(4, 1, gridspec_kw={"height_ratios": spans})
-        for axes in panels:
-            _style_axes(axes, style)
-        summary_axes, estimate_axes, rank_axes, rate_axes = panels
-        firsts: dict[Axes, list[tuple[str, float, float]]] = {summary_axes: [], estimate_axes: []}
-        stacks: dict[Axes, list[tuple[str, float, float, int]]] = {summary_axes: [], estimate_axes: []}
-        # Panel 1: the summary value of each draw, then the ensemble results.
-        summary_axes.set_xlim(*_limits([*example.summary.values, *(mark.value for mark in summary_marks)],
-                                       include=(0.0,)))
-        summary_axes.axvline(0.0, color=style.muted, linewidth=1.0, zorder=1, gid="draws-zero")
-        stacks[summary_axes] += [("summary", *stack)
-                                 for stack in _draw_strip(summary_axes, example.summary, 0.0, style, theme, "summary")]
-        for row, mark in enumerate(summary_marks, start=1):
-            _draw_mark(summary_axes, mark, float(row), theme, "summary")
-        _rows(summary_axes, summary_labels)
-        summary_axes.set_title(titles[0], loc="left", color=style.ink)
-        summary_axes.set_xlabel(SUMMARY_NAMES[data.kind].capitalize(), fontsize=_RC["axes.labelsize"])
-        # Panel 2: p_memorized of each draw per estimate source, then each ensemble variant's; the axis spans the
-        # values shown (at least 0.1 wide, within [0, 1]) so that close estimates stay apart.
-        shown = [value for _, entry in estimate_rows for value in (
-            entry.values if isinstance(entry, DrawStrip) else (entry.value,))]
-        estimate_axes.set_xlim(*(_limits(shown, minimum=0.1, clip=(-0.02, 1.02)) if any(
-            value is not None for value in shown) else (-0.02, 1.02)))
-        labels = []
-        for row, (label, entry) in enumerate(estimate_rows):
-            labels.append(label)
-            if isinstance(entry, DrawStrip):
-                key = f"estimate-{entry.adjustment}"
-                stacks[estimate_axes] += [(key, *stack) for stack in _draw_strip(estimate_axes, entry, float(row),
-                                                                                 style, theme, key)]
-            else:
-                _draw_mark(estimate_axes, entry, float(row), theme, "estimate")
-        _rows(estimate_axes, labels or ["no estimate source"])
-        estimate_axes.set_title(titles[1], loc="left", color=style.ink)
-        estimate_axes.set_xlabel("p_memorized of the draw (top-k or full-distribution calibrator)",
-                                 fontsize=_RC["axes.labelsize"])
-        # Panels 3 and 4: every analysed item.
-        placed = _draw_ranks(rank_axes, data, style, theme)
-        rank_axes.set_title(titles[2], loc="left", color=style.ink)
-        rank_axes.set_xlabel("Mid-rank of the first draw among the parsed draws", fontsize=_RC["axes.labelsize"])
-        _draw_rates(rate_axes, data, style, theme)
-        rate_axes.set_title(titles[3], loc="left", color=style.ink)
-        rate_axes.set_xlabel("Share of items whose first draw is off", fontsize=_RC["axes.labelsize"])
-        _legend(figure, style, theme)
-        figure.suptitle("Per-draw distribution against the ensemble result, and where the first draw falls", x=0.01,
-                        ha="left")
-        renderer = FigureCanvasAgg(figure).get_renderer()
-        figure.draw_without_rendering()
-        for axes in (summary_axes, estimate_axes):
-            for line in axes.lines:
-                gid = line.get_gid() or ""
-                if gid.startswith("draws-first-"):
-                    (x,), (y,) = line.get_xdata(), line.get_ydata()
-                    firsts[axes].append((gid.removeprefix("draws-first-"), float(x), float(y)))
-            _place_draw_labels(axes, firsts[axes], stacks[axes], style, renderer)
-        _place_count_labels(rank_axes, placed, style, renderer)
-        _place_baseline_label(rate_axes, data, style, renderer)
-        figure.draw_without_rendering()
+    values = [value for _, value in example.summary.present]
+    marks = [mark for mark in example.summary_marks if mark.value is not None]
+    with matplotlib.rc_context(figure_rc()):
+        figure = Figure(figsize=_SPREAD_SIZE_IN, layout="constrained")
+        axes = figure.subplots()
+        draw, ensemble = _marker(_DRAW_STYLE), _marker(_ENSEMBLE_STYLE)
+        axes.plot(spread_offsets(values), values, zorder=3, gid="spread-draws", **draw)
+        for place, mark in enumerate(marks, start=1):
+            axes.plot([place], [mark.value], zorder=3, gid=f"spread-ensemble-{mark.variant}", **ensemble)
+        _places(axes, [f"single draws\n(n = {len(values)})",
+                       *(f"ensemble,\n{_tick(ADJUSTMENT_NAMES[mark.adjustment])}" for mark in marks)])
+        axes.set_ylim(*_limits([*values, *(mark.value for mark in marks)], minimum=_SPREAD_MIN_RANGE))
+        axes.set_xlabel("decision rule")
+        axes.set_ylabel(SUMMARY_AXES[data.kind])
+        figure.legend(handles=[Line2D([], [], label="single draw", **draw),
+                               Line2D([], [], label="ensemble decision", **ensemble)],
+                      loc="outside lower center", ncols=2)
+        lay_out(figure)
     return figure
 
 
@@ -1152,21 +962,27 @@ def plot_draws(data: DrawsFigure, *, theme: str = "light") -> Figure:
 def render_draws(plan: StudyPlan, *, arm: str = DEFAULT_DRAWS_ARM, stage: str = CONFIRMATORY_STAGE,
                  analysis_dir: str | Path = ANALYSIS_DIR, results_dir: str | Path = RESULTS_DIR,
                  example: tuple[str, str] | None = None, out_dir: str | Path = FIGURES_DIR) -> tuple[Path, ...]:
-    """Render F3 from the stored outputs of ``plan`` and write its four files once (all built before any write)."""
+    """Render Figures 3 and 8 from the stored outputs of ``plan`` and write their six files once.
+
+    Both figures are built before any file is written, so a refusal leaves
+    the output directory unchanged. Returns the paths of ``draws`` and then of
+    ``draw-spread``, each in the order of ``figure_paths``.
+    """
     data = draws_figure_from_records(plan, arm=arm, stage=stage, analysis_dir=analysis_dir, results_dir=results_dir,
                                      example=example)
-    texts = figure_texts(DRAWS, draws_table(data), lambda theme: plot_draws(data, theme=theme), out_dir)
+    texts = figure_texts(DRAWS, draws_table(data), lambda: plot_draws(data), out_dir)
+    texts.update(figure_texts(DRAW_SPREAD, draw_spread_table(data), lambda: plot_draw_spread(data), out_dir))
     return write_outputs(texts)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Render the draw-distribution figure of the frozen plan from its stored outputs.
+    """Render the first-draw figure and the draw-spread figure of the frozen plan from its stored outputs.
 
     Exit codes: 0 written (or already written identically), 2 refused (another
     plan, missing or malformed metrics or results, records that disagree, or a
     different figure at the output path).
     """
-    parser = argparse.ArgumentParser(description="Draw-distribution figure F3 (task 8.3), from the stored item "
+    parser = argparse.ArgumentParser(description="First-draw figure and draw-spread figure, from the stored item "
                                                  "results and ensemble metrics; sends no request.")
     parser.add_argument("--plan", type=Path, required=True, help="the frozen plan.json")
     parser.add_argument("--plan-sha256", required=True, help="the plan hash the stored outputs carry")
@@ -1198,7 +1014,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = [
     "DEFAULT_DRAWS_ARM",
     "DRAWS_COLUMNS",
+    "DRAW_SPREAD_COLUMNS",
     "EXAMPLE_DEFAULT",
+    "RATE_INTERVALS",
     "SPLIT_CHECK_MIN_DRAWS",
     "SUMMARY_NAMES",
     "DrawStrip",
@@ -1207,15 +1025,19 @@ __all__ = [
     "ExampleItem",
     "RankItem",
     "RateRow",
+    "draw_spread_table",
     "draws_figure",
     "draws_figure_from_records",
     "draws_table",
     "example_item",
     "exchangeability_shares",
     "main",
+    "plot_draw_spread",
     "plot_draws",
+    "rank_counts",
     "read_ensemble_metrics",
     "render_draws",
+    "spread_offsets",
 ]
 
 
