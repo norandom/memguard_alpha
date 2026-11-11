@@ -8,7 +8,10 @@ The qualification rule, stated once. Four checks, evaluated in this order:
 
 1. ``boundary``: the calibrator's recall boundary is a financial time series
    and its evidence method is reply features.
-2. ``sample``: at least ``MIN_VALID`` valid draws in each class.
+2. ``sample``: at least ``MIN_VALID`` valid draws in each class entering the
+   calibrator's fit, held-out draws included (the ``min_valid`` of the
+   calibration code). The held-out sizes are reported with the AUC; this check
+   does not read them.
 3. ``discrimination``: held-out AUC at least ``MIN_AUC`` and permutation p
    below ``ALPHA``.
 4. ``cutoff``: the estimate inside the training range is above the one after
@@ -32,6 +35,7 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from decimal import Decimal
 from enum import StrEnum
 from importlib import resources
 from pathlib import Path
@@ -99,7 +103,12 @@ class RecallBoundary:
 
 @dataclass(frozen=True)
 class Quality:
-    """Held-out quality of a calibrator, with its interval and sample sizes."""
+    """Held-out quality of a calibrator, with its interval and sample sizes.
+
+    ``n_exposed`` and ``n_fenced`` are the held-out draws per class behind the
+    AUC. ``n_valid_exposed`` and ``n_valid_fenced`` are the valid draws per class
+    entering the fit, held-out draws included; None when not recorded.
+    """
 
     holdout_auc: float
     interval_low: float
@@ -110,6 +119,8 @@ class Quality:
     n_fenced: int
     n_prompts: int | None
     permutation_p: float | None
+    n_valid_exposed: int | None = None
+    n_valid_fenced: int | None = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +179,13 @@ class Qualification:
     checks: Mapping[str, bool | None]
 
 
+def _plain(value: float) -> str:
+    """A number exactly as recorded, without rounding or scientific notation."""
+    if isinstance(value, int):
+        return str(value)
+    return format(Decimal(repr(value)), "f")
+
+
 def _boundary_check(record: ModeRecord) -> tuple[bool | None, str]:
     boundary, evidence = record.boundary, record.evidence
     if boundary is not None and boundary.domain != QUALIFYING_DOMAIN:
@@ -185,9 +203,12 @@ def _sample_check(record: ModeRecord) -> tuple[bool | None, str]:
     quality = record.quality
     if quality is None:
         return None, "no quality record"
-    if quality.n_exposed < MIN_VALID or quality.n_fenced < MIN_VALID:
+    exposed, fenced = quality.n_valid_exposed, quality.n_valid_fenced
+    if exposed is None or fenced is None:
+        return None, "no valid draws per class entering the fit recorded"
+    if exposed < MIN_VALID or fenced < MIN_VALID:
         return False, (
-            f"{quality.n_exposed} exposed and {quality.n_fenced} fenced valid draws, fewer than {MIN_VALID} in a class"
+            f"{exposed} exposed and {fenced} fenced valid draws entering the fit, fewer than {MIN_VALID} in a class"
         )
     return True, ""
 
@@ -197,11 +218,11 @@ def _discrimination_check(record: ModeRecord) -> tuple[bool | None, str]:
     if quality is None:
         return None, "no quality record"
     if not quality.holdout_auc >= MIN_AUC:
-        return False, f"held-out AUC {quality.holdout_auc:g} is below {MIN_AUC:g}"
+        return False, f"held-out AUC {_plain(quality.holdout_auc)} is below {_plain(MIN_AUC)}"
     if quality.permutation_p is None:
         return None, "no permutation p recorded"
     if not quality.permutation_p < ALPHA:
-        return False, f"permutation p {quality.permutation_p:g} is not below {ALPHA:g}"
+        return False, f"permutation p {_plain(quality.permutation_p)} is not below {_plain(ALPHA)}"
     return True, ""
 
 
@@ -211,11 +232,11 @@ def _cutoff_check(record: ModeRecord) -> tuple[bool | None, str]:
         return None, "no cutoff check recorded"
     if not cutoff.inside_mean > cutoff.after_mean:
         return False, (
-            f"estimate inside the training range ({cutoff.inside_mean:g}) is not above "
-            f"the one after the cutoff ({cutoff.after_mean:g})"
+            f"estimate inside the training range ({_plain(cutoff.inside_mean)}) is not above "
+            f"the one after the cutoff ({_plain(cutoff.after_mean)})"
         )
     if not cutoff.p_value < ALPHA:
-        return False, f"one-sided p {cutoff.p_value:g} is not below {ALPHA:g}"
+        return False, f"one-sided p {_plain(cutoff.p_value)} is not below {_plain(ALPHA)}"
     return True, ""
 
 
@@ -265,6 +286,8 @@ _QUALITY_KEYS = frozenset(
         "n_fenced",
         "n_prompts",
         "permutation_p",
+        "n_valid_exposed",
+        "n_valid_fenced",
     }
 )
 _CUTOFF_KEYS = frozenset(
@@ -345,16 +368,26 @@ def _quality(data: object, where: str) -> Quality | None:
     confidence = _number(data, "confidence", where)
     if not 0.0 < confidence < 1.0:
         raise CatalogueError(f"{where}: confidence must be a level in (0, 1)")
+    held_out = {"exposed": _count(data, "n_exposed", where), "fenced": _count(data, "n_fenced", where)}
+    valid = {name: _count(data, f"n_valid_{name}", where, optional=True) for name in held_out}
+    for name, count in valid.items():
+        if count is not None and count < held_out[name]:
+            raise CatalogueError(
+                f"{where}: n_valid_{name} {count} is smaller than the held-out n_{name} {held_out[name]}; "
+                "the valid draws entering the fit include the held-out draws"
+            )
     return Quality(
         holdout_auc=_unit(data, "holdout_auc", where),
         interval_low=low,
         interval_high=high,
         interval_method=_text(data, "interval_method", where),
         confidence=confidence,
-        n_exposed=_count(data, "n_exposed", where),
-        n_fenced=_count(data, "n_fenced", where),
+        n_exposed=held_out["exposed"],
+        n_fenced=held_out["fenced"],
         n_prompts=_count(data, "n_prompts", where, optional=True),
         permutation_p=_unit(data, "permutation_p", where, optional=True),
+        n_valid_exposed=valid["exposed"],
+        n_valid_fenced=valid["fenced"],
     )
 
 
@@ -442,6 +475,8 @@ def _mode_record(mode: Mode, data: object, derived: bool | None, where: str) -> 
     )
     if not isinstance(data["calibrations"], list):
         raise CatalogueError(f"{where}: calibrations must be a list")
+    if not available and data["calibrations"]:
+        raise CatalogueError(f"{where}: an unavailable mode must not carry calibrations")
     records = []
     for index, item in enumerate(data["calibrations"]):
         here = f"{where} calibration {index}"
@@ -499,6 +534,11 @@ def _entry(data: object, index: int, profiles: tuple[str, ...]) -> CatalogueEntr
         )
         for mode in Mode
     }
+    if not records[Mode.LOGPROBS].available and records[Mode.LOGITS].requires is None:
+        raise CatalogueError(
+            f"{where} {Mode.LOGITS.value}: the logprobs mode is unavailable, "
+            "so the logits mode must state what it requires"
+        )
     return CatalogueEntry(
         entry_id=entry_id,
         profile_id=profile_id,

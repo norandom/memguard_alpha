@@ -33,7 +33,9 @@
                 "n_exposed": 200,
                 "n_fenced": 200,
                 "n_prompts": null,
-                "permutation_p": null
+                "permutation_p": null,
+                "n_valid_exposed": 800,
+                "n_valid_fenced": 800
               },
               "cutoff": null,
               "calibrator_fingerprint": "sha256:fixture-document",
@@ -55,7 +57,9 @@
                 "n_exposed": 120,
                 "n_fenced": 110,
                 "n_prompts": 40,
-                "permutation_p": 0.001
+                "permutation_p": 0.001,
+                "n_valid_exposed": 480,
+                "n_valid_fenced": 440
               },
               "cutoff": {
                 "inside_mean": 0.62,
@@ -95,7 +99,9 @@
                 "n_exposed": 120,
                 "n_fenced": 110,
                 "n_prompts": 40,
-                "permutation_p": 0.2
+                "permutation_p": 0.2,
+                "n_valid_exposed": 480,
+                "n_valid_fenced": 440
               },
               "cutoff": null,
               "calibrator_fingerprint": null,
@@ -170,7 +176,9 @@
                 "n_exposed": 90,
                 "n_fenced": 80,
                 "n_prompts": 30,
-                "permutation_p": 0.002
+                "permutation_p": 0.002,
+                "n_valid_exposed": 360,
+                "n_valid_fenced": 320
               },
               "cutoff": {
                 "inside_mean": 0.58,

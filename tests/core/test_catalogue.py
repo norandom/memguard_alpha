@@ -37,6 +37,8 @@ QUALITY = Quality(
     n_fenced=110,
     n_prompts=40,
     permutation_p=0.001,
+    n_valid_exposed=480,
+    n_valid_fenced=440,
 )
 CUTOFF = CutoffCheck(
     inside_mean=0.62,
@@ -110,7 +112,7 @@ def test_all_four_checks_true_is_qualified() -> None:
 
 
 def test_thresholds_are_inclusive_for_auc_and_sample_and_strict_for_p() -> None:
-    at_limits = replace(QUALITY, holdout_auc=MIN_AUC, n_exposed=MIN_VALID, n_fenced=MIN_VALID)
+    at_limits = replace(QUALITY, holdout_auc=MIN_AUC, n_valid_exposed=MIN_VALID, n_valid_fenced=MIN_VALID)
     assert qualify(_record(quality=at_limits)).status is Status.QUALIFIED
     p_at_alpha = replace(QUALITY, permutation_p=ALPHA)
     assert qualify(_record(quality=p_at_alpha)).status is Status.NOT_QUALIFIED
@@ -123,8 +125,8 @@ def test_thresholds_are_inclusive_for_auc_and_sample_and_strict_for_p() -> None:
     [
         ({"boundary": replace(BOUNDARY, domain="document_text")}, "boundary"),
         ({"evidence": replace(EVIDENCE, method="document_likelihood")}, "boundary"),
-        ({"quality": replace(QUALITY, n_exposed=49)}, "sample"),
-        ({"quality": replace(QUALITY, n_fenced=49)}, "sample"),
+        ({"quality": replace(QUALITY, n_valid_exposed=49)}, "sample"),
+        ({"quality": replace(QUALITY, n_valid_fenced=49)}, "sample"),
         ({"quality": replace(QUALITY, holdout_auc=0.59)}, "discrimination"),
         ({"quality": replace(QUALITY, permutation_p=0.2)}, "discrimination"),
         ({"cutoff": replace(CUTOFF, inside_mean=0.40, difference=-0.01)}, "cutoff"),
@@ -143,7 +145,7 @@ def test_each_check_failing_alone_is_not_qualified_with_that_reason(changes: dic
 def test_first_failing_check_in_table_order_is_the_reason() -> None:
     result = qualify(
         _record(
-            quality=replace(QUALITY, n_exposed=10, holdout_auc=0.5),
+            quality=replace(QUALITY, n_valid_exposed=10, holdout_auc=0.5),
             cutoff=replace(CUTOFF, p_value=0.9),
         )
     )
@@ -151,6 +153,80 @@ def test_first_failing_check_in_table_order_is_the_reason() -> None:
     assert result.reason.startswith("sample:")
     assert result.checks["discrimination"] is False
     assert result.checks["cutoff"] is False
+
+
+def test_sample_check_reads_the_valid_draws_entering_the_fit_not_the_held_out_sizes() -> None:
+    # Held-out sizes are a quarter of the draws; they are reported, not checked.
+    small_holdout = replace(QUALITY, n_exposed=37, n_fenced=37, n_valid_exposed=132, n_valid_fenced=145)
+    result = qualify(_record(quality=small_holdout))
+    assert result.status is Status.QUALIFIED
+    assert result.checks["sample"] is True
+    few_valid = replace(QUALITY, n_exposed=120, n_fenced=110, n_valid_exposed=132, n_valid_fenced=49)
+    result = qualify(_record(quality=few_valid))
+    assert result.status is Status.NOT_QUALIFIED
+    assert result.reason == "sample: 132 exposed and 49 fenced valid draws entering the fit, fewer than 50 in a class"
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        {"n_valid_exposed": None},
+        {"n_valid_fenced": None},
+        {"n_valid_exposed": None, "n_valid_fenced": None},
+        {"n_valid_exposed": None, "n_valid_fenced": 10},
+    ],
+)
+def test_valid_draws_not_recorded_is_a_missing_input_never_a_failure(missing: dict[str, object]) -> None:
+    result = qualify(_record(quality=replace(QUALITY, **missing)))
+    assert result.status is Status.NOT_TESTED
+    assert result.reason == "sample: no valid draws per class entering the fit recorded"
+    assert result.checks["sample"] is None
+    assert result.checks["discrimination"] is True
+
+
+def test_valid_draws_default_to_not_recorded() -> None:
+    quality = Quality(
+        holdout_auc=0.71,
+        interval_low=0.64,
+        interval_high=0.78,
+        interval_method="row_bootstrap",
+        confidence=0.95,
+        n_exposed=120,
+        n_fenced=110,
+        n_prompts=None,
+        permutation_p=0.001,
+    )
+    assert (quality.n_valid_exposed, quality.n_valid_fenced) == (None, None)
+
+
+def test_a_recorded_failure_after_a_missing_sample_input_is_not_qualified() -> None:
+    # First recorded failure anywhere in the table wins over an earlier missing input.
+    quality = replace(QUALITY, n_valid_exposed=None, n_valid_fenced=None, holdout_auc=0.583)
+    result = qualify(_record(quality=quality))
+    assert result.status is Status.NOT_QUALIFIED
+    assert result.reason == "discrimination: held-out AUC 0.583 is below 0.6"
+    assert result.checks["sample"] is None
+
+
+def test_reasons_print_numbers_as_recorded_without_rounding() -> None:
+    result = qualify(_record(quality=replace(QUALITY, holdout_auc=0.5833333333333333)))
+    assert result.reason == "discrimination: held-out AUC 0.5833333333333333 is below 0.6"
+    result = qualify(_record(quality=replace(QUALITY, permutation_p=0.05000000000000001)))
+    assert result.reason == "discrimination: permutation p 0.05000000000000001 is not below 0.05"
+    result = qualify(_record(cutoff=replace(CUTOFF, p_value=0.0612345678)))
+    assert result.reason == "cutoff: one-sided p 0.0612345678 is not below 0.05"
+
+
+def test_reasons_print_small_numbers_without_scientific_notation() -> None:
+    cutoff = replace(CUTOFF, inside_mean=0.00001234, after_mean=0.00002, difference=-0.00000766, p_value=0.00001)
+    result = qualify(_record(cutoff=cutoff))
+    assert result.reason == (
+        "cutoff: estimate inside the training range (0.00001234) is not above the one after the cutoff (0.00002)"
+    )
+    assert "e-" not in result.reason
+    # A small p that is recorded as a failure cannot occur (it is below alpha); a p of 1 prints as recorded.
+    result = qualify(_record(quality=replace(QUALITY, permutation_p=1.0)))
+    assert result.reason == "discrimination: permutation p 1.0 is not below 0.05"
 
 
 def test_record_without_quality_is_not_tested() -> None:

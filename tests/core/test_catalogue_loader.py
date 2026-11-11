@@ -110,6 +110,8 @@ def test_evidence_and_calibration_values_are_loaded(catalogue: Catalogue) -> Non
     assert record.quality.holdout_auc == 0.71
     assert (record.quality.interval_low, record.quality.interval_high) == (0.64, 0.78)
     assert record.quality.n_prompts == 40
+    assert (record.quality.n_exposed, record.quality.n_fenced) == (120, 110)
+    assert (record.quality.n_valid_exposed, record.quality.n_valid_fenced) == (480, 440)
     assert record.cutoff.difference == 0.21
     assert record.calibrator_fingerprint == "sha256:fixture-series"
     assert record.features == ("entropy", "top1_probability")
@@ -225,6 +227,14 @@ INVALID = {
     "auc not a number": (_set((*QUALITY, "holdout_auc"), "0.71"), "holdout_auc"),
     "auc a boolean": (_set((*QUALITY, "holdout_auc"), True), "holdout_auc"),
     "count not an integer": (_set((*QUALITY, "n_exposed"), 120.5), "n_exposed"),
+    "missing valid-draw key": (_drop((*QUALITY, "n_valid_exposed")), "n_valid_exposed"),
+    "valid draws not an integer": (_set((*QUALITY, "n_valid_exposed"), 480.5), "n_valid_exposed"),
+    "valid draws negative": (_set((*QUALITY, "n_valid_fenced"), -1), "n_valid_fenced"),
+    "valid draws a boolean": (_set((*QUALITY, "n_valid_fenced"), True), "n_valid_fenced"),
+    "valid draws below the held-out size": (
+        _set((*QUALITY, "n_valid_fenced"), 109),
+        "n_valid_fenced 109 is smaller than the held-out n_fenced 110",
+    ),
     "p outside [0, 1]": (_set((*CUTOFF, "p_value"), 1.5), "p_value"),
     "rule min_auc differs": (_set(("rule", "min_auc"), 0.7), "min_auc"),
     "rule min_valid differs": (_set(("rule", "min_valid"), 30), "min_valid"),
@@ -256,6 +266,23 @@ def test_invalid_data_is_refused(data: dict, case: str) -> None:
     change(data)
     with pytest.raises(CatalogueError, match=message):
         load_catalogue(data)
+
+
+@pytest.mark.parametrize("keys", [("n_valid_exposed",), ("n_valid_fenced",), ("n_valid_exposed", "n_valid_fenced")])
+def test_valid_draws_may_be_null_and_then_the_sample_check_has_no_input(data: dict, keys: tuple[str, ...]) -> None:
+    for key in keys:
+        _series(data)["quality"][key] = None
+    loaded = load_catalogue(data)
+    quality = loaded.entry("llamacpp-gemma3-4b").modes[Mode.LOGPROBS].quality
+    assert all(getattr(quality, key) is None for key in keys)
+    result = loaded.qualification("llamacpp-gemma3-4b", Mode.LOGPROBS)
+    assert result.status is Status.NOT_TESTED
+    assert result.reason == "sample: no valid draws per class entering the fit recorded"
+
+
+def test_valid_draws_equal_to_the_held_out_sizes_are_accepted(data: dict) -> None:
+    _series(data)["quality"].update(n_valid_exposed=120, n_valid_fenced=110)
+    assert load_catalogue(data).qualification("llamacpp-gemma3-4b", Mode.LOGPROBS).status is Status.QUALIFIED
 
 
 def test_root_must_be_a_mapping(tmp_path: Path) -> None:

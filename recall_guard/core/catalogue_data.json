@@ -1,0 +1,790 @@
+{
+  "schema": "recall-guard-catalogue/1",
+  "rule": {
+    "min_auc": 0.6,
+    "min_valid": 50,
+    "alpha": 0.05
+  },
+  "entries": [
+    {
+      "entry_id": "flm-gemma3-4b",
+      "profile_id": "flm-gemma3-4b",
+      "model": "gemma3:4b",
+      "route": "FastFlowLM, local NPU",
+      "weights_identity": "sha256:06cb8f39d3f84850c3e1938de304605cf842fddbb5fef946fa88140d811ff117",
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "SEC EDGAR 8-K press releases filed 2015-01 to 2023-03, before the model's training cutoff (memorized rows)",
+                "fenced": "SEC EDGAR 8-K press releases filed 2024-09 to 2026-11, after the model's training cutoff (control rows)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.599,
+                "interval_low": 0.475,
+                "interval_high": 0.721,
+                "interval_method": "row_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 40,
+                "n_fenced": 40,
+                "n_prompts": null,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R38"
+                ],
+                "method": "reply_features"
+              }
+            }
+          ]
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "flm-gemma4-e4b",
+      "profile_id": "flm-gemma4-e4b",
+      "model": "gemma4-it:e4b",
+      "route": "FastFlowLM, local NPU",
+      "weights_identity": "sha256:356d155beeee7f8a6008163957963e3df609bbb1c2d6b9c18ba1859906aab924",
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "SEC EDGAR 8-K press releases filed 2015-01 to 2023-03, before the model's training cutoff (memorized rows)",
+                "fenced": "SEC EDGAR 8-K press releases filed after 2025-01-31, after the model's January 2025 cutoff (control rows)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.438,
+                "interval_low": 0.301,
+                "interval_high": 0.574,
+                "interval_method": "row_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 40,
+                "n_fenced": 33,
+                "n_prompts": null,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R38"
+                ],
+                "method": "reply_features"
+              }
+            }
+          ]
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "flm-llama3.2-3b",
+      "profile_id": "flm-llama3.2-3b",
+      "model": "llama3.2:3b",
+      "route": "FastFlowLM, local NPU",
+      "weights_identity": "sha256:b654a76e90b9c35089e3afdc69ae3a2b41edd7a0cb5b2e9a55192de1eb1b877f",
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": []
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "llamacpp-gemma3-4b",
+      "profile_id": "llamacpp-gemma3-4b",
+      "model": "gemma3:4b",
+      "route": "llama.cpp, local Vulkan iGPU",
+      "weights_identity": "sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1",
+      "weights_group": "gemma3-4b-gguf-q4_k_m-f06e91e1",
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "financial_time_series",
+                "exposed": "the identifying rendering of the macro prompt (the memorized class of the calibrator)",
+                "fenced": "the anonymised point-in-time rendering of the same macro prompt (the control class)",
+                "date_range": "calibration months inside the model's training range, before the cutoff"
+              },
+              "quality": {
+                "holdout_auc": 0.722,
+                "interval_low": 0.586,
+                "interval_high": 0.855,
+                "interval_method": "prompt_clustered_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 37,
+                "n_fenced": 37,
+                "n_prompts": 11,
+                "permutation_p": null,
+                "n_valid_exposed": 132,
+                "n_valid_fenced": 145
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R43"
+                ],
+                "method": "reply_features"
+              }
+            },
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "replies to SEC EDGAR 8-K press releases filed before the model's training cutoff (memorized rows)",
+                "fenced": "replies to SEC EDGAR 8-K press releases filed after the model's training cutoff (control rows)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.592,
+                "interval_low": 0.367,
+                "interval_high": 0.815,
+                "interval_method": "prompt_clustered_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 40,
+                "n_fenced": 100,
+                "n_prompts": 35,
+                "permutation_p": null,
+                "n_valid_exposed": 160,
+                "n_valid_fenced": 400
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R43"
+                ],
+                "method": "reply_features"
+              }
+            }
+          ]
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": "the project's full-distribution host (teacher forcing) on the same GGUF digest, declared in the provider profile; one model host loaded at a time",
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "financial_time_series",
+                "exposed": "the identifying rendering of the macro prompt (the memorized class of the calibrator)",
+                "fenced": "the anonymised point-in-time rendering of the same macro prompt (the control class)",
+                "date_range": "calibration months inside the model's training range, before the cutoff"
+              },
+              "quality": {
+                "holdout_auc": 1.000,
+                "interval_low": 1.000,
+                "interval_high": 1.000,
+                "interval_method": "prompt_clustered_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 37,
+                "n_fenced": 37,
+                "n_prompts": 11,
+                "permutation_p": null,
+                "n_valid_exposed": 132,
+                "n_valid_fenced": 145
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R43"
+                ],
+                "method": "reply_features"
+              }
+            },
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "replies to SEC EDGAR 8-K press releases filed before the model's training cutoff (memorized rows)",
+                "fenced": "replies to SEC EDGAR 8-K press releases filed after the model's training cutoff (control rows)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.532,
+                "interval_low": 0.319,
+                "interval_high": 0.754,
+                "interval_method": "prompt_clustered_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 40,
+                "n_fenced": 100,
+                "n_prompts": 35,
+                "permutation_p": null,
+                "n_valid_exposed": 160,
+                "n_valid_fenced": 400
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R43"
+                ],
+                "method": "reply_features"
+              }
+            },
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "SEC EDGAR 8-K press releases filed before the model's training cutoff (memorized documents)",
+                "fenced": "SEC EDGAR 8-K press releases filed after the model's training cutoff (control documents)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.562,
+                "interval_low": 0.439,
+                "interval_high": 0.693,
+                "interval_method": "row_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 40,
+                "n_fenced": 40,
+                "n_prompts": null,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R40"
+                ],
+                "method": "document_likelihood"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "entry_id": "modal-gemma3-4b",
+      "profile_id": "modal-gemma3-4b",
+      "model": "google/gemma-3-4b-it",
+      "route": "Modal vLLM, remote GPU",
+      "weights_identity": "google/gemma-3-4b-it@093f9f388b31de276ce2de164bdc2081324b9767 (bf16)",
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "financial_time_series",
+                "exposed": "the identifying rendering of the macro prompt (the memorized class of the calibrator)",
+                "fenced": "the anonymised point-in-time rendering of the same macro prompt (the control class)",
+                "date_range": "calibration months inside the model's training range, before the cutoff"
+              },
+              "quality": {
+                "holdout_auc": 0.583,
+                "interval_low": 0.249,
+                "interval_high": 0.917,
+                "interval_method": "prompt_clustered_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 192,
+                "n_fenced": 192,
+                "n_prompts": 12,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R43"
+                ],
+                "method": "reply_features"
+              }
+            },
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "replies to SEC EDGAR 8-K press releases filed before the model's training cutoff (memorized rows)",
+                "fenced": "replies to SEC EDGAR 8-K press releases filed after the model's training cutoff (control rows)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.000,
+                "interval_low": 0.000,
+                "interval_high": 0.000,
+                "interval_method": "prompt_clustered_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 32,
+                "n_fenced": 128,
+                "n_prompts": 5,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R43"
+                ],
+                "method": "reply_features"
+              }
+            }
+          ]
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host: the project's host serves different weights (the local GGUF), and values from different builds are not comparable",
+          "requires": "a full-distribution host that serves the same bf16 weights at the pinned revision",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "modal-gpt-oss-20b",
+      "profile_id": "modal-gpt-oss-20b",
+      "model": "openai/gpt-oss-20b",
+      "route": "Modal vLLM, remote GPU, Harmony final answer",
+      "weights_identity": null,
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "SEC EDGAR 8-K press releases filed 2015-01 to 2023-03, before the model's training cutoff (memorized rows)",
+                "fenced": "SEC EDGAR 8-K press releases filed 2024-09 to 2026-11, after the model's training cutoff (control rows)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.574,
+                "interval_low": 0.426,
+                "interval_high": 0.707,
+                "interval_method": "row_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 38,
+                "n_fenced": 29,
+                "n_prompts": null,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R30"
+                ],
+                "method": "reply_features"
+              }
+            }
+          ]
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "nim-llama3.1-70b",
+      "profile_id": "nim-llama3.1-70b",
+      "model": "meta/llama-3.1-70b-instruct",
+      "route": "NVIDIA NIM, managed API",
+      "weights_identity": null,
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": []
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "ollama-gemma3-4b",
+      "profile_id": "ollama-gemma3-4b",
+      "model": "gemma3:4b",
+      "route": "Ollama, local",
+      "weights_identity": "sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1",
+      "weights_group": "gemma3-4b-gguf-q4_k_m-f06e91e1",
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "SEC EDGAR 8-K press releases filed 2015-01 to 2023-03, before the model's training cutoff (memorized rows)",
+                "fenced": "SEC EDGAR 8-K press releases filed 2024-09 to 2026-11, after the model's training cutoff (control rows)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.574,
+                "interval_low": 0.453,
+                "interval_high": 0.690,
+                "interval_method": "row_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 40,
+                "n_fenced": 39,
+                "n_prompts": null,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R26"
+                ],
+                "method": "reply_features"
+              }
+            }
+          ]
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "ollama-gpt-oss-20b",
+      "profile_id": "ollama-gpt-oss-20b",
+      "model": "gpt-oss:20b",
+      "route": "Ollama, local",
+      "weights_identity": null,
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": []
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "ollama-llama3.1-8b",
+      "profile_id": "ollama-llama3.1-8b",
+      "model": "llama3.1:8b",
+      "route": "Ollama, local",
+      "weights_identity": null,
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "SEC EDGAR 8-K press releases filed 2015-01 to 2023-03, before the model's training cutoff (memorized rows)",
+                "fenced": "SEC EDGAR 8-K press releases filed 2024-09 to 2026-11, after the model's training cutoff (control rows)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.462,
+                "interval_low": 0.339,
+                "interval_high": 0.598,
+                "interval_method": "row_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 39,
+                "n_fenced": 40,
+                "n_prompts": null,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R26"
+                ],
+                "method": "reply_features"
+              }
+            }
+          ]
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "ollama-llama3.2-3b",
+      "profile_id": "ollama-llama3.2-3b",
+      "model": "llama3.2:3b",
+      "route": "Ollama, local",
+      "weights_identity": null,
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "SEC EDGAR 8-K press releases filed 2015-01 to 2023-03, before the model's training cutoff (memorized rows)",
+                "fenced": "SEC EDGAR 8-K press releases filed 2024-09 to 2026-11, after the model's training cutoff (control rows)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.503,
+                "interval_low": 0.381,
+                "interval_high": 0.623,
+                "interval_method": "row_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 40,
+                "n_fenced": 39,
+                "n_prompts": null,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R26"
+                ],
+                "method": "reply_features"
+              }
+            }
+          ]
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "ollama-llava-llama3-ctx2048",
+      "profile_id": "ollama-llava-llama3-ctx2048",
+      "model": "llava-llama3:ctx2048",
+      "route": "Ollama, local",
+      "weights_identity": null,
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": []
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "ollama-phi4-mini",
+      "profile_id": "ollama-phi4-mini",
+      "model": "phi4-mini:3.8b",
+      "route": "Ollama, local",
+      "weights_identity": null,
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": null,
+          "unavailable_reason": null,
+          "requires": null,
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": []
+        },
+        "logits": {
+          "available": null,
+          "unavailable_reason": "the provider profile declares no full-distribution host for this route",
+          "requires": "a full-distribution host that serves the same weights, declared in the provider profile",
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        }
+      }
+    },
+    {
+      "entry_id": "ryzenai-oga-gemma4-e4b",
+      "profile_id": null,
+      "model": "amd/gemma-4-e4b-it-mobius-int4_rai_1.9.0_npu",
+      "route": "Ryzen AI OGA, local NPU, in process",
+      "weights_identity": "amd/gemma-4-e4b-it-mobius-int4_rai_1.9.0_npu@5fcdd87",
+      "weights_group": null,
+      "modes": {
+        "logprobs": {
+          "available": false,
+          "unavailable_reason": "no provider profile is shipped for this route; it was measured through its logits only (R41), and no reply with logprobs is recorded for it",
+          "requires": null,
+          "features": [],
+          "features_unavailable": [],
+          "calibrations": []
+        },
+        "logits": {
+          "available": true,
+          "unavailable_reason": null,
+          "requires": "Ryzen AI OGA 0.18.0 on the NPU with AMD's int4 build; the runtime returns the logits of the last position only, so text is scored one token at a time with a fresh model load per document",
+          "features": ["loss", "min_k", "min_k_pp", "zlib_ratio"],
+          "features_unavailable": ["ref_delta"],
+          "calibrations": [
+            {
+              "boundary": {
+                "domain": "document_text",
+                "exposed": "SEC EDGAR 8-K press releases filed before 2023-03, before the model's training cutoff (memorized documents)",
+                "fenced": "SEC EDGAR 8-K press releases filed after 2025-01-31, after the model's January 2025 cutoff (control documents)",
+                "date_range": "exposed documents filed before the model's training cutoff, fenced documents filed after it"
+              },
+              "quality": {
+                "holdout_auc": 0.470,
+                "interval_low": 0.338,
+                "interval_high": 0.608,
+                "interval_method": "row_bootstrap",
+                "confidence": 0.95,
+                "n_exposed": 40,
+                "n_fenced": 33,
+                "n_prompts": null,
+                "permutation_p": null,
+                "n_valid_exposed": null,
+                "n_valid_fenced": null
+              },
+              "cutoff": null,
+              "calibrator_fingerprint": null,
+              "evidence": {
+                "register_ids": [
+                  "R41"
+                ],
+                "method": "document_likelihood"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
