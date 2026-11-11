@@ -8,7 +8,7 @@ comparison of the guarded replay against the published assets reads private
 records and is not part of CI; it is run locally where a task names it.
 
 - [ ] 1. Foundation: statistics, figure style and catalogue types
-- [ ] 1.1 Statistics with their calculation exposed
+- [x] 1.1 Statistics with their calculation exposed
   - Add to the core significance module a record for one reported statistic that carries its estimand, formula, inputs with counts, unit of analysis, sample size, independence flag, value, interval, test, effect size, detectable effect, a by-construction flag and the name of a missing input
   - Add a prompt-clustered AUC interval, a label permutation test for AUC that permutes at cluster level, a paired AUC difference on shared resamples with its interval and test, agreement statistics for two estimates (mean difference with limits of agreement, mean absolute difference, rank correlation), and a one-sided permutation test of a mean difference that permutes at block level
   - The detectable effect at power 0.8 and alpha 0.05 comes from the bootstrap standard error
@@ -163,3 +163,4 @@ records and is not part of CI; it is run locally where a task names it.
 ## Implementation Notes
 
 - 1.3: a record without any quality value is not tested even when another recorded field would fail a check (design invariant, Requirement 1.8); the checks mapping still shows the failing check as False. The cutoff check compares the inside and after means and ignores the recorded difference field; the loader (1.4) should validate that the two agree.
+- 1.1: clustered_auc_interval reproduces the calibration script's interval exactly (tested with ==) under two caller rules that 2.3 must keep: pass clusters in the script's group order, and keep the caller's guard that returns no bounds when a class is absent (the core function raises ValueError there). permutation_auc_test is one-sided (greater) and records that in its parameters; the reviewer suggests an alternative keyword later. Only agreement builds a missing-input Statistic; the other functions raise ValueError and the analyses assemble the missing record.
