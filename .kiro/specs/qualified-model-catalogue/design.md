@@ -247,9 +247,10 @@ flowchart TB
     B -- yes --> C{Held-out AUC at least 0.6 and permutation p below 0.05}
     C -- no --> N
     C -- yes --> D{Estimate inside training range above after cutoff, p below 0.05}
+    C -- permutation p not recorded --> D
     D -- no --> N
-    D -- yes --> Q[qualified]
-    C -- permutation p not recorded --> T[not tested, reason]
+    D -- yes and permutation p recorded --> Q[qualified]
+    D -- yes and permutation p not recorded --> T[not tested, reason]
     D -- not recorded --> T
     Z[No calibrator record] --> T
 ```
