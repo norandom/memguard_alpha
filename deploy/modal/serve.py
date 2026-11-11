@@ -13,7 +13,9 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -314,13 +316,37 @@ def create_expiry_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANI
     return app
 
 
+def _dereference_snapshot(directory: Path, hub_root: Path) -> None:
+    """Replace each pointer symlink of a snapshot with its target's bytes.
+
+    huggingface_hub's ``cache_dir`` layout links ``snapshots/<revision>/<file>``
+    into ``blobs/``. The serve-mode inventory reads the volume through the SDK,
+    which refuses a symlink, and the serving container needs no link either, so
+    the staged snapshot holds the bytes itself. A link that leaves the cache or
+    points at anything but a regular file refuses the staging.
+    """
+    for path in sorted(directory.rglob("*")):
+        if not path.is_symlink():
+            continue
+        target = path.resolve()
+        if not target.is_file() or not target.is_relative_to(hub_root):
+            raise ValueError(f"Staged snapshot link {path.name} leaves the cache or names no regular file")
+        staged = path.with_name(path.name + ".staging")
+        shutil.copyfile(target, staged)
+        os.replace(staged, path)
+
+
 def stage_weights(plan: Plan, *, cache: Path = Path(CACHE), hub=None, commit=None) -> dict:
     """Runs in the CPU-only staging container, never on the operator's machine.
 
     Downloads the pinned revision's indexed weight shards plus its config and
     tokenizer files into the mounted volume's Hugging Face cache, the layout that
-    serving reads offline, and commits the volume. The Hub client reads HF_TOKEN
-    from the container's secret by name; this code never reads it. Returns sizes only.
+    serving reads offline, replaces the cache's pointer symlinks with regular
+    files and drops the blobs and lock files they pointed at, then commits the
+    volume. On a re-run the pointer files already exist as regular files, which
+    the Hub client returns for a commit-hash revision without downloading. The
+    Hub client reads HF_TOKEN from the container's secret by name; this code
+    never reads it. Returns sizes only.
     """
     started = time.monotonic()
     if hub is None:
@@ -341,6 +367,24 @@ def stage_weights(plan: Plan, *, cache: Path = Path(CACHE), hub=None, commit=Non
                                                allow_patterns=list(STAGED_FILES)))
     if (model.name, tokenizer.name) != (a.model_revision, a.tokenizer_revision):
         raise ValueError("Staged snapshot differs from the pinned revision")
+    hub_root = Path(hub_cache).resolve()
+    snapshots = {model, tokenizer}
+    for directory in snapshots:
+        for stale in sorted(directory.rglob("*.staging")):
+            stale.unlink()
+        _dereference_snapshot(directory, hub_root)
+    # The blobs go only once no snapshot of the repository links into them any more: the model and the
+    # tokenizer may share a repository at different revisions, and an older snapshot may still link.
+    for repo_dir in {directory.parent.parent for directory in snapshots}:
+        linked = [path for path in sorted((repo_dir / "snapshots").rglob("*")) if path.is_symlink()]
+        if linked:
+            raise ValueError(f"Staged repository {repo_dir.name} still links into its blobs: {linked[0].name}")
+        blobs = repo_dir / "blobs"
+        if blobs.is_dir():
+            shutil.rmtree(blobs)
+    locks = Path(hub_cache) / ".locks"
+    if locks.is_dir():
+        shutil.rmtree(locks)
     required = [model / name for name in sorted(shards | {WEIGHT_INDEX, "config.json"})]
     required += [tokenizer / name for name in ("tokenizer.json", "tokenizer_config.json")]
     config = model / "config.json"

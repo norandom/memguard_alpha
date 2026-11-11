@@ -248,16 +248,25 @@ def approval_check(path, frozen, plan):
     return budget
 
 
+#: modal.volume.FileEntryType.SYMLINK in the pinned SDK: a Hub cache pointer link, which read_file refuses.
+VOLUME_ENTRY_SYMLINK = 3
+
+
 async def verify_weight_cache(plan, sdk):
     """Authenticated CPU control-plane inventory only; never create/stage a volume.
 
     Weight staging is a separate paid prerequisite. Require the pinned index and
     every indexed shard with nonzero size, rather than mistaking config for weights.
+    A snapshot whose entries are symlinks (the Hub cache layout before staging
+    dereferences it) is refused by name before any read: the SDK cannot read
+    through a link and a link's listed size is its link text, not the weights.
     """
     volume = sdk.Volume.from_name(plan.volume_name, environment_name=plan.target.environment,
                                   create_if_missing=False)
     base = "hub/models--" + plan.artifacts.model.replace("/", "--") + "/snapshots/" + plan.artifacts.model_revision
     entries = await asyncio.wait_for(volume.listdir.aio(base, recursive=True), 30)
+    if any(getattr(entry, "type", None) == VOLUME_ENTRY_SYMLINK for entry in entries):
+        raise ValueError("cpu_staged_weight_cache_symlinked")
     files = {entry.path.lstrip("/"): entry.size for entry in entries}
     index_path = base + "/model.safetensors.index.json"
     if files.get(index_path, 0) <= 0:

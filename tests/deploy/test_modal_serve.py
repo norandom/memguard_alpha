@@ -1,9 +1,12 @@
 """Offline serving recipe tests; fake SDK calls never allocate compute."""
 
+import hashlib
 import json
+import os
 import subprocess
 import sys
 from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -398,6 +401,142 @@ def test_staging_body_refuses_a_snapshot_missing_required_files(tmp_path):
     with pytest.raises(ValueError, match="required file"):
         serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=lambda: commits.append("commit"))
     assert commits == []
+
+
+def require_symlinks(directory: Path) -> None:
+    """The Hub cache layout needs symlinks; Windows refuses them without a privilege."""
+    target = directory / "symlink-target"
+    target.write_bytes(b"")
+    try:
+        (directory / "symlink-probe").symlink_to(target)
+    except OSError as error:
+        pytest.skip(f"Symlinks unavailable on this platform: {error}")
+
+
+class CacheLayoutHub(FakeHub):
+    """What huggingface_hub writes with cache_dir: bytes under blobs, relative symlinks as pointer files, lock files."""
+
+    def __init__(self, plan, **kwargs):
+        super().__init__(plan, **kwargs)
+        self.written = {}
+
+    def store(self, cache_dir, repo, name, data, revision=None):
+        repo_dir = Path(cache_dir) / ("models--" + repo.replace("/", "--"))
+        blob = repo_dir / "blobs" / hashlib.sha256(data).hexdigest()
+        blob.parent.mkdir(parents=True, exist_ok=True)
+        blob.write_bytes(data)
+        lock = Path(cache_dir) / ".locks" / repo_dir.name / (blob.name + ".lock")
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_bytes(b"")
+        pointer = repo_dir / "snapshots" / (revision or self.revision) / name
+        pointer.parent.mkdir(parents=True, exist_ok=True)
+        if not pointer.is_symlink():
+            pointer.symlink_to(os.path.relpath(blob, pointer.parent))
+        self.written[name] = data
+        return pointer
+
+    def hf_hub_download(self, repo, filename, *, revision, cache_dir):
+        self.requests.append(("file", repo, filename, revision))
+        index = json.dumps({"weight_map": {f"layer.{i}": shard for i, shard in enumerate(self.shards)}}).encode()
+        return str(self.store(cache_dir, repo, filename, index, revision))
+
+    def snapshot_download(self, repo, *, revision, cache_dir, allow_patterns):
+        self.requests.append(("snapshot", repo, tuple(allow_patterns), revision))
+        for name, data in self.files.items():
+            if name in allow_patterns:
+                self.store(cache_dir, repo, name, data, revision)
+        return str(Path(cache_dir) / ("models--" + repo.replace("/", "--")) / "snapshots" / revision)
+
+
+class RerunHub(FakeHub):
+    """A second run: a commit-hash revision resolves to the existing pointer files and downloads nothing."""
+
+    def hf_hub_download(self, repo, filename, *, revision, cache_dir):
+        self.requests.append(("file", repo, filename, revision))
+        return str(self.snapshot(cache_dir, repo) / filename)
+
+    def snapshot_download(self, repo, *, revision, cache_dir, allow_patterns):
+        self.requests.append(("snapshot", repo, tuple(allow_patterns), revision))
+        return str(self.snapshot(cache_dir, repo))
+
+
+def test_staging_body_replaces_cache_symlinks_with_regular_files_before_committing(tmp_path):
+    require_symlinks(tmp_path)
+    plan = load_plan(GEMMA)
+    hub, seen = CacheLayoutHub(plan), []
+    repo = tmp_path / "hub/models--google--gemma-3-4b-it"
+    snapshot = repo / "snapshots" / plan.artifacts.model_revision
+
+    def commit():
+        seen.append({"symlinks": sorted(path.name for path in snapshot.rglob("*") if path.is_symlink()),
+                     "blobs": (repo / "blobs").exists(), "locks": (tmp_path / "hub/.locks").exists()})
+
+    result = serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=commit)
+    # The commit saw the dereferenced layout: no pointer link, no blobs, no lock files.
+    assert seen == [{"symlinks": [], "blobs": False, "locks": False}]
+    files = sorted(snapshot.rglob("*"))
+    assert files and all(path.is_file() and not path.is_symlink() for path in files)
+    assert {path.name: path.read_bytes() for path in files} == hub.written
+    assert result["files"] == len(hub.written) == 7
+    assert result["bytes"] == sum(len(data) for data in hub.written.values())
+    observed = serve.snapshot(plan, "ap-test", "ready", cache=tmp_path)
+    assert observed["resolved_model_revision"] == plan.artifacts.model_revision
+
+
+@pytest.mark.parametrize("target", ["outside", "missing"])
+def test_staging_body_refuses_a_snapshot_link_that_leaves_the_cache(tmp_path, target):
+    require_symlinks(tmp_path)
+    plan = load_plan(GEMMA)
+    hub, commits = CacheLayoutHub(plan), []
+    snapshot = hub.snapshot(tmp_path / "hub", plan.artifacts.model)
+    snapshot.mkdir(parents=True)
+    (tmp_path / "outside.json").write_bytes(b"{}")
+    (snapshot / "stray.json").symlink_to(tmp_path / (target + ".json"))
+    with pytest.raises(ValueError, match="stray.json"):
+        serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=lambda: commits.append("commit"))
+    assert commits == [] and (snapshot / "stray.json").is_symlink()
+
+
+def test_staging_body_dereferences_a_tokenizer_at_another_revision_of_the_same_repo(tmp_path):
+    require_symlinks(tmp_path)
+    plan = load_plan(GEMMA)
+    plan = replace(plan, artifacts=replace(plan.artifacts, tokenizer_revision="b" * 40))
+    hub, seen = CacheLayoutHub(plan), []
+    repo = tmp_path / "hub/models--google--gemma-3-4b-it"
+    model = repo / "snapshots" / plan.artifacts.model_revision
+    tokenizer = repo / "snapshots" / ("b" * 40)
+
+    def commit():
+        seen.append({"links": [path.name for path in repo.rglob("*") if path.is_symlink()],
+                     "blobs": (repo / "blobs").exists()})
+
+    result = serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=commit)
+    # Both snapshots shared one blobs directory; it went only after the second snapshot was dereferenced.
+    assert seen == [{"links": [], "blobs": False}]
+    for snapshot in (model, tokenizer):
+        files = list(snapshot.rglob("*"))
+        assert files and all(path.is_file() and not path.is_symlink() for path in files)
+    assert (tokenizer / "tokenizer.json").read_bytes() == hub.written["tokenizer.json"]
+    assert (model / "model-00001-of-00002.safetensors").read_bytes() == hub.written["model-00001-of-00002.safetensors"]
+    counted = {path for directory in (model, tokenizer) for path in directory.rglob("*") if path.is_file()}
+    assert result["files"] == len(counted) == 11
+    assert result["bytes"] == sum(path.stat().st_size for path in counted)
+    assert result["tokenizer_revision"] == "b" * 40
+
+
+def test_staging_body_tolerates_a_rerun_over_regular_pointer_files_without_blobs(tmp_path):
+    plan = load_plan(GEMMA)
+    first = serve.stage_weights(plan, cache=tmp_path, hub=FakeHub(plan), commit=lambda: None)
+    repo = tmp_path / "hub/models--google--gemma-3-4b-it"
+    snapshot = repo / "snapshots" / plan.artifacts.model_revision
+    before = {path.name: path.read_bytes() for path in snapshot.rglob("*")}
+    hub, commits = RerunHub(plan), []
+    result = serve.stage_weights(plan, cache=tmp_path, hub=hub, commit=lambda: commits.append("commit"))
+    assert commits == ["commit"] and [request[0] for request in hub.requests] == ["file", "snapshot"]
+    assert {path.name: path.read_bytes() for path in snapshot.rglob("*")} == before
+    assert all(path.is_file() and not path.is_symlink() for path in snapshot.rglob("*"))
+    assert (result["files"], result["bytes"]) == (first["files"], first["bytes"]) == (7, first["bytes"])
+    assert not (repo / "blobs").exists() and not (tmp_path / "hub/.locks").exists()
 
 
 def test_control_plane_retrieval_never_calls_gpu_and_checks_identity():

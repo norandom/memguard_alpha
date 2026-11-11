@@ -1,6 +1,7 @@
 """Offline runner integration: cloud calls and inference transports are faked."""
 
 import asyncio
+import enum
 import json
 import sys
 import time
@@ -310,6 +311,13 @@ def test_wrong_python_blocks_execute_before_sdk_or_cache(configured, monkeypatch
     assert not path.exists()
 
 
+class EntryType(enum.IntEnum):
+    """Mirror of modal.volume.FileEntryType in the pinned SDK (modal/types.py)."""
+
+    FILE = 1
+    SYMLINK = 3
+
+
 def test_cpu_cache_inventory_rejects_config_without_weights():
     async def entries(*args, **kwargs):
         return [SimpleNamespace(path="config.json", size=10)]
@@ -333,7 +341,7 @@ def test_cpu_cache_inventory_reads_the_manifest_volume_and_never_creates_it(rela
 
     async def entries(path, recursive):
         assert path == base and recursive
-        return [SimpleNamespace(path="/" + base + "/" + name, size=10) for name in names]
+        return [SimpleNamespace(path="/" + base + "/" + name, size=10, type=EntryType.FILE) for name in names]
 
     async def read_file(path):
         yield json.dumps({"weight_map": {"layer": "model-00001-of-00001.safetensors"}}).encode()
@@ -345,6 +353,29 @@ def test_cpu_cache_inventory_reads_the_manifest_volume_and_never_creates_it(rela
     result = asyncio.run(probe.verify_weight_cache(plan, SimpleNamespace(Volume=SimpleNamespace(from_name=from_name))))
     assert result == {"status": "verified_inventory", "shards": 1, "model_revision": plan.artifacts.model_revision}
     assert opened == [((volume,), {"environment_name": plan.target.environment, "create_if_missing": False})]
+
+
+def test_cpu_cache_inventory_refuses_a_symlinked_cache_before_reading_it():
+    plan = load_plan(MANIFEST.parents[2] / "configs/modal/gemma-3-4b-measurement.json")
+    base = f"hub/models--{plan.artifacts.model.replace('/', '--')}/snapshots/{plan.artifacts.model_revision}"
+    reads = []
+
+    async def entries(path, recursive):
+        # The Hub cache layout: pointer files link into blobs and list the link text length as their size.
+        return [SimpleNamespace(path="/" + base + "/model.safetensors.index.json", size=52, type=EntryType.SYMLINK),
+                SimpleNamespace(path="/" + base + "/model-00001-of-00002.safetensors", size=76, type=EntryType.SYMLINK),
+                SimpleNamespace(path="/" + base + "/config.json", size=10, type=EntryType.FILE)]
+
+    async def read_file(path):
+        reads.append(path)
+        yield b"{}"
+
+    volume = SimpleNamespace(listdir=SimpleNamespace(aio=entries), read_file=SimpleNamespace(aio=read_file))
+    sdk = SimpleNamespace(Volume=SimpleNamespace(from_name=lambda *args, **kwargs: volume))
+    with pytest.raises(ValueError, match="cpu_staged_weight_cache_symlinked"):
+        asyncio.run(probe.verify_weight_cache(plan, sdk))
+    assert reads == []
+    assert EntryType.SYMLINK == probe.VOLUME_ENTRY_SYMLINK == 3
 
 
 def test_insufficient_monthly_headroom_stops_before_cloud(configured, monkeypatch):
