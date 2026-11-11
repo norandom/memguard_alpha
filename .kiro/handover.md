@@ -54,13 +54,18 @@ Figures 1 to 4 and 8. The replay reads draw logs only through the read-only `rec
 one. Published tables drop `arm` and `role` and carry plain variant labels. The repeat baseline's route label
 comes from the frozen plan.
 
+Owner's decision (2026-11-11, after the session end): "drop the analysis copies, keep the figures". The
+replay must stop publishing the 14 analysis copies (pre-registered, ensemble, negative-control, convergence,
+cutoff-check, mode-comparison, repeat-baseline-analysis); they stay private under the replay's analysis
+directory. The published set is the eight figures, each with its SVG, table and caption file. To do, as part
+of settling 4.1: remove the copy step, `published_copy_name`, the `published_wording` manifest entry and the
+sentence about working names in `PUBLISHED_HEADER`; adapt the published-set tests in `test_replay.py` and
+`test_run_study.py`; move the planted-leak test for a new file onto a figure table; check Requirement 10 and
+the design for wording that names the copies and amend it with a dated note; in 4.2 delete the old copies
+from `docs/assets/finance-sim/` and repoint every link in `docs/` (grep the file names first).
+
 Open questions the review was asked to judge (decide them before 4.2):
 
-- The 14 published analysis copies (pre-registered, ensemble, negative-control, convergence, cutoff-check,
-  mode-comparison, repeat-baseline-analysis) are copied unchanged in the study's working vocabulary, with
-  requirement numbers and identifiers. This is against the owner's rule for published text. Either stop
-  publishing the copies (the eight figures with their tables may satisfy Requirement 10) or rewrite the
-  Markdown writers of the seven analysis modules.
 - Published figure tables still carry internal values in other columns (`draw_mode`, `adjustment`, `status`,
   `stage`, `rendering`, `quantity`, `evidence`, the `statistic` identifiers of Figures 5 to 7).
 - A Wilson lower bound of 0 of 40 prints as "0.0000000000000000069" in a caption on the fixture.
