@@ -288,6 +288,52 @@ def test_missing_credential_is_refused_before_any_request():
     assert seen == []
 
 
+def test_credential_problem_is_none_for_a_usable_credential_in_the_clients_own_environment(monkeypatch):
+    monkeypatch.delenv("FD_GATEWAY_KEY", raising=False)  # the client's environment counts, not the process's
+    for reference in ("env:FD_GATEWAY_KEY", "FD_GATEWAY_KEY"):
+        subject = client("http://127.0.0.1:11581", credential_ref=reference)
+        assert subject.credential_problem() is None
+        assert subject._credential() == TOKEN
+
+
+@pytest.mark.parametrize("environment", [{}, {"FD_GATEWAY_KEY": ""}, {"FD_GATEWAY_KEY": "   "},
+                                         {"FD_GATEWAY_KEY": None}, {"OTHER": TOKEN}])
+def test_credential_problem_names_an_unset_or_empty_variable(environment):
+    subject = client("http://127.0.0.1:11581", environment=environment)
+
+    problem = subject.credential_problem()
+
+    assert problem == "credential FD_GATEWAY_KEY is not set or is empty"
+    with pytest.raises(ValueError) as caught:
+        subject._credential()
+    assert str(caught.value) == "Referenced credential is missing or empty"
+
+
+@pytest.mark.parametrize("credential", [
+    TOKEN + "\n", "\t" + TOKEN, TOKEN + " ", TOKEN[:9] + " " + TOKEN[9:], TOKEN + "\x00", TOKEN + "€",
+])
+def test_credential_problem_names_a_malformed_variable_without_its_value(credential):
+    subject = client("http://127.0.0.1:11581", environment={"FD_GATEWAY_KEY": credential})
+
+    problem = subject.credential_problem()
+
+    assert problem == "credential FD_GATEWAY_KEY contains whitespace, control or non-ASCII characters"
+    assert TOKEN not in problem and TOKEN[:9] not in problem
+    with pytest.raises(ValueError) as caught:
+        subject._credential()
+    assert str(caught.value) == "Referenced credential contains whitespace, control or non-ASCII characters"
+
+
+def test_credential_problem_reads_the_environment_at_call_time_and_sends_nothing():
+    environment = {}
+    with host([]) as (base_url, seen):
+        subject = client(base_url, environment=environment)
+        assert subject.credential_problem() is not None
+        environment["FD_GATEWAY_KEY"] = TOKEN
+        assert subject.credential_problem() is None
+    assert seen == []
+
+
 @pytest.mark.parametrize("changes", [
     {"base_url": "ftp://127.0.0.1:11581"},
     {"base_url": "http://user:secret@127.0.0.1:11581"},

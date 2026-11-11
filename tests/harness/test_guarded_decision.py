@@ -28,6 +28,7 @@ from recall_guard.core.local_evidence import LocalModelIdentity, LocalModelProve
 from recall_guard.core.profiles import ProfileError, load_profile
 from recall_guard.core.request_control import BudgetExhaustedError, RequestError
 from recall_guard.harness import evaluator, scorer_client
+from recall_guard.harness import guarded_decision as guard_module
 from recall_guard.harness import scorer as scorer_module
 from recall_guard.harness.guarded_decision import (
     DrawMode,
@@ -35,7 +36,9 @@ from recall_guard.harness.guarded_decision import (
     GuardedRun,
     GuardIdentity,
     SourceCalibrator,
+    UnestimatedDecision,
     decide_from_draws,
+    decide_without_estimate,
     full_distribution_client,
     guarded_decide,
     guarded_run,
@@ -710,3 +713,102 @@ def test_full_distribution_client_resolves_the_profile_endpoint_ref():
 def test_full_distribution_client_refuses_a_profile_without_the_source():
     with pytest.raises(ProfileError, match="available: top_k"):
         full_distribution_client("ollama-gemma3-4b", environment={})
+
+
+# -- without a calibrator: decide_without_estimate (qualified-model-catalogue 11.6) ---
+
+
+@pytest.mark.parametrize("contents, draws", [(UNIMODAL, 8), (split_replies(), 16)])
+def test_decide_without_estimate_returns_the_guards_uncorrected_decision_for_the_same_replies(
+        calibrator, contents, draws):
+    guarded = guarded_decide(PROMPT, small(draws=draws), client=ScriptedClient(contents), calibrator=calibrator)
+    client = ScriptedClient(contents)
+
+    result = decide_without_estimate(PROMPT, definition(), client=client, draws=draws, min_parsed=8)
+
+    assert isinstance(result, UnestimatedDecision)
+    assert result.decision == guarded.decision and isinstance(result.decision, MappingProxyType)
+    assert result.reason is None
+    assert (result.n_replies, result.n_parsed) == (draws, draws)
+    assert result.draws_sha256 == guarded.draws_sha256
+    assert [component.name for component in result.distribution.components] == ["equity", "gold"]
+    assert [component.unresolved for component in result.distribution.components] == [
+        component.unresolved for component in guarded.distribution.components]
+    assert client.calls == [(PROMPT, {})] * draws
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        result.decision = None  # type: ignore[misc]
+
+
+def test_decide_without_estimate_sends_the_requests_the_guard_sends(warm_scorer):
+    warm = SourceCalibrator.from_scorer(warm_scorer, source=EstimateSource.TOP_K, corpus_sha256=None)
+    guard_client, client = ScriptedClient(UNIMODAL), ScriptedClient(UNIMODAL)
+    guarded = guarded_decide(PROMPT, small(temperature=0.7, seed_base=100), client=guard_client, calibrator=warm)
+
+    result = decide_without_estimate(PROMPT, definition(), client=client, draws=8, min_parsed=8, temperature=0.7,
+                                     seed_base=100)
+
+    assert client.calls == guard_client.calls
+    assert client.calls[3] == (PROMPT, {"temperature": 0.7, "seed": 103})
+    assert result.decision == guarded.decision
+
+
+def test_decide_without_estimate_single_draw_carries_no_distribution():
+    result = decide_without_estimate(PROMPT, definition(), client=ScriptedClient([reply(0.3, 0.4)]), draws=1,
+                                     min_parsed=1, mode=DrawMode.SINGLE)
+
+    assert result.decision == {"equity": 0.3, "gold": 0.4}
+    assert result.distribution is None and (result.n_replies, result.n_parsed) == (1, 1)
+
+
+def test_decide_without_estimate_reports_too_few_parsed_draws_with_a_reason_and_no_decision():
+    contents = UNIMODAL[:4] + ["No allocation this month."] * 4
+    client = ScriptedClient(contents, failures={7: RequestError("timed out", code="timeout")})
+
+    result = decide_without_estimate(PROMPT, definition(), client=client, draws=8, min_parsed=6)
+
+    assert len(client.calls) == 8
+    assert result.decision is None and result.distribution is None
+    assert (result.n_replies, result.n_parsed) == (7, 4)
+    assert "4 of 8 draws parsed" in result.reason and "min_parsed=6" in result.reason
+    assert "parse_error=3" in result.reason and "request_error:timeout=1" in result.reason
+    assert result.draws_sha256 == canonical_draw_hash([sha256(content) for content in contents[:4]])
+
+
+def test_decide_without_estimate_calls_no_estimate_function(mocker):
+    spies = [mocker.spy(SourceCalibrator, "estimate"), mocker.spy(guard_module, "_estimate"),
+             mocker.spy(guard_module, "features_from_top_k"), mocker.spy(guard_module, "features_from_full"),
+             mocker.spy(guard_module, "_guard_identity")]
+
+    result = decide_without_estimate(PROMPT, definition(), client=ScriptedClient(UNIMODAL), draws=8, min_parsed=8)
+
+    assert result.decision == {"equity": 0.2, "gold": 0.5}
+    assert [spy.call_count for spy in spies] == [0] * len(spies)
+
+
+@pytest.mark.parametrize("error", [
+    RequestError("HTTP 401", status_code=401, code="auth_failed"),
+    BudgetExhaustedError("budget exhausted"),
+])
+def test_decide_without_estimate_stops_on_a_rejected_credential_or_an_exhausted_budget(error):
+    client = ScriptedClient(UNIMODAL, failures={2: error})
+
+    with pytest.raises(type(error)):
+        decide_without_estimate(PROMPT, definition(), client=client, draws=8, min_parsed=8)
+    assert len(client.calls) == 3
+
+
+@pytest.mark.parametrize("arguments, error", [
+    ({"prompt": 3}, TypeError),
+    ({"definition": "toy"}, TypeError),
+    ({"draws": 8, "min_parsed": 9}, ValueError),
+    ({"draws": 2, "min_parsed": 1, "mode": DrawMode.SINGLE}, ValueError),
+    ({"temperature": -1.0}, ValueError),
+    ({"seed_base": 1.5}, TypeError),
+])
+def test_decide_without_estimate_validates_as_the_guard_configuration_does(arguments, error):
+    client = ScriptedClient(UNIMODAL)
+    values = {"prompt": PROMPT, "definition": definition(), "draws": 8, "min_parsed": 8, **arguments}
+
+    with pytest.raises(error):
+        decide_without_estimate(values.pop("prompt"), values.pop("definition"), client=client, **values)
+    assert client.calls == []

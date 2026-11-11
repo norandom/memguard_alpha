@@ -35,6 +35,8 @@ _STATUS_CODES = {401: "auth_failed", 409: "digest_mismatch", 413: "oversize", 42
 #: The host answers 503 ``memory_low`` while free physical memory is below its floor; the caller may retry later.
 _RETRYABLE_CODES = frozenset({"host_busy"})
 _DETAIL_LIMIT = 2000
+_CREDENTIAL_MISSING = "Referenced credential is missing or empty"
+_CREDENTIAL_MALFORMED = "Referenced credential contains whitespace, control or non-ASCII characters"
 _REDACTED = "[redacted]"
 _POSITION_FIELDS = ("response_token_ids", "logprob", "entropy", "rank", "top_logprobs")
 _EVIDENCE_FIELDS = ("model_digest", "n_vocab", *_POSITION_FIELDS)
@@ -303,14 +305,35 @@ class FullDistributionClient:
             raise failure
         return batch
 
-    def _credential(self) -> str:
-        """The referenced bearer, refused before any request when missing or not a visible-ASCII token."""
+    def credential_problem(self) -> str | None:
+        """What makes the referenced bearer unusable right now, or None when a request can carry it.
+
+        Applies the rule a request applies, to this client's own environment,
+        without sending anything. The text names the variable and never
+        contains its value.
+        """
+        problem = self._credential_state()[1]
+        if problem is None:
+            return None
+        name = self.credential_ref.removeprefix("env:")
+        return (f"credential {name} is not set or is empty" if problem == _CREDENTIAL_MISSING
+                else f"credential {name} contains whitespace, control or non-ASCII characters")
+
+    def _credential_state(self) -> tuple[str | None, str | None]:
+        """The bearer and None, or None and why it is refused: the one rule for a request and for the check."""
         credential = self._environment.get(self.credential_ref.removeprefix("env:"))
         if not isinstance(credential, str) or not credential.strip():
-            raise ValueError("Referenced credential is missing or empty")
+            return None, _CREDENTIAL_MISSING
         if (credential != credential.strip() or not credential.isascii()
                 or any(char.isspace() or not char.isprintable() for char in credential)):
-            raise ValueError("Referenced credential contains whitespace, control or non-ASCII characters")
+            return None, _CREDENTIAL_MALFORMED
+        return credential, None
+
+    def _credential(self) -> str:
+        """The referenced bearer, refused before any request when missing or not a visible-ASCII token."""
+        credential, problem = self._credential_state()
+        if problem is not None:
+            raise ValueError(problem)
         return credential
 
     def _checked(self, evidence: FullDistributionEvidence, top_k_keep: int) -> FullDistributionEvidence:

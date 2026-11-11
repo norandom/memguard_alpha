@@ -4,7 +4,8 @@ An adopter calls the API with either evidence source from ``recall_guard``
 alone: the guarded-decision functions and types, the decision definitions, the
 recorded-draw results and the sources. The qualification catalogue and the
 selection interface (qualified-model-catalogue, task 2.2) follow as one further
-block, pinned the same way. The existing root exports keep their
+block, pinned the same way, and the front (task 7.1) as the block after it.
+The existing root exports keep their
 names and order; the lean-import test in tests/harness/test_scorer.py guards
 that ``import recall_guard`` still loads no matplotlib.
 """
@@ -12,6 +13,8 @@ that ``import recall_guard`` still loads no matplotlib.
 from __future__ import annotations
 
 import importlib
+import subprocess
+import sys
 
 import pytest
 
@@ -70,8 +73,17 @@ CATALOGUE_SELECTION_EXPORTS = (
 )
 CATALOGUE_SELECTION_NAMES = tuple(name for name, _module in CATALOGUE_SELECTION_EXPORTS)
 
+#: The front block of ``recall_guard.__all__`` (qualified-model-catalogue, task 7.1), in order.
+FRONT_EXPORTS = (
+    ("ask", "recall_guard.harness.front"),
+    ("FrontAnswer", "recall_guard.harness.front"),
+    ("FrontFailure", "recall_guard.harness.front"),
+    ("choose_mode", "recall_guard.harness.front"),
+)
+FRONT_NAMES = tuple(name for name, _module in FRONT_EXPORTS)
+
 #: The blocks added after the existing exports were pinned; every other name of ``__all__`` is an existing one.
-ADDED_NAMES = GUARDED_DECISION_NAMES + CATALOGUE_SELECTION_NAMES
+ADDED_NAMES = GUARDED_DECISION_NAMES + CATALOGUE_SELECTION_NAMES + FRONT_NAMES
 
 #: ``recall_guard.__all__`` before task 5.2; these names and their order must not change.
 EXISTING_EXPORTS = (
@@ -113,6 +125,44 @@ def test_catalogue_and_selection_block_follows_the_guarded_decision_block_in_dec
     exported = list(recall_guard.__all__)
     start = exported.index(GUARDED_DECISION_NAMES[-1]) + 1
     assert tuple(exported[start:start + len(CATALOGUE_SELECTION_NAMES)]) == CATALOGUE_SELECTION_NAMES
+
+
+@pytest.mark.parametrize("name, module", FRONT_EXPORTS)
+def test_front_name_is_exported_from_the_root_as_the_module_object(name, module):
+    assert name in recall_guard.__all__
+    assert getattr(recall_guard, name) is getattr(importlib.import_module(module), name)
+
+
+def test_front_block_follows_the_catalogue_and_selection_block_in_declared_order():
+    exported = list(recall_guard.__all__)
+    start = exported.index(CATALOGUE_SELECTION_NAMES[-1]) + 1
+    assert tuple(exported[start:start + len(FRONT_NAMES)]) == FRONT_NAMES
+
+
+def test_importing_the_root_with_the_front_loads_no_plotting_library_and_reads_no_data_file():
+    code = (
+        "import builtins, pathlib, sys\n"
+        "opened = []\n"
+        "real_open, real_read = builtins.open, pathlib.Path.read_text\n"
+        "def spy_open(file, *args, **kwargs):\n"
+        "    opened.append(str(file))\n"
+        "    return real_open(file, *args, **kwargs)\n"
+        "def spy_read(self, *args, **kwargs):\n"
+        "    opened.append(str(self))\n"
+        "    return real_read(self, *args, **kwargs)\n"
+        "builtins.open, pathlib.Path.read_text = spy_open, spy_read\n"
+        "import recall_guard\n"
+        "heavy = sorted(m for m in sys.modules if m.split('.')[0] in {'matplotlib', 'vectorbt'})\n"
+        "assert not heavy, heavy\n"
+        # The files the front reads when called: the catalogue and a provider profile.
+        "data = [name for name in opened if 'catalogue' in name.lower() or 'provider_profiles' in name.lower()]\n"
+        "assert not data, data\n"
+        "assert recall_guard.ask.__module__ == 'recall_guard.harness.front'\n"
+        "print('lean-ok')\n"
+    )
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    assert "lean-ok" in done.stdout
 
 
 def test_added_blocks_share_no_name_with_each_other_or_the_existing_exports():

@@ -162,6 +162,34 @@ class DrawMode(Enum):
     SINGLE = "single"
 
 
+def _draw_settings(
+    draws: object, min_parsed: object, mode: object, temperature: object, seed_base: object
+) -> tuple[DrawMode, float | None]:
+    """Validate how an ensemble is drawn; the draw mode as a :class:`DrawMode` and the temperature as a float."""
+    try:
+        mode = DrawMode(mode)
+    except ValueError:
+        raise ValueError(f"mode must be ensemble or single; got {mode!r}") from None
+    for name, value in (("draws", draws), ("min_parsed", min_parsed)):
+        if not _is_int(value):
+            raise TypeError(f"{name} must be an integer; got {value!r}")
+    if draws < 1:
+        raise ValueError(f"draws must be at least 1; got {draws}")
+    if mode is DrawMode.SINGLE and draws != 1:
+        raise ValueError(f"SINGLE mode draws exactly once; got draws={draws}")
+    if not 1 <= min_parsed <= draws:
+        raise ValueError(
+            f"min_parsed must satisfy 1 <= min_parsed <= draws; got min_parsed={min_parsed}, draws={draws}"
+        )
+    if temperature is not None:
+        if not _is_real(temperature) or not math.isfinite(temperature) or temperature < 0:
+            raise ValueError(f"temperature must be a finite number of at least 0, or None; got {temperature!r}")
+        temperature = float(temperature)
+    if seed_base is not None and not _is_int(seed_base):
+        raise TypeError(f"seed_base must be an integer or None; got {seed_base!r}")
+    return mode, temperature
+
+
 @dataclass(frozen=True)
 class GuardConfig:
     """How one guarded decision is drawn and reduced; validated when built, before any request.
@@ -187,27 +215,9 @@ class GuardConfig:
             raise TypeError("definition must be a DecisionDefinition")
         if not isinstance(self.source, SourceLabel):
             raise TypeError("source must be a SourceLabel")
-        try:
-            object.__setattr__(self, "mode", DrawMode(self.mode))
-        except ValueError:
-            raise ValueError(f"mode must be ensemble or single; got {self.mode!r}") from None
-        for name in ("draws", "min_parsed"):
-            if not _is_int(getattr(self, name)):
-                raise TypeError(f"{name} must be an integer; got {getattr(self, name)!r}")
-        if self.draws < 1:
-            raise ValueError(f"draws must be at least 1; got {self.draws}")
-        if self.mode is DrawMode.SINGLE and self.draws != 1:
-            raise ValueError(f"SINGLE mode draws exactly once; got draws={self.draws}")
-        if not 1 <= self.min_parsed <= self.draws:
-            raise ValueError(
-                f"min_parsed must satisfy 1 <= min_parsed <= draws; got min_parsed={self.min_parsed}, draws={self.draws}"
-            )
-        if self.temperature is not None:
-            if not _is_real(self.temperature) or not math.isfinite(self.temperature) or self.temperature < 0:
-                raise ValueError(f"temperature must be a finite number of at least 0, or None; got {self.temperature!r}")
-            object.__setattr__(self, "temperature", float(self.temperature))
-        if self.seed_base is not None and not _is_int(self.seed_base):
-            raise TypeError(f"seed_base must be an integer or None; got {self.seed_base!r}")
+        mode, temperature = _draw_settings(self.draws, self.min_parsed, self.mode, self.temperature, self.seed_base)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "temperature", temperature)
 
 
 @dataclass(frozen=True)
@@ -595,26 +605,55 @@ def _estimate(
     return (value if _is_real(value) and math.isfinite(value) else None), reference, evidence
 
 
+#: A parsed reply's estimate, its evidence reference and its full evidence (:func:`_estimate`).
+_Estimator = Callable[[ModelResponse], tuple[float | None, str | None, FullDistributionEvidence | None]]
+
+
 def _record(
-    index: int, prompt: str, config: GuardConfig, identity: GuardIdentity, seed: int | None,
-    response: ModelResponse | None, failure: str | None, calibrator: SourceCalibrator,
-    full_distribution: FullDistributionClient | None,
+    index: int, definition: DecisionDefinition, temperature: float | None, seed: int | None,
+    response: ModelResponse | None, failure: str | None, estimate_of: _Estimator | None,
 ) -> tuple[RecordedDraw, FullDistributionEvidence | None]:
-    """Turn one reply, or one failed request, into its recorded draw."""
-    common = {"draw_index": index, "temperature": identity.temperature, "seed": seed}
+    """Turn one reply, or one failed request, into its recorded draw.
+
+    ``estimate_of`` gives a parsed reply its estimate; with None the draw is
+    recorded without an estimate and without an evidence reference.
+    """
+    common = {"draw_index": index, "temperature": temperature, "seed": seed}
     if response is None:
         # Nothing was received, so the response hash is that of empty content.
         return RecordedDraw(**common, response_sha256=_sha256(""), parsed=None,
                             failure_code=REQUEST_ERROR_PREFIX + str(failure), estimate=None, evidence_ref=None), None
     response_sha256 = _sha256(response.content)
     try:
-        parsed = config.definition.parse_response(response.content)
+        parsed = definition.parse_response(response.content)
     except DecisionParseError:
         return RecordedDraw(**common, response_sha256=response_sha256, parsed=None, failure_code=PARSE_ERROR,
                             estimate=None, evidence_ref=None), None
-    estimate, reference, evidence = _estimate(prompt, response, config, calibrator, full_distribution)
+    estimate, reference, evidence = (None, None, None) if estimate_of is None else estimate_of(response)
     return RecordedDraw(**common, response_sha256=response_sha256, parsed=parsed, failure_code=None,
                         estimate=estimate, evidence_ref=reference), evidence
+
+
+def _seeds(client: CompletionClient, seed_base: int | None) -> Callable[[int], int | None]:
+    """The seed of each draw index: ``seed_base + index``, else the client's configured seed, else None."""
+    configured_seed = client.config.parameters.get("seed")
+
+    def seed_of(index: int) -> int | None:
+        if seed_base is not None:
+            return seed_base + index
+        return configured_seed if _is_int(configured_seed) else None
+
+    return seed_of
+
+
+def _overrides(temperature: float | None, seed_base: int | None, seed: int | None) -> dict[str, ParameterValue]:
+    """The settings one draw's request overrides: the configured temperature and, with a seed base, its seed."""
+    parameters: dict[str, ParameterValue] = {}
+    if temperature is not None:
+        parameters["temperature"] = temperature
+    if seed_base is not None:
+        parameters["seed"] = seed
+    return parameters
 
 
 def _prefilled(
@@ -685,15 +724,10 @@ def guarded_run(
         raise ValueError("A full_distribution estimate source needs a full-distribution client "
                          "(full_distribution=...); nothing was sent")
     identity = _guard_identity(prompt, config, client, calibrator)
-    overrides: dict[str, ParameterValue] = {}
-    if config.temperature is not None:
-        overrides["temperature"] = config.temperature
-    configured_seed = client.config.parameters.get("seed")
+    seed_of = _seeds(client, config.seed_base)
 
-    def seed_of(index: int) -> int | None:
-        if config.seed_base is not None:
-            return config.seed_base + index
-        return configured_seed if _is_int(configured_seed) else None
+    def estimate_of(response: ModelResponse) -> tuple[float | None, str | None, FullDistributionEvidence | None]:
+        return _estimate(prompt, response, config, calibrator, full_distribution)
 
     prefilled = _prefilled(recorded, config, identity, seed_of)
     draws: list[RecordedDraw] = []
@@ -705,14 +739,11 @@ def guarded_run(
             responses.append(None)
             evidence.append(None)
             continue
-        parameters = dict(overrides)
         seed = seed_of(index)
-        if config.seed_base is not None:
-            parameters["seed"] = seed
         if on_request is not None:
             on_request(index, seed)
-        response, failure = _request(client, prompt, parameters)
-        draw, full = _record(index, prompt, config, identity, seed, response, failure, calibrator, full_distribution)
+        response, failure = _request(client, prompt, _overrides(config.temperature, config.seed_base, seed))
+        draw, full = _record(index, config.definition, identity.temperature, seed, response, failure, estimate_of)
         if on_draw is not None:
             on_draw(draw, response, full)
         draws.append(draw)
@@ -736,6 +767,142 @@ def _failed_reason(draws: Sequence[RecordedDraw], n_parsed: int, min_parsed: int
     return f"{n_parsed} of {len(draws)} draws parsed, below min_parsed={min_parsed}; failed draws: {detail}."
 
 
+@dataclass(frozen=True)
+class _Reduction:
+    """The draws of one ensemble reduced to its decision, before any estimate is looked at.
+
+    ``decision`` is None, with ``failed_reason`` set, when fewer draws parsed
+    than ``min_parsed``.
+    """
+
+    ordered: tuple[RecordedDraw, ...]
+    parsed: tuple[RecordedDraw, ...]
+    names: tuple[str, ...]
+    draws_sha256: str | None
+    failed_reason: str | None
+    decision: dict[str, float | None] | None
+    distribution: DistributionSummary | None
+    category: Hashable | None
+    not_assessed: tuple[str, ...]
+
+
+def _reduce(
+    draws: Iterable[RecordedDraw], definition: DecisionDefinition, n_draws: int, min_parsed: int, mode: DrawMode
+) -> _Reduction:
+    """Reduce recorded draws to the consensus decision; the one reduction of the guard.
+
+    Raises ``TypeError`` for anything but recorded draws and ``ValueError``
+    for a number of draws other than ``n_draws``, a repeated ``draw_index`` or
+    a parsed vector whose names differ from the definition's components.
+    """
+    draws = tuple(draws)
+    if not all(isinstance(draw, RecordedDraw) for draw in draws):
+        raise TypeError("draws must be RecordedDraw records")
+    ordered = tuple(sorted(draws, key=lambda draw: draw.draw_index))
+    if len(ordered) != n_draws:
+        raise ValueError(f"{len(ordered)} recorded draws given for a configuration with draws={n_draws}")
+    if len({draw.draw_index for draw in ordered}) != len(ordered):
+        raise ValueError("recorded draws repeat a draw_index")
+    names = tuple(spec.name for spec in definition.components)
+    parsed = tuple(draw for draw in ordered if draw.parsed is not None)
+    for draw in parsed:
+        if set(draw.parsed) != set(names):
+            raise ValueError(f"draw {draw.draw_index}: parsed components {sorted(draw.parsed)} differ from "
+                             f"definition {definition.name!r} components {sorted(names)}")
+    common = {
+        "ordered": ordered, "parsed": parsed, "names": names,
+        "draws_sha256": canonical_draw_hash([draw.response_sha256 for draw in parsed]) if parsed else None,
+    }
+    if len(parsed) < min_parsed:
+        return _Reduction(failed_reason=_failed_reason(ordered, len(parsed), min_parsed), decision=None,
+                          distribution=None, category=None, not_assessed=(), **common)
+
+    if mode is DrawMode.SINGLE:
+        distribution = None
+        decision: dict[str, float | None] = {name: parsed[0].parsed[name] for name in names}
+        # The split check is a property of a distribution; one draw never has it.
+        not_assessed = names
+    else:
+        distribution = summarize_distribution(ordered, definition)
+        verdicts = {component.name: component.unresolved for component in distribution.components}
+        decision = {
+            name: None if verdicts[name] is True
+            else robust_location([draw.parsed[name] for draw in parsed], mode="median")
+            for name in names
+        }
+        not_assessed = tuple(name for name in names if verdicts[name] is None)
+    present = {name: value for name, value in decision.items() if value is not None}
+    category = None
+    if definition.decide is not None and len(present) == len(names):
+        category = definition.decide(present)
+    return _Reduction(failed_reason=None, decision=decision, distribution=distribution, category=category,
+                      not_assessed=not_assessed, **common)
+
+
+@dataclass(frozen=True)
+class UnestimatedDecision:
+    """The decision of an ensemble drawn and reduced without a calibrator and without a recall estimate.
+
+    ``decision`` is the consensus of the parsed draws as
+    :class:`GuardedDecision` defines it (a component split into separated
+    clusters is None), or None when fewer draws parsed than ``min_parsed``;
+    ``reason`` then gives the counts and is None otherwise. ``n_replies`` is
+    the number of requests that returned a reply and ``n_parsed`` the number
+    of replies that parsed into the definition. ``distribution`` is None for a
+    single draw and without a decision. ``draws_sha256`` is
+    :func:`~recall_guard.core.ensemble.canonical_draw_hash` over the parsed
+    draws' response hashes, None when no draw parsed.
+    """
+
+    decision: Mapping[str, float | None] | None
+    reason: str | None
+    n_replies: int
+    n_parsed: int
+    distribution: DistributionSummary | None
+    draws_sha256: str | None
+
+
+def decide_without_estimate(
+    prompt: str, definition: DecisionDefinition, *, client: CompletionClient, draws: int = 32, min_parsed: int = 24,
+    mode: DrawMode = DrawMode.ENSEMBLE, temperature: float | None = None, seed_base: int | None = None,
+) -> UnestimatedDecision:
+    """Draw ``prompt`` ``draws`` times and reduce the replies; no calibrator, no recall estimate.
+
+    The requests and the reduction are those of :func:`guarded_run`: each draw
+    is one request with the same overrides (``temperature``, and
+    ``seed_base + index`` as its seed), never retried; a rejected credential
+    or an exhausted budget stops the loop and is raised, any other failure
+    counts as a missing reply. The decision is the one :func:`guarded_run`
+    reports as ``decision`` for the same replies. Nothing is estimated: no
+    token evidence is read, no full-distribution host is asked, and no client
+    identity is checked. ``draws``, ``min_parsed``, ``mode``, ``temperature``
+    and ``seed_base`` mean what they mean on :class:`GuardConfig` and are
+    validated the same way, before any request.
+    """
+    if not isinstance(prompt, str):
+        raise TypeError("prompt must be a string")
+    if not isinstance(definition, DecisionDefinition):
+        raise TypeError("definition must be a DecisionDefinition")
+    mode, temperature = _draw_settings(draws, min_parsed, mode, temperature, seed_base)
+    drawn_at = client.config.parameters.get("temperature") if temperature is None else temperature
+    drawn_at = float(drawn_at) if _is_real(drawn_at) else None
+    seed_of = _seeds(client, seed_base)
+    recorded: list[RecordedDraw] = []
+    for index in range(draws):
+        seed = seed_of(index)
+        response, failure = _request(client, prompt, _overrides(temperature, seed_base, seed))
+        recorded.append(_record(index, definition, drawn_at, seed, response, failure, None)[0])
+    reduced = _reduce(recorded, definition, draws, min_parsed, mode)
+    return UnestimatedDecision(
+        decision=None if reduced.decision is None else MappingProxyType(reduced.decision),
+        reason=reduced.failed_reason,
+        n_replies=sum(1 for draw in recorded if not (draw.failure_code or "").startswith(REQUEST_ERROR_PREFIX)),
+        n_parsed=len(reduced.parsed),
+        distribution=reduced.distribution,
+        draws_sha256=reduced.draws_sha256,
+    )
+
+
 def decide_from_draws(draws: Sequence[RecordedDraw], config: GuardConfig, identity: GuardIdentity) -> GuardedDecision:
     """Recompute a guarded decision from recorded draws; no request is issued (Requirement 5.8).
 
@@ -754,47 +921,15 @@ def decide_from_draws(draws: Sequence[RecordedDraw], config: GuardConfig, identi
         raise ValueError(f"identity source {identity.source} differs from the configured source {config.source}")
     if identity.draws != config.draws:
         raise ValueError(f"identity records {identity.draws} draws, the configuration draws={config.draws}")
-    draws = tuple(draws)
-    if not all(isinstance(draw, RecordedDraw) for draw in draws):
-        raise TypeError("draws must be RecordedDraw records")
-    ordered = tuple(sorted(draws, key=lambda draw: draw.draw_index))
-    if len(ordered) != config.draws:
-        raise ValueError(f"{len(ordered)} recorded draws given for a configuration with draws={config.draws}")
-    if len({draw.draw_index for draw in ordered}) != len(ordered):
-        raise ValueError("recorded draws repeat a draw_index")
-    names = tuple(spec.name for spec in config.definition.components)
-    parsed = [draw for draw in ordered if draw.parsed is not None]
-    for draw in parsed:
-        if set(draw.parsed) != set(names):
-            raise ValueError(f"draw {draw.draw_index}: parsed components {sorted(draw.parsed)} differ from "
-                             f"definition {config.definition.name!r} components {sorted(names)}")
-    common = {
-        "mode": config.mode, "identity": identity, "draws": ordered,
-        "draws_sha256": canonical_draw_hash([draw.response_sha256 for draw in parsed]) if parsed else None,
-    }
-    if len(parsed) < config.min_parsed:
+    reduced = _reduce(draws, config.definition, config.draws, config.min_parsed, config.mode)
+    ordered, parsed, names = reduced.ordered, reduced.parsed, reduced.names
+    common = {"mode": config.mode, "identity": identity, "draws": ordered, "draws_sha256": reduced.draws_sha256}
+    if reduced.decision is None:
         return GuardedDecision(status="failed", decision=None, adjusted=None, p_memorized=None, distribution=None,
-                               reason=_failed_reason(ordered, len(parsed), config.min_parsed), category=None,
-                               not_assessed=(), **common)
-
-    if config.mode is DrawMode.SINGLE:
-        distribution = None
-        decision: dict[str, float | None] = {name: parsed[0].parsed[name] for name in names}
-        # The split check is a property of a distribution; one draw never has it.
-        not_assessed = names
-    else:
-        distribution = summarize_distribution(ordered, config.definition)
-        verdicts = {component.name: component.unresolved for component in distribution.components}
-        decision = {
-            name: None if verdicts[name] is True
-            else robust_location([draw.parsed[name] for draw in parsed], mode="median")
-            for name in names
-        }
-        not_assessed = tuple(name for name in names if verdicts[name] is None)
+                               reason=reduced.failed_reason, category=None, not_assessed=(), **common)
+    decision, distribution = reduced.decision, reduced.distribution
+    category, not_assessed = reduced.category, reduced.not_assessed
     present = {name: value for name, value in decision.items() if value is not None}
-    category = None
-    if config.definition.decide is not None and len(present) == len(names):
-        category = config.definition.decide(present)
 
     carried = [draw.estimate for draw in parsed if draw.estimate is not None]
     p_memorized = statistics.fmean(carried) if carried else None
@@ -868,7 +1003,9 @@ __all__ = [
     "GuardedDecision",
     "GuardedRun",
     "SourceCalibrator",
+    "UnestimatedDecision",
     "decide_from_draws",
+    "decide_without_estimate",
     "full_distribution_client",
     "guarded_decide",
     "guarded_run",

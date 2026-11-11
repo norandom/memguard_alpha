@@ -123,6 +123,10 @@ from recall_guard.core.catalogue import (
 )
 from recall_guard.harness.selection import SelectedDecision, Selection, SelectionError, guarded_select, select
 
+# isort: split
+# the front: importing it reads no catalogue file and no provider profile
+from recall_guard.harness.front import FrontAnswer, FrontFailure, ask, choose_mode
+
 __all__ = [
     # façade (the headline surface)
     "MemoryGuardedScorer",
@@ -180,6 +184,11 @@ __all__ = [
     "SelectionError",
     "select",
     "guarded_select",
+    # the front
+    "ask",
+    "FrontAnswer",
+    "FrontFailure",
+    "choose_mode",
     # ensemble surface (opt-in; see EnsembleSpec)
     "EnsembledScore",
     "EnsembleSpec",
