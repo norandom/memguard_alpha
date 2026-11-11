@@ -1,7 +1,7 @@
 {
   "feature_name": "qualified-model-catalogue",
   "created_at": "2026-11-11T19:45:00Z",
-  "updated_at": "2026-11-11T23:30:00Z",
+  "updated_at": "2026-11-12T00:30:00Z",
   "language": "en",
   "phase": "tasks-generated",
   "approvals": {
@@ -19,5 +19,5 @@
     }
   },
   "ready_for_implementation": true,
-  "approval_context": "User approved the requirements on 2026-11-11 (\"approved\") after answering the open questions: catalogue first; entry = model plus serving route; recall = financial time series inside the training range, corrected by a logprobs heuristic; research question = do logits help. Design approved on 2026-11-11 (\"approved\"): qualification rule with four required checks (time-series boundary, 50 valid draws per class, AUC at least 0.6 with permutation p below 0.05, estimate higher inside the training range than after the cutoff); thresholds for the logits answer (improve, match within 0.05 and agreement limits within 0.10, otherwise undecided); approval also accepts the blueprint grid. Tasks approved on 2026-11-11 (\"start impl\") after two independent task-graph reviews (both NEEDS_FIXES, all findings repaired; the owner chose to start without a third pass). Amendment 2026-11-11 (owner: \"Add to the current spec now\"): Requirement 11, the front for point-in-time answers, with its design section and task group 7; written on the owner's instruction, awaiting the owner's approval of the text before group 7 is implemented."
+  "approval_context": "User approved the requirements on 2026-11-11 (\"approved\") after answering the open questions: catalogue first; entry = model plus serving route; recall = financial time series inside the training range, corrected by a logprobs heuristic; research question = do logits help. Design approved on 2026-11-11 (\"approved\"): qualification rule with four required checks (time-series boundary, 50 valid draws per class, AUC at least 0.6 with permutation p below 0.05, estimate higher inside the training range than after the cutoff); thresholds for the logits answer (improve, match within 0.05 and agreement limits within 0.10, otherwise undecided); approval also accepts the blueprint grid. Tasks approved on 2026-11-11 (\"start impl\") after two independent task-graph reviews (both NEEDS_FIXES, all findings repaired; the owner chose to start without a third pass). Amendment 2026-11-11 (owner: \"Add to the current spec now\"): Requirement 11, the front for point-in-time answers, with its design section and task group 7; written on the owner's instruction, awaiting the owner's approval of the text before group 7 is implemented. The owner approved the front amendment as written on 2026-11-11 (mode choice: qualified, then calibrated, then logprobs, else logits; without a calibrator the answer is returned with its status and no estimate). Push cadence from here: commit per task, push per group."
 }
