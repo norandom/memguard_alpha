@@ -980,6 +980,73 @@ class DrawLog:
         return list(versions.values())
 
 
+@dataclass(frozen=True)
+class DrawLogReading:
+    """What :func:`read_draw_log` found: the latest version of each draw and whether a last line was ignored.
+
+    ``draws`` has the shape of :meth:`DrawLog.latest`. ``incomplete_last_lines``
+    is 1 when the log ended in a line that is not a complete JSON object (a
+    write cut short), which was ignored and left in the file, else 0.
+    """
+
+    draws: list[Any]
+    incomplete_last_lines: int
+
+
+def read_draw_log(path: str | Path, *, plan: StudyPlan, loads: Callable[[Mapping[str, Any]], Any]) -> DrawLogReading:
+    """The latest recorded version of each draw of a draw log, read without ever writing to it.
+
+    It exists for the analyses of the private records. :meth:`DrawLog.latest`
+    is the reader of the recording itself: before a resume appends, it repairs
+    a last line a crash cut short in place (it appends a missing newline or
+    truncates the incomplete line). An analysis must never be able to modify a
+    private record, so it reads through this function instead, which opens the
+    file for reading only.
+
+    The checks are those of :meth:`DrawLog.latest`: every line is a
+    ``finance-sim-draw-version/1`` line under this plan's hash whose recorded
+    key matches its draw; anything else is refused, never merged. A last line
+    that is a complete JSON object is used even when it lacks its newline. A
+    last line that is not is ignored, stays in the file, and is counted in
+    ``incomplete_last_lines`` so the analysis can state it. A log that does not
+    exist gives no draws.
+    """
+    log = DrawLog(path, plan=plan, loads=loads)
+    if not log.path.exists():
+        return DrawLogReading(draws=[], incomplete_last_lines=0)
+    with log.path.open("rb") as stream:
+        data = stream.read()
+    ignored = 0
+    if data and not data.endswith(b"\n"):
+        cut = data.rfind(b"\n") + 1
+        try:
+            complete = isinstance(_strict_json(data[cut:].decode("utf-8")), dict)
+        except (UnicodeDecodeError, ValueError):
+            complete = False
+        if not complete:
+            data, ignored = data[:cut], 1
+    versions: dict[tuple, Any] = {}
+    for number, raw in enumerate(data.decode("utf-8").splitlines(), start=1):
+        where = f"{log.path} line {number}"
+        try:
+            line = _strict_json(raw)
+        except ValueError as exc:
+            raise RecordingError(f"{where} is not valid JSON ({exc}); refused") from None
+        if not isinstance(line, dict) or line.get("schema") != DRAW_LOG_SCHEMA:
+            raise RecordingError(f"{where} is not a {DRAW_LOG_SCHEMA} line; refused")
+        if line.get("plan_sha256") != log.plan_sha256:
+            raise PlanChangedError(f"{where} was recorded under plan_sha256 {line.get('plan_sha256')}; this plan "
+                                   f"is {log.plan_sha256}; refused, never merged")
+        try:
+            draw = loads(line["draw"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RecordingError(f"{where}: the recorded draw cannot be read ({exc}); refused") from None
+        if DrawLog._key(draw) != line.get("key"):
+            raise RecordingError(f"{where}: the recorded key does not match its draw; refused")
+        versions[tuple(line["key"])] = draw  # A later version replaces an earlier one in place.
+    return DrawLogReading(draws=list(versions.values()), incomplete_last_lines=ignored)
+
+
 # ---------- the stage session ----------
 
 @dataclass(frozen=True)
@@ -1894,6 +1961,7 @@ __all__ = [
     "UNAUTHORIZED",
     "UNREACHABLE",
     "DrawLog",
+    "DrawLogReading",
     "EvidencePolicy",
     "EvidenceSession",
     "HostCheck",
@@ -1912,6 +1980,7 @@ __all__ = [
     "evidence_path",
     "http_get",
     "pinned_digest",
+    "read_draw_log",
     "read_records",
     "receipt_path",
     "record_teardown",

@@ -6,10 +6,13 @@ ensemble result is read against.
 
 The analysis reads recorded data only and sends no request: the frozen plan and
 the recorded draws of each arm's full-run stage (the stage's versioned draw log,
-``draws.jsonl``, read through :class:`~scripts.finance_sim.recording.DrawLog` as
-:class:`~scripts.finance_sim.execute.ExecutionDraw` values, the latest version
-of each draw). It reads draws, not stored item results, so an open stage with
-draws and no results is analysed too.
+``draws.jsonl``, read through :func:`~scripts.finance_sim.recording.read_draw_log`
+as :class:`~scripts.finance_sim.execute.ExecutionDraw` values, the latest version
+of each draw). That reader opens the log for reading only and never repairs it,
+so the analysis cannot modify a private record; a last line a write cut short
+is ignored, left in the file and counted (``incomplete_last_lines_ignored``).
+It reads draws, not stored item results, so an open stage with draws and no
+results is analysed too.
 
 Definitions. A prompt is one item id and rendering. Its ensemble is fully
 recorded when every planned draw index of the arm (0 to ``draws - 1`` of the
@@ -63,7 +66,7 @@ from scripts.finance_sim.execute import ExecutionDraw, planned_keys
 from scripts.finance_sim.limits import ARMS, RECORDS_DIR, RUNS_ROOT
 from scripts.finance_sim.pilot import CONFIRMATORY_STAGE
 from scripts.finance_sim.plan import StudyPlan, load_plan, require_complete
-from scripts.finance_sim.recording import DrawLog, draw_log_path
+from scripts.finance_sim.recording import draw_log_path, read_draw_log
 
 #: Analysis outputs (design: ``runs/finance-sim/analysis/``).
 ANALYSIS_DIR = RUNS_ROOT / "analysis"
@@ -281,13 +284,16 @@ class RepeatBaseline:
 
 
 def repeat_baseline(plan: StudyPlan, draws: Mapping[str, Iterable[ExecutionDraw]], *,
-                    providers: Mapping[str, str] | None = None) -> RepeatBaseline:
+                    providers: Mapping[str, str] | None = None,
+                    incomplete_last_lines: Mapping[str, int] | None = None) -> RepeatBaseline:
     """The repeat baseline of both arms from the recorded draws of their full runs; no request is sent.
 
     ``draws`` gives the recorded draws per arm (the latest version of each); an
     arm it does not name, or names without draws, is reported missing.
     ``providers`` names each arm's provider; by default it is read from the
-    arm's provider profile.
+    arm's provider profile. ``incomplete_last_lines`` gives, per arm, how many
+    incomplete last lines the read-only reader of its draw log ignored (0 when
+    not given); it is stated in the arm's header.
     """
     if not isinstance(plan, StudyPlan):
         raise TypeError(f"plan must be a StudyPlan; got {type(plan).__name__}")
@@ -305,7 +311,11 @@ def repeat_baseline(plan: StudyPlan, draws: Mapping[str, Iterable[ExecutionDraw]
         if not isinstance(provider, str) or not provider:
             raise RepeatBaselineError(f"the provider of the {arm} arm must be a non-empty string")
         header, found = _arm(plan, arm, draws.get(arm, ()), provider)
-        arms[arm] = {**header, "statistics": [_statistic_dict(statistic) for statistic in found]}
+        ignored = (incomplete_last_lines or {}).get(arm, 0)
+        if isinstance(ignored, bool) or not isinstance(ignored, int) or ignored < 0:
+            raise TypeError(f"incomplete_last_lines of the {arm} arm must be a non-negative integer")
+        arms[arm] = {**header, "incomplete_last_lines_ignored": ignored,
+                     "statistics": [_statistic_dict(statistic) for statistic in found]}
         statistics[arm] = found
     document = {"schema": BASELINE_SCHEMA, "plan_sha256": plan.plan_sha256, "stage": STAGE, "confidence": CONFIDENCE,
                 "rule": RULE, "independence": INDEPENDENCE, "arms": arms}
@@ -314,12 +324,19 @@ def repeat_baseline(plan: StudyPlan, draws: Mapping[str, Iterable[ExecutionDraw]
 
 
 def repeat_baseline_from_records(plan: StudyPlan, *, records_dir: str | Path = RECORDS_DIR) -> RepeatBaseline:
-    """The repeat baseline from each arm's recorded full-run draws (``draws.jsonl``); no request is sent."""
+    """The repeat baseline from each arm's recorded full-run draws (``draws.jsonl``); no request is sent.
+
+    The draw logs are opened for reading only, through
+    :func:`~scripts.finance_sim.recording.read_draw_log`, which never repairs a
+    log; an incomplete last line it ignored is counted in the arm's header.
+    """
     if not isinstance(plan, StudyPlan):
         raise TypeError(f"plan must be a StudyPlan; got {type(plan).__name__}")
-    draws = {arm: DrawLog(draw_log_path(arm, STAGE, records_dir), plan=plan, loads=ExecutionDraw.from_dict).latest()
-             for arm in ARMS}
-    return repeat_baseline(plan, draws)
+    readings = {arm: read_draw_log(draw_log_path(arm, STAGE, records_dir), plan=plan, loads=ExecutionDraw.from_dict)
+                for arm in ARMS}
+    return repeat_baseline(plan, {arm: reading.draws for arm, reading in readings.items()},
+                           incomplete_last_lines={arm: reading.incomplete_last_lines
+                                                  for arm, reading in readings.items()})
 
 
 # ---------- the markdown table ----------
@@ -359,9 +376,12 @@ def _markdown(data: Mapping[str, Any]) -> str:
     for arm in data["arms"].values():
         route = arm["route"]
         state = "no recorded draws" if arm["missing"] is not None else f"{arm['recorded_draws']} recorded draws"
+        ignored = arm["incomplete_last_lines_ignored"]
+        cut = (f" Its draw log ended in {ignored} incomplete last line (a write cut short), which was ignored; the "
+               "log is opened for reading only and was left as it is." if ignored else "")
         lines.append(f"- {arm['arm']} arm: serving route {route['profile_id']} (provider {route['provider']}, model "
                      f"{route['served_model']}), temperature {arm['temperature']:g}, {arm['planned_draws']} planned "
-                     f"draws per prompt, {arm['planned_prompts']} planned prompts, {state}.")
+                     f"draws per prompt, {arm['planned_prompts']} planned prompts, {state}.{cut}")
     lines += [
         "",
         "| Arm | Serving route | Temperature | Statistic | Value | Interval | n (prompts) | Calculation |",

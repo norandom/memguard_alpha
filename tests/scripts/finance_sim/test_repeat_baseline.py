@@ -8,12 +8,14 @@ network and no model.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import socket
 from statistics import median
 
 import pytest
 
+import scripts.finance_sim.repeat_baseline as repeat_baseline_module
 from recall_guard.core.completion import ModelResponse
 from recall_guard.core.consensus import wilson_interval
 from recall_guard.core.distribution import RecordedDraw
@@ -34,6 +36,7 @@ from scripts.finance_sim.repeat_baseline import (
     write_baseline,
 )
 from tests.scripts.finance_sim.test_convergence import DRAWS, PLAN, frozen_plan
+from tests.scripts.finance_sim.test_recording_draws import CUT, aged, unchanged, writing_calls
 
 SAMPLING, SERVING = "sampling", "serving"
 PROVIDERS = {SAMPLING: "llama.cpp", SERVING: "modal"}
@@ -273,6 +276,41 @@ def test_the_baseline_is_read_from_the_recorded_draws_and_written_once(baseline,
     with pytest.raises(RepeatBaselineError, match="refusing to replace"):
         write_baseline(other, out_dir)
     assert json_path.read_bytes() == read.document.encode("utf-8")
+
+
+@pytest.mark.parametrize(("ending", "ignored"), [("no_newline", 0), ("cut_short", 1)])
+def test_reading_the_records_never_modifies_a_draw_log(baseline, tmp_path, ending, ignored):
+    """A last line without its newline is used, one cut short is ignored and counted; the log keeps its bytes."""
+    record(tmp_path, SAMPLING, sampling_draws())
+    record(tmp_path, SERVING, serving_draws())
+    before = {}
+    for arm in (SAMPLING, SERVING):
+        path = draw_log_path(arm, STAGE, tmp_path)
+        data = path.read_bytes()
+        path.write_bytes(data.rstrip(b"\n") if ending == "no_newline" else data + CUT)
+        before[path] = aged(path)
+        assert not before[path][0].endswith(b"\n")
+
+    read = repeat_baseline_from_records(PLAN, records_dir=tmp_path)
+
+    assert all(unchanged(path, state) for path, state in before.items())
+    assert sorted(path.name for path in tmp_path.rglob("*") if path.is_file()) == ["draws.jsonl", "draws.jsonl"]
+    document = read.to_dict()
+    for arm in (SAMPLING, SERVING):
+        assert values(read, arm) == values(baseline, arm)
+        assert document["arms"][arm]["incomplete_last_lines_ignored"] == ignored
+        assert document["arms"][arm]["recorded_draws"] == baseline.to_dict()["arms"][arm]["recorded_draws"]
+    assert ("incomplete last line" in read.to_markdown()) == bool(ignored)
+    assert (read.document == baseline.document) == (not ignored)
+
+
+def test_the_analysis_holds_no_write_other_than_its_own_outputs():
+    source = inspect.getsource(repeat_baseline_module)
+    assert "DrawLog" not in source and ".latest(" not in source and "_repaired_lines" not in source
+    assert not hasattr(repeat_baseline_module, "DrawLog")
+    assert writing_calls(repeat_baseline_module) == {
+        ("_write_text", "mkdir"), ("_write_text", "open"), ("_write_text", "os.replace"),
+        ("write_baseline", "_write_text")}
 
 
 def test_the_latest_version_of_a_draw_is_the_one_counted(tmp_path):
