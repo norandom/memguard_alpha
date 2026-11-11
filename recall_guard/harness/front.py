@@ -43,6 +43,13 @@ When no answer can be produced, the :class:`FrontAnswer` carries a
 ``client``, ``request`` or ``reply``) and what the caller can change, and no
 answer, estimate or correction. Arguments of the wrong type raise.
 
+For offline tests and demos the module ships a client that replays given
+replies (:class:`FixedReplies`, with :func:`fixed_reply` for replies that carry
+token evidence), the matching full-distribution host for the logits mode
+(:class:`FixedEvidence`), and one worked example (:func:`worked_example`): the
+fenced point-in-time macro prompt with its decision definition, and an invented
+reply to it (:data:`WORKED_EXAMPLE_REPLY`). None of them opens a connection.
+
 Importing this module reads no file. The shipped catalogue is read only by an
 :func:`ask` call that passes no catalogue, and a provider profile only by a
 call that passes no client.
@@ -50,15 +57,27 @@ call that passes no client.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import threading
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from recall_guard.core.catalogue import Catalogue, CatalogueEntry, CatalogueError, Mode, Status, load_catalogue
+from recall_guard.core.completion import (
+    CompletionClient,
+    ModelConfig,
+    ModelResponse,
+    ParameterValue,
+    TokenAlternative,
+    TokenEvidence,
+)
 from recall_guard.core.decision import DecisionDefinition
+from recall_guard.core.full_distribution import FullDistributionEvidence
 from recall_guard.core.profiles import ProfileError, connect, load_profile
 from recall_guard.core.request_control import BudgetExhaustedError, CallBudget, RequestError
+from recall_guard.dataset.macro_regime import MacroRow, regime_definition, render_anonymised
 from recall_guard.harness.guarded_decision import (
     REQUEST_ERROR_PREFIX,
     GuardConfig,
@@ -71,7 +90,6 @@ from recall_guard.harness.selection import SelectedDecision, SelectionError, gua
 from recall_guard.mia.estimate_source import EstimateSource, SourceLabel
 
 if TYPE_CHECKING:
-    from recall_guard.core.completion import CompletionClient
     from recall_guard.core.full_distribution import FullDistributionClient
 
 #: The steps a front call can fail at, in the order they are taken.
@@ -443,6 +461,259 @@ def ask(
                        corrected=selected.corrected, limits=tuple(limits), failure=None, selected=selected)
 
 
+# -- offline use: fixed replies, fixed evidence and the worked example ---------------
+
+
+@dataclass(frozen=True)
+class FixedReply:
+    """One reply for :class:`FixedReplies`: the text and what a response may carry with it.
+
+    ``token_evidence`` is the per-token evidence in the shape a real response
+    carries it (:class:`~recall_guard.core.completion.TokenEvidence`, one per
+    output token, each with its top alternatives); None means the reply carries
+    none, and a run with a top-k calibrator then has no estimate for that draw.
+    :func:`fixed_reply` builds a record from plain pairs.
+    """
+
+    text: str
+    token_evidence: tuple[TokenEvidence, ...] | None = None
+    finish_reason: str | None = None
+    usage: Mapping[str, int] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.text, str):
+            raise TypeError("text must be a string")
+        # ModelResponse validates and freezes the fields; a wrong reply is refused here, not on its request.
+        checked = ModelResponse(self.text, self.token_evidence, self.usage, self.finish_reason)
+        object.__setattr__(self, "token_evidence", checked.token_evidence)
+        object.__setattr__(self, "usage", checked.usage)
+
+
+def fixed_reply(
+    text: str,
+    tokens: Sequence[tuple[str, Mapping[str, float] | Sequence[tuple[str, float]]]],
+    *,
+    finish_reason: str | None = None,
+    usage: Mapping[str, int] | None = None,
+) -> FixedReply:
+    """A :class:`FixedReply` from a text and, per output token, the token and its top alternatives.
+
+    Each item of ``tokens`` is ``(token, alternatives)``; ``alternatives`` maps
+    an alternative token to its natural-log probability, or lists
+    ``(token, logprob)`` pairs. The realized token must be among its
+    alternatives and takes its logprob from there; the alternatives are stored
+    by descending logprob. For a realized token outside its alternatives, build
+    the :class:`~recall_guard.core.completion.TokenEvidence` values directly.
+
+    >>> reply = fixed_reply('{"a": 1}', [
+    ...     ('{"a"', {'{"a"': -0.1, '{"b"': -2.5}),
+    ...     (': 1}', [(': 1}', -0.3), (': 0}', -1.4)]),
+    ... ])
+    >>> [(token.token, token.logprob) for token in reply.token_evidence]
+    [('{"a"', -0.1), (': 1}', -0.3)]
+    """
+    evidence = []
+    for token, alternatives in tokens:
+        pairs = list(alternatives.items() if isinstance(alternatives, Mapping) else alternatives)
+        ranked = tuple(TokenAlternative(name, logprob)
+                       for name, logprob in sorted(pairs, key=lambda pair: pair[1], reverse=True))
+        realized = [alternative.logprob for alternative in ranked if alternative.token == token]
+        if not realized:
+            raise ValueError(f"token {token!r} is not among its alternatives; build TokenEvidence directly for a "
+                             "realized token outside the top alternatives")
+        evidence.append(TokenEvidence(token, realized[0], ranked))
+    return FixedReply(text, tuple(evidence), finish_reason, usage)
+
+
+class _Fixed:
+    """Given items handed out in order, one or several per request, optionally repeating.
+
+    The state of this class and of the two fixed doubles is kept under
+    name-mangled attributes, so nothing outside the class reads it.
+    """
+
+    def __init__(self, items: tuple, *, cycle: bool, what: str, code: str) -> None:
+        if not isinstance(cycle, bool):
+            raise TypeError("cycle must be a bool")
+        if cycle and not items:
+            raise ValueError(f"cycle=True needs at least one {what}")
+        self.__items = items
+        self.__cycle = cycle
+        self.__what = what
+        self.__code = code
+        self.__served = 0
+        self.__lock = threading.Lock()
+
+    def take(self, count: int, note: Callable[[], None]) -> tuple:
+        """The next ``count`` items, or a RequestError that serves none; ``note`` records the request."""
+        with self.__lock:
+            given = len(self.__items)
+            if not self.__cycle and self.__served + count > given:
+                raise RequestError(
+                    f"The fixed {self.__what} are used up: {given} were given and {self.__served} served, and this "
+                    f"request asks for {count} more. Give more, or pass cycle=True to repeat them.",
+                    code=self.__code,
+                )
+            taken = tuple(self.__items[(self.__served + offset) % given] for offset in range(count))
+            self.__served += count
+            note()
+            return taken
+
+    @property
+    def served(self) -> int:
+        return self.__served
+
+
+class FixedReplies(CompletionClient):
+    """A client that replays given replies in order, one per request, for offline tests and demos.
+
+    It opens no connection and reads no file and no environment variable.
+    ``replies`` holds plain texts (returned without token evidence) and
+    :class:`FixedReply` records (returned with their token evidence, finish
+    reason and usage). ``config`` is the configuration the client stands for:
+    the guard compares its protocol, endpoint, model and parameters with a
+    calibrator's before it uses that calibrator, so pass the configuration the
+    calibrator was fitted for. The default names no endpoint (protocol
+    ``callback``, model ``fixed-replies``, no parameters).
+
+    A request after the last reply raises
+    :class:`~recall_guard.core.request_control.RequestError` with code
+    ``fixed_replies_exhausted``, as a host that stops answering would; the
+    guard records it on that draw. ``cycle=True`` repeats the replies instead,
+    so one reply serves a whole ensemble.
+
+    ``requests`` is the number of requests served and ``prompts`` the prompts
+    of those requests, in order.
+    """
+
+    def __init__(self, replies: Sequence[str | FixedReply], *, config: ModelConfig | None = None,
+                 cycle: bool = False) -> None:
+        if isinstance(replies, str | bytes) or not isinstance(replies, Sequence):
+            raise TypeError("replies must be a sequence of texts or FixedReply records")
+        if config is None:
+            config = ModelConfig(protocol="callback", endpoint=None, model="fixed-replies")
+        elif not isinstance(config, ModelConfig):
+            raise TypeError("config must be a ModelConfig or None")
+        records = []
+        for reply in replies:
+            if not isinstance(reply, str | FixedReply):
+                raise TypeError(f"replies must hold texts or FixedReply records; got {type(reply).__name__}")
+            records.append(FixedReply(reply) if isinstance(reply, str) else reply)
+        self.config = config
+        self.__fixed = _Fixed(tuple(records), cycle=cycle, what="replies", code="fixed_replies_exhausted")
+        self.__prompts: list[str] = []
+
+    @property
+    def requests(self) -> int:
+        """How many requests were served."""
+        return self.__fixed.served
+
+    @property
+    def prompts(self) -> tuple[str, ...]:
+        """The prompts of the served requests, in order, as they arrived."""
+        return tuple(self.__prompts)
+
+    def generate(self, prompt: str, **parameters: ParameterValue) -> ModelResponse:
+        """The next reply. ``parameters`` are reported as requested settings and change nothing else."""
+        if not isinstance(prompt, str):
+            raise TypeError("prompt must be a string")
+        (reply,) = self.__fixed.take(1, lambda: self.__prompts.append(prompt))
+        return ModelResponse(reply.text, reply.token_evidence, reply.usage, reply.finish_reason,
+                             requested_settings={**self.config.parameters, **parameters})
+
+
+class FixedEvidence:
+    """A full-distribution host that returns given evidence in order, for the logits mode offline.
+
+    The companion of :class:`FixedReplies`: pass it to :func:`ask` as
+    ``full_distribution``. It has the interface the guard and the front use of
+    :class:`~recall_guard.core.full_distribution.FullDistributionClient`
+    (``evidence``, ``evidence_batch`` and ``credential_problem``), opens no
+    connection and needs no bearer. The guard asks for evidence once per
+    parsed reply, so give one
+    :class:`~recall_guard.core.full_distribution.FullDistributionEvidence` per
+    reply that parses, or pass ``cycle=True`` to repeat what is given. The
+    evidence is returned as given; ``top_k_keep`` and ``timeout_s`` are
+    accepted and not applied.
+
+    A request after the last evidence raises
+    :class:`~recall_guard.core.request_control.RequestError` with code
+    ``fixed_evidence_exhausted``; the guard then records that draw without an
+    estimate. ``requests`` is the number of evidence objects served and
+    ``calls`` the ``(prompt_text, response_text)`` pairs they were served for.
+    """
+
+    def __init__(self, evidence: Sequence[FullDistributionEvidence], *, cycle: bool = False) -> None:
+        if isinstance(evidence, str | bytes) or not isinstance(evidence, Sequence):
+            raise TypeError("evidence must be a sequence of FullDistributionEvidence")
+        items = tuple(evidence)
+        if not all(isinstance(item, FullDistributionEvidence) for item in items):
+            raise TypeError("evidence must hold FullDistributionEvidence values")
+        self.__fixed = _Fixed(items, cycle=cycle, what="evidence objects", code="fixed_evidence_exhausted")
+        self.__calls: list[tuple[str, str]] = []
+
+    @property
+    def requests(self) -> int:
+        """How many evidence objects were served."""
+        return self.__fixed.served
+
+    @property
+    def calls(self) -> tuple[tuple[str, str], ...]:
+        """The ``(prompt_text, response_text)`` pair of each evidence object served, in order."""
+        return tuple(self.__calls)
+
+    def credential_problem(self) -> None:
+        """None: the fixed host needs no bearer."""
+        return None
+
+    def evidence(self, prompt_text: str, response_text: str, *, top_k_keep: int = 100) -> FullDistributionEvidence:
+        """The next evidence object."""
+        return self.evidence_batch(prompt_text, [response_text], top_k_keep=top_k_keep)[0]
+
+    def evidence_batch(self, prompt_text: str, response_texts: Sequence[str], *, top_k_keep: int = 100,
+                       timeout_s: float | None = None) -> tuple[FullDistributionEvidence, ...]:
+        """The next evidence objects, one per response, in order; a batch that cannot be served whole serves none."""
+        if not isinstance(prompt_text, str):
+            raise TypeError("prompt_text must be a string")
+        if not isinstance(response_texts, list | tuple) or not all(isinstance(text, str) for text in response_texts):
+            raise TypeError("response_texts must be a list or tuple of strings")
+        return self.__fixed.take(len(response_texts),
+                                lambda: self.__calls.extend((prompt_text, text) for text in response_texts))
+
+
+#: The macro state of the worked example. Synthetic: the values are invented to be plausible z-scores and
+#: levels, taken from no month and from no data series; the date is a placeholder that no prompt of the
+#: worked example shows.
+WORKED_EXAMPLE_ROW = MacroRow(
+    decision_date=date.min,
+    raw={"baa10y": 2.47, "cpi_yoy": 3.61, "t10y2y": 0.38},
+    zscores={"baa10y_z": 0.85, "cpi_yoy_z": 1.2, "t10y2y_z": -0.65},
+    revised={},
+)
+
+#: A reply to the worked example's prompt that reads into its definition. It is an invented reply, written
+#: by hand for offline tests and demos; it is not a model output and says nothing about any model.
+WORKED_EXAMPLE_REPLY = (
+    '{"inflation": 0.4, "growth": -0.2, "credit_stress": 0.3, "policy": 0.1, "risk_appetite": -0.3}'
+)
+
+
+def worked_example() -> tuple[str, DecisionDefinition]:
+    """The worked example: the fenced point-in-time macro prompt and its decision definition.
+
+    The prompt is :func:`~recall_guard.dataset.macro_regime.render_anonymised`
+    of :data:`WORKED_EXAMPLE_ROW`: the macro state as rolling z-scores and four
+    assets known by letter and category, with no date, no ticker and no raw
+    level, asking for the regime as loadings on five macro axes and for no
+    return forecast. The row is synthetic: its values are invented, not those
+    of any month. The definition is
+    :data:`~recall_guard.dataset.macro_regime.regime_definition`, the one the
+    study uses: five loadings in [-1, 1], decided by the sign of the defensive
+    spread. :data:`WORKED_EXAMPLE_REPLY` is an invented reply that reads into it.
+    """
+    return render_anonymised(WORKED_EXAMPLE_ROW), regime_definition
+
+
 __all__ = [
     "CHOICE_CALIBRATED",
     "CHOICE_CALIBRATED_TIE",
@@ -460,8 +731,15 @@ __all__ = [
     "LIMIT_NO_CALIBRATOR",
     "LIMIT_NO_QUALIFIED_MODE",
     "LIMIT_WEAK_CALIBRATOR",
+    "WORKED_EXAMPLE_REPLY",
+    "WORKED_EXAMPLE_ROW",
+    "FixedEvidence",
+    "FixedReplies",
+    "FixedReply",
     "FrontAnswer",
     "FrontFailure",
     "ask",
     "choose_mode",
+    "fixed_reply",
+    "worked_example",
 ]

@@ -125,7 +125,18 @@ from recall_guard.harness.selection import SelectedDecision, Selection, Selectio
 
 # isort: split
 # the front: importing it reads no catalogue file and no provider profile
-from recall_guard.harness.front import FrontAnswer, FrontFailure, ask, choose_mode
+from recall_guard.harness.front import (
+    WORKED_EXAMPLE_REPLY,
+    FixedEvidence,
+    FixedReplies,
+    FixedReply,
+    FrontAnswer,
+    FrontFailure,
+    ask,
+    choose_mode,
+    fixed_reply,
+    worked_example,
+)
 
 __all__ = [
     # façade (the headline surface)
@@ -189,6 +200,12 @@ __all__ = [
     "FrontAnswer",
     "FrontFailure",
     "choose_mode",
+    "FixedReplies",
+    "FixedReply",
+    "fixed_reply",
+    "FixedEvidence",
+    "worked_example",
+    "WORKED_EXAMPLE_REPLY",
     # ensemble surface (opt-in; see EnsembleSpec)
     "EnsembledScore",
     "EnsembleSpec",

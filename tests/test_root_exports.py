@@ -79,6 +79,13 @@ FRONT_EXPORTS = (
     ("FrontAnswer", "recall_guard.harness.front"),
     ("FrontFailure", "recall_guard.harness.front"),
     ("choose_mode", "recall_guard.harness.front"),
+    # offline use and the worked example (task 7.2)
+    ("FixedReplies", "recall_guard.harness.front"),
+    ("FixedReply", "recall_guard.harness.front"),
+    ("fixed_reply", "recall_guard.harness.front"),
+    ("FixedEvidence", "recall_guard.harness.front"),
+    ("worked_example", "recall_guard.harness.front"),
+    ("WORKED_EXAMPLE_REPLY", "recall_guard.harness.front"),
 )
 FRONT_NAMES = tuple(name for name, _module in FRONT_EXPORTS)
 
