@@ -51,15 +51,17 @@ track. The guard does not need it to work.
    full logits on the NPU (R36); FastFlowLM gives top-100 on the NPU (R34).
    Next: the ensemble test (Phase B) and a full-distribution analysis.
 6. **Mitigation (optional track):** no method has reduced recall (R02, R03, R07).
-7. **Finance simulation, probe arm (draft, R43).** On Gemma 3 4B the
+7. **Finance simulation (R43).** On Gemma 3 4B the
    identifying and anonymised macro prompts were equally accurate before and
    after the cutoff on the 9 usable months; every adjusted variant lowered Brier
    and log loss by shrinking near-chance forecasts toward 0.5, not through
    skill; the 8-draw ensemble reduced the run-to-run variance of the top-k
    adjusted summary (ratio 0.72, Holm p 0.003); the macro full-distribution
    calibrator separates the two renderings outright (held-out AUC 1.00), so it
-   detects the rendering, and the EDGAR calibrators are weak (0.59, 0.53). The
-   serving arm with the pre-registered tests is pending.
+   detects the rendering, and the EDGAR calibrators are weak (0.59, 0.53). On
+   the served model (Modal vLLM, top-5 logprobs) both top-k calibrators are
+   weak, so answers there stay unadjusted and flagged; the serving arm was
+   stopped after 17 of 90 months and its pre-registered tests were not run.
 
 ## Claims and how they could fail
 
@@ -67,7 +69,7 @@ track. The guard does not need it to work.
 | --- | --- | --- |
 | These models show no predictive capacity on this data (expected) | R26, R30: four models, all intervals include 0.5 | a held-out AUC interval excludes 0.5, or Brier beats the base-rate reference |
 | `p_memorized` stays at the base rate when there is nothing to detect | R26, R30: mean prediction within 0.06 of the base rate | predictions drift away from the base rate without any separation |
-| The ensemble reduces nondeterminism of answer and score | R43 (draft, probe arm only, 8 draws, 20 items; intervals assume independent items and draws): half-ensemble over single-draw variance 0.72 (0.32 to 0.83, Holm p 0.003) for the top-k adjusted summary; 0.99 (0.78 to 4.04) without adjustment, which is no reduction in the raw decision; p_memorized 0.51 and 0.30 (Holm p 0.088) | two 16-draw ensembles of the same prompt disagree about as much as single draws |
+| The ensemble reduces nondeterminism of answer and score | R43 (probe arm only, 8 draws, 20 items; intervals assume independent items and draws): half-ensemble over single-draw variance 0.72 (0.32 to 0.83, Holm p 0.003) for the top-k adjusted summary; 0.99 (0.78 to 4.04) without adjustment, which is no reduction in the raw decision; p_memorized 0.51 and 0.30 (Holm p 0.088) | two 16-draw ensembles of the same prompt disagree about as much as single draws |
 | A calibrator fitted on one corpus transfers to new items | R26 suggests not | ensemble holdout AUC is high but held-out AUC near 0.5 |
 | Mitigation reduces recall (optional) | none | paired held-out recall does not drop at a frozen setting |
 
@@ -116,7 +118,7 @@ track. The guard does not need it to work.
 | R39 | 2026-11-08 | NPU | feasibility | Gemma 4 E4B full logits and teacher forcing on the NPU via OGA |
 | R40 | 2026-11-08 | Local | measured | Gemma 3 4B document likelihood from full logits |
 | R41 | 2026-11-08 | NPU | measured | Gemma 4 E4B document likelihood from full logits on the NPU |
-| R43 | 2026-11-11 | Local | measured | Memorization-adjusted finance simulation, probe arm on Gemma 3 4B (draft, serving arm pending) |
+| R43 | 2026-11-11 | Local | measured | Memorization-adjusted finance simulation on Gemma 3 4B: probe arm complete, serving arm stopped |
 
 ## Entries
 
@@ -601,7 +603,7 @@ track. The guard does not need it to work.
   hidden-dimension check is not in the task plan.
 - **Evidence:** [note](research-notes/2026-11-09-logits-fingerprinting.md).
 
-### R43 · 2026-11-11 · Finance simulation probe arm (draft, serving arm pending)
+### R43 · 2026-11-11 · Finance simulation: probe arm complete, serving arm stopped
 
 - **Question:** does a memorization adjustment (top-k or full-distribution
   estimate) remove the pre-cutoff advantage of identifying macro prompts over
@@ -615,7 +617,7 @@ track. The guard does not need it to work.
   post cutoff), negative control 320; full-distribution evidence over the
   top-100 of 262,145 tokens; about 4 h 40 min of host time plus a 71-minute
   failed first calibration attempt (fenced JSON, parser fix 9.2a); native run,
-  no paid request.
+  no paid request on the probe arm.
 - **Data:** FRED point-in-time macro rows (CPIAUCSL, T10Y2Y, BAA10Y) for 126
   months 2016-01 to 2026-06, FMP adjusted closes with DTB3 as the cash leg
   (licensed, not published), SEC EDGAR 8-K releases (140 calibration, 40
@@ -635,7 +637,10 @@ track. The guard does not need it to work.
 - **Limits:** parse failures on the macro prompts (28 percent in calibration
   and the pilot, 42 percent in the full run, 0 on EDGAR) cost 7 of 12 pilot
   months and 11 (single) or 15 (ensemble) of 20 full-run months; probe arm only,
-  the serving arm with the pre-registered tests pending approval; achieved power
+  the serving arm stopped by user decision after calibration and 17 of 90 months (both top-k
+  calibrators weak: macro AUC 0.58, EDGAR not interpretable with 86 percent empty replies; about
+  USD 10 of the approved 32.86 spent), its pre-registered tests and negative control not run;
+  achieved power
   missing; figures re-rendered after a DTB3 guard false positive.
 - **Evidence:** [report](results/2026-11-11-memorization-adjusted-finance-sim.md);
   private receipts, gate record, calibrators and analyses under

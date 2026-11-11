@@ -1583,3 +1583,14 @@ Layout (tasks 8.1 to 8.4):
   `.env` by name and are never printed or stored in receipts.
 - Licensed data stays private; reports publish only derived statistics, with source
   citations (Moody's for BAA10Y, FMP for prices).
+
+## Amendment 2026-11-11: serving arm closed, objective restated (user decision)
+
+- The serving arm ends as a stopped run: calibration complete, the full run stopped at 17 of 90 evaluation
+  months, the negative control excluded. No second full-run lifecycle is requested. Its pre-registered tests
+  are reported as not run, never as a null result. Both serving top-k calibrators are weak, so those tests
+  would have compared identical variants.
+- The objective is recall-aware answers: each answer carries a calibrated memorization estimate and is
+  adjusted by it where the calibrator passed its gate. Chance-level accuracy on the macro question is the
+  design condition that lets recall be derived and calibrated back, not a result to be improved. This
+  sentence overrides any older text that reads forecast accuracy as the study's goal.

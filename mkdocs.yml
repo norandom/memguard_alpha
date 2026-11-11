@@ -78,7 +78,7 @@ nav:
       - "2026-11-08 Gemma 4 E4B document likelihood on the NPU": results/2026-11-08-gemma4-document-likelihood-npu.md
       - "2026-11-08 Phase A - single-draw calibration on held-out data": results/2026-11-08-phase-a-single-draw.md
       - "2026-11-08 Phi-4 Mini disqualified from the Phase A model set": results/2026-11-08-phi4-mini-disqualified.md
-      - "2026-11-11 Memorization-adjusted finance simulation - probe arm on Gemma 3 4B (draft, serving arm pending)": results/2026-11-11-memorization-adjusted-finance-sim.md
+      - "2026-11-11 Memorization-adjusted finance simulation - Gemma 3 4B, probe arm complete, serving arm stopped": results/2026-11-11-memorization-adjusted-finance-sim.md
   - Docker and development: development.md
   - PIT architecture: pit-architecture.md
   - Ensemble consensus: ensemble.md

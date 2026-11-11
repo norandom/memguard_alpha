@@ -156,11 +156,12 @@ gateways; Recall Guard itself runs in Linux containers (R18, R20).
 1. **Ensemble test (Phase B):** 32 draws per held-out item, analysed as two
    16-draw ensembles, to measure how much the ensemble reduces nondeterminism of
    the answer and score (R28). Modal about USD 7; inputs to be frozen and approved.
-   A first probe-arm reading exists as draft R43 (serving arm pending): on Gemma
+   A probe-arm reading exists as R43 (the serving arm was stopped and adds no
+   ensemble result): on Gemma
    3 4B with 8-draw ensembles the top-k adjusted summary's half-ensemble over
    single-draw variance is 0.72 and the unadjusted summary's 0.99
-   ([report](results/2026-11-11-memorization-adjusted-finance-sim.md)); the full
-   update follows with the final report.
+   ([report](results/2026-11-11-memorization-adjusted-finance-sim.md)); the
+   32-draw test on a served model is still open.
 2. **Statistical power:** a larger held-out set from the same EDGAR source would
    narrow the intervals to about plus or minus 0.07.
 3. **Divergence work (optional track):** an older/newer pair with a shared

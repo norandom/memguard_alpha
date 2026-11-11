@@ -1,11 +1,24 @@
-# Memorization-adjusted finance simulation, probe arm on Gemma 3 4B (draft, serving arm pending), 2026-11-11
+# Memorization-adjusted finance simulation on Gemma 3 4B: probe arm complete, serving arm stopped, 2026-11-11
 
 > Register: R43 · Status: measured · Track: Local
 
-> **Draft, serving arm pending.** This page reports the local probe arm only.
-> The Modal serving arm carries the pre-registered tests and runs only after the
-> user's approval record (decision 2026-11-10); its results, the achieved power
-> and the final register state are added when it has run.
+> **Final (2026-11-11).** The objective is recall-aware answers: each answer
+> carries a calibrated memorization estimate and is adjusted by it where the
+> calibrator passed its quality gate. The macro question is one the model
+> answers at chance, by design: with no skill in the answer, any advantage of
+> an identifying prompt is recall, and the estimate can be calibrated against
+> it. The local probe arm is complete. The Modal serving arm was stopped by
+> user decision after its calibration and 17 of 90 evaluation months and has
+> no analysed result (see Serving arm).
+
+The probe arm produces recall-aware answers: every decided answer carries a
+memorization estimate from the host's top-k logprobs and one from the full
+next-token distribution, the macro calibrators pass the quality gate (held-out
+AUC 0.72 and 1.00) and their adjustment is applied, and the weak EDGAR
+calibrators (0.59 and 0.53) are flagged and not applied. On the served model
+the top-k calibrators are weak on both corpora (macro 0.58, EDGAR not
+interpretable), so the guard would return those answers flagged and
+unadjusted.
 
 On the probe arm the gap check is empty: identifying and anonymised macro
 prompts were equally accurate before and after the model's cutoff on the 9
@@ -33,7 +46,8 @@ anonymised ones without discounting honest answers on held-out releases; does an
 estimate; and how fast does the top-k estimate converge to the full-distribution
 estimate as k grows? The probe arm answers the paired top-k versus
 full-distribution questions and gives a small paired check of the gap; the
-pre-registered tests belong to the serving arm.
+pre-registered tests belonged to the serving arm, which was stopped before it
+could run them.
 
 ## Setup
 
@@ -42,12 +56,12 @@ pre-registered tests belong to the serving arm.
 | Model | `google/gemma-3-4b-it`, GGUF q4_K_M, digest `sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1` (llama-server name `gemma3:4b`); the serving arm pins HF revision `093f9f388b31de276ce2de164bdc2081324b9767` |
 | Runtime | llama.cpp b12199, Vulkan, Radeon 890M iGPU, Windows 11; llama-server for generation (top-5 logprobs), the project's full-distribution host (`scripts/serve_full_distribution.py`, same GGUF) for teacher-forced evidence; one host loaded at a time behind bearer gateways on 127.0.0.1:11571 and 11581 |
 | Frozen plan | `plan_sha256` `f7603eeb8efdbf74645d658f2bd733a35b3834ba7c90b74d00c6ac2e6b5332fe`, seed 20261110, created 2026-11-10T21:35:42+01:00, status frozen; every recording, calibrator, gate record and analysis carries this hash |
-| Arms and roles | sampling arm, probe role (this report): six variants, top-k versus full-distribution comparison, convergence, a small paired check of the gap; serving arm, primary role (Modal vLLM, pending approval): none and top-k variants, the pre-registered gap, Brier and log-loss tests and the negative control, 68 pre-cutoff and 22 post-cutoff months, frozen limit USD 32.86 |
+| Arms and roles | sampling arm, probe role (this report): six variants, top-k versus full-distribution comparison, convergence, a small paired check of the gap; serving arm, primary role (Modal vLLM, approved 2026-11-11, stopped after calibration and 17 of 90 evaluation months): none and top-k variants, the pre-registered gap, Brier and log-loss tests and the negative control, 68 pre-cutoff and 22 post-cutoff months, frozen limit USD 32.86 |
 | Generation | temperature 0.7, 8 draws per rendering (at least 6 parsed), seed 1000 plus draw index, 512 output tokens, 300 s timeout, 2048-token context |
 | Evidence | one `evidence_batch` per prompt and rendering over its parsed replies, 100 kept alternatives of the 262,145-token vocabulary plus the exact actual-token logprob, 600 s timeout, `host_busy` retried 5 times 60 s apart |
 | Calibrators | one per estimate source and corpus; holdout 25 percent by prompt; `min_auc` 0.6, `min_valid` 50; held-out AUC with a prompt-clustered stratified percentile bootstrap, 1000 resamples, 95 percent |
 | Statistics | non-circular moving-block percentile bootstrap, 2000 resamples, seed 20261110, 95 percent; block length 6 months (2 filing quarters for the negative control); Holm per metric family; pre-registered effect 0.10; negative-control tolerance 0.10; power threshold 0.8 |
-| Route | native `uv run --no-sync` on Windows (Compose deferred: the dev image bakes the code in and the container route to the native gateways is unverified); API keys loaded by name for the plan build only; no paid request |
+| Route | native `uv run --no-sync` on Windows (Compose deferred: the dev image bakes the code in and the container route to the native gateways is unverified); API keys loaded by name for the plan build only; no paid request on the probe arm (the serving arm spent about USD 10 of the approved 32.86) |
 
 Probe-arm sizing (user decision 2026-11-10): calibration on 24 months with 8
 draws per rendering plus 140 EDGAR rows with 4 draws (944 requests); pilot 12
@@ -264,6 +278,41 @@ calibrators are weak, so the guard skipped the adjustment on 40 of 40 releases
 and the change is 0 by construction. The negative control says nothing about
 whether a working calibrator would discount honest answers.
 
+### Serving arm (stopped)
+
+| Stage | State | Requests | Cost (USD) | Result |
+| --- | --- | ---: | ---: | --- |
+| Weight staging and smoke run | complete | 1 smoke request | about 0.57 over four lifecycles | vLLM 0.17.0 on TRITON_ATTN returns 5 top logprobs at each of 65 positions |
+| Calibration | complete | 6,016 of 6,016 | 8.31 | macro: 1,504 of 1,536 draws parsed; EDGAR: 609 of 4,480 parsed, 3,871 recorded as parse errors with an empty reply text |
+| Full run | stopped, ledger open | 1,139 of 5,760 | 1.08 | 1,138 draws recorded, none failed; 17 months complete in both renderings (2016-02 to 2018-02 in plan order, all before the cutoff); no item result derived |
+| Negative control | not started | 0 of 1,280 | 0 | excluded: the arm was closed before this stage |
+
+| Corpus | Source | Held-out AUC | 95 percent interval, prompt-clustered | Draw-level interval (diagnostic) | ECE | Held-out draws (memorized, control) | Held-out prompts | Weak |
+| --- | --- | ---: | --- | --- | ---: | --- | ---: | --- |
+| macro | top_k | 0.583 | 0.249 to 0.917 | 0.518 to 0.641 | 0.309 | 384 (192, 192) | 12 (6, 6) | yes |
+| EDGAR | top_k | 0.000 | 0.000 to 0.000 | 0.000 to 0.000 | 0.599 | 160 (32, 128) | 5 (1, 4) | yes |
+
+Both serving calibrators are weak, so the guard applies no adjustment on this
+arm: the top-k variants equal the unadjusted ones on every item, and the
+pre-registered gap, Brier and log-loss differences would be 0 by construction
+at 17 months or at 90. The recall-aware answer on the served model is
+therefore the unadjusted answer with the weak-calibrator flag. The EDGAR value
+is not interpretable: 86 percent of the EDGAR calibration draws came back with
+an empty reply, the fit rests on 609 parsed draws of 20 prompts and the holdout
+holds one memorized prompt. The cause of the empty replies was not
+investigated.
+
+The full run stopped at 15:23 local time when the runner process ended with
+exit code -536870911 and no output; the cause is not established. A known
+defect of the runner (it keeps every draw of a stage in memory and derives no
+item result until the stage ends) is recorded as a follow-up and is not fixed.
+The driver stopped the serve and verified it; no Modal app remained. The arm
+was then closed by user decision (2026-11-11): no second full-run lifecycle,
+no negative control, about USD 10 spent of the approved 32.86. The 17 recorded
+months are the first of the evaluation set in calendar order, so they are not a
+sample of it, and none lies after the cutoff. The serving arm's
+full-distribution variants are missing by design (different weights).
+
 ### Top-k versus full-distribution convergence
 
 Full run: 40 items, 186 parsed draws; negative control: 40 items, 320 draws.
@@ -341,7 +390,7 @@ Data: the stored pre-registered analysis of the full_run stage (read, not
 recomputed), pilot items excluded; per variant the DiD accuracy gap with the
 no-adjustment variants beside the top-k and full-distribution adjustments; the
 sampling arm (probe role) with 20 planned months (15, 5). The serving-arm panel
-is empty because that arm has not run: its rows read "no planned month carries
+is empty because that arm has no derived result (stopped): its rows read "no planned month carries
 the value in both renderings" and its full-distribution variants are missing by
 design (different weights, Requirement 9.4). Sample size: 9 months for the
 single variants, the ensemble variants not drawn (5 months, below the block
@@ -350,7 +399,7 @@ over months, block length 6, 2000 resamples, seed 20261110; p raw two-sided
 from the kept resamples, Holm-adjusted across the variants of each arm;
 achieved power missing. Forward item: `gap.md` gives the serving arm the
 achieved-power reason "fewer than two months carry the noise statistic", which
-is misleading for an arm that has not run. Sources: macro rows from FRED
+is misleading for an arm that was stopped before any result was derived. Sources: macro rows from FRED
 including BAA10Y (Moody's, cited and not reproduced); realized returns from FMP
 adjusted closes (licensed, not published) with DTB3 as the cash leg. Derived
 statistics only.
@@ -363,14 +412,16 @@ statistics only.
 Data: the held-out draws each calibrator retained when it was fitted (a
 stratified 25 percent split by prompt) against their labels, 1 memorized or
 identifying and 0 control or anonymised; one calibrator per corpus and source
-serves both draw modes. Sample size: macro 74 held-out draws (37, 37) from 11
-prompts, EDGAR 140 (40, 100) from 35 prompts; the draws of one prompt are not
+serves both draw modes. Sample size, probe arm: macro 74 held-out draws (37,
+37) from 11 prompts, EDGAR 140 (40, 100) from 35 prompts; serving arm: macro
+384 (192, 192) from 12 prompts, EDGAR 160 (32, 128) from 5 prompts; the draws of one prompt are not
 independent. Bins: 10 equal-width bins, empty bins omitted, marker area by
 count; ECE 0.070 (macro top-k), 0.048 (macro full distribution), 0.200 (EDGAR
-top-k) and 0.206 (EDGAR full distribution). Interval: none on the bins; the
+top-k) and 0.206 (EDGAR full distribution) on the probe arm, 0.309 (macro
+top-k) and 0.599 (EDGAR top-k) on the serving arm. Interval: none on the bins; the
 held-out AUC carries the prompt-clustered 95 percent interval of the calibrator
-table; the two EDGAR calibrators are marked weak. The serving arm's panels are
-not drawn: its calibrators are not fitted. Sources: FRED macro rows including
+table; the two EDGAR calibrators of the probe arm and both serving calibrators are
+marked weak. The serving arm's full-distribution panels are missing by design. Sources: FRED macro rows including
 BAA10Y (Moody's, cited and not reproduced); SEC EDGAR outlook prompts; the
 study's outcomes come from FMP adjusted closes (licensed, not published) and no
 FMP value enters this figure. Derived statistics only.
@@ -431,9 +482,15 @@ outlook prompts; no FMP value enters this figure. Derived statistics only.
   about 0.075 is needed and the smallest non-zero sd is 0.289 over 12 months),
   otherwise it can only stop; the frozen inform policy let the probe arm
   proceed at expected power 0.11; the plan's `pilot.rule` text is stale.
-- The serving arm is pending. The pre-registered tests (none and top-k variants,
-  68 and 22 months), the achieved power and the paid negative control come with
-  it; nothing here is confirmatory.
+- The serving arm was stopped and has no analysed result. The pre-registered
+  tests (none and top-k variants, 68 and 22 months), the achieved power and the
+  paid negative control were not run; nothing here is confirmatory. With both
+  serving calibrators weak, those tests would have compared identical variants.
+- Chance-level accuracy is the design condition, not a defect: the question is
+  chosen so that the answer carries no skill and recall is the only source of
+  an advantage. On this model the identifying prompts showed no such advantage
+  on the 9 usable months, so the calibration had no outcome-side recall to
+  anchor to; the macro labels are the renderings.
 - The macro full-distribution calibrator detects the rendering: its held-out AUC
   of 1.00 and estimate differences of 0.55 to 0.73 in both periods show that the
   identifying prompt is recognised as such, not that the month was memorized.
@@ -513,6 +570,19 @@ outlook prompts; no FMP value enters this figure. Derived statistics only.
   of every published and private file).
   Published copies: `docs/assets/finance-sim/` (26 files: 8 SVGs, 4 CSVs, 4
   figure tables and 10 analysis markdown copies under a sources header).
+- Serving arm, all private: approval record under `runs/finance-sim/approvals/`;
+  `runs/finance-sim/records/serving/{weight_staging,smoke_run,calibration,full_run}/`
+  (calibration `receipt.json` complete, exit code 0, `budget.json` 6,016
+  requests, 0 unknown outcomes; full run `receipt.json` open, exit code 1,
+  `teardown_verified` true, `budget.json` 1,139 requests with one in flight;
+  each `serve-receipt.json` stopped with verified cleanup); calibrators
+  `runs/finance-sim/calibrators/serving/top_k/{macro,edgar}.json`. Final
+  guarded replay after the serving calibration:
+  `runs/finance-sim/validation/live-9.5-final-replay-compare.log` (the 4
+  reliability files differed, now carrying the serving calibrators, and were
+  republished; 0 licensed leaks, 12 advisory DTB3 matches) and
+  `live-9.5-final-replay-compare-2.log` (the comparison against the repository
+  copy); manifest copy `runs/finance-sim/replay/replay-20261111-final.json`.
 - Code: `scripts/finance_sim/` (`run_study.py`, `calibrate.py`, `pilot.py`,
   `execute.py`, `negative_control.py`, `analysis.py`, `ensemble_metrics.py`,
   `convergence.py`, `figures.py`, `figures_draws.py`, `figures_convergence.py`,

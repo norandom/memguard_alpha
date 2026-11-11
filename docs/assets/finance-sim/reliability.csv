@@ -1,7 +1,17 @@
 arm,role,kind,source,variants,status,holdout_prompts,holdout_draws,memorized_draws,control_draws,ece,holdout_auc,auc_interval_low,auc_interval_high,weak,bin_low,bin_high,bin_count,mean_predicted,observed_share,reason
-serving,primary,macro,top_k,single_top_k; ensemble_top_k,missing,,,,,,,,,,,,,,,no calibrator file at serving/top_k/macro.json under the calibrators directory: the calibration has not been fitted
+serving,primary,macro,top_k,single_top_k; ensemble_top_k,drawn,12,384,192,192,0.309238,0.583333,0.249306,0.916667,yes,0.1,0.2,1,0.156091,1,
+serving,primary,macro,top_k,single_top_k; ensemble_top_k,drawn,12,384,192,192,0.309238,0.583333,0.249306,0.916667,yes,0.2,0.3,63,0.21591,0.492063,
+serving,primary,macro,top_k,single_top_k; ensemble_top_k,drawn,12,384,192,192,0.309238,0.583333,0.249306,0.916667,yes,0.3,0.4,64,0.387286,0.5,
+serving,primary,macro,top_k,single_top_k; ensemble_top_k,drawn,12,384,192,192,0.309238,0.583333,0.249306,0.916667,yes,0.4,0.5,64,0.464337,0,
+serving,primary,macro,top_k,single_top_k; ensemble_top_k,drawn,12,384,192,192,0.309238,0.583333,0.249306,0.916667,yes,0.5,0.6,63,0.577198,1,
+serving,primary,macro,top_k,single_top_k; ensemble_top_k,drawn,12,384,192,192,0.309238,0.583333,0.249306,0.916667,yes,0.6,0.7,97,0.636725,0.340206,
+serving,primary,macro,top_k,single_top_k; ensemble_top_k,drawn,12,384,192,192,0.309238,0.583333,0.249306,0.916667,yes,0.7,0.8,32,0.74451,1,
 serving,primary,macro,full_distribution,single_full_distribution; ensemble_full_distribution,missing,,,,,,,,,,,,,,,"missing for the serving arm: the full-distribution host serves the local GGUF, which are different weights from the served model, and values from different builds are not comparable (Requirement 9.4)"
-serving,primary,edgar,top_k,single_top_k; ensemble_top_k,missing,,,,,,,,,,,,,,,no calibrator file at serving/top_k/edgar.json under the calibrators directory: the calibration has not been fitted
+serving,primary,edgar,top_k,single_top_k; ensemble_top_k,drawn,5,160,32,128,0.599163,0,0,0,yes,0.3,0.4,1,0.366147,1,
+serving,primary,edgar,top_k,single_top_k; ensemble_top_k,drawn,5,160,32,128,0.599163,0,0,0,yes,0.4,0.5,31,0.409594,1,
+serving,primary,edgar,top_k,single_top_k; ensemble_top_k,drawn,5,160,32,128,0.599163,0,0,0,yes,0.5,0.6,96,0.567492,0,
+serving,primary,edgar,top_k,single_top_k; ensemble_top_k,drawn,5,160,32,128,0.599163,0,0,0,yes,0.6,0.7,1,0.69749,0,
+serving,primary,edgar,top_k,single_top_k; ensemble_top_k,drawn,5,160,32,128,0.599163,0,0,0,yes,0.7,0.8,31,0.701708,0,
 serving,primary,edgar,full_distribution,single_full_distribution; ensemble_full_distribution,missing,,,,,,,,,,,,,,,"missing for the serving arm: the full-distribution host serves the local GGUF, which are different weights from the served model, and values from different builds are not comparable (Requirement 9.4)"
 sampling,probe,macro,top_k,single_top_k; ensemble_top_k,drawn,11,74,37,37,0.0700443,0.721695,0.58584,0.855144,no,0.2,0.3,1,0.277109,0,
 sampling,probe,macro,top_k,single_top_k; ensemble_top_k,drawn,11,74,37,37,0.0700443,0.721695,0.58584,0.855144,no,0.3,0.4,18,0.340344,0.333333,

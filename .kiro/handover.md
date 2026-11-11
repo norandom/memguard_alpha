@@ -1,20 +1,18 @@
 # Handover: memorization-adjusted-finance-sim
 
-State as of 2026-11-11, about 07:00 (system clock). Repository `norandom/recall_guard` (local folder
+State as of 2026-11-11, evening (system clock). Repository `norandom/recall_guard` (local folder
 `D:\Source\memguard_alpha`, branch `main`). The overnight live run authorized on 2026-11-10 ("Yes, run it
 all except Modal") is complete. CI has been green on every commit since the 8.3c fix (`9f8a75a`); check the
 latest pushes with `gh run list --limit 5` (strip ANSI codes before printing).
 
 ## Where the spec stands
 
-- 40 of 42 sub-tasks are `[x]`: groups 1 to 8, 9.1 (runner), 9.2 and 9.3 (the live probe arm, accepted on
+- All 42 sub-tasks are `[x]`: groups 1 to 8, 9.1 (runner), 9.2 and 9.3 (the live probe arm, accepted on
   the receipts by an independent read-only review on 2026-11-11), plus the follow-ups 7.3b, 8.3c, 9.2a
   (parser fence fix) and 9.3a (DTB3 advisory in the licensing guard).
-- Open: 9.4 (the Modal serving arm; runs only with the user's approval record and the manifest endpoint set)
-  and 9.5 (the dated report). 9.5 exists as a DRAFT labelled "serving arm pending": report R43 at
+- 9.4 is closed as a stopped run and 9.5 is final (report R43 at
   `docs/results/2026-11-11-memorization-adjusted-finance-sim.md`, registered, in the nav and the reports
-  index, with the 26 published assets under `docs/assets/finance-sim/`. The final 9.5 after the serving arm
-  must also update the synthesis `docs/research-report.md` (the task bullet names it; the draft left it).
+  index, 26 published assets under `docs/assets/finance-sim/`); see "State at close" below.
 - `tasks.md` ends with "## Implementation Notes": one entry per task and per decision. Read the entries from
   "Overnight authorization" onward before touching the live outputs. `design.md` carries dated amendment
   paragraphs ("decision 2026-11-10", "Amendment after ...", "fix 9.3a") that override older text.
@@ -59,20 +57,51 @@ latest pushes with `gh run list --limit 5` (strip ANSI codes before printing).
   0 licensed leaks and 6 warnings (`runs/finance-sim/validation/live-9.3-replay-2.log`), the committed copy
   compares byte for byte (`live-9.5-replay-compare.log`), and the strict docs build passes.
 
-## Live state of 9.4 (2026-11-11 from 08:41)
+## State at close (2026-11-11, evening): spec complete, serving arm stopped
 
-The Modal serving arm runs under the user's approval record (runs/finance-sim/approvals/<plan>.json, re-written
-for the TRITON_ATTN manifest) through a detached driver, `scratchpad\live\run_serving.ps1`, whose status file
-is `scratchpad\live\serving.status` (lines START/EXIT/SERVE/RESULT/STOP/FAILED/DONE) and whose per-step logs
-sit under `runs/finance-sim/records/serving/<stage>/driver-*.log`. The driver survives this session: it runs
-calibration, then the full run, then the negative control, each as one serve lifecycle (expiry controller armed
-at the stage's frozen max_seconds), and stops at the first non-zero runner exit. If a lifecycle is interrupted,
-the controller stops the app at its deadline; `modal app list --env recall-guard-pilot` (through
-`uv run --project deploy/modal --no-sync python -m modal ...` with MODAL_TOKEN_ID and MODAL_TOKEN_SECRET loaded
-by name) shows what remains, and `serve_modal_model.py stop-serve --manifest runs/finance-sim/plan/serving-manifest.json --receipt <serve-receipt>`
-stops it. One serve per stage per approval: a stage whose runner session opened cannot be re-served under this
-record. After the driver's DONE: `run_study analyses --arm serving ...`, the replay for both arms, the final 9.5.
-Smoke run facts: cold start about 2.5 min, 65 output tokens in 4.84 s, 5 top logprobs at every position.
+The user's decision: "proceed with what we have and cut". No Modal rerun. 9.4 and 9.5 are `[x]`.
+
+### The objective, in the user's words
+
+"The objective is to produce recall aware answers." A forecast at 50:50 every month is expected and is not
+the objective: "50:50 means that we ask the right question to derive the recall and to calibrate this back".
+Lead every report with the validity of the recall estimate (calibrated logits and logprobs), never with
+forecast skill.
+
+### Working rules from this day
+
+Treat a failure of the runner as a defect of this repository's code first. Do not investigate the operating
+system, antivirus, the harness or the provider unless the user asks. Do not ask the same approval question
+twice. Report results, not diagnostics. Explain results in plain terms before proposing work.
+
+### Serving arm, final facts
+
+- Smoke run passed on TRITON_ATTN. Calibration complete: 6,016 of 6,016 requests, USD 8.31. Macro 1,504 of
+  1,536 draws parsed; EDGAR 609 of 4,480, the other 3,871 came back with an empty reply (not investigated).
+- Both top-k calibrators are weak: macro held-out AUC 0.583 (prompt-clustered 0.249 to 0.917), EDGAR 0.000 on
+  a holdout with one memorized prompt (not interpretable). The guard applies no adjustment on this arm.
+- Full run stopped at 1,139 of 5,760 requests (17 months complete, 2016-02 to 2018-02, all before the
+  cutoff). Runner exit code -536870911, cause not established. Ledger and receipt stay `open`; no item result
+  was derived; the draws stay under `runs/finance-sim/records/serving/full_run/`.
+- Negative control not started (excluded). About USD 10 of the approved 32.86 spent. Every serve receipt is
+  stopped with verified cleanup.
+
+### What the calibrated logits showed (both arms)
+
+- Probe arm (local, full logits and top-k): macro calibrators AUC 1.00 (full distribution) and 0.72 (top-k);
+  EDGAR 0.53 and 0.59, weak. The macro labels are the renderings (identifying against anonymised), and the
+  estimate follows the rendering before and after the cutoff alike (full distribution, identifying: mean 0.75
+  before, 0.82 after; 5 results per cell). It marks the prompt as recall-exposed; it does not show that a
+  month was memorized.
+- A calibrator labelled by exposure (before against after the cutoff in one rendering) is the open research
+  step. It can be fitted on the recorded draws, but the calibration months are all before the cutoff, so the
+  after-cutoff class would come from the 5 post-cutoff probe months.
+
+### Final 9.5
+
+Report R43 is final ("probe arm complete, serving arm stopped"). The guarded replay republished the 4
+reliability files (they now carry the serving calibrators) and the second run compares byte for byte:
+`runs/finance-sim/validation/live-9.5-final-replay-compare.log` and `-2.log`.
 
 ## Do this first in a new session
 
@@ -80,12 +109,18 @@ Smoke run facts: cold start about 2.5 min, 65 output tokens in 4.84 s, 5 top log
    `gh run list --limit 6` (strip ANSI codes before printing).
 2. Reproduce the published assets at any time, no host needed:
    `uv run --no-sync python -m scripts.finance_sim.run_study replay --plan-sha256 <hash> --out-root D:\BuildArtifacts\memguard_alpha\replay-<date> --require-guard --compare docs\assets\finance-sim`
-   (exit 0 and a byte-for-byte comparison are the pass; the 6 DTB3 warnings are expected).
-3. 9.4 only with the user's written approval record (task 7.5 format, matching the frozen plan) and the
-   manifest endpoint set before presenting the limits; frozen serving-arm stages USD 32.54 within the 34.34
-   ceiling; stop with the operator script and verify no Modal app remains.
-4. Then the final 9.5: replay on both arms, replace the draft's "serving arm pending" labels, add the
-   achieved power per arm, update `docs/research-report.md`, re-run the strict build.
+   (exit 0 and a byte-for-byte comparison are the pass; the 12 advisory DTB3 matches are expected).
+3. No Modal work is authorized. A new paid run needs a new approval record.
+
+## Open follow-ups from the cut
+
+- The runner's accumulation in `scripts/finance_sim/execute.py` (`execute_items` and `_generate` hold every
+  draw of a stage and derive nothing until the stage ends): derive and write each item when its ensemble is
+  complete.
+- A host-free close-and-derive path for an open serving stage (the partial path needs an `incomplete` ledger;
+  the stop reasons are limit names only; the serving arm has no pass without a live host).
+- The empty EDGAR replies on vLLM (86 percent of the EDGAR calibration draws).
+- The exposure-labelled macro calibrator described above.
 
 ## Follow-ups recorded by the reviewers (none blocks acceptance)
 
