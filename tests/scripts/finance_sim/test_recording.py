@@ -554,3 +554,47 @@ def test_a_stage_session_refuses_another_arm_or_a_mismatched_plan(tmp_path):
     receipt_path("sampling", STAGE, tmp_path).write_text(json.dumps(stored), encoding="utf-8")
     with pytest.raises(PlanChangedError):
         open_session(tmp_path)
+
+
+# ---------- a session an exception ended (fix 9.1b) ----------
+
+
+def ledger_status(root: Path) -> str:
+    return json.loads((root / "sampling" / STAGE / "budget.json").read_text(encoding="utf-8"))["status"]
+
+
+def test_a_session_an_exception_ended_records_refused_or_failed_never_complete(tmp_path, calibrator):
+    with pytest.raises(RecordingError), open_session(tmp_path) as session:
+        run_item(session, admitted_host(session), calibrator)
+        session.complete()
+        raise RecordingError("a stored result that does not recompute; refused")
+    stage = receipt(tmp_path)
+    assert ledger_status(tmp_path) == "complete"
+    assert (stage["status"], stage["stop_reason"], stage["exit_code"]) == ("refused", "RecordingError", EXIT_REFUSED)
+    assert (stage["last_session"]["kind"], stage["last_session"]["error"]) == ("generation", "RecordingError")
+    assert [check["status"] for check in stage["host_checks"]] == ["ok"] and stage["sessions"] == 1
+    assert "recompute" not in receipt_path("sampling", STAGE, tmp_path).read_text(encoding="utf-8")
+
+    with pytest.raises(RuntimeError), open_session(tmp_path) as session:
+        raise RuntimeError("the host answered with an unknown shape")
+    stage = receipt(tmp_path)
+    assert (stage["status"], stage["stop_reason"], stage["exit_code"]) == ("failed", "RuntimeError", EXIT_UNFINISHED)
+    assert stage["last_session"]["error"] == "RuntimeError" and stage["sessions"] == 2
+    assert "unknown shape" not in receipt_path("sampling", STAGE, tmp_path).read_text(encoding="utf-8")
+
+    with open_session(tmp_path):
+        pass
+    stage = receipt(tmp_path)
+    assert (stage["status"], stage["stop_reason"], stage["exit_code"]) == ("complete", None, EXIT_COMPLETE)
+    assert stage["last_session"]["error"] is None and stage["sessions"] == 3
+
+
+def test_an_interruption_after_the_ledger_completed_leaves_the_receipt_open_never_complete(tmp_path, calibrator):
+    with pytest.raises(Interrupted), open_session(tmp_path) as session:
+        run_item(session, admitted_host(session), calibrator)
+        session.complete()
+        raise Interrupted
+    stage = receipt(tmp_path)
+    assert ledger_status(tmp_path) == "complete"
+    assert (stage["status"], stage["stop_reason"], stage["exit_code"]) == ("open", "interrupted", EXIT_UNFINISHED)
+    assert stage["last_session"]["error"] == "Interrupted"

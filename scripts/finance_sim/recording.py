@@ -19,7 +19,9 @@ beside the stage's ``budget.json`` (task 7.5), under
   complete ensemble (``GuardedRun.to_dict``), with the hashes it was recorded
   under; ``<item_id>.<rendering>.evidence.json``: one evidence batch.
 - ``receipt.json``: the stage's host checks, its status, stop reason and exit
-  code, and the teardown evidence of the hosts' Windows-side scripts.
+  code (a session an exception ended is refused or failed, never complete, and
+  ``last_session`` names the exception class and counts the evidence batches it
+  posted), and the teardown evidence of the hosts' Windows-side scripts.
 
 Resume. Before any request for an item and rendering, a complete result whose
 plan hash, prompt hash, settings, calibrator and host digest match, and whose
@@ -130,6 +132,7 @@ from recall_guard.harness.guarded_decision import (
 from recall_guard.harness.scorer_client import identity_settings
 from scripts.finance_sim.limits import (
     ARMS,
+    BUDGET_EXHAUSTED,
     EXIT_COMPLETE,
     EXIT_INCOMPLETE,
     EXIT_REFUSED,
@@ -180,8 +183,14 @@ HOST_UNAVAILABLE = "host_unavailable"
 HOST_BUSY = "host_busy"
 EVIDENCE_UNRESOLVED = "evidence_timeout_unresolved"
 
-#: Stage receipt statuses.
-OPEN, COMPLETE, INCOMPLETE, REFUSED = "open", "complete", "incomplete", "refused"
+#: Stage receipt statuses. A session an exception ended records refused (exit 2) or failed (exit 1), never complete.
+OPEN, COMPLETE, INCOMPLETE, REFUSED, FAILED = "open", "complete", "incomplete", "refused", "failed"
+#: Stop reason of a session an interruption ended once the ledger was already complete; the receipt stays open.
+INTERRUPTED_SESSION = "interrupted"
+#: The receipt counter of the evidence batches a session posted (``last_session.evidence_batches``).
+EVIDENCE_BATCHES = "evidence_batches"
+#: Stop reason of an evidence pass that left batches missing: the stage stays open and a rerun repeats only those.
+EVIDENCE_MISSING = "evidence_missing"
 
 #: The full-distribution gateway's upstream timeout; an evidence batch must finish well inside it.
 GATEWAY_TIMEOUT_S = 1800.0
@@ -259,6 +268,11 @@ class HttpTransportError(Exception):
             raise ValueError(f"kind must be unreachable or timeout; got {kind!r}")
         super().__init__(f"GET failed in transport ({kind})")
         self.kind = kind
+
+
+#: The exceptions that refuse a pass, the runner's exit 2 class: what the study modules raise before or instead of
+#: a request (each a ValueError), a TypeError, an OSError, or a host check. Any other exception fails the pass.
+REFUSAL_TYPES: tuple[type[BaseException], ...] = (ValueError, TypeError, OSError, HostCheckError)
 
 
 # ---------- small helpers ----------
@@ -1015,21 +1029,31 @@ class _StageRecords:
     """What both sessions of one arm and stage share: the records, the stage receipt and the host checks.
 
     A session is a context manager. On exit the stage receipt records its
-    status and exit code: complete (0); open (1: an interruption, or a host
-    failure whose reason ``stop_reason`` names; a new session resumes); refused
-    before any request (2: a host check or the approval; nothing changed); or
-    incomplete (3: a frozen limit closed admission, the only incomplete stage).
+    status and exit code: complete (0); open (1: an interruption, a host
+    failure whose reason ``stop_reason`` names, or a missing-evidence failure,
+    one of ``evidence_failures``, with the stop reason ``evidence_missing``; a
+    new session resumes and repeats only what is missing); refused (2: a host
+    check or the approval before any request, or a refusal of the runner's
+    modules, :data:`REFUSAL_TYPES`, whose class ``stop_reason`` names); failed
+    (1: any other exception ended the pass, its class named; nothing recorded
+    is removed and a new session resumes); or incomplete (3: a frozen limit
+    closed admission, any ``BudgetExhaustedError``, the only incomplete stage).
+    A session an exception ended never records complete, whatever the ledger
+    says, and ``last_session.error`` names the exception class (null when the
+    session ended normally); no message text reaches the receipt.
     """
 
     _KIND = "stage"
     _COUNTERS: tuple[str, ...] = ()
 
     def __init__(self, plan: StudyPlan, arm: str, stage: str, *, records_dir: Path, receipt: tuple[Path, dict],
-                 clock: Callable[[], float], now: Callable[[], datetime], sleep: Callable[[float], None]) -> None:
+                 clock: Callable[[], float], now: Callable[[], datetime], sleep: Callable[[float], None],
+                 evidence_failures: tuple[type[BaseException], ...] = ()) -> None:
         self.plan, self.arm, self.stage = plan, arm, stage
         self.records_dir = records_dir
         self._receipt_path, self._receipt = receipt
         self._clock, self._now, self._sleep = clock, now, sleep
+        self._evidence_failures = tuple(evidence_failures)
         self._active = False
         self._ended = False
         self._hosts: dict[str, HostCheck] = {}
@@ -1074,16 +1098,49 @@ class _StageRecords:
             self._active = False
             self._ended = True
             self._receipt["last_session"]["closed_at"] = _iso(self._now())
-            if isinstance(exc, HostFailure):
-                outcome = (OPEN, exc.reason, EXIT_UNFINISHED)
-            elif isinstance(exc, HostCheckError):
-                outcome = (REFUSED, exc.reason, EXIT_REFUSED)
-            elif isinstance(exc, ApprovalError):
-                outcome = (REFUSED, "approval", EXIT_REFUSED)
-            else:
-                outcome = self._outcome()
-            self._receipt["status"], self._receipt["stop_reason"], self._receipt["exit_code"] = outcome
+            self._receipt["last_session"]["error"] = None if exc is None else type(exc).__name__
+            self._receipt["status"], self._receipt["stop_reason"], self._receipt["exit_code"] = self._ended_by(exc)
             self._write_receipt()
+
+    def _ended_by(self, error: BaseException | None) -> tuple[str, str | None, int]:
+        """The stage's status, stop reason and exit code from how the session ended.
+
+        Without an exception the ledger decides (:meth:`_outcome`). A host
+        failure leaves the stage open with its reason, a host check or the
+        approval refuses with theirs. A frozen limit, any ``BudgetExhaustedError``
+        (the ledger's ``AdmissionClosedError``, or the plain refusal of
+        ``RequestControl`` once the capped budget is spent), is the ledger's
+        incomplete stage, or incomplete with ``budget_exhausted`` when the ledger
+        was not marked. A missing-evidence failure (``evidence_failures``) leaves
+        the stage open with ``evidence_missing``. Any other exception never
+        records complete: a refusal (:data:`REFUSAL_TYPES`) is refused with exit
+        2 and another exception failed with exit 1, the class name as the stop
+        reason; an interruption (a ``BaseException`` that is no ``Exception``)
+        keeps the ledger's outcome unless that says complete.
+        """
+        if error is None:
+            return self._outcome()
+        if isinstance(error, HostFailure):
+            return OPEN, error.reason, EXIT_UNFINISHED
+        if isinstance(error, HostCheckError):
+            return REFUSED, error.reason, EXIT_REFUSED
+        if isinstance(error, ApprovalError):
+            return REFUSED, "approval", EXIT_REFUSED
+        if isinstance(error, BudgetExhaustedError):
+            return self._never_complete((INCOMPLETE, getattr(error, "reason", None) or BUDGET_EXHAUSTED,
+                                         EXIT_INCOMPLETE))
+        if isinstance(error, self._evidence_failures):
+            return OPEN, EVIDENCE_MISSING, EXIT_UNFINISHED
+        if isinstance(error, Exception):
+            if isinstance(error, REFUSAL_TYPES):
+                return REFUSED, type(error).__name__, EXIT_REFUSED
+            return FAILED, type(error).__name__, EXIT_UNFINISHED
+        return self._never_complete((OPEN, INTERRUPTED_SESSION, EXIT_UNFINISHED))
+
+    def _never_complete(self, instead: tuple[str, str | None, int]) -> tuple[str, str | None, int]:
+        """The ledger's outcome for a session an exception ended, or ``instead`` when the ledger says complete."""
+        outcome = self._outcome()
+        return instead if outcome[0] == COMPLETE else outcome
 
     def _enter(self) -> None:
         """Enter what the session holds open (the generation session's ledger)."""
@@ -1100,7 +1157,21 @@ class _StageRecords:
         _write_json(self._receipt_path, self._receipt)
 
     def _count(self, name: str) -> None:
-        self._receipt["last_session"][name] += 1
+        counters = self._receipt["last_session"]
+        counters[name] = counters.get(name, 0) + 1
+
+    def count(self, name: str) -> None:
+        """Add one to a counter of this session's ``last_session`` record and write the receipt at once.
+
+        The counters a session kind declares start at 0 when it opens; a
+        counter the kind does not declare starts here (the runner's ``both``
+        pass posts evidence from a generation session). The receipt is written
+        per count, so a reader sees the batches posted so far even if the
+        process dies before the session closes.
+        """
+        self._require_active()
+        self._count(name)
+        self._write_receipt()
 
     def _require_active(self) -> None:
         if not self._active:
@@ -1213,9 +1284,10 @@ class StageSession(_StageRecords):
 
     def __init__(self, plan: StudyPlan, arm: str, stage: str, ledger: BudgetLedger, *, records_dir: Path,
                  lease: ServeLease | None, receipt: tuple[Path, dict], clock: Callable[[], float],
-                 wall: Callable[[], float], now: Callable[[], datetime], sleep: Callable[[float], None]) -> None:
+                 wall: Callable[[], float], now: Callable[[], datetime], sleep: Callable[[float], None],
+                 evidence_failures: tuple[type[BaseException], ...] = ()) -> None:
         super().__init__(plan, arm, stage, records_dir=records_dir, receipt=receipt, clock=clock, now=now,
-                         sleep=sleep)
+                         sleep=sleep, evidence_failures=evidence_failures)
         self.ledger = ledger
         self._lease = lease
         self._wall = wall
@@ -1225,11 +1297,14 @@ class StageSession(_StageRecords):
              approval: ServingApproval | None = None, serve_receipt: str | Path | None = None,
              records_dir: str | Path = RECORDS_DIR, clock: Callable[[], float] = monotonic,
              wall: Callable[[], float] = time.time, now: Callable[[], datetime] = _utc_now,
-             sleep: Callable[[float], None] = time.sleep) -> StageSession:
+             sleep: Callable[[float], None] = time.sleep,
+             evidence_failures: tuple[type[BaseException], ...] = ()) -> StageSession:
         """Open the stage: validate the plan, limits and allowance, then the serve receipt, then the ledger.
 
         Everything that can refuse is checked before the ledger is opened, so a
-        refused stage leaves its files unchanged.
+        refused stage leaves its files unchanged. ``evidence_failures`` are the
+        caller's missing-evidence exceptions (a ``both`` pass posts evidence
+        here); the receipt records them as open with ``evidence_missing``.
         """
         require_complete(plan)
         if arm not in ARMS:
@@ -1264,7 +1339,7 @@ class StageSession(_StageRecords):
         if lease is not None:
             lease.bind(serve_binding_path(stage, records), plan.plan_sha256, now())
         return cls(plan, arm, stage, ledger, records_dir=records, lease=lease, receipt=receipt, clock=clock,
-                   wall=wall, now=now, sleep=sleep)
+                   wall=wall, now=now, sleep=sleep, evidence_failures=evidence_failures)
 
     def _enter(self) -> None:
         self.ledger.__enter__()
@@ -1563,19 +1638,27 @@ class EvidenceSession(_StageRecords):
     """
 
     _KIND = "evidence"
-    _COUNTERS = ("evidence_batches", "evidence_reused", "evidence_missing")
+    _COUNTERS = (EVIDENCE_BATCHES, "evidence_reused", "evidence_missing")
 
     def __init__(self, plan: StudyPlan, arm: str, stage: str, *, records_dir: Path, receipt: tuple[Path, dict],
-                 clock: Callable[[], float], now: Callable[[], datetime], sleep: Callable[[float], None]) -> None:
+                 clock: Callable[[], float], now: Callable[[], datetime], sleep: Callable[[float], None],
+                 evidence_failures: tuple[type[BaseException], ...] = ()) -> None:
         super().__init__(plan, arm, stage, records_dir=records_dir, receipt=receipt, clock=clock, now=now,
-                         sleep=sleep)
+                         sleep=sleep, evidence_failures=evidence_failures)
         self._missing: set[str] = set()
 
     @classmethod
     def open(cls, plan: StudyPlan, *, stage: str, arm: str = SAMPLING_ARM, records_dir: str | Path = RECORDS_DIR,
              clock: Callable[[], float] = monotonic, now: Callable[[], datetime] = _utc_now,
-             sleep: Callable[[float], None] = time.sleep) -> EvidenceSession:
-        """Open the evidence pass of a stage; the ledger is read only, never opened."""
+             sleep: Callable[[float], None] = time.sleep,
+             evidence_failures: tuple[type[BaseException], ...] = ()) -> EvidenceSession:
+        """Open the evidence pass of a stage; the ledger is read only, never opened.
+
+        ``evidence_failures`` are the caller's exceptions of a missing-evidence
+        failure (the runner's study modules raise their own); the receipt
+        records them as open with ``evidence_missing``, like this session's own
+        missing batches.
+        """
         require_complete(plan)
         if arm != SAMPLING_ARM:
             raise ValueError("only the sampling arm has a full-distribution host; the serving arm's "
@@ -1583,11 +1666,12 @@ class EvidenceSession(_StageRecords):
         records = Path(records_dir)
         stage_directory(arm, stage, records)  # Refuses a stage name that is not a lowercase identifier.
         receipt = _load_receipt(plan, arm, stage, records, now())
-        return cls(plan, arm, stage, records_dir=records, receipt=receipt, clock=clock, now=now, sleep=sleep)
+        return cls(plan, arm, stage, records_dir=records, receipt=receipt, clock=clock, now=now, sleep=sleep,
+                   evidence_failures=evidence_failures)
 
     def _outcome(self) -> tuple[str, str | None, int]:
         if self._receipt["last_session"]["evidence_missing"]:
-            return OPEN, "evidence_missing", EXIT_UNFINISHED
+            return OPEN, EVIDENCE_MISSING, EXIT_UNFINISHED
         return super()._outcome()
 
     # ----- full-distribution evidence -----
@@ -1784,7 +1868,7 @@ class EvidenceSession(_StageRecords):
                 "model_digest": digest, "top_k_keep": policy.top_k_keep, "draw_indices": indices,
                 "evidence": [item.to_dict() for item in batch_evidence], "recorded_at": _iso(self._now())})
             outcome(attempt, None, max(0.0, self._clock() - started), found)
-            self._count("evidence_batches")
+            self._count(EVIDENCE_BATCHES)
             return by_index(found)
 
     def _missing_batch(self, batch: str, empty: tuple[None, ...]) -> tuple[None, ...]:
@@ -1797,6 +1881,7 @@ __all__ = [
     "BUSY",
     "CHECK_STATUSES",
     "DIGEST_MISMATCH",
+    "EVIDENCE_BATCHES",
     "EVIDENCE_TIMEOUT_S",
     "EVIDENCE_UNRESOLVED",
     "HOST_BUSY",
@@ -1805,6 +1890,7 @@ __all__ = [
     "INVALID",
     "NOT_SENT_PREFIX",
     "OK",
+    "REFUSAL_TYPES",
     "UNAUTHORIZED",
     "UNREACHABLE",
     "DrawLog",

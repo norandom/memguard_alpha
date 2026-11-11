@@ -67,7 +67,19 @@ Exit codes: 0 complete (or the asked pass done), 1 the stage stays open (a
 host failure, missing evidence or an interruption: resume with the same
 command), 2 refused before any request, 3 incomplete (a frozen limit closed
 admission; partial results kept), 4 the power gate stopped the gated arm under
-``gate_policy = "block"``.
+``gate_policy = "block"``. The stage receipt (``receipt.json``) and the
+session line the runner appends to ``runner.jsonl`` carry the status and exit
+code of the process: a pass that raised is recorded as incomplete (exit 3, a
+frozen limit, whether the ledger's ``AdmissionClosedError`` or the plain
+``BudgetExhaustedError`` of a spent request cap), open (exit 1, a host failure
+or a missing-evidence failure, stop reason ``evidence_missing``, resumable),
+refused (exit 2, the refusal classes ``main`` maps) or failed (exit 1, any
+other exception, which also ends the process with its traceback); the
+exception class is named in ``last_session.error`` and the runner line's
+``error`` (refused and failed also in ``stop_reason``), never its message, and
+a pass that raised is never recorded as complete whatever the ledger says. The
+receipt's ``last_session.evidence_batches`` counts the evidence batches the
+pass posted (fix 9.1b).
 
 Live route (tasks 9.2 and 9.3; user decision 2026-11-10: the overnight live
 stages run natively, the hosts native too, one model host at a time; the
@@ -235,13 +247,14 @@ from scripts.finance_sim.pilot import (
 )
 from scripts.finance_sim.plan import PlanChangedError, StudyPlan, load_plan, sha256_of
 from scripts.finance_sim.recording import (
+    EVIDENCE_BATCHES,
     EVIDENCE_SCHEMA,
     RECORD_SCHEMA,
+    REFUSAL_TYPES,
     DrawLog,
     EvidencePolicy,
     EvidenceSession,
     HostCheck,
-    HostCheckError,
     HostFailure,
     ServeLease,
     StageSession,
@@ -550,7 +563,7 @@ class StageRecorder:
         self._gate, self._after_failure, self._now, self._clock = gate, after_failure, now, clock
         self._pending: dict[Slot, float] = {}
         self._seen: set[Slot] = set()
-        self.counts = {"requests_announced": 0, "draws_recorded": 0, "evidence_batches": 0, "not_sent": 0,
+        self.counts = {"requests_announced": 0, "draws_recorded": 0, EVIDENCE_BATCHES: 0, "not_sent": 0,
                        "interrupted_closed": 0}
 
     def _header(self, kind: str, item_id: str, rendering: str) -> dict[str, Any]:
@@ -633,7 +646,7 @@ class StageRecorder:
                            "prompt_sha256": item.prompt_sha256, "batch_sha256": batch, "model_digest": digest,
                            "top_k_keep": top_k_keep, "draw_indices": indices,
                            "evidence": [evidence[index] for index in indices], "recorded_at": _iso(self._now())})
-        self.counts["evidence_batches"] += 1
+        self.counts[EVIDENCE_BATCHES] += 1
 
     def _slots(self) -> dict[Slot, dict[str, Any]]:
         """Per draw of this stage: its open request line and its sent outcome, from every item record."""
@@ -888,7 +901,8 @@ class StageSetup:
 
 @dataclass
 class StageOutcome:
-    """What one command did: the pass, the counts, the stage status and the exit code."""
+    """What one command did: the pass, the counts, the stage status, the exit code and, when the pass raised, the
+    class name of the exception (``error``, never its message)."""
 
     mode: str
     exit_code: int
@@ -899,6 +913,7 @@ class StageOutcome:
     partial: bool = False
     gate: PowerGate | None = None
     note: str | None = None
+    error: str | None = None
 
 
 def _ledger_status(path: Path) -> tuple[str, str | None]:
@@ -932,8 +947,14 @@ def _write_runner_line(setup: StageSetup, outcome: StageOutcome, records_dir: Pa
             "status": outcome.status, "stop_reason": outcome.stop_reason, "exit_code": outcome.exit_code,
             "gate": None if outcome.gate is None else {"decision": outcome.gate.decision,
                                                        "expected_power": outcome.gate.expected_power},
-            "note": outcome.note}
+            "note": outcome.note, "error": outcome.error}
     _append_line(stage_directory(setup.arm, setup.stage, records_dir) / RUNNER_LOG, line, fsync=True)
+
+
+def _session_error(session: StageSession | EvidenceSession) -> str | None:
+    """The class name of the exception that ended the session, from its receipt; None when it ended normally."""
+    last = session.receipt.get("last_session") or {}
+    return last.get("error")
 
 
 def _failure_probe(session: StageSession, setup: StageSetup, config: ModelConfig) -> Callable[[], None]:
@@ -1011,11 +1032,15 @@ def _generation_pass(setup: StageSetup, session: StageSession, client: Completio
 
 def _settle_pass(setup: StageSetup, ledger: BudgetLedger, client: CompletionClient, full: Any, check: HostCheck,
                  calibrators: Mapping[str, Any] | None, session_number: int, lease: ServeLease | None,
-                 mode: str, after_failure: Callable[[], None] | None = None) -> StageOutcome:
+                 mode: str, after_failure: Callable[[], None] | None = None,
+                 on_batch: Callable[[], None] | None = None) -> StageOutcome:
     """The entry point of the stage with the recorded draws: the evidence pass, the results, the fit or the gate.
 
     ``after_failure`` is the generation session's post-failure probe (``both``
     generates here); the evidence pass has no generation host and passes none.
+    ``on_batch`` is called once per evidence batch the pass posts (the session
+    counts them in the receipt): per evidence file of an execution stage, and
+    per calibration prompt whose pending draws the evidence pass settles.
     """
     plan, arm, stage, paths = setup.plan, setup.arm, setup.stage, setup.paths
     recorder = setup.recorder(paths.records, config=client.config, host_digest=check.observed or "",
@@ -1025,6 +1050,10 @@ def _settle_pass(setup: StageSetup, ledger: BudgetLedger, client: CompletionClie
     top_k_keep = None if policy is None else policy.top_k_keep
     texts: dict[tuple[str, str], dict[int, str]] = {}
 
+    def posted_batch() -> None:
+        if on_batch is not None:
+            on_batch()
+
     def remember(draw: Any) -> None:
         if isinstance(draw, ExecutionDraw) and draw.response is not None:
             texts.setdefault((draw.item_id, draw.rendering), {})[draw.draw.draw_index] = draw.response.content
@@ -1032,6 +1061,7 @@ def _settle_pass(setup: StageSetup, ledger: BudgetLedger, client: CompletionClie
 
     def on_evidence(item: ExecutionItem, found: Mapping[int, FullDistributionEvidence]) -> None:
         recorder.on_evidence(item, found, top_k_keep=top_k_keep or 0, texts=texts.get(item.key, {}))
+        posted_batch()
 
     status, stop_reason = _ledger_status(budget_path(arm, stage, paths.records))
     partial = status == "incomplete"
@@ -1047,11 +1077,24 @@ def _settle_pass(setup: StageSetup, ledger: BudgetLedger, client: CompletionClie
         if mode == EVIDENCE and len(complete) != len(planned):
             raise RunnerError(f"the generation pass is not complete ({len(complete)} of {len(planned)} ensembles "
                               "recorded); rerun --pass generation with the generation host before the evidence pass")
+        pending = {(draw.item_id, draw.rendering) for draw in recorded if draw.evidence_pending}
+
+        def settled(draw: CalibrationDraw) -> None:
+            """A prompt's pending draws settle in one batch: its first settled draw counts the batch posted."""
+            recorder.on_draw(draw)
+            key = (draw.item_id, draw.rendering)
+            if draw.evidence_pending:
+                pending.add(key)
+            elif draw.failure_code is None and key in pending:
+                pending.discard(key)
+                recorder.counts[EVIDENCE_BATCHES] += 1
+                posted_batch()
+
         try:
             run = run_calibration(plan, arm=arm, macro_rows=setup.items.macro_rows(plan.months.calibration),
                                   edgar_releases=setup.items.calibration_releases(), client=client, ledger=ledger,
                                   sources=setup.arm_plan.estimate_sources, full_distribution=full,
-                                  recorded=recorded, on_draw=recorder.on_draw, on_request=recorder.on_request,
+                                  recorded=recorded, on_draw=settled, on_request=recorder.on_request,
                                   calibrators_dir=paths.calibrators)
         except BudgetExhaustedError:
             recorder.not_sent("admission_closed")
@@ -1111,7 +1154,12 @@ def _exit_of(run: ExecutionRun) -> int:
 
 
 def run_stage(setup: StageSetup, mode: str) -> StageOutcome:
-    """Run one pass of the stage inside its 7.4 session; the receipt records the host checks and the exit code."""
+    """Run one pass of the stage inside its 7.4 session.
+
+    The receipt and the runner line record the host checks, the status and the
+    exit code of the pass; a pass that raised is recorded as refused or failed
+    with the exception class (the session's rule), never as complete.
+    """
     if mode not in PASSES:
         raise RunnerError(f"pass must be one of {list(PASSES)}; got {mode!r}")
     plan, arm, stage, paths, hosts = setup.plan, setup.arm, setup.stage, setup.paths, setup.hosts
@@ -1127,7 +1175,8 @@ def run_stage(setup: StageSetup, mode: str) -> StageOutcome:
     calibrators = None if stage == CALIBRATION_STAGE else setup.calibrators()
     started = _utc_now()
     if mode == EVIDENCE:
-        session = EvidenceSession.open(plan, stage=stage, arm=arm, records_dir=paths.records)
+        session = EvidenceSession.open(plan, stage=stage, arm=arm, records_dir=paths.records,
+                                       evidence_failures=EVIDENCE_FAILURES)
         ledger = BudgetLedger.open(budget_path(arm, stage, paths.records), plan, limits, allowance)
         outcome: StageOutcome | None = None
         try:
@@ -1136,19 +1185,20 @@ def run_stage(setup: StageSetup, mode: str) -> StageOutcome:
                 check = session.require_host(hosts.check_full_distribution(plan, full))
                 client = hosts.generation(plan, arm, ledger)
                 outcome = _settle_pass(setup, ledger, client, full, check, calibrators, session.receipt["sessions"],
-                                       None, mode)
+                                       None, mode, on_batch=lambda: session.count(EVIDENCE_BATCHES))
         finally:
             ledger.close()
             if outcome is None:
                 outcome = StageOutcome(mode, session.exit_code, status=session.status)
             outcome.status, outcome.stop_reason = session.status, session.receipt["stop_reason"]
+            outcome.error = _session_error(session)
             _write_runner_line(setup, outcome, paths.records, started)
         return outcome
     serving = setup.serving
     session = StageSession.open(plan, arm=arm, stage=stage, limits=limits, allowance=allowance,
                                 approval=None if serving is None else serving.approval,
                                 serve_receipt=None if serving is None else serving.serve_receipt,
-                                records_dir=paths.records)
+                                records_dir=paths.records, evidence_failures=EVIDENCE_FAILURES)
     outcome = None
     try:
         with session:
@@ -1170,11 +1220,13 @@ def run_stage(setup: StageSetup, mode: str) -> StageOutcome:
                                           f"{lease.endpoint_url}; nothing was sent")
                 outcome = _settle_pass(setup, session.ledger, client, full, check, calibrators,
                                        session.receipt["sessions"], lease, mode,
-                                       after_failure=_failure_probe(session, setup, client.config))
+                                       after_failure=_failure_probe(session, setup, client.config),
+                                       on_batch=lambda: session.count(EVIDENCE_BATCHES))
     finally:
         if outcome is None:
             outcome = StageOutcome(mode, session.exit_code)
         outcome.status, outcome.stop_reason = session.status, session.receipt["stop_reason"]
+        outcome.error = _session_error(session)
         if mode != GENERATION:
             outcome.exit_code = session.exit_code if outcome.exit_code == EXIT_COMPLETE else outcome.exit_code
         _write_runner_line(setup, outcome, paths.records, started)
@@ -1462,8 +1514,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+#: Refused before any request (exit 2): the study modules' refusals (each a ValueError) and the recording module's
+#: refusal types, the same rule the stage receipt applies when a pass raises (``REFUSAL_TYPES``).
 _REFUSALS = (RunnerError, PlanChangedError, ExecutionError, CalibrationError, NegativeControlError, PilotError,
-             ApprovalError, HostCheckError, ProfileError, ValueError, TypeError, OSError)
+             ApprovalError, ProfileError, *REFUSAL_TYPES)
+#: A missing-evidence failure of the study modules (the full-distribution host gave no evidence): the stage stays
+#: open (exit 1) and a rerun repeats only the missing batches; the sessions record it as open with evidence_missing.
+EVIDENCE_FAILURES: tuple[type[BaseException], ...] = (EvidenceUnavailableError,)
 
 
 def main(argv: Sequence[str] | None = None, *, hosts: Hosts | None = None,
@@ -1497,6 +1554,10 @@ def main(argv: Sequence[str] | None = None, *, hosts: Hosts | None = None,
         return EXIT_GATE_STOPPED
     except AdmissionClosedError as closed:
         print(f"run_study: incomplete: {closed}", file=sys.stderr)
+        return EXIT_INCOMPLETE
+    except BudgetExhaustedError as exhausted:
+        # RequestControl's plain refusal once the capped budget is spent: a frozen limit, like the ledger's own.
+        print(f"run_study: incomplete: {exhausted}", file=sys.stderr)
         return EXIT_INCOMPLETE
     except (HostFailure, EvidenceUnavailableError) as failure:
         print(f"run_study: the stage stays open: {failure}", file=sys.stderr)

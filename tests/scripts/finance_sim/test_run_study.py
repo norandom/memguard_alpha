@@ -21,6 +21,7 @@ import contextlib
 import hashlib
 import io
 import json
+import shutil
 import socket
 import subprocess
 import sys
@@ -39,7 +40,7 @@ from recall_guard.core.request_control import RequestError
 from recall_guard.dataset import fred
 from scripts.finance_sim import items as items_module
 from scripts.finance_sim import run_study
-from scripts.finance_sim.calibrate import CALIBRATION_STAGE, CalibrationDraw, calibrator_path
+from scripts.finance_sim.calibrate import CALIBRATION_STAGE, CalibrationDraw, CalibrationError, calibrator_path
 from scripts.finance_sim.convergence import read_evidence_file
 from scripts.finance_sim.execute import ExecutionDraw, load_result, macro_items, planned_keys, result_path
 from scripts.finance_sim.limits import (
@@ -47,7 +48,10 @@ from scripts.finance_sim.limits import (
     EXIT_INCOMPLETE,
     EXIT_REFUSED,
     EXIT_UNFINISHED,
+    ApprovalError,
+    BudgetLedger,
     LedgerCallBudget,
+    StudyLimits,
     approval_path,
     approval_template,
     budget_path,
@@ -59,6 +63,7 @@ from scripts.finance_sim.plan import load_plan
 from scripts.finance_sim.recording import (
     PROBE_PROMPT,
     DrawLog,
+    HostCheckError,
     check_full_distribution_host,
     check_llama_server,
     check_serving_host,
@@ -66,6 +71,7 @@ from scripts.finance_sim.recording import (
     evidence_path,
     read_records,
     receipt_path,
+    request_allowance,
 )
 from scripts.finance_sim.replay import MANIFEST_NAME, PRIVATE_DIR, PUBLISHED_DIR
 from scripts.finance_sim.run_study import EXIT_GATE_STOPPED, RUNNER_LOG, load_items
@@ -161,11 +167,16 @@ def pinned_evidence(pin: str, prompt: str, text: str, keep: int) -> FullDistribu
 
 
 class FakeFullHost:
-    """The full-distribution host behind its gateway double: batches only, the pinned digest, a probe batch."""
+    """The full-distribution host behind its gateway double: batches only, the pinned digest, a probe batch.
 
-    def __init__(self, pin: str) -> None:
+    ``fail_after`` makes every study batch after that many fail in transport (a
+    host that dies mid-pass); the probe batch of the host check still answers.
+    """
+
+    def __init__(self, pin: str, *, fail_after: int | None = None) -> None:
         self.base_url = FD_BASE
         self.model_digest = pin
+        self.fail_after = fail_after
         self.batch_calls: list[tuple[str, tuple[str, ...], int, float | None]] = []
 
     def evidence(self, prompt_text: str, response_text: str, *, top_k_keep: int = 100) -> FullDistributionEvidence:
@@ -174,6 +185,8 @@ class FakeFullHost:
     def evidence_batch(self, prompt_text: str, response_texts, *, top_k_keep: int = 100,
                        timeout_s: float | None = None) -> tuple[FullDistributionEvidence, ...]:
         self.batch_calls.append((prompt_text, tuple(response_texts), top_k_keep, timeout_s))
+        if self.fail_after is not None and prompt_text != PROBE_PROMPT and len(self.batches) > self.fail_after:
+            raise RequestError("connection refused", code="transport_error", retryable=True)
         return tuple(pinned_evidence(self.model_digest, prompt_text, text, top_k_keep) for text in response_texts)
 
     @property
@@ -217,13 +230,31 @@ class DyingHost(FakeHost):
         return super().generate(prompt, **parameters)
 
 
+class GuardedHost(FakeHost):
+    """The generation double admitting through RequestControl's guarded path, as the live providers do: a spent
+    request cap raises the plain BudgetExhaustedError at ``remaining == 0`` before the ledger is asked."""
+
+    def __init__(self, budget, **kwargs) -> None:
+        super().__init__(budget, **kwargs)
+        run = self._control.run
+        self._control.run = lambda operation, **options: run(operation, admission_guard=lambda: None, **options)
+
+
 class FakeHosts:
-    """The runner's host seam on fakes: the 7.7 generation double, the 7.4 gateway doubles, the pinned digest."""
+    """The runner's host seam on fakes: the 7.7 generation double, the 7.4 gateway doubles, the pinned digest.
+
+    ``prose`` answers every generation request with unparseable text (the live
+    calibration attempt 1, whose every draw failed to parse); ``evidence_fail_after``
+    is the full-distribution host dying after that many study batches; ``guarded``
+    admits through RequestControl's guarded path like the live providers.
+    """
 
     def __init__(self, pin: str, *, crash_at: int | None = None, dies_at: int | None = None,
-                 timeout_s: float | None = None, wall: Wall | None = None, step_s: float = 0.0) -> None:
+                 timeout_s: float | None = None, wall: Wall | None = None, step_s: float = 0.0,
+                 prose: bool = False, evidence_fail_after: int | None = None, guarded: bool = False) -> None:
         self.pin, self.crash_at, self.dies_at = pin, crash_at, dies_at
-        self.timeout_s, self.wall, self.step_s = timeout_s, wall, step_s
+        self.timeout_s, self.wall, self.step_s, self.prose = timeout_s, wall, step_s, prose
+        self.evidence_fail_after, self.guarded = evidence_fail_after, guarded
         self.gateway = FakeGateway()
         self.models = ModelsRoute()
         self.generation_clients: list[FakeHost] = []
@@ -241,13 +272,16 @@ class FakeHosts:
         elif self.dies_at is not None:
             host = DyingHost(LedgerCallBudget(ledger), gateway=self.gateway, dies_at=self.dies_at,
                              configuration=config)
+        elif self.guarded:
+            host = GuardedHost(LedgerCallBudget(ledger), configuration=config)
         else:
-            host = FakeHost(LedgerCallBudget(ledger), configuration=config, crash_at=self.crash_at)
+            host = FakeHost(LedgerCallBudget(ledger), configuration=config, crash_at=self.crash_at,
+                            prose=range(1000) if self.prose else ())
         self.generation_clients.append(host)
         return host
 
     def full_distribution(self, plan):
-        client = FakeFullHost(self.pin)
+        client = FakeFullHost(self.pin, fail_after=self.evidence_fail_after)
         self.full_clients.append(client)
         return client
 
@@ -388,6 +422,15 @@ def planned_requests(plan, arm: str, stage: str) -> int:
 
 def outcome_of(result: SimpleNamespace) -> dict:
     return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def runner_lines(records: Path, stage: str) -> list[dict]:
+    text = (records / "sampling" / stage / RUNNER_LOG).read_text(encoding="utf-8")
+    return [json.loads(line) for line in text.splitlines()]
+
+
+def read_receipt(records: Path, stage: str) -> dict:
+    return json.loads(receipt_path("sampling", stage, records).read_text(encoding="utf-8"))
 
 
 # ---------- the plan and the host checks ----------
@@ -538,6 +581,17 @@ def test_every_runner_session_is_summarised_beside_the_stage_records(study):
     assert [line["mode"] for line in lines] == ["generation", "evidence"]
     assert lines[0]["counts"]["requests_announced"] == 320 and lines[1]["counts"]["evidence_batches"] == 40
     assert lines[1]["results"] == 40 and lines[1]["status"] == "complete" and lines[1]["exit_code"] == 0
+
+
+def test_the_receipt_counts_the_evidence_batches_of_its_last_session(study):
+    """Fix 9.1b: the receipt carries the batches its evidence session posted (before a later session replaces it)."""
+    for stage, step in ((CALIBRATION_STAGE, "calibrate-evidence"), ("pilot", "pilot-evidence"),
+                        ("full_run", "full-run-evidence"), ("negative_control", "negative-evidence")):
+        posted = len(study.steps[step].full[0].batches)
+        assert posted > 0, stage
+        last = stage_receipt(study, "sampling", stage)["last_session"]
+        assert (last["kind"], last["evidence_batches"], last["error"]) == ("evidence", posted, None), stage
+        assert runner_lines(study.root / "records", stage)[-1]["counts"]["evidence_batches"] == posted, stage
 
 
 # ---------- the analyses and the replay, byte for byte ----------
@@ -739,7 +793,9 @@ def test_a_wrong_pass_or_client_is_refused_before_any_request(study, tmp_path):
     assert timeout.code == EXIT_REFUSED and "request timeout is 300 s" in timeout.stderr
     assert slow.generation_clients == [] and hosts.generation_clients == []
     assert not (tmp_path / "records").exists()
-    complete = run(["full-run", "--arm", "sampling", "--pass", "generation", *study.common], hosts=hosts)
+    shutil.copytree(study.root / "records" / "sampling" / "full_run", tmp_path / "records" / "sampling" / "full_run")
+    complete = run(["full-run", "--arm", "sampling", "--pass", "generation", *study.common,
+                    "--records-dir", str(tmp_path / "records")], hosts=hosts)
     assert complete.code == EXIT_COMPLETE and "nothing to generate" in outcome_of(complete)["note"]
     assert hosts.generation_clients[0].calls == []
 
@@ -748,6 +804,181 @@ def test_pass_both_is_refused_for_the_sampling_arm_on_live_hosts(study, tmp_path
     refused = run(["pilot", *scenario_arguments(study, tmp_path)], environ={})
     assert refused.code == EXIT_REFUSED and "never loaded together" in refused.stderr, refused.stderr
     assert not (tmp_path / "records").exists()
+
+
+# ---------- a pass that raises records refused or failed, never complete (fix 9.1b) ----------
+
+def test_the_live_refusal_an_evidence_pass_whose_every_draw_failed_to_parse_is_recorded_as_refused(study, tmp_path):
+    """The archived calibration attempt 1: every draw unparsed, the ledger complete before the fit, the fit refused."""
+    records, calibrators = tmp_path / "records", tmp_path / "calibrators"
+    arguments = [*study.common, "--records-dir", str(records), "--calibrators-dir", str(calibrators)]
+    prose = FakeHosts(study.pin, prose=True)
+    generated = run(["calibrate", "--arm", "sampling", "--pass", "generation", *arguments], hosts=prose)
+    assert generated.code == EXIT_COMPLETE, generated.stderr
+    assert len(prose.generation_clients[0].calls) == 944 and "every planned draw" in outcome_of(generated)["note"]
+    refused = run(["calibrate", "--arm", "sampling", "--pass", "evidence", *arguments], hosts=FakeHosts(study.pin))
+    assert refused.code == EXIT_REFUSED and "CalibrationError" in refused.stderr, refused.stderr
+    assert json.loads(budget_path("sampling", CALIBRATION_STAGE, records).read_text("utf-8"))["status"] == "complete"
+    receipt = read_receipt(records, CALIBRATION_STAGE)
+    assert (receipt["status"], receipt["stop_reason"], receipt["exit_code"]) == ("refused", "CalibrationError",
+                                                                                 EXIT_REFUSED)
+    last = receipt["last_session"]
+    assert (last["kind"], last["session"], last["error"], last["evidence_batches"]) == ("evidence", 2,
+                                                                                        "CalibrationError", 0)
+    assert [check["host"] for check in receipt["host_checks"]] == ["llama_server", "full_distribution"]
+    assert receipt["sessions"] == 2 and receipt["teardown_verified"] is None and receipt["teardown"] == []
+    lines = runner_lines(records, CALIBRATION_STAGE)
+    assert [(line["mode"], line["status"], line["exit_code"], line["error"]) for line in lines] == [
+        ("generation", "open", EXIT_COMPLETE, None), ("evidence", "refused", EXIT_REFUSED, "CalibrationError")]
+    assert "benign" not in receipt_path("sampling", CALIBRATION_STAGE, records).read_text(encoding="utf-8")
+    assert not calibrators.exists()
+
+
+#: The study entry point each stage command and pass hands the recorder to; the tests below make it raise.
+PASS_ENTRY_POINTS = {
+    ("calibrate", "generation"): "collect_draws", ("calibrate", "evidence"): "run_calibration",
+    ("pilot", "generation"): "generate_draws", ("pilot", "evidence"): "run_pilot",
+    ("full-run", "generation"): "generate_draws", ("full-run", "evidence"): "execute_items",
+    ("negative-control", "generation"): "generate_draws", ("negative-control", "evidence"): "run_negative_control",
+}
+
+
+def raising_pass(study, tmp_path: Path, command: str, mode: str) -> tuple[list[str], Path, str]:
+    """The stage command on a records folder of its own; an evidence pass starts from the study's complete records."""
+    stage = run_study.STAGE_OF[command]
+    records = tmp_path / "records"
+    if mode == "evidence":
+        shutil.copytree(study.root / "records" / "sampling" / stage, records / "sampling" / stage)
+    arm = [] if command == "pilot" else ["--arm", "sampling"]
+    return [command, *arm, "--pass", mode, *study.common, "--records-dir", str(records)], records, stage
+
+
+@pytest.mark.parametrize(("command", "mode"), sorted(PASS_ENTRY_POINTS))
+def test_a_refused_pass_records_refused_with_exit_2_never_complete(study, tmp_path, monkeypatch, command, mode):
+    argv, records, stage = raising_pass(study, tmp_path, command, mode)
+    before = read_receipt(records, stage) if receipt_path("sampling", stage, records).exists() else None
+
+    def refuse(*args, **kwargs):
+        raise CalibrationError("no usable prompts: every draw failed to parse")
+
+    monkeypatch.setattr(run_study, PASS_ENTRY_POINTS[(command, mode)], refuse)
+    result = run(argv, hosts=FakeHosts(study.pin))
+    assert result.code == EXIT_REFUSED and "CalibrationError" in result.stderr, result.stderr
+    receipt = read_receipt(records, stage)
+    assert (receipt["status"], receipt["stop_reason"], receipt["exit_code"]) == ("refused", "CalibrationError",
+                                                                                 EXIT_REFUSED)
+    assert (receipt["last_session"]["kind"], receipt["last_session"]["error"]) == (mode, "CalibrationError")
+    assert receipt["host_checks"] and receipt["sessions"] == (0 if before is None else before["sessions"]) + 1
+    assert receipt["teardown"] == ([] if before is None else before["teardown"])
+    line = runner_lines(records, stage)[-1]
+    assert (line["mode"], line["status"], line["exit_code"], line["error"]) == (mode, "refused", EXIT_REFUSED,
+                                                                                "CalibrationError")
+    assert "failed to parse" not in receipt_path("sampling", stage, records).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(("command", "mode"), sorted(PASS_ENTRY_POINTS))
+def test_a_pass_another_exception_ends_records_failed_with_exit_1(study, tmp_path, monkeypatch, command, mode):
+    argv, records, stage = raising_pass(study, tmp_path, command, mode)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("the host answered with an unknown shape")
+
+    monkeypatch.setattr(run_study, PASS_ENTRY_POINTS[(command, mode)], fail)
+    with pytest.raises(RuntimeError, match="unknown shape"):
+        run(argv, hosts=FakeHosts(study.pin))
+    receipt = read_receipt(records, stage)
+    assert (receipt["status"], receipt["stop_reason"], receipt["exit_code"]) == ("failed", "RuntimeError",
+                                                                                 EXIT_UNFINISHED)
+    assert (receipt["last_session"]["kind"], receipt["last_session"]["error"]) == (mode, "RuntimeError")
+    line = runner_lines(records, stage)[-1]
+    assert (line["mode"], line["status"], line["exit_code"], line["error"]) == (mode, "failed", EXIT_UNFINISHED,
+                                                                                "RuntimeError")
+    assert "unknown shape" not in receipt_path("sampling", stage, records).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("refusal", run_study._REFUSALS, ids=lambda cls: cls.__name__)
+def test_every_refusal_class_of_the_runner_is_recorded_as_refused_with_the_exit_code_it_returns(
+        study, tmp_path, monkeypatch, refusal):
+    def refuse(*args, **kwargs):
+        raise refusal("refused before the first draw")
+
+    monkeypatch.setattr(run_study, "generate_draws", refuse)
+    records = tmp_path / "records"
+    result = run(["pilot", "--pass", "generation", *study.common, "--records-dir", str(records)],
+                 hosts=FakeHosts(study.pin))
+    receipt = read_receipt(records, "pilot")
+    assert result.code == EXIT_REFUSED == receipt["exit_code"], result.stderr
+    reason = {HostCheckError: "host_check", ApprovalError: "approval"}.get(refusal, refusal.__name__)
+    assert (receipt["status"], receipt["stop_reason"], receipt["last_session"]["error"]) == ("refused", reason,
+                                                                                            refusal.__name__)
+    assert runner_lines(records, "pilot")[-1]["exit_code"] == EXIT_REFUSED
+
+
+@pytest.mark.parametrize(("guarded", "error"), [(True, "BudgetExhaustedError"), (False, "AdmissionClosedError")],
+                         ids=["guarded-plain-error", "unguarded-ledger-refusal"])
+def test_a_frozen_request_limit_reached_mid_pass_is_recorded_incomplete_with_exit_3(study, tmp_path, guarded, error):
+    """The live cap: LedgerCallBudget caps itself at the ledger's remaining requests and the providers admit through
+    RequestControl's guarded path, which raises the plain BudgetExhaustedError at zero before the ledger is asked (the
+    unguarded path gets the ledger's AdmissionClosedError); either way the receipt and the runner line say incomplete
+    with the ledger's reason and the CLI exits 3."""
+    plan, records = study.plan, tmp_path / "records"
+    consumed, frozen = 10, plan.limits.stage("sampling", "pilot")
+    limits = StudyLimits(plan.plan_sha256, "sampling", "pilot", frozen.max_requests, frozen.max_output_tokens,
+                         frozen.max_seconds)
+    ledger = BudgetLedger.open(budget_path("sampling", "pilot", records), plan, limits,
+                               request_allowance(plan, "sampling", sampling_config()))
+    with ledger:
+        for _ in range(consumed):
+            ledger.finish(ledger.admit(), output_tokens=1)
+    hosts = FakeHosts(study.pin, guarded=guarded)
+    result = run(["pilot", "--pass", "generation", *study.common, "--records-dir", str(records)], hosts=hosts)
+    assert result.code == EXIT_INCOMPLETE and "incomplete" in result.stderr, result.stderr
+    assert len(hosts.generation_clients[0].calls) == frozen.max_requests - consumed + 1  # the refused call is the last
+    stored = json.loads(budget_path("sampling", "pilot", records).read_text(encoding="utf-8"))
+    assert (stored["status"], stored["stop_reason"], stored["counters"]["requests"]) == ("incomplete", "max_requests",
+                                                                                        frozen.max_requests)
+    receipt = read_receipt(records, "pilot")
+    assert (receipt["status"], receipt["stop_reason"], receipt["exit_code"]) == ("incomplete", "max_requests",
+                                                                                 EXIT_INCOMPLETE)
+    assert receipt["last_session"]["error"] == error
+    line = runner_lines(records, "pilot")[-1]
+    assert (line["mode"], line["status"], line["stop_reason"], line["exit_code"], line["error"]) == (
+        "generation", "incomplete", "max_requests", EXIT_INCOMPLETE, error)
+
+
+@pytest.mark.parametrize(("command", "stage", "total"), [("calibrate", CALIBRATION_STAGE, 2 * 24 + 140),
+                                                         ("full-run", "full_run", 40)])
+def test_a_missing_evidence_failure_leaves_the_stage_open_and_a_rerun_resends_only_the_missing_batches(
+        study, tmp_path, command, stage, total):
+    records, answered = tmp_path / "records", 5
+    common = [*study.common, "--records-dir", str(records)]
+    if command == "calibrate":
+        common += ["--calibrators-dir", str(tmp_path / "calibrators")]
+        evidence = common
+    else:
+        evidence = [*common, "--results-dir", str(tmp_path / "results")]
+    generated = run([command, "--arm", "sampling", "--pass", "generation", *common], hosts=FakeHosts(study.pin))
+    assert generated.code == EXIT_COMPLETE, generated.stderr
+    dying = FakeHosts(study.pin, evidence_fail_after=answered)
+    stopped = run([command, "--arm", "sampling", "--pass", "evidence", *evidence], hosts=dying)
+    assert stopped.code == EXIT_UNFINISHED and "stays open" in stopped.stderr, stopped.stderr
+    assert len(dying.full_clients[0].batches) == answered + 1
+    receipt = read_receipt(records, stage)
+    assert (receipt["status"], receipt["stop_reason"], receipt["exit_code"]) == ("open", "evidence_missing",
+                                                                                 EXIT_UNFINISHED)
+    assert (receipt["last_session"]["error"], receipt["last_session"]["evidence_batches"]) == (
+        "EvidenceUnavailableError", answered)
+    line = runner_lines(records, stage)[-1]
+    assert (line["mode"], line["status"], line["stop_reason"], line["exit_code"], line["error"]) == (
+        "evidence", "open", "evidence_missing", EXIT_UNFINISHED, "EvidenceUnavailableError")
+    working = FakeHosts(study.pin)
+    resumed = run([command, "--arm", "sampling", "--pass", "evidence", *evidence], hosts=working)
+    assert resumed.code == EXIT_COMPLETE, resumed.stderr
+    assert len(working.full_clients[0].batches) == total - answered
+    receipt = read_receipt(records, stage)
+    assert (receipt["status"], receipt["exit_code"], receipt["last_session"]["error"]) == ("complete", EXIT_COMPLETE,
+                                                                                          None)
+    assert receipt["last_session"]["evidence_batches"] == total - answered
 
 
 def test_the_runner_help_names_the_live_commands_of_the_operator():
