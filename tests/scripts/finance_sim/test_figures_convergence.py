@@ -340,6 +340,76 @@ def test_labels_stay_clear_of_lines_markers_each_other_and_the_panel_frame(stage
                                        for path in lines), where
 
 
+def high_mass(data: dict) -> dict:
+    """The full run's table with the probe arm's shape of mass: the first alternative carries most of it.
+
+    The mean lines, the served marker and the whole-vocabulary line meet within
+    a hundredth from k 5 on (the figure published from the real tables), which
+    leaves the labels there no room unless they are placed by their boxes.
+    """
+    other = copy.deepcopy(data)
+    mean = {1: 0.95, 5: 0.99, 10: 0.999, 20: 0.9999, 50: 0.99999, 100: 0.999999}
+    low = {1: 0.1, 5: 0.5, 10: 0.9, 20: 0.98, 50: 0.99, 100: 0.995}
+    for row in other["mass"]:
+        if row["mean_mass"] is not None:
+            row["mean_mass"], row["min_mass"] = mean[row["k"]], low[row["k"]]
+    other["full_mean_mass"], other["full_min_mass"] = 0.99999, 0.99
+    return other
+
+
+def _drawn_marker_boxes(axes, scale: float) -> list[tuple[float, Bbox]]:
+    """Every marker as drawn, with its k: the marker's path at the marker size plus half the edge width.
+
+    A diamond reaches 0.71 of the marker size from its centre, a circle or a
+    square 0.5, so the half-size boxes of :func:`_marker_boxes` understate it.
+    """
+    from matplotlib.markers import MarkerStyle
+
+    boxes = []
+    for line in axes.lines:
+        marker = line.get_marker()
+        if marker in (None, "None", "none", ""):
+            continue
+        style = MarkerStyle(marker)
+        reach = style.get_path().transformed(style.get_transform()).get_extents()
+        size, edge = line.get_markersize() * scale, line.get_markeredgewidth() * scale / 2.0
+        points = line.get_xydata()
+        for (k, _), (cx, cy) in zip(points, line.get_transform().transform(points), strict=True):
+            boxes.append((float(k), Bbox.from_extents(cx + reach.x0 * size - edge, cy + reach.y0 * size - edge,
+                                                      cx + reach.x1 * size + edge, cy + reach.y1 * size + edge)))
+    return boxes
+
+
+def test_direct_labels_never_collide_with_each_other_or_with_the_markers(stages, study, tmp_path):
+    """Every direct label, as drawn with its surface box, keeps 2 pt from every other label's box and from every
+    marker as drawn, the k 1 stack of every line included. Checked on the fixture and on the probe arm's shape of
+    mass, where the published figure printed the whole-vocabulary label over the served label."""
+    shaped = tmp_path / "high-mass"
+    shaped.mkdir()
+    full_run = high_mass(stored(study))
+    for stage, data in (("full_run", full_run), ("negative_control", synthetic_negative_control(full_run))):
+        table_path("sampling", stage, shaped).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n",
+                                                         encoding="utf-8")
+    for found in (stages, convergence_stages(PLAN, analysis_dir=shaped)):
+        assert [stage.status for stage in found] == ["drawn", "drawn"]
+        for theme in THEMES:
+            figure = plot_convergence(found, theme=theme)
+            with matplotlib.rc_context(figures._theme_rc(theme)):  # measured under the figure's own rcParams
+                figure.draw_without_rendering()
+            scale = figure.dpi / 72.0
+            for axes in figure.axes:
+                labels = [text for text in axes.texts if isinstance(text, Annotation)]
+                boxes = [label.get_bbox_patch().get_window_extent() for label in labels]
+                markers = _drawn_marker_boxes(axes, scale)
+                assert any(k == 1.0 for k, _ in markers) or not labels
+                for index, (label, box) in enumerate(zip(labels, boxes, strict=True)):
+                    where = (theme, label.get_gid(), label.get_text())
+                    for other, other_box in zip(labels[index + 1:], boxes[index + 1:], strict=True):
+                        assert not box.padded(scale).overlaps(other_box.padded(scale)), (where, other.get_text())
+                    touched = [k for k, marker in markers if box.padded(2.0 * scale).overlaps(marker)]
+                    assert not touched, (where, touched)
+
+
 # ---------- statements, refusals, missing stages ----------
 
 def test_the_figure_states_that_values_compare_only_within_one_model_and_set_of_weights(study, stages):

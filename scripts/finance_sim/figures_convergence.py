@@ -112,7 +112,16 @@ MAX_LINES = 4
 _PANEL_IN, _FRAME_IN = 2.05, 1.15
 _MARKER_PT, _SERVED_PT, _LINE_PT = 5.0, 7.5, 1.4
 _LABEL_PT = 6.5
-_LABEL_GAP_PT, _BOX_PAD_PT, _LABEL_CHARS = 5.0, 0.8, 26
+_BOX_PAD_PT, _LABEL_CHARS = 0.8, 26
+#: A label's surface box keeps this much space from every marker as drawn (its path at the marker size: a diamond
+#: reaches 0.71 of the size from its centre, a circle 0.5) and from every other label's box.
+_CLEARANCE_PT = 3.0
+#: The served label's distance from its marker's centre, nearest ring first.
+_SERVED_RINGS_PT = (6.0, 10.0, 14.0, 24.0)
+#: The whole-vocabulary label sits this far above (or below) its line: clear of a marker centred on the line.
+_REFERENCE_OFFSET_PT = 10.0
+#: The share of the mass axis kept above the whole-vocabulary line: room for the labels placed there.
+_MASS_HEADROOM = 0.25
 _TITLE_CHARS = 52
 
 
@@ -484,7 +493,8 @@ def _draw_panel(axes: Axes, feature: str, series: Sequence[_Series], style: Figu
                       gid=f"convergence-served-{feature}-{line.key}")
     values = [value for line in series for value in (*line.values, line.served) if value is not None]
     if feature == MASS:
-        axes.set_ylim(min([*values, 0.0]) - 0.05, 1.12)
+        bottom = min([*values, 0.0]) - 0.05
+        axes.set_ylim(bottom, 1.0 + _MASS_HEADROOM * (1.0 - bottom))
     else:
         top = max([*values, 0.0])
         top = top * 1.3 if top > 0 else 1.0
@@ -506,14 +516,57 @@ def _no_ticks() -> Any:
     return NullLocator()
 
 
+def _marker_boxes(axes: Axes, clearance_pt: float = 0.0, *, k: float | None = None) -> list[Any]:
+    """Every visible marker of ``axes`` as drawn, as a display-space box padded by ``clearance_pt``.
+
+    The marker's path at the marker size (a diamond reaches 0.71 of the size
+    from its centre, a circle or a square 0.5) plus half the edge width, so a
+    label kept clear of these boxes is clear of what is drawn; the half-size
+    boxes of :func:`~scripts.finance_sim.figures._obstacles` understate a
+    diamond. With ``k``, only the points at that x. Call after the layout is
+    fixed.
+    """
+    from matplotlib.markers import MarkerStyle
+    from matplotlib.transforms import Bbox
+
+    scale = axes.figure.dpi / 72.0
+    boxes = []
+    for line in axes.lines:
+        marker = line.get_marker()
+        if not line.get_visible() or marker in (None, "None", "none", "", " "):
+            continue
+        marker_style = MarkerStyle(marker)
+        reach = marker_style.get_path().transformed(marker_style.get_transform()).get_extents()
+        size = line.get_markersize() * scale
+        edge = (line.get_markeredgewidth() / 2.0 + clearance_pt) * scale
+        points = line.get_xydata()
+        for (x, _), (cx, cy) in zip(points, line.get_transform().transform(points), strict=True):
+            if k is None or x == k:
+                boxes.append(Bbox.from_extents(cx + reach.x0 * size - edge, cy + reach.y0 * size - edge,
+                                               cx + reach.x1 * size + edge, cy + reach.y1 * size + edge))
+    return boxes
+
+
+def _marker_reach(axes: Axes, k: int) -> float:
+    """How far left of their centre the markers drawn at ``k`` reach, in pixels (0 without a marker there)."""
+    centre = axes.transData.transform((k, 0.0))[0]
+    return max((centre - box.x0 for box in _marker_boxes(axes, k=k)), default=0.0)
+
+
+def _label_box(label: Any, renderer: Any, scale: float) -> Any:
+    """A placed label as an obstacle: its surface box plus the clearance the next label keeps from it."""
+    return label.get_window_extent(renderer).padded((_BOX_PAD_PT + _CLEARANCE_PT) * scale)
+
+
 def _label_column(axes: Axes, feature: str, series: Sequence[_Series], style: FigureTheme, renderer: Any) -> None:
     """Direct labels in a column left of the lines' first points, where the lines lie furthest apart.
 
     Runs after the layout is fixed: the x axis is extended to the left just
     enough for the widest label (the axes box does not move), each label is
-    set beside its line's first point and the column is spread vertically so
-    no two labels touch and all stay inside the frame. A label moved off its
-    point gets a thin leader to it. Identical lines share one label.
+    set beside its line's first point with its box ``_CLEARANCE_PT`` clear of
+    the markers drawn there, and the column is spread vertically so no two
+    boxes come closer than that and all stay inside the frame. A label moved
+    off its point gets a thin leader to it. Identical lines share one label.
     """
     groups = _groups(series)
     if not groups:
@@ -526,8 +579,11 @@ def _label_column(axes: Axes, feature: str, series: Sequence[_Series], style: Fi
     for probe in probes:
         probe.remove()
     first_k = min(line.ks[0] for group in groups for line in group)
+    # From the first points' centre to a label's right edge: the markers' reach there (the same under any x
+    # limits), the clearance, then the label's own box pad.
+    gap = _marker_reach(axes, first_k) + (_CLEARANCE_PT + _BOX_PAD_PT) * scale
     low, high = axes.get_xlim()
-    share = min((max(size.width for size in sizes) + (_LABEL_GAP_PT + 4.0) * scale) / axes.bbox.width, 0.55)
+    share = min((max(size.width for size in sizes) + gap + 4.0 * scale) / axes.bbox.width, 0.55)
     span = math.log(high) - math.log(first_k)
     axes.set_xlim(math.exp(math.log(first_k) - share / (1.0 - share) * span), high)
     point_x = axes.transData.transform((first_k, 0.0))[0]
@@ -539,13 +595,13 @@ def _label_column(axes: Axes, feature: str, series: Sequence[_Series], style: Fi
     for index in sorted(range(len(groups)), key=lambda i: targets[i]):
         centre = max(targets[index], floor + heights[index] / 2.0)
         positions[index] = centre
-        floor = centre + heights[index] / 2.0 + 1.5 * scale
-    overflow = floor - 1.5 * scale - (frame.y1 - scale)
+        floor = centre + heights[index] / 2.0 + _CLEARANCE_PT * scale
+    overflow = floor - _CLEARANCE_PT * scale - (frame.y1 - scale)
     if overflow > 0:
         positions = {index: centre - overflow for index, centre in positions.items()}
     inverse = axes.transData.inverted()
     for index, (group, text) in enumerate(zip(groups, texts, strict=True)):
-        x, y = inverse.transform((point_x - _LABEL_GAP_PT * scale, positions[index]))
+        x, y = inverse.transform((point_x - gap, positions[index]))
         axes.annotate(text, (x, y), ha="right", va="center", color=style.ink, zorder=5, annotation_clip=False,
                       in_layout=False, gid=f"convergence-label-{feature}-{index}",
                       bbox={"facecolor": style.surface, "edgecolor": "none", "pad": _BOX_PAD_PT}, **style_kwargs)
@@ -557,33 +613,46 @@ def _label_column(axes: Axes, feature: str, series: Sequence[_Series], style: Fi
 
 def _place_line_labels(axes: Axes, feature: str, series: Sequence[_Series], style: FigureTheme,
                        renderer: Any) -> None:
-    """Direct labels: the line column, then one label for the served markers and one for the mass reference."""
+    """Direct labels: the line column, then one label for the served markers and one for the mass reference.
+
+    The two single labels are placed by their boxes (:func:`_place_text`)
+    against the lines, the markers as drawn and the labels placed before,
+    each kept ``_CLEARANCE_PT`` away. The served label tries the rings of
+    ``_SERVED_RINGS_PT`` around the served markers, highest marker first. The
+    whole-vocabulary label goes to the right end of its line, above it, which
+    neither the column, the served label nor the lines that approach the line
+    from below reach; earlier points along the line are its fallbacks.
+    """
     _label_column(axes, feature, series, style, renderer)
     scale = axes.figure.dpi / 72.0
-    paths, boxes = _obstacles(axes)
-    boxes += [text.get_window_extent(renderer).padded(scale) for text in axes.texts]
+    paths, _ = _obstacles(axes)
+    boxes = _marker_boxes(axes, _CLEARANCE_PT)
+    boxes += [_label_box(text, renderer, scale) for text in axes.texts]
     served = [(line.served_k, line.served) for line in series if line.served is not None and line.served_k is not None]
     if served:
         k = served[0][0]
         # Nearest first; farther rings clear lines that converge at the served k.
-        candidates = [placement for offset in (6.0, 14.0, 24.0) for anchor in sorted(served, key=lambda point: -point[1])
-                      for placement in _around(anchor, offset)]
+        candidates = [placement for offset in _SERVED_RINGS_PT
+                      for anchor in sorted(served, key=lambda point: -point[1]) for placement in _around(anchor, offset)]
         # Only the estimate goes through a calibrator; the features and the mass are the host's top-k alone.
         text = f"served top-{k}\n(top-k calibrator)" if feature == "estimate" else f"served top-{k}"
         label = _place_text(axes, text, candidates, renderer, paths=paths,
                             boxes=boxes, fontsize=_LABEL_PT, color=style.secondary_ink, zorder=5,
                             gid=f"convergence-served-label-{feature}", linespacing=1.1,
-                            bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 0.8})
-        boxes.append(label.get_window_extent(renderer).padded(scale))
+                            bbox={"facecolor": style.surface, "edgecolor": "none", "pad": _BOX_PAD_PT})
+        boxes.append(_label_box(label, renderer, scale))
     if feature == MASS:
         low, high = axes.get_xlim()
+        end = (high, 1.0)
+        candidates = [(end, -3.0, _REFERENCE_OFFSET_PT, "right", "bottom"),
+                      (end, -3.0, -_REFERENCE_OFFSET_PT, "right", "top")]
         anchors = [(math.exp(math.log(low) + share * (math.log(high) - math.log(low))), 1.0)
-                   for share in (0.05, 0.3, 0.55)]
-        candidates = [(anchor, 0.0, -4.0, "left", "top") for anchor in anchors]
-        candidates += [(anchor, 0.0, 4.0, "left", "bottom") for anchor in anchors]
+                   for share in (0.55, 0.3, 0.05)]
+        candidates += [(anchor, 0.0, _REFERENCE_OFFSET_PT, "left", "bottom") for anchor in anchors]
+        candidates += [(anchor, 0.0, -_REFERENCE_OFFSET_PT, "left", "top") for anchor in anchors]
         _place_text(axes, "whole vocabulary", candidates, renderer, paths=paths, boxes=boxes, fontsize=_LABEL_PT,
                     color=style.secondary_ink, zorder=5, gid="convergence-reference-label",
-                    bbox={"facecolor": style.surface, "edgecolor": "none", "pad": 0.8})
+                    bbox={"facecolor": style.surface, "edgecolor": "none", "pad": _BOX_PAD_PT})
 
 
 def plot_convergence(stages: Sequence[ConvergenceStage], *, theme: str = "light") -> Figure:
