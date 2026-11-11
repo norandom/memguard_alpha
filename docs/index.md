@@ -148,9 +148,10 @@ Python command above is a smaller explicit run.
 
 The core library and decoder use plain Python/NumPy. No tensor framework or GPU
 is required by the package. Any real-model callback you supply has its own
-runtime requirements. On Windows, run the package, tests and tools in Linux
-containers only; native Windows Python is no longer supported. Linux and macOS
-can also run them directly.
+runtime requirements. On Windows, run the package, examples and measurements in
+Linux containers. The test suite, ruff and the architecture check also run
+natively with `uv` from PowerShell; a few tests that need Linux-only tooling
+skip there. Linux and macOS can run everything directly.
 
 ```text
 docker compose build dev

@@ -2,10 +2,11 @@
 
 Docker runs the existing Python library and examples using `pyproject.toml` and
 `uv.lock`. Compose and Dagger build the same root Dockerfile. The application
-still consists of API clients and calculations. On Windows, Docker is the only
-supported route: run Recall Guard, tests, probes, measurements and notebooks in
-Linux containers, not with native Windows Python. On Linux and macOS, Docker is
-optional for users installing the wheel or using an existing Python/Jupyter
+still consists of API clients and calculations. On Windows, run Recall Guard,
+examples, probes, measurements and notebooks in Linux containers. The
+development loop (tests, ruff, the architecture check) also runs natively with
+`uv`, as described under "Run focused checks" below. On Linux and macOS, Docker
+is optional for users installing the wheel or using an existing Python/Jupyter
 environment.
 
 ## Start with an offline result
