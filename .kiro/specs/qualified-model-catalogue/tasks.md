@@ -55,7 +55,7 @@ records and is not part of CI; it is run locally where a task names it.
   - _Boundary: calibrate_
   - _Depends: 1.1_
   - _Requirements: 6.4, 10.1_
-- [ ] 2.4 (P) Catalogue page renderer
+- [x] 2.4 (P) Catalogue page renderer
   - Render a Markdown page from a catalogue: the table (entry, route, per mode availability, quality with interval and sample sizes, status with reason, evidence), the list of entries usable without logprobs with what the logits mode needs, and related entries
   - Done when a test shows the rendered text for a fixture catalogue and that rendering twice gives the same bytes
   - _Boundary: render_catalogue_
@@ -169,3 +169,5 @@ records and is not part of CI; it is run locally where a task names it.
 - 3.2: on the recorded probe arm, identifying prompt, 12 months inside and 5 after in both modes: logprobs difference 0.096 (one-sided p 0.102), logits 0.044 (p 0.335); neither passes the cutoff check. Cells with fewer months than the plan's block length use block length 1 and say so. The four tests are reported unadjusted (one test per mode feeds the rule); the reviewer suggests showing a Holm-adjusted p beside the raw one, to be considered when the methods page is written (5.2).
 - 2.3: the calibration's clustered interval delegates to the core function; a pinned-number test (literals captured from the pre-refactor code at 507efd3, reproduced independently by the reviewer) keeps the numbers checked in CI, because the core equivalence test now compares the function with its own wrapper. Private evidence: runs/finance-sim/validation/task-2.3-interval-equality.log and task-2.3-replay-compare.log.
 - 2.2: select takes one keyword beyond the design, k, required for an entry without a profile (or a profile without top_logprobs) and refused when it contradicts the profile. The correction is exposed on one branch only: catalogue status qualified, recorded fingerprint equal to the calibrator's, guard status ok. A qualified run whose guard status is not ok stays qualified with no correction and the guard status in the reason. Open follow-up from the 2.4 review, to do after 2.1 lands: the reasons built by qualify format numbers with :g and should print them as recorded.
+- 2.4: the page states the rule in the order qualify decides it and prints every number as recorded, without scientific notation. Open minor points for 4.3: one entry's logprobs reason still appears in two tables of the same section; the page does not yet show the valid-draw counts that the sample check reads (added to Quality in the 2.1 remediation).
+- Private records: DrawLog.latest() repairs a draw log in place (it can append a newline or truncate an incomplete last line), so an analysis must not read through it. Checked on 2026-11-11: no draw log under runs/finance-sim/records was modified by the smoke runs of 3.1 and 3.3 (sizes and times unchanged). The 3.1 remediation adds a strictly read-only reader and moves both analyses to it.

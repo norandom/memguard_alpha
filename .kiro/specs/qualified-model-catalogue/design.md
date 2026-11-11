@@ -419,7 +419,7 @@ class Catalogue:
 | Check | Condition | Source |
 |---|---|---|
 | boundary | domain is financial time series, evidence method is reply features | `RecallBoundary`, `Evidence` |
-| sample | at least 50 valid draws in each class | `Quality.n_exposed`, `n_fenced` |
+| sample | at least 50 valid draws in each class entering the calibrator's fit, held-out draws included (the meaning of `min_valid` in the existing calibration code); the held-out sizes `n_exposed` and `n_fenced` are reported and are not what this check reads | `Quality.n_valid_exposed`, `n_valid_fenced` |
 | discrimination | held-out AUC at least 0.6 and permutation p below 0.05 | `Quality` |
 | cutoff | estimate inside the training range above after the cutoff, one-sided p below 0.05 | `CutoffCheck` |
 
