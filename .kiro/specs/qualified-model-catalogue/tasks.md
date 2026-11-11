@@ -15,7 +15,7 @@ records and is not part of CI; it is run locally where a task names it.
   - Done when tests show known answers on constructed data, cluster-level and block-level resampling, seed stability, a missing input giving no value, and the architecture check passes
   - _Boundary: Significance additions_
   - _Requirements: 4.3, 5.3, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.9, 6.10, 6.11_
-- [ ] 1.2 (P) One academic figure style
+- [x] 1.2 (P) One academic figure style
   - Provide one style for every figure: white background, black axes and text, a serif typeface, no grid, series told apart by marker, line style or grey level
   - Provide the numbered caption builder that states the message, the sample size and what the interval is
   - Done when tests show the style values, distinct series styles that differ without colour, and a caption that starts with "Figure N."
