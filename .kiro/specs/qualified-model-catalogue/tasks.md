@@ -49,7 +49,7 @@ records and is not part of CI; it is run locally where a task names it.
   - _Boundary: Selection_
   - _Depends: 1.4_
   - _Requirements: 2.3, 2.4, 2.5, 2.6, 2.7_
-- [ ] 2.3 (P) The simulation uses the shared clustered interval
+- [x] 2.3 (P) The simulation uses the shared clustered interval
   - Replace the simulation's own prompt-clustered AUC interval with the core one
   - Done when the calibration tests pass and, before any figure change of group 3 lands, the guarded replay still compares byte for byte with the published assets
   - _Boundary: calibrate_
@@ -167,3 +167,4 @@ records and is not part of CI; it is run locally where a task names it.
 - 1.4: data-file layout per mode: available (null when the entry has a profile), unavailable_reason, requires, features, features_unavailable, calibrations; each calibration has boundary, quality, cutoff, calibrator_fingerprint, evidence (evidence is mandatory). The record qualify reads is the time-series reply-features calibration, else the first one; the others are other_evidence. The cutoff difference must equal inside minus after within 1e-3. Reviewer suggestions carried into 2.1: require the logits mode's requires text whenever the logprobs mode is unavailable (Requirement 3.2), and refuse calibrations on an unavailable mode.
 - 3.3: on the recorded draws the sampling arm (temperature 0.7) has 29 prompts analysed, 3 with one answer (share 0.1034, Wilson 0.0358 to 0.2639); the serving arm (temperature 0) has 35 analysed, 31 with one answer (0.8857, 0.7405 to 0.9546). The provider label is read from the arm's provider profile at analysis time, so 4.1 must keep the replay's byte comparison stable against a profile edit (pin it or take the label from the frozen plan). Statistic has no shared JSON serialiser; each analysis has a local one.
 - 3.2: on the recorded probe arm, identifying prompt, 12 months inside and 5 after in both modes: logprobs difference 0.096 (one-sided p 0.102), logits 0.044 (p 0.335); neither passes the cutoff check. Cells with fewer months than the plan's block length use block length 1 and say so. The four tests are reported unadjusted (one test per mode feeds the rule); the reviewer suggests showing a Holm-adjusted p beside the raw one, to be considered when the methods page is written (5.2).
+- 2.3: the calibration's clustered interval delegates to the core function; a pinned-number test (literals captured from the pre-refactor code at 507efd3, reproduced independently by the reviewer) keeps the numbers checked in CI, because the core equivalence test now compares the function with its own wrapper. Private evidence: runs/finance-sim/validation/task-2.3-interval-equality.log and task-2.3-replay-compare.log.

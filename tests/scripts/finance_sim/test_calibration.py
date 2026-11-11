@@ -570,6 +570,94 @@ def test_the_clustered_interval_uses_the_rank_auc_of_roc_auc_score_and_widens_wi
     assert (clustered["n_memorized_prompts"], clustered["n_control_prompts"]) == (10, 10)
 
 
+def test_the_clustered_interval_is_the_shared_core_one_without_a_resampling_loop_of_its_own(monkeypatch):
+    import inspect
+
+    from recall_guard.core import significance
+    from scripts.finance_sim import calibrate
+
+    rng = np.random.default_rng(5)
+    # Classes interleaved and unequal draw counts, so the group order and the row alignment both matter.
+    groups = [(position % 2, np.round(rng.normal(0.4 + 0.2 * (position % 2), 0.15, size=3 + position % 4), 2))
+              for position in range(14)]
+    scores = np.concatenate([values for _, values in groups])
+    labels = np.concatenate([np.full(values.size, label) for label, values in groups])
+    clusters = np.concatenate([np.full(values.size, index) for index, (_, values) in enumerate(groups)])
+    core = significance.clustered_auc_interval(scores, labels, clusters)
+
+    record = calibrate._clustered_interval(groups)
+
+    assert list(record) == ["auc", "ci_low", "ci_high", "confidence", "n_resamples", "seed", "method",
+                            "n_memorized_prompts", "n_control_prompts", "n_memorized", "n_control"]
+    assert (record["ci_low"], record["ci_high"]) == (core.lo, core.hi)
+    assert record["auc"] == significance.rank_auc(scores[labels == 1], scores[labels == 0])
+    assert (record["confidence"], record["n_resamples"], record["seed"]) == (0.95, 1000, 0)
+    assert record["method"] == core.method == "prompt_clustered_stratified_percentile_bootstrap"
+    assert (record["n_memorized_prompts"], record["n_control_prompts"]) == (7, 7)
+    assert record["n_memorized"] + record["n_control"] == scores.size
+    assert calibrate._rank_auc(scores[labels == 1], scores[labels == 0]) == record["auc"]
+
+    # The script calls the core functions and keeps no bootstrap or rank computation of its own.
+    for function in (calibrate._clustered_interval, calibrate._rank_auc):
+        source = inspect.getsource(function)
+        assert "default_rng" not in source and "quantile" not in source and "np.unique" not in source
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append(kwargs)
+        return core
+
+    monkeypatch.setattr(calibrate, "clustered_auc_interval", spy)
+    assert calibrate._clustered_interval(groups)["ci_low"] == core.lo
+    assert calls == [{"n_resamples": 1000, "confidence": 0.95, "seed": 0}]
+
+    # A class without a held-out prompt gives no bounds; the core function is not asked (it would raise).
+    calls.clear()
+    one_class = calibrate._clustered_interval([(1, np.array([0.5, 0.6])), (1, np.array([0.7]))])
+    assert (one_class["auc"], one_class["ci_low"], one_class["ci_high"]) == (None, None, None)
+    assert (one_class["n_memorized_prompts"], one_class["n_control_prompts"], one_class["n_memorized"]) == (2, 0, 3)
+    assert calls == []
+
+
+def test_the_clustered_interval_keeps_the_numbers_of_the_calibration_before_the_shared_function():
+    """The simulation's interval and the core one both return the pre-refactor numbers, pinned as literals.
+
+    The literals were captured by running the script's own ``_clustered_interval`` and ``_rank_auc`` as they
+    stood at commit 507efd3 (the last commit of ``scripts/finance_sim/calibrate.py`` before it delegated to
+    ``recall_guard.core.significance``) on exactly this input. They are compared with ``==``, not with a second
+    call, so a change in the core bootstrap (order of the generator's draws, cluster order, quantile rule) or
+    in the rank AUC fails here instead of silently moving the published intervals (Requirements 6.4, 10.1).
+    """
+    from recall_guard.core import significance
+    from scripts.finance_sim import calibrate
+
+    auc, ci_low, ci_high = 0.7628105590062112, 0.6493186379928315, 0.8640008234519104
+
+    rng = np.random.default_rng(20261111)
+    # Sixteen prompts, classes interleaved irregularly, two to seven draws each, scores rounded so they tie.
+    pattern = (1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1)
+    groups = [(label, np.round(rng.normal(0.42 + 0.14 * label, 0.15, size=2 + (5 * position) % 6), 1))
+              for position, label in enumerate(pattern)]
+    scores = np.concatenate([values for _, values in groups])
+    labels = np.concatenate([np.full(values.size, label) for label, values in groups])
+    clusters = np.concatenate([np.full(values.size, index) for index, (_, values) in enumerate(groups)])
+    memorized, control = scores[labels == 1], scores[labels == 0]
+    assert [values.size for _, values in groups] == [2, 7, 6, 5, 4, 3, 2, 7, 6, 5, 4, 3, 2, 7, 6, 5]
+    assert (memorized.size, control.size) == (28, 46)
+    assert np.intersect1d(memorized, control).size == 5  # scores tied across the classes
+
+    record = calibrate._clustered_interval(groups)
+    assert (record["auc"], record["ci_low"], record["ci_high"]) == (auc, ci_low, ci_high)
+    assert calibrate._rank_auc(memorized, control) == auc
+    assert (record["confidence"], record["n_resamples"], record["seed"]) == (0.95, 1000, 0)
+    assert (record["n_memorized_prompts"], record["n_control_prompts"]) == (8, 8)
+    assert (record["n_memorized"], record["n_control"]) == (28, 46)
+
+    core = significance.clustered_auc_interval(scores, labels, clusters)
+    assert (core.lo, core.hi) == (ci_low, ci_high)
+    assert significance.rank_auc(memorized, control) == auc
+
+
 def test_the_holdout_is_split_by_prompt_never_by_draw(calibrated):
     record = calibrated.run.records[(EDGAR, "top_k")]
     held = set(record.holdout_prompts)

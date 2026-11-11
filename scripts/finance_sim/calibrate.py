@@ -121,6 +121,7 @@ from recall_guard.core.completion import CompletionClient, ModelConfig, ModelRes
 from recall_guard.core.decision import DecisionDefinition, DecisionParseError
 from recall_guard.core.full_distribution import FullDistributionClient, FullDistributionEvidence
 from recall_guard.core.request_control import BudgetExhaustedError, RequestError
+from recall_guard.core.significance import clustered_auc_interval, rank_auc
 from recall_guard.dataset.edgar_outlook import outlook_definition, prompt_sha256, render_outlook_prompt
 from recall_guard.dataset.macro_regime import MacroRow, regime_definition, render_anonymised, render_identifying
 from recall_guard.harness.guarded_decision import PARSE_ERROR, REQUEST_ERROR_PREFIX, SourceCalibrator
@@ -1199,19 +1200,19 @@ def _fingerprint(state: Mapping[str, Any]) -> str:
 
 
 def _rank_auc(memorized: np.ndarray, control: np.ndarray) -> float:
-    """ROC-AUC as the Mann-Whitney statistic with average ranks for ties (equal to ``roc_auc_score``)."""
-    values = np.concatenate([memorized, control])
-    _, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)
-    ends = np.cumsum(counts)
-    ranks = ((ends - counts + 1 + ends) / 2.0)[inverse]
-    n_memorized, n_control = memorized.size, control.size
-    return float((ranks[:n_memorized].sum() - n_memorized * (n_memorized + 1) / 2) / (n_memorized * n_control))
+    """ROC-AUC as the Mann-Whitney statistic with average ranks for ties: the core ``rank_auc``."""
+    return rank_auc(memorized, control)
 
 
 def _clustered_interval(groups: Sequence[tuple[int, np.ndarray]]) -> dict[str, Any]:
-    """Held-out AUC with a stratified percentile bootstrap over held-out prompts, each with all its draws."""
-    positives = [scores for label, scores in groups if label == MEMORIZED]
-    negatives = [scores for label, scores in groups if label == CONTROL]
+    """Held-out AUC with the core prompt-clustered interval (``clustered_auc_interval``) in the record's fields.
+
+    The held-out prompts are passed as clusters in the order of ``groups``, each with all its draws. With a
+    class absent the record keeps its counts and has no AUC and no bounds; the core function is not called.
+    """
+    kept = [(label, scores) for label, scores in groups if label in (MEMORIZED, CONTROL)]
+    positives = [scores for label, scores in kept if label == MEMORIZED]
+    negatives = [scores for label, scores in kept if label == CONTROL]
     result: dict[str, Any] = {
         "auc": None, "ci_low": None, "ci_high": None, "confidence": INTERVAL_CONFIDENCE,
         "n_resamples": INTERVAL_RESAMPLES, "seed": INTERVAL_SEED, "method": CLUSTERED_METHOD,
@@ -1221,17 +1222,13 @@ def _clustered_interval(groups: Sequence[tuple[int, np.ndarray]]) -> dict[str, A
     }
     if not positives or not negatives:
         return result
-
-    def auc(memorized: Sequence[np.ndarray], control: Sequence[np.ndarray]) -> float:
-        return _rank_auc(np.concatenate(memorized), np.concatenate(control))
-
-    rng = np.random.default_rng(INTERVAL_SEED)
-    resampled = [auc([positives[i] for i in rng.integers(len(positives), size=len(positives))],
-                     [negatives[i] for i in rng.integers(len(negatives), size=len(negatives))])
-                 for _ in range(INTERVAL_RESAMPLES)]
-    tail = (1 - INTERVAL_CONFIDENCE) / 2
-    low, high = np.quantile(resampled, [tail, 1 - tail])
-    return result | {"auc": auc(positives, negatives), "ci_low": float(low), "ci_high": float(high)}
+    interval = clustered_auc_interval(
+        np.concatenate([scores for _, scores in kept]),
+        np.concatenate([np.full(len(scores), label, dtype=np.int64) for label, scores in kept]),
+        np.concatenate([np.full(len(scores), index, dtype=np.int64) for index, (_, scores) in enumerate(kept)]),
+        n_resamples=INTERVAL_RESAMPLES, confidence=INTERVAL_CONFIDENCE, seed=INTERVAL_SEED)
+    auc = _rank_auc(np.concatenate(positives), np.concatenate(negatives))
+    return result | {"auc": auc, "ci_low": interval.lo, "ci_high": interval.hi}
 
 
 @dataclass(frozen=True)
