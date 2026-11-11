@@ -35,7 +35,9 @@ Statistics
     difference between the modes in the correction factor the consumer applies
     to the tilt, ``1 - p_memorized`` of the stored ensemble decision
     (:data:`CORRECTION_FACTOR`), logits minus logprobs, over the items with an
-    ensemble estimate in both modes, resampled by month;
+    ensemble estimate and an applied adjustment in both modes (an item whose
+    adjustment was skipped in a mode is excluded and counted), resampled by
+    month;
     ``correction_factor_mean_<mode>``: the mean factor of each mode over the
     same items. The agreement and the correction factor use different
     estimates and so have different n (:data:`ESTIMATES_COMPARED`).
@@ -79,7 +81,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -145,7 +147,8 @@ CORRECTION_FACTOR = (
     "p_memorized is the mean of the mode's per-draw estimates over the parsed draws of the item that carry one, and "
     "the decision exists only when the ensemble's minimum of parsed draws is met; an item without an ensemble "
     "decision or without an estimate in either mode is excluded and counted; an item whose decision carries the "
-    "estimate but skipped the adjustment for a weak calibrator is included and counted; the difference is logits minus "
+    "estimate but skipped the adjustment for a weak calibrator in either mode is excluded and counted too, because "
+    "the consumer applied no factor to it; the difference is logits minus "
     "logprobs, so a positive value means logits soften the tilt less; its interval resamples months whole"
 )
 #: Why the agreement and the correction factor have different n (stated once in the outputs).
@@ -182,6 +185,12 @@ SEED = 0
 
 _AUC_FORMULA = ("(R_memorized - n_memorized_rows (n_memorized_rows + 1) / 2) / (n_memorized_rows n_control_rows), "
                 "R_memorized the sum of the average ranks of the memorized rows among all held-out rows")
+#: The effect size of a mean difference, as ``recall_guard.core.significance.agreement`` computes it.
+_EFFECT_SIZE_FORMULA = (
+    "effect size = (sum_of_differences / n_rows) / sd_of_differences, the mean of the row differences divided by "
+    "their standard deviation, sd with n_rows - 1 in the denominator; none when that standard deviation is 0")
+#: The decision status of an item whose adjustment the consumer did not apply (``execute.STATUSES``).
+ADJUSTMENT_SKIPPED = "adjustment_skipped_weak_calibrator"
 _CONVERGENCE_NAME = "convergence_by_alternatives_kept"
 _CONVERGENCE_FORMULA = "sum(abs(estimate_k,i - estimate_full,i)) / n_draws, read from the convergence analysis"
 
@@ -412,6 +421,16 @@ def _prompt_estimates(results: tuple[ItemResult, ...] | None) -> _PromptEstimate
     return _PromptEstimates(tuple(logits), tuple(logprobs), tuple(months), counts, missing)
 
 
+def _sd_of_differences(a: Sequence[float], b: Sequence[float]) -> dict[str, float]:
+    """The input the effect size of a mean difference ``a - b`` needs: the sd of the row differences (ddof 1).
+
+    The same definition as :func:`recall_guard.core.significance.agreement`
+    uses for its effect size (:data:`_EFFECT_SIZE_FORMULA`).
+    """
+    difference = np.asarray(a, dtype=float) - np.asarray(b, dtype=float)
+    return {"sd_of_differences": float(difference.std(ddof=1))}
+
+
 def _per_prompt(statistic: Statistic, rows: _PromptEstimates, **changes: Any) -> Statistic:
     """``statistic`` of :func:`agreement` reported per prompt: n is the prompts, the months are in the inputs."""
     return replace(statistic, unit="prompt", n=len(rows.logits),
@@ -428,9 +447,14 @@ def _agreement_statistics(rows: _PromptEstimates, stage: str) -> list[Statistic]
                  "interval from resampling months whole")
     found = agreement(rows.logits or None, rows.logprobs or None, rows.months or None,
                       n_resamples=AGREEMENT_RESAMPLES, confidence=CONFIDENCE, seed=SEED, unit="month")
-    return [_per_prompt(found[name], rows, name=f"estimate_agreement_{name}",
-                        estimand=f"{found[name].estimand}; {described}")
-            for name in AGREEMENT_STATISTICS]
+    statistics = {name: _per_prompt(found[name], rows, name=f"estimate_agreement_{name}",
+                                    estimand=f"{found[name].estimand}; {described}")
+                  for name in AGREEMENT_STATISTICS}
+    mean = statistics["mean_difference"]
+    statistics["mean_difference"] = replace(
+        mean, formula=f"{mean.formula}; {_EFFECT_SIZE_FORMULA}",
+        inputs=dict(mean.inputs) | (_sd_of_differences(rows.logits, rows.logprobs) if mean.value is not None else {}))
+    return [statistics[name] for name in AGREEMENT_STATISTICS]
 
 
 @dataclass(frozen=True)
@@ -450,8 +474,10 @@ def _ensemble_factors(results: tuple[ItemResult, ...] | None) -> _EnsembleFactor
     An item is excluded and counted when the ensemble variant of a mode was
     not computed (it carries only its reason) or its decision has no
     ``p_memorized`` (a failed decision, or no parsed draw with an estimate).
-    An item whose decision carries the estimate but skipped the adjustment (a
-    weak calibrator) is included with that estimate and counted.
+    An item whose decision carries the estimate but skipped the adjustment in
+    a mode (status :data:`ADJUSTMENT_SKIPPED`, a weak calibrator) is excluded
+    and counted too: the consumer applied no factor to it, so it has no factor
+    to compare.
     """
     factors: dict[str, list[float]] = {LOGITS: [], LOGPROBS: []}
     months: list[str] = []
@@ -462,22 +488,24 @@ def _ensemble_factors(results: tuple[ItemResult, ...] | None) -> _EnsembleFactor
             no_decision += 1
         elif any(variant.p_memorized is None for variant in variants.values()):
             no_estimate += 1
+        elif any(variant.status == ADJUSTMENT_SKIPPED for variant in variants.values()):
+            not_applied += 1
         else:
             for mode, variant in variants.items():
                 factors[mode].append(1.0 - float(variant.p_memorized))
             months.append(result.item_id)
-            not_applied += any(variant.status != "ok" for variant in variants.values())
     counts = {"n_items": len(months), "n_months": len(set(months)), "n_stored_items": len(results or ()),
-              "items_excluded": no_decision + no_estimate,
+              "items_excluded": no_decision + no_estimate + not_applied,
               "items_without_an_ensemble_decision_in_a_mode": no_decision,
               "items_without_an_ensemble_estimate_in_a_mode": no_estimate,
-              "items_included_whose_adjustment_was_skipped_in_a_mode": not_applied}
+              "items_excluded_whose_adjustment_was_skipped_in_a_mode": not_applied}
     if results is None:
         missing = "the stored item results of the run"
     elif not months:
-        missing = ("stored item results with an ensemble decision that carries a recall estimate in both modes "
-                   f"(of {len(results)} stored items, {no_decision} have no ensemble decision in a mode and "
-                   f"{no_estimate} an ensemble decision without an estimate)")
+        missing = ("stored item results with an ensemble decision that carries a recall estimate and applied the "
+                   f"adjustment in both modes (of {len(results)} stored items, {no_decision} have no ensemble "
+                   f"decision in a mode, {no_estimate} an ensemble decision without an estimate and {not_applied} "
+                   "an ensemble decision that skipped the adjustment)")
     else:
         missing = None
     return _EnsembleFactors(tuple(factors[LOGITS]), tuple(factors[LOGPROBS]), tuple(months), counts, missing)
@@ -491,15 +519,17 @@ def _correction_statistics(rows: _EnsembleFactors, stage: str) -> list[Statistic
     means are plain statistics over the same items, for the level.
     """
     items = (f"over the items (month and rendering) of the {stage} stage whose stored ensemble decision carries a "
-             "recall estimate (p_memorized) in both modes")
+             "recall estimate (p_memorized) and applied the adjustment in both modes")
     difference_name = "correction_factor_difference"
     difference_estimand = (
         "difference between the modes in the correction factor the consumer applies to the tilt, 1 minus the "
         f"ensemble recall estimate: mean {items} of the factor with the logits (full_distribution) estimate minus "
         "the factor with the logprobs (top_k) estimate; logits minus logprobs: a positive value means logits "
-        "soften the tilt less; an item without an ensemble decision or without an estimate in a mode is excluded "
-        "and counted; interval from resampling months whole, so the renderings of a month stay together")
-    difference_formula = "sum((1 - p_memorized_logits,i) - (1 - p_memorized_logprobs,i)) / n_items"
+        "soften the tilt less; an item without an ensemble decision or without an estimate in a mode, or whose "
+        f"adjustment was skipped in a mode (status {ADJUSTMENT_SKIPPED}: the consumer applied no factor), is "
+        "excluded and counted; interval from resampling months whole, so the renderings of a month stay together")
+    difference_formula = ("sum((1 - p_memorized_logits,i) - (1 - p_memorized_logprobs,i)) / n_items; "
+                          f"{_EFFECT_SIZE_FORMULA}")
     mean_formula = "sum(1 - p_memorized_i) / n_items"
     mean_estimands = {
         mode: (f"mean correction factor of the {mode} ({MODE_SOURCES[mode]}) mode, 1 minus the ensemble recall "
@@ -517,7 +547,8 @@ def _correction_statistics(rows: _EnsembleFactors, stage: str) -> list[Statistic
                       confidence=CONFIDENCE, seed=SEED, unit="month")["mean_difference"]
     statistics = [replace(found, name=difference_name, estimand=difference_estimand, formula=difference_formula,
                           unit="prompt", n=n_items, independent_units=independent,
-                          inputs=dict(found.inputs) | dict(rows.counts))]
+                          inputs=dict(found.inputs) | dict(rows.counts)
+                          | (_sd_of_differences(rows.logits, rows.logprobs) if found.value is not None else {}))]
     for mode, factors in ((LOGITS, rows.logits), (LOGPROBS, rows.logprobs)):
         statistics.append(Statistic(
             name=f"correction_factor_mean_{mode}", estimand=mean_estimands[mode], formula=mean_formula,
@@ -603,11 +634,14 @@ def _decide(kind: str, calibrator: tuple[Statistic, ...], lower: Statistic, uppe
             notes.append(f"{favours}, but the cutoff check for logits was not supplied, so improve cannot be "
                          "concluded")
         else:
-            notes.append(f"{favours}, but the cutoff check for logits did not pass")
+            notes.append(f"{favours}, but the cutoff check for logits did not pass, so improve cannot be concluded")
     within = -AUC_MARGIN <= lo and hi <= AUC_MARGIN
-    if not within:
+    if not within and notes:
+        # The interval is stated in the note above; each fact is stated once.
+        notes[0] += f"; it is not within {AUC_MARGIN:g} either side of 0, so match is not concluded either"
+    elif not within:
         notes.append(f"the interval {interval} of the paired AUC difference is not within {AUC_MARGIN:g} either "
-                     "side of 0" + ("" if lo > 0.0 else " and does not exclude 0 in favour of logits"))
+                     "side of 0 and does not exclude 0 in favour of logits")
     elif lower.value is None or upper.value is None:
         notes.append(f"the limits of agreement cannot be computed; missing: {lower.missing or upper.missing}")
     elif lower.interval is None or upper.interval is None:

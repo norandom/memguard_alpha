@@ -19,6 +19,7 @@ import inspect
 import json
 import math
 import random
+import shutil
 import socket
 from collections.abc import Mapping
 from dataclasses import replace
@@ -29,6 +30,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+import scripts.finance_sim.convergence as convergence_module
 from recall_guard.core.completion import ModelConfig, ModelResponse, TokenAlternative, TokenEvidence
 from recall_guard.core.full_distribution import FullDistributionEvidence, logprobs_from_logits
 from recall_guard.core.nvidia_lm import TokenLogprob
@@ -85,6 +87,7 @@ from scripts.finance_sim.plan import (
     write_plan,
 )
 from scripts.finance_sim.recording import EVIDENCE_SCHEMA, DrawLog, draw_log_path, evidence_path, pinned_digest
+from tests.scripts.finance_sim.test_recording_draws import CUT, aged, unchanged, writing_calls
 
 GEMMA = "google/gemma-3-4b-it"
 CREATED_AT = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
@@ -687,6 +690,56 @@ def test_the_table_is_produced_from_the_recorded_files_alone(recorded, table):
     from_files = convergence_from_records(PLAN, arm="sampling", stage="full_run", results_dir=recorded.results_dir,
                                           records_dir=recorded.records_dir, calibrators_dir=recorded.calibrators_dir)
     assert from_files.to_dict() == table.to_dict()
+
+
+def records_copy(recorded, tmp_path, ending: bytes | None) -> Path:
+    """A copy of the recorded files whose draw log ends without its newline, or in ``ending`` (a cut line)."""
+    records_dir = tmp_path / "records"
+    shutil.copytree(recorded.records_dir, records_dir)
+    path = draw_log_path("sampling", "full_run", records_dir)
+    data = path.read_bytes()
+    path.write_bytes(data.rstrip(b"\n") if ending is None else data + ending)
+    assert not path.read_bytes().endswith(b"\n")
+    return path
+
+
+def from_copy(recorded, tmp_path):
+    return convergence_from_records(PLAN, arm="sampling", stage="full_run", results_dir=recorded.results_dir,
+                                    records_dir=tmp_path / "records", calibrators_dir=recorded.calibrators_dir)
+
+
+def test_reading_the_records_never_modifies_the_draw_log(recorded, table, tmp_path):
+    """A complete last line without its newline is used as it is; the log keeps its bytes and its time."""
+    path = records_copy(recorded, tmp_path, None)
+    files = sorted(found for found in tmp_path.rglob("*") if found.is_file())
+    before = aged(path)
+
+    from_files = from_copy(recorded, tmp_path)
+
+    assert unchanged(path, before)
+    assert sorted(found for found in tmp_path.rglob("*") if found.is_file()) == files
+    assert from_files.to_dict() == table.to_dict() and from_files.to_markdown() == table.to_markdown()
+
+
+def test_a_draw_log_that_ends_in_an_incomplete_line_is_refused_and_left_as_it_is(recorded, tmp_path):
+    """The outputs carry no note of an ignored line, so the analysis refuses instead of computing without it."""
+    path = records_copy(recorded, tmp_path, CUT)
+    before = aged(path)
+
+    with pytest.raises(ConvergenceError, match="incomplete last line") as refused:
+        from_copy(recorded, tmp_path)
+
+    assert str(path) in str(refused.value)
+    assert unchanged(path, before)
+
+
+def test_the_analysis_holds_no_write_other_than_its_own_outputs():
+    source = inspect.getsource(convergence_module)
+    assert "DrawLog" not in source and ".latest(" not in source and "_repaired_lines" not in source
+    assert not hasattr(convergence_module, "DrawLog")
+    assert writing_calls(convergence_module) == {
+        ("_write_text", "mkdir"), ("_write_text", "open"), ("_write_text", "os.replace"),
+        ("write_table", "_write_text")}
 
 
 def test_the_written_table_is_reproduced_byte_for_byte_and_never_replaced_by_a_different_one(recorded, table,

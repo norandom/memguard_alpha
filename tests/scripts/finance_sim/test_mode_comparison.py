@@ -275,12 +275,14 @@ def with_ensemble_estimates(results):
 
 
 def ensemble_rows(results) -> tuple[list[float], list[float], list[str]]:
-    """Per item with an ensemble estimate in both modes: 1 - estimate of each mode, and its month."""
+    """Per item with an applied ensemble estimate in both modes: 1 - estimate of each mode, and its month."""
     logits, logprobs, months = [], [], []
     for result in results:
         a = result.variant(ENSEMBLE_VARIANTS[LOGITS])
         b = result.variant(ENSEMBLE_VARIANTS[LOGPROBS])
-        if a.missing is None and b.missing is None and a.p_memorized is not None and b.p_memorized is not None:
+        applied = "adjustment_skipped_weak_calibrator" not in (a.status, b.status)
+        if (a.missing is None and b.missing is None and a.p_memorized is not None and b.p_memorized is not None
+                and applied):
             logits.append(1.0 - a.p_memorized)
             logprobs.append(1.0 - b.p_memorized)
             months.append(result.item_id)
@@ -506,16 +508,70 @@ def test_an_item_without_an_ensemble_decision_or_estimate_in_a_mode_is_excluded_
         assert inputs["n_stored_items"] == len(results) and inputs["items_excluded"] == 2
         assert inputs["items_without_an_ensemble_decision_in_a_mode"] == 1
         assert inputs["items_without_an_ensemble_estimate_in_a_mode"] == 1
-        assert inputs["items_included_whose_adjustment_was_skipped_in_a_mode"] == 0
+        assert inputs["items_excluded_whose_adjustment_was_skipped_in_a_mode"] == 0
+        assert "items_included_whose_adjustment_was_skipped_in_a_mode" not in inputs
     assert statistics["correction_factor_difference"].value == expected.value
     assert statistics["correction_factor_difference"].interval == expected.interval
-    skipped = (*results[:2], with_ensemble(results[2], LOGITS, status="adjustment_skipped_weak_calibrator"),
-               *results[3:])
-    counted = by_name(compare(recorded, results=skipped))["correction_factor_difference"]
-    assert counted.inputs["items_included_whose_adjustment_was_skipped_in_a_mode"] == 1
-    assert counted.n == len(logits) and counted.value == expected.value
     # The agreement has another n: it does not depend on the ensemble decision.
     assert statistics["estimate_agreement_mean_difference"].n == len(results) != len(logits)
+
+
+@pytest.mark.parametrize("mode", [LOGITS, LOGPROBS])
+def test_an_item_whose_adjustment_was_skipped_in_a_mode_is_excluded_and_counted(recorded, mode):
+    """4.4: the consumer applied no factor to that item, so it has no factor to compare."""
+    results = with_ensemble_estimates(recorded.results)
+    skipped = (with_ensemble(results[0], mode, status="adjustment_skipped_weak_calibrator"), *results[1:])
+    assert skipped[0].variant(ENSEMBLE_VARIANTS[mode]).p_memorized is not None  # the estimate is there, unapplied
+    logits, logprobs, months = ensemble_rows(skipped)
+    assert (logits, logprobs, months) == ensemble_rows(results[1:]) and len(logits) == len(results) - 1
+    expected = agreement(logits, logprobs, months, n_resamples=2000, seed=0, unit="month")["mean_difference"]
+    statistics = by_name(compare(recorded, results=skipped))
+
+    for name in CORRECTION_NAMES:
+        inputs = statistics[name].inputs
+        assert statistics[name].n == inputs["n_items"] == len(logits)
+        assert inputs["n_stored_items"] == len(results) and inputs["items_excluded"] == 1
+        assert inputs["items_excluded_whose_adjustment_was_skipped_in_a_mode"] == 1
+        assert inputs["items_without_an_ensemble_decision_in_a_mode"] == 0
+        assert inputs["items_without_an_ensemble_estimate_in_a_mode"] == 0
+    difference = statistics["correction_factor_difference"]
+    assert difference.value == expected.value and difference.interval == expected.interval
+    assert difference.value == pytest.approx(float(np.mean(np.asarray(logits) - np.asarray(logprobs))))
+    assert difference.value != by_name(compare(recorded, results=results))["correction_factor_difference"].value
+    assert "the correction factor the consumer applies" in difference.estimand
+    assert "adjustment" in difference.estimand and "excluded and counted" in difference.estimand
+    for mode_name, factors in ((LOGITS, logits), (LOGPROBS, logprobs)):
+        assert statistics[f"correction_factor_mean_{mode_name}"].value == pytest.approx(float(np.mean(factors)))
+
+    all_skipped = [with_ensemble(result, mode, status="adjustment_skipped_weak_calibrator") for result in results]
+    none = by_name(compare(recorded, results=all_skipped))["correction_factor_difference"]
+    assert none.value is None and none.n == 0
+    assert none.inputs["items_excluded_whose_adjustment_was_skipped_in_a_mode"] == len(results)
+    assert "adjustment" in none.missing
+
+
+@pytest.mark.parametrize("name", ["estimate_agreement_mean_difference", "correction_factor_difference"])
+def test_the_effect_size_of_a_mean_difference_is_recomputed_from_the_inputs_of_its_row(recorded, name):
+    """6.2: the row carries the standard deviation of the differences and states the formula of the effect size."""
+    results = with_ensemble_estimates(recorded.results)
+    statistic = by_name(compare(recorded, results=results))[name]
+    if name == "correction_factor_difference":
+        a, b, _ = ensemble_rows(results)
+    else:
+        a, b, _, _ = prompt_rows(results)
+    differences = np.asarray(a) - np.asarray(b)
+    inputs = statistic.inputs
+
+    assert inputs["sd_of_differences"] == float(differences.std(ddof=1)) > 0
+    assert statistic.effect_size is not None
+    assert statistic.effect_size == pytest.approx(
+        (inputs["sum_of_differences"] / inputs["n_rows"]) / inputs["sd_of_differences"], rel=1e-12)
+    assert statistic.effect_size == pytest.approx(statistic.value / inputs["sd_of_differences"], rel=1e-12)
+    for phrase in ("effect size", "(sum_of_differences / n_rows) / sd_of_differences", "n_rows - 1"):
+        assert phrase in statistic.formula
+    written = {row["name"]: row for row in compare(recorded, results=results).to_dict()["statistics"]}[name]
+    assert written["inputs"]["sd_of_differences"] == inputs["sd_of_differences"]
+    assert written["effect_size"] == statistic.effect_size and written["formula"] == statistic.formula
 
 
 def test_without_an_ensemble_decision_in_both_modes_the_correction_statistics_are_missing(recorded):
@@ -528,6 +584,99 @@ def test_without_an_ensemble_decision_in_both_modes_the_correction_statistics_ar
         assert statistic.n == 0 and statistic.inputs["items_excluded"] == len(results)
         assert "ensemble decision" in statistic.missing and "both modes" in statistic.missing
     assert statistics["estimate_agreement_mean_difference"].value is not None
+
+
+def one_prompt(results):
+    """The first stored prompt alone: one row, so no difference between rows has a standard deviation."""
+    return tuple(results[:1])
+
+
+def two_prompts_of_one_month(results):
+    """Two stored prompts (renderings) of the same month: two rows in one cluster."""
+    for month in dict.fromkeys(result.item_id for result in results):
+        found = tuple(result for result in results if result.item_id == month)
+        if len(found) >= 2:
+            return found[:2]
+    pytest.fail("the fixture holds no month with two renderings")
+
+
+TOO_FEW_MONTHS = pytest.mark.parametrize("chosen, n_rows", [(one_prompt, 1), (two_prompts_of_one_month, 2)])
+
+
+def non_finite_numbers(comparison: ModeComparison) -> list[str]:
+    """Every number of the statistics of ``comparison`` that is nan or infinite, by where it stands."""
+    def walk(where: str, value) -> list[str]:
+        if isinstance(value, dict):
+            return [found for key, inner in value.items() for found in walk(f"{where}.{key}", inner)]
+        if isinstance(value, list | tuple):
+            return [found for index, inner in enumerate(value) for found in walk(f"{where}[{index}]", inner)]
+        if isinstance(value, bool) or not isinstance(value, int | float | np.number):
+            return []
+        return [] if np.isfinite(value) else [f"{where} = {value}"]
+
+    return [found for entry in comparison.to_dict()["statistics"] for found in walk(entry["name"], entry)]
+
+
+@TOO_FEW_MONTHS
+def test_a_correction_difference_on_fewer_than_two_months_is_missing_and_still_written(
+        recorded, tmp_path, chosen, n_rows):
+    """6.9: a missing statistic names its reason and carries no derived input it does not use; 6.2: it is written."""
+    results = chosen(with_ensemble_estimates(recorded.results))
+    assert len(results) == n_rows and len({result.item_id for result in results}) == 1
+    comparison = compare(recorded, results=results)
+    difference = by_name(comparison)["correction_factor_difference"]
+
+    assert difference.value is None and difference.interval is None and difference.effect_size is None
+    assert difference.missing and "two" in difference.missing
+    assert "sd_of_differences" not in difference.inputs
+    assert difference.n == difference.inputs["n_items"] == n_rows and difference.inputs["n_months"] == 1
+    assert non_finite_numbers(comparison) == []
+    written = json.loads(comparison.document)  # json.dumps(allow_nan=False): a nan input would raise here
+    row = {entry["name"]: entry for entry in written["statistics"]}["correction_factor_difference"]
+    assert row["value"] is None and row["missing"] == difference.missing and "sd_of_differences" not in row["inputs"]
+    json_path, markdown_path = write_comparison(comparison, tmp_path)
+    assert json.loads(json_path.read_text(encoding="utf-8")) == comparison.to_dict()
+    assert "| correction_factor_difference |" in markdown_path.read_text(encoding="utf-8")
+    # The level of each mode over the same items is still a plain mean of what is there.
+    logits, logprobs, _ = ensemble_rows(results)
+    for mode, factors in ((LOGITS, logits), (LOGPROBS, logprobs)):
+        assert by_name(comparison)[f"correction_factor_mean_{mode}"].value == pytest.approx(float(np.mean(factors)))
+
+
+@TOO_FEW_MONTHS
+def test_the_agreement_on_fewer_than_two_months_is_missing_and_still_written(recorded, tmp_path, chosen, n_rows):
+    """6.9 for the agreement rows: missing with the reason, no sd of the differences, and the files are written."""
+    results = chosen(recorded.results)
+    assert len(results) == n_rows and len({result.item_id for result in results}) == 1
+    comparison = compare(recorded, results=results)
+    statistics = by_name(comparison)
+
+    for name in (f"estimate_agreement_{name}" for name in AGREEMENT_STATISTICS):
+        statistic = statistics[name]
+        assert statistic.value is None and statistic.interval is None and statistic.effect_size is None
+        assert statistic.missing and "two" in statistic.missing
+        assert "sd_of_differences" not in statistic.inputs
+        assert statistic.n == statistic.inputs["n_prompts"] == n_rows and statistic.inputs["n_months"] == 1
+    assert non_finite_numbers(comparison) == []
+    assert json.loads(comparison.document) == comparison.to_dict()
+    json_path, _ = write_comparison(comparison, tmp_path)
+    assert json.loads(json_path.read_text(encoding="utf-8")) == comparison.to_dict()
+
+
+@pytest.mark.parametrize("chosen", [one_prompt, two_prompts_of_one_month, lambda results: tuple(results[:3]),
+                                    lambda results: tuple(results)],
+                         ids=["one prompt", "two prompts of one month", "three prompts", "all prompts"])
+def test_no_number_of_any_statistic_is_nan_or_infinite(recorded, chosen):
+    """6.2, 6.9: every input, value, interval bound, test number and effect size is finite, or the row is missing."""
+    for results in (chosen(recorded.results), chosen(with_ensemble_estimates(recorded.results))):
+        comparison = compare(recorded, results=results)
+        assert comparison.statistics and non_finite_numbers(comparison) == []
+        for statistic in comparison.statistics:
+            assert (statistic.value is None) == (statistic.missing is not None), statistic.name
+            if statistic.value is None:
+                assert statistic.interval is None and statistic.effect_size is None, statistic.name
+                assert "sd_of_differences" not in statistic.inputs, statistic.name
+        assert json.loads(comparison.document) == comparison.to_dict()
 
 
 def test_the_definitions_of_the_compared_estimates_are_stated_in_the_json_and_the_markdown(recorded):
@@ -602,6 +751,31 @@ def test_improve_is_not_concluded_without_a_passed_cutoff_check(recorded, cutoff
     assert comparison.answer == UNDECIDED
     assert "cutoff check" in comparison.reason and phrase in comparison.reason
     assert comparison.detectable_effect is not None
+
+
+@pytest.mark.parametrize(("cutoff", "phrase"), [(None, "not supplied"), (False, "did not pass")])
+def test_the_reason_of_an_undecided_answer_states_the_interval_and_each_fact_once(recorded, cutoff, phrase):
+    """Neither improve (no passed cutoff check) nor match (outside the margin): one interval, each fact once."""
+    comparison = improving(recorded, cutoff_check=cutoff)
+    interval = by_name(comparison)["paired_auc_difference"].interval
+    reason = comparison.reason
+
+    assert comparison.answer == UNDECIDED and interval.hi > AUC_MARGIN
+    assert reason.count(f"{interval.lo:.4g} to {interval.hi:.4g}") == 1
+    for fact in ("paired AUC difference", "excludes 0 in favour of logits", "cutoff check", phrase,
+                 f"not within {AUC_MARGIN:g} either side of 0", "improve", "match"):
+        assert reason.count(fact) == 1, fact
+    assert reason.count("interval") == 1
+
+
+def test_the_reason_of_an_undecided_answer_without_a_difference_states_the_interval_once(recorded):
+    comparison = compare(recorded, logprobs=with_scores(recorded.logprobs, noise(recorded.logprobs, 1)),
+                         logits=with_scores(recorded.logits, noise(recorded.logits, 2)), cutoff_check=True)
+    interval = by_name(comparison)["paired_auc_difference"].interval
+    assert comparison.answer == UNDECIDED
+    assert comparison.reason.count(f"{interval.lo:.4g} to {interval.hi:.4g}") == 1
+    assert comparison.reason.count("paired AUC difference") == 1
+    assert comparison.reason.count("does not exclude 0 in favour of logits") == 1
 
 
 def test_match_needs_the_difference_within_its_margin_and_the_agreement_limits_within_theirs(recorded):

@@ -2,8 +2,8 @@
 
 A study module of its own, separate from the pre-registered analyses (7.10 and
 7.11). It reads only recorded data and sends no request: the frozen plan, the
-item results of the 7.7 execution, the replies of the draw recording (7.4
-``DrawLog`` of :class:`~scripts.finance_sim.execute.ExecutionDraw`), the
+item results of the 7.7 execution, the replies of the draw recording (the 7.4
+draw log of :class:`~scripts.finance_sim.execute.ExecutionDraw`), the
 full-distribution evidence of each draw and the arm's calibrators. The
 analysis is defined on the arm that records full-distribution evidence (the
 local sampling arm, the probe arm of the 2026-11-10 sizing decision) and on the
@@ -114,7 +114,13 @@ from scripts.finance_sim.plan import (
     load_plan,
     require_complete,
 )
-from scripts.finance_sim.recording import EVIDENCE_SCHEMA, DrawLog, draw_log_path, evidence_path, pinned_digest
+from scripts.finance_sim.recording import (
+    EVIDENCE_SCHEMA,
+    draw_log_path,
+    evidence_path,
+    pinned_digest,
+    read_draw_log,
+)
 
 #: The frozen k values (design, Analysis inputs); a k above the evidence's kept count is reported missing.
 CONVERGENCE_KS: tuple[int, ...] = (1, 5, 10, 20, 50, 100)
@@ -934,6 +940,13 @@ def convergence_from_records(
     the evidence batch files beside the request records
     (``recording.evidence_path``) and the arm's calibrators for the stage's
     item kind; the evidence must carry the arm's pinned GGUF digest.
+
+    The draw recording is opened for reading only, through
+    :func:`~scripts.finance_sim.recording.read_draw_log`, which never repairs
+    a log: an analysis must not be able to modify a private record. A last
+    line without its newline is used when it is complete; a log that ends in
+    an incomplete line is refused, because the written table has no place to
+    state that a line was ignored.
     """
     _check_scope(plan, arm, stage)
     calibrators = load_calibrators(plan, arm=arm, kind=EXECUTION_STAGES[stage], calibrators_dir=calibrators_dir)
@@ -942,7 +955,13 @@ def convergence_from_records(
         path = result_path(arm, stage, item_id, rendering, results_dir)
         if path.exists():
             results.append(load_result(path))
-    draws = DrawLog(draw_log_path(arm, stage, records_dir), plan=plan, loads=ExecutionDraw.from_dict).latest()
+    log_path = draw_log_path(arm, stage, records_dir)
+    reading = read_draw_log(log_path, plan=plan, loads=ExecutionDraw.from_dict)
+    if reading.incomplete_last_lines:
+        raise ConvergenceError(f"{log_path} ends in an incomplete last line (a write cut short); the table has no "
+                               "place to state an ignored line, so the analysis is refused and the log is left as "
+                               "it is")
+    draws = reading.draws
     evidence: list[FullDistributionEvidence] = []
     for result in results:
         path = evidence_path(arm, stage, result.item_id, result.rendering, records_dir)
