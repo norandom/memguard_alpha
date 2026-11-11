@@ -247,9 +247,11 @@ flowchart TB
     B -- yes --> C{Held-out AUC at least 0.6 and permutation p below 0.05}
     C -- no --> N
     C -- yes --> D{Estimate inside training range above after cutoff, p below 0.05}
-    D -- not recorded or no --> N
+    D -- no --> N
     D -- yes --> Q[qualified]
-    Z[No calibrator record] --> T[not tested]
+    C -- permutation p not recorded --> T[not tested, reason]
+    D -- not recorded --> T
+    Z[No calibrator record] --> T
 ```
 
 ## Requirements Traceability
@@ -420,9 +422,12 @@ class Catalogue:
 | discrimination | held-out AUC at least 0.6 and permutation p below 0.05 | `Quality` |
 | cutoff | estimate inside the training range above after the cutoff, one-sided p below 0.05 | `CutoffCheck` |
 
-All four true gives `qualified`. Any false or missing check gives
-`not_qualified` with the first failing check as the reason. No quality record
-gives `not_tested`.
+Checks are evaluated in the order of the table. A check whose input was
+recorded and fails gives `not_qualified` with that check as the reason. If no
+check fails and at least one check has no recorded input (no quality record,
+no permutation p, no cutoff check), the status is `not_tested` with the first
+missing input as the reason (Requirement 1.8: a missing result is never read
+as a failure and never inferred). All four true gives `qualified`.
 
 **Implementation Notes**
 - First content: one entry per shipped profile plus one for the Ryzen AI OGA
@@ -461,7 +466,10 @@ def clustered_auc_interval(scores, labels, clusters, *, n_resamples=1000, confid
 def permutation_auc_test(scores, labels, clusters, *, n_permutations=2000, seed=0) -> TestResult: ...
 def paired_auc_difference(scores_a, scores_b, labels, clusters, *, n_resamples=2000, confidence=0.95, seed=0) -> tuple[float, Interval, TestResult]: ...
 def agreement(a, b, clusters, *, n_resamples=2000, confidence=0.95, seed=0) -> Mapping[str, Statistic]: ...
+def permutation_mean_difference(values, groups, blocks, *, alternative="greater", n_permutations=2000, seed=0) -> TestResult: ...
 ```
+- `permutation_mean_difference` permutes the group label at block level (a
+  month keeps one label); null: the two groups have the same mean.
 - `permutation_auc_test` permutes labels at cluster level (a prompt keeps one
   label); null: the scores carry no information about the label.
 - `paired_auc_difference` resamples clusters and recomputes both AUCs on the
