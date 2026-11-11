@@ -97,6 +97,12 @@ Placed under the register line, before Question. Four lines, in this order:
 ### Figures
 
 - One message per figure. Both axes labelled with units. A table view beside it.
+- Academic style, as in a quantitative journal: white background, black axes
+  and text, serif or standard scientific typeface, series told apart by marker,
+  line style or grey level, interval bars where an estimate has one, numbered
+  caption below ("Figure N.") with sample size. No title inside the plot, no
+  decorative colour, no rounded bars, no value label on every mark, no light
+  and dark variants.
 - F1 (accuracy gap) and F3 (per-draw distribution) have no y-axis label today.
 - New plain figure for head 7, from the recorded draws.
 - The accuracy-gap figure states that its variants cannot differ in accuracy,

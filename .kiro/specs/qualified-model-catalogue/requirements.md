@@ -263,13 +263,27 @@ surrounding text, so that I do not draw the wrong conclusion from it.
 
 #### Acceptance Criteria
 1. Each Figure shall label both axes with the quantity and its unit.
-2. Each Figure shall carry one message, stated in its title.
+2. Each Figure shall carry one message, stated in a numbered caption below the
+   figure ("Figure N."), and shall carry no title or annotation text inside
+   the plot area beyond axis labels, tick labels and a legend.
 3. Each Figure shall have a table view of the plotted values.
 4. If the series of a figure cannot differ by construction, then the Figure
    shall say so in its caption.
 5. The Research Record shall not present a figure from which a reader would
    conclude that repeated answers never vary, without the repeat baseline
    beside it.
+6. Each Figure shall follow the conventions of a quantitative journal article:
+   a plain white background, black axes and text, a serif or standard
+   scientific typeface, and series told apart by marker shape, line style or
+   grey level so that the figure reads in black and white print.
+7. Each Figure shall show uncertainty where an estimate has one (interval bars
+   or bands), and its caption shall state the sample size and what the
+   interval is.
+8. The Figure shall not use decorative colour, rounded bars, drop shadows,
+   value labels on every mark, dashboard-style tiles or separate light and
+   dark themed variants.
+9. The Research Record shall use one figure style throughout, so that figures
+   from different reports can be placed side by side.
 
 ### Requirement 8: Future reports
 **Objective:** As the project owner, I want the rules for new reports to follow
