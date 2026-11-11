@@ -1,0 +1,13 @@
+arm,role,variant,draw_mode,adjustment,gap,interval_low,interval_high,p_raw,p_holm,months,pre_cutoff_months,post_cutoff_months,missing_months,dropped_resamples,accuracy_difference_pre_cutoff,accuracy_difference_post_cutoff,statuses,missing
+serving,primary,single_none,single,none,,,,,,0,0,0,90,,,,,no planned month carries the value in both renderings
+serving,primary,single_top_k,single,top_k,,,,,,0,0,0,90,,,,,no planned month carries the value in both renderings
+serving,primary,single_full_distribution,single,full_distribution,,,,,,0,0,0,0,,,,,"missing for the serving arm: the full-distribution host serves the local GGUF, which are different weights from the served model, and values from different builds are not comparable (Requirement 9.4)"
+serving,primary,ensemble_none,ensemble,none,,,,,,0,0,0,90,,,,,no planned month carries the value in both renderings
+serving,primary,ensemble_top_k,ensemble,top_k,,,,,,0,0,0,90,,,,,no planned month carries the value in both renderings
+serving,primary,ensemble_full_distribution,ensemble,full_distribution,,,,,,0,0,0,0,,,,,"missing for the serving arm: the full-distribution host serves the local GGUF, which are different weights from the served model, and values from different builds are not comparable (Requirement 9.4)"
+sampling,probe,single_none,single,none,0,0,0.333333,1,1,9,4,5,11,0,0,0,estimate_unavailable 21; failed 19,
+sampling,probe,single_top_k,single,top_k,0,0,0.333333,1,1,9,4,5,11,0,0,0,failed 19; ok 21,
+sampling,probe,single_full_distribution,single,full_distribution,0,0,0.333333,1,1,9,4,5,11,0,0,0,failed 19; ok 21,
+sampling,probe,ensemble_none,ensemble,none,,,,,,5,4,1,15,,,,estimate_unavailable 20; failed 20,"5 months carry the value in both renderings, fewer than the frozen block length of 6 months, so the moving-block bootstrap is not defined"
+sampling,probe,ensemble_top_k,ensemble,top_k,,,,,,5,4,1,15,,,,failed 20; ok 20,"5 months carry the value in both renderings, fewer than the frozen block length of 6 months, so the moving-block bootstrap is not defined"
+sampling,probe,ensemble_full_distribution,ensemble,full_distribution,,,,,,5,4,1,15,,,,failed 20; ok 20,"5 months carry the value in both renderings, fewer than the frozen block length of 6 months, so the moving-block bootstrap is not defined"

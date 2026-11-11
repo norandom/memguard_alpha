@@ -1,0 +1,26 @@
+arm,role,kind,source,variants,status,holdout_prompts,holdout_draws,memorized_draws,control_draws,ece,holdout_auc,auc_interval_low,auc_interval_high,weak,bin_low,bin_high,bin_count,mean_predicted,observed_share,reason
+serving,primary,macro,top_k,single_top_k; ensemble_top_k,missing,,,,,,,,,,,,,,,no calibrator file at serving/top_k/macro.json under the calibrators directory: the calibration has not been fitted
+serving,primary,macro,full_distribution,single_full_distribution; ensemble_full_distribution,missing,,,,,,,,,,,,,,,"missing for the serving arm: the full-distribution host serves the local GGUF, which are different weights from the served model, and values from different builds are not comparable (Requirement 9.4)"
+serving,primary,edgar,top_k,single_top_k; ensemble_top_k,missing,,,,,,,,,,,,,,,no calibrator file at serving/top_k/edgar.json under the calibrators directory: the calibration has not been fitted
+serving,primary,edgar,full_distribution,single_full_distribution; ensemble_full_distribution,missing,,,,,,,,,,,,,,,"missing for the serving arm: the full-distribution host serves the local GGUF, which are different weights from the served model, and values from different builds are not comparable (Requirement 9.4)"
+sampling,probe,macro,top_k,single_top_k; ensemble_top_k,drawn,11,74,37,37,0.0700443,0.721695,0.58584,0.855144,no,0.2,0.3,1,0.277109,0,
+sampling,probe,macro,top_k,single_top_k; ensemble_top_k,drawn,11,74,37,37,0.0700443,0.721695,0.58584,0.855144,no,0.3,0.4,18,0.340344,0.333333,
+sampling,probe,macro,top_k,single_top_k; ensemble_top_k,drawn,11,74,37,37,0.0700443,0.721695,0.58584,0.855144,no,0.4,0.5,19,0.442645,0.368421,
+sampling,probe,macro,top_k,single_top_k; ensemble_top_k,drawn,11,74,37,37,0.0700443,0.721695,0.58584,0.855144,no,0.5,0.6,11,0.547239,0.363636,
+sampling,probe,macro,top_k,single_top_k; ensemble_top_k,drawn,11,74,37,37,0.0700443,0.721695,0.58584,0.855144,no,0.6,0.7,8,0.644847,0.75,
+sampling,probe,macro,top_k,single_top_k; ensemble_top_k,drawn,11,74,37,37,0.0700443,0.721695,0.58584,0.855144,no,0.7,0.8,8,0.748312,0.75,
+sampling,probe,macro,top_k,single_top_k; ensemble_top_k,drawn,11,74,37,37,0.0700443,0.721695,0.58584,0.855144,no,0.8,0.9,9,0.833848,0.888889,
+sampling,probe,macro,full_distribution,single_full_distribution; ensemble_full_distribution,drawn,11,74,37,37,0.0475598,1,1,1,no,0,0.1,30,0.0193649,0,
+sampling,probe,macro,full_distribution,single_full_distribution; ensemble_full_distribution,drawn,11,74,37,37,0.0475598,1,1,1,no,0.2,0.3,1,0.200228,0,
+sampling,probe,macro,full_distribution,single_full_distribution; ensemble_full_distribution,drawn,11,74,37,37,0.0475598,1,1,1,no,0.3,0.4,4,0.365638,0,
+sampling,probe,macro,full_distribution,single_full_distribution; ensemble_full_distribution,drawn,11,74,37,37,0.0475598,1,1,1,no,0.4,0.5,1,0.453079,0,
+sampling,probe,macro,full_distribution,single_full_distribution; ensemble_full_distribution,drawn,11,74,37,37,0.0475598,1,1,1,no,0.6,0.7,1,0.679985,0,
+sampling,probe,macro,full_distribution,single_full_distribution; ensemble_full_distribution,drawn,11,74,37,37,0.0475598,1,1,1,no,0.9,1,37,0.996145,1,
+sampling,probe,edgar,top_k,single_top_k; ensemble_top_k,drawn,35,140,40,100,0.200177,0.59175,0.366988,0.814787,yes,0.3,0.4,12,0.368221,0.333333,
+sampling,probe,edgar,top_k,single_top_k; ensemble_top_k,drawn,35,140,40,100,0.200177,0.59175,0.366988,0.814787,yes,0.4,0.5,85,0.457821,0.176471,
+sampling,probe,edgar,top_k,single_top_k; ensemble_top_k,drawn,35,140,40,100,0.200177,0.59175,0.366988,0.814787,yes,0.5,0.6,33,0.539622,0.484848,
+sampling,probe,edgar,top_k,single_top_k; ensemble_top_k,drawn,35,140,40,100,0.200177,0.59175,0.366988,0.814787,yes,0.6,0.7,9,0.624227,0.444444,
+sampling,probe,edgar,top_k,single_top_k; ensemble_top_k,drawn,35,140,40,100,0.200177,0.59175,0.366988,0.814787,yes,0.7,0.8,1,0.734251,1,
+sampling,probe,edgar,full_distribution,single_full_distribution; ensemble_full_distribution,drawn,35,140,40,100,0.206087,0.53175,0.3185,0.754019,yes,0.4,0.5,102,0.471311,0.27451,
+sampling,probe,edgar,full_distribution,single_full_distribution; ensemble_full_distribution,drawn,35,140,40,100,0.206087,0.53175,0.3185,0.754019,yes,0.5,0.6,35,0.527378,0.314286,
+sampling,probe,edgar,full_distribution,single_full_distribution; ensemble_full_distribution,drawn,35,140,40,100,0.206087,0.53175,0.3185,0.754019,yes,0.7,0.8,3,0.773408,0.333333,

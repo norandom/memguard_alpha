@@ -1,0 +1,76 @@
+row,arm,role,stage,item_id,rendering,quantity,draw_index,value,first_draw,median,q25,q75,variant,status,first_category,consensus_category,first_draw_rank,outside_band,category_differs,off,halves,baseline_off,baseline_outside,group,n,count_off,count_outside,count_differs,count_no_category,rate,interval_low,interval_high,reason
+draw,sampling,probe,full_run,macro-2016-05,identifying,summary value,0,4.332,yes,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,summary value,1,4.44,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,summary value,2,4.545,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,summary value,3,4.548,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,summary value,4,4.182,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,summary value,5,4.639,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,summary value,6,4.322,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,summary value,7,2.598,no,,,,,,,,,,,,,,,,,,,,,,,,
+spread,sampling,probe,full_run,macro-2016-05,identifying,summary value,,,,4.386,4.287,4.54575,,,,,0.4375,,,,,,,,8,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,0,0.812071,yes,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,1,0.905944,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,2,0.929843,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,3,0.910084,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,4,0.878428,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,5,0.697721,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,6,0.948618,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,7,0.875022,no,,,,,,,,,,,,,,,,,,,,,,,,
+spread,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,,,,0.892186,0.859284,0.915024,,,,,,,,,,,,,8,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,0,0.994129,yes,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,1,0.991501,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,2,0.995113,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,3,0.992736,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,4,0.975372,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,5,0.975607,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,6,0.987314,no,,,,,,,,,,,,,,,,,,,,,,,,
+draw,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,7,0.915765,no,,,,,,,,,,,,,,,,,,,,,,,,
+spread,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,,,,0.989407,0.975549,0.993084,,,,,,,,,,,,,8,,,,,,,,
+ensemble,sampling,probe,full_run,macro-2016-05,identifying,summary value,,4.348,,,,,ensemble_none,estimate_unavailable,1,1,,,,,,,,,,,,,,,,,
+ensemble,sampling,probe,full_run,macro-2016-05,identifying,summary value,,0.566473,,,,,ensemble_top_k,ok,,,,,,,,,,,,,,,,,,,
+ensemble,sampling,probe,full_run,macro-2016-05,identifying,summary value,,0.0937335,,,,,ensemble_full_distribution,ok,,,,,,,,,,,,,,,,,,,
+ensemble,sampling,probe,full_run,macro-2016-05,identifying,p_memorized top_k,,0.869716,,,,,ensemble_top_k,ok,,,,,,,,,,,,,,,,,,,
+ensemble,sampling,probe,full_run,macro-2016-05,identifying,p_memorized full_distribution,,0.978442,,,,,ensemble_full_distribution,ok,,,,,,,,,,,,,,,,,,,
+item,sampling,probe,full_run,macro-2016-05,identifying,,,,,,,,,,1,1,0.4375,no,no,no,in the half-ensemble statistic,0.5,0.5,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2017-08,identifying,,,,,,,,,,1,1,0.333333,no,no,no,in the half-ensemble statistic,0.333333,0.333333,,6,,,,,,,,
+item,sampling,probe,full_run,macro-2017-08,anonymised,,,,,,,,,,1,1,0.642857,no,no,no,in the half-ensemble statistic,0.285714,0.285714,,7,,,,,,,,
+item,sampling,probe,full_run,macro-2020-05,identifying,,,,,,,,,,1,1,0.6875,no,no,no,in the half-ensemble statistic,0.5,0.5,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2020-05,anonymised,,,,,,,,,,1,1,0.5625,no,no,no,in the half-ensemble statistic,0.125,0.125,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2021-08,anonymised,,,,,,,,,,-1,-1,0.833333,yes,no,yes,in the half-ensemble statistic,0.5,0.5,,6,,,,,,,,
+item,sampling,probe,full_run,macro-2024-03,identifying,,,,,,,,,,1,1,0.75,no,no,no,in the half-ensemble statistic,0.375,0.375,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2024-03,anonymised,,,,,,,,,,1,1,0.1875,yes,no,yes,in the half-ensemble statistic,0.5,0.5,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2024-05,identifying,,,,,,,,,,1,1,0.25,no,no,no,in the half-ensemble statistic,0.25,0.25,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2024-05,anonymised,,,,,,,,,,1,1,0.5,no,no,no,in the half-ensemble statistic,0.5,0.5,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2024-09,identifying,,,,,,,,,,1,1,0.375,no,no,no,in the half-ensemble statistic,0.375,0.375,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2024-09,anonymised,,,,,,,,,,1,1,0.1875,yes,no,yes,in the half-ensemble statistic,0.375,0.375,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2025-04,identifying,,,,,,,,,,1,1,0.4375,no,no,no,in the half-ensemble statistic,0.25,0.25,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2025-04,anonymised,,,,,,,,,,1,,0.9375,yes,,yes,in the half-ensemble statistic,1,1,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2025-05,identifying,,,,,,,,,,1,1,0.875,yes,no,yes,in the half-ensemble statistic,0.25,0.25,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2025-11,identifying,,,,,,,,,,1,1,0.0625,yes,no,yes,in the half-ensemble statistic,0.375,0.375,,8,,,,,,,,
+item,sampling,probe,full_run,macro-2025-12,anonymised,,,,,,,,,,-1,-1,0.1875,yes,no,yes,in the half-ensemble statistic,0.5,0.5,,8,,,,,,,,
+missing_item,sampling,probe,full_run,macro-2016-05,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2016-12,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2016-12,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2018-10,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2018-10,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2019-11,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2019-11,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2019-12,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2019-12,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2021-08,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2021-11,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2021-11,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2021-12,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2021-12,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2022-11,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2022-11,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,"no consensus: 5 of 8 draws parsed, below min_parsed=6; failed draws: parse_error=3."
+missing_item,sampling,probe,full_run,macro-2023-05,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2023-05,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2023-06,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2023-06,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,the first draw did not parse: parse_error
+missing_item,sampling,probe,full_run,macro-2025-05,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,"the consensus has no category (a component is unresolved) and the first draw lies inside the band, so whether it is off cannot be decided"
+missing_item,sampling,probe,full_run,macro-2025-11,anonymised,,,,,,,,,,,,,,,,,,,,,,,,,,,,"the consensus has no category (a component is unresolved) and the first draw lies inside the band, so whether it is off cannot be decided"
+missing_item,sampling,probe,full_run,macro-2025-12,identifying,,,,,,,,,,,,,,,,,,,,,,,,,,,,"the consensus has no category (a component is unresolved) and the first draw lies inside the band, so whether it is off cannot be decided"
+rate,sampling,probe,full_run,,,,,,,,,,,,,,,,,,,0.411415,0.411415,all,17,7,7,0,1,0.411765,0.216111,0.639946,
+rate,sampling,probe,full_run,,,,,,,,,,,,,,,,,,,0.356481,0.356481,identifying,9,2,2,0,0,0.222222,0.0632251,0.547411,
+rate,sampling,probe,full_run,,,,,,,,,,,,,,,,,,,0.473214,0.473214,anonymised,8,5,5,0,1,0.625,0.305742,0.863156,

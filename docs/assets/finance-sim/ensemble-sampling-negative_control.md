@@ -1,0 +1,23 @@
+Sources: macro rows from FRED (Federal Reserve Bank of St. Louis) as known on each decision date, including BAA10Y, Moody's Seasoned Baa Corporate Bond Yield Relative to Yield on 10-Year Treasury Constant Maturity, copyright Moody's, cited and not reproduced; realized next-month returns from Financial Modeling Prep (FMP) end-of-day adjusted closes (licensed, not published) with DTB3 from FRED as the cash leg; EDGAR outlook prompts from SEC EDGAR filings. Replayed offline from the recorded draws and scores by scripts/finance_sim/replay.py (task 8.4) with no model request; the JSON document with the per-item rows stays private under runs/finance-sim/analysis/. Derived statistics only: no reply text, no realized return and no raw licensed series.
+
+# Ensemble metrics: sampling arm, negative_control stage
+
+Ensemble arm: the sampling arm (probe role), the model's sampling distribution: local llama.cpp at the frozen temperature, with seed seed_base + draw_index per draw; the probe arm, gated by the pilot and power gate. Model google/gemma-3-4b-it, 8 draws per ensemble with at least 6 parsed, temperature 0.7.
+
+Control: negative control: the held-out EDGAR releases, one outlook rendering each. Frozen plan f7603eeb8efdbf74645d658f2bd733a35b3834ba7c90b74d00c6ac2e6b5332fe. Items analysed: 40; pilot items excluded: 0; planned items without a stored result: 0.
+
+| Metric | Cell | n | Statistic | Interval | p-value | Holm p-value | Note |
+|---|---|---|---|---|---|---|---|
+| half_ensemble_variance_summary | none adjustment | 40 | missing |  |  |  | the two single draws agree on every item, so the single-draw variance is zero and the variance ratio is undefined |
+| half_ensemble_variance_summary | top_k adjustment | 40 | missing |  |  |  | the two single draws agree on every item, so the single-draw variance is zero and the variance ratio is undefined |
+| half_ensemble_variance_summary | full_distribution adjustment | 40 | missing |  |  |  | the two single draws agree on every item, so the single-draw variance is zero and the variance ratio is undefined |
+| half_ensemble_variance_p_memorized | top_k estimate | 40 | 0.1243 | 0.07259 to 0.2074 (95 percent) | 0.0004998 | 0.0009995 | dropped 0, unbounded 0 of 2000 resamples; P(zero single-draw variance per resample) 0 |
+| half_ensemble_variance_p_memorized | full_distribution estimate | 40 | 0.4094 | 0.06415 to 1.046 (95 percent) | 0.03248 | 0.03248 | dropped 0, unbounded 0 of 2000 resamples; P(zero single-draw variance per resample) 3.28e-08 |
+| first_draw_rate | all items | 40 | 0 | 6.939e-18 to 0.08762 (95 percent) |  |  | 0 of 40 off: 0 with another category, 0 outside the band |
+| first_draw_rate | outlook | 40 | 0 | 6.939e-18 to 0.08762 (95 percent) |  |  | 0 of 40 off: 0 with another category, 0 outside the band |
+| random_answerer_null | consensus accuracy | 0 | missing |  |  |  | not applicable: an EDGAR outlook has no realized outcome; accuracy and the scored probability are defined for macro items only |
+
+Half-ensemble variance: with K draws per ensemble (the arm's frozen draws), the first half is draw indices 0 to K/2 - 1 and the second K/2 to K - 1, each reduced with decide_from_draws as an ensemble of K/2 draws that needs ceil(min_parsed x (K/2) / K) parsed draws (the arm's parse share); the single draws are indices 0 and K/2, each reduced as a single draw; all four come from the one recorded ensemble of the item and rendering, with the adjustment's own per-draw estimates; run-to-run variance is half the mean squared pair difference over items; statistic: half-ensemble over single-draw variance, below 1 when the ensemble reduces variance; item-level percentile bootstrap interval and one-sided p-value; Holm across the cells of each metric. Halves of 4 draws need 3 parsed.
+First-draw rate: per item and rendering, the first draw (index 0) is off when its category differs from the consensus category of ensemble_none or its mid-rank among the parsed summary values lies outside the frozen first_draw_band (bounds inclusive); the rate is the share of items that are off, with a two-sided Wilson score interval at confidence 1 - alpha; band 0.25 to 0.75.
+Random-answerer null: statistic: accuracy of the consensus decision (ensemble_none) over the items with a consensus category and a realized outcome; the random answerer draws each component uniformly on its grid and passes it through the decision's summary and decide; Monte Carlo null with n_resamples samples and the plan's seed.
+Resamples 2000, seed 20261110, confidence 0.95. Intervals assume independent items and draws. Derived statistics only: no item, reply or licensed series is listed.

@@ -1,0 +1,24 @@
+Sources: macro rows from FRED (Federal Reserve Bank of St. Louis) as known on each decision date, including BAA10Y, Moody's Seasoned Baa Corporate Bond Yield Relative to Yield on 10-Year Treasury Constant Maturity, copyright Moody's, cited and not reproduced; realized next-month returns from Financial Modeling Prep (FMP) end-of-day adjusted closes (licensed, not published) with DTB3 from FRED as the cash leg; EDGAR outlook prompts from SEC EDGAR filings. Replayed offline from the recorded draws and scores by scripts/finance_sim/replay.py (task 8.4) with no model request; the JSON document with the per-item rows stays private under runs/finance-sim/analysis/. Derived statistics only: no reply text, no realized return and no raw licensed series.
+
+# Ensemble metrics: sampling arm, full_run stage
+
+Ensemble arm: the sampling arm (probe role), the model's sampling distribution: local llama.cpp at the frozen temperature, with seed seed_base + draw_index per draw; the probe arm, gated by the pilot and power gate. Model google/gemma-3-4b-it, 8 draws per ensemble with at least 6 parsed, temperature 0.7.
+
+Control: positive control: the macro regime items of the arm's full run, identifying and anonymised renderings. Frozen plan f7603eeb8efdbf74645d658f2bd733a35b3834ba7c90b74d00c6ac2e6b5332fe. Items analysed: 40; pilot items excluded: 0; planned items without a stored result: 0.
+
+| Metric | Cell | n | Statistic | Interval | p-value | Holm p-value | Note |
+|---|---|---|---|---|---|---|---|
+| half_ensemble_variance_summary | none adjustment | 20 | 0.9936 | 0.7835 to 4.037 (95 percent) | 0.4408 | 0.4408 | dropped 0, unbounded 0 of 2000 resamples; P(zero single-draw variance per resample) 9.09e-13 |
+| half_ensemble_variance_summary | top_k adjustment | 20 | 0.7153 | 0.3172 to 0.8303 (95 percent) | 0.0009995 | 0.002999 | dropped 0, unbounded 0 of 2000 resamples; P(zero single-draw variance per resample) 0 |
+| half_ensemble_variance_summary | full_distribution adjustment | 20 | 0.7814 | 0.2756 to 2.222 (95 percent) | 0.1689 | 0.3378 | dropped 0, unbounded 0 of 2000 resamples; P(zero single-draw variance per resample) 9.09e-13 |
+| half_ensemble_variance_p_memorized | top_k estimate | 20 | 0.511 | 0.2421 to 1.124 (95 percent) | 0.04798 | 0.08796 | dropped 0, unbounded 0 of 2000 resamples; P(zero single-draw variance per resample) 0 |
+| half_ensemble_variance_p_memorized | full_distribution estimate | 20 | 0.2994 | 0.1633 to 1.84 (95 percent) | 0.04398 | 0.08796 | dropped 0, unbounded 0 of 2000 resamples; P(zero single-draw variance per resample) 9.09e-13 |
+| first_draw_rate | all items | 17 | 0.4118 | 0.2161 to 0.6399 (95 percent) |  |  | 7 of 17 off: 0 with another category, 7 outside the band |
+| first_draw_rate | identifying | 9 | 0.2222 | 0.06323 to 0.5474 (95 percent) |  |  | 2 of 9 off: 0 with another category, 2 outside the band |
+| first_draw_rate | anonymised | 8 | 0.625 | 0.3057 to 0.8632 (95 percent) |  |  | 5 of 8 off: 0 with another category, 5 outside the band |
+| random_answerer_null | consensus accuracy | 16 | 0.375 | 0.25 to 0.75 (95 percent) | 0.902 |  | interval: central range of the random-answerer null distribution |
+
+Half-ensemble variance: with K draws per ensemble (the arm's frozen draws), the first half is draw indices 0 to K/2 - 1 and the second K/2 to K - 1, each reduced with decide_from_draws as an ensemble of K/2 draws that needs ceil(min_parsed x (K/2) / K) parsed draws (the arm's parse share); the single draws are indices 0 and K/2, each reduced as a single draw; all four come from the one recorded ensemble of the item and rendering, with the adjustment's own per-draw estimates; run-to-run variance is half the mean squared pair difference over items; statistic: half-ensemble over single-draw variance, below 1 when the ensemble reduces variance; item-level percentile bootstrap interval and one-sided p-value; Holm across the cells of each metric. Halves of 4 draws need 3 parsed.
+First-draw rate: per item and rendering, the first draw (index 0) is off when its category differs from the consensus category of ensemble_none or its mid-rank among the parsed summary values lies outside the frozen first_draw_band (bounds inclusive); the rate is the share of items that are off, with a two-sided Wilson score interval at confidence 1 - alpha; band 0.25 to 0.75.
+Random-answerer null: statistic: accuracy of the consensus decision (ensemble_none) over the items with a consensus category and a realized outcome; the random answerer draws each component uniformly on its grid and passes it through the decision's summary and decide; Monte Carlo null with n_resamples samples and the plan's seed.
+Resamples 2000, seed 20261110, confidence 0.95. Intervals assume independent items and draws. Derived statistics only: no item, reply or licensed series is listed.

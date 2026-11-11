@@ -24,3 +24,4 @@ the [research report](../research-report.md) sums them up, and the
 | 2026-11-08 | R41 | [Gemma 4 E4B document likelihood on the NPU](2026-11-08-gemma4-document-likelihood-npu.md) | measured |
 | 2026-11-08 | R26, R30, R38 | [Phase A: single-draw calibration on held-out data](2026-11-08-phase-a-single-draw.md) | measured |
 | 2026-11-08 | R23 | [Phi-4 Mini disqualified from the Phase A model set](2026-11-08-phi4-mini-disqualified.md) | disqualified |
+| 2026-11-11 | R43 | [Memorization-adjusted finance simulation, probe arm on Gemma 3 4B (draft, serving arm pending)](2026-11-11-memorization-adjusted-finance-sim.md) | measured |
