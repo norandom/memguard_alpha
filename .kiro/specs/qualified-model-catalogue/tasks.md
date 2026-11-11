@@ -21,7 +21,7 @@ records and is not part of CI; it is run locally where a task names it.
   - Done when tests show the style values, distinct series styles that differ without colour, and a caption that starts with "Figure N."
   - _Boundary: Figure style_
   - _Requirements: 8.2, 8.4, 8.5, 8.6, 8.8_
-- [ ] 1.3 (P) Catalogue types and the qualification rule
+- [x] 1.3 (P) Catalogue types and the qualification rule
   - Define the entry (model on a serving route, weights identity, weights group), the per-mode record (availability with reason and requirement, features and features a mode cannot supply, recall boundary, held-out quality with interval method and sample sizes, cutoff check, calibrator fingerprint, evidence) and the three statuses
   - Implement the single qualification rule with its four checks in order (time-series boundary with reply features, at least 50 valid draws per class, held-out AUC at least 0.6 with permutation p below 0.05, estimate higher inside the training range than after the cutoff): a recorded check that fails gives not qualified with that reason; if none fails and an input is not recorded, the status is not tested with the first missing input as the reason; all four true gives qualified
   - Done when tests show each check failing alone, a record without quality as not tested, a time-series record with quality but no permutation p or no cutoff check as not tested with that reason, a record whose permutation p is missing and whose cutoff check fails as not qualified, a document-text boundary as not qualified, and the same rule applied to both modes
@@ -159,3 +159,7 @@ records and is not part of CI; it is run locally where a task names it.
   - Run the full test suite, the lint and architecture checks, the strict documentation build with the documentation tests, and the guarded replay with the byte comparison; check the CI run of the final push
   - Done when all of them pass and their logs are stored with the private validation logs
   - _Requirements: 10.5, 10.6, 10.7_
+
+## Implementation Notes
+
+- 1.3: a record without any quality value is not tested even when another recorded field would fail a check (design invariant, Requirement 1.8); the checks mapping still shows the failing check as False. The cutoff check compares the inside and after means and ignores the recorded difference field; the loader (1.4) should validate that the two agree.
