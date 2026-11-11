@@ -164,6 +164,8 @@ reliability files (they now carry the serving calibrators) and the second run co
 
 ## Environment facts
 
+- Models folder cleaned on 2026-11-11 (owner's choice "unused and disqualified only", 35.2 GiB freed, 48.9 GiB left): removed the local weights of GPT-OSS 20B (Ollama blob and the Hugging Face safetensors with a broken partial download), LLaVA and Phi-4 mini. Kept: Gemma 3 4B (the pinned GGUF), Llama 3.1 8B, Llama 3.2 3B, the FastFlowLM and Ryzen AI stores, and the GPT-OSS tokenizer and config files that the Modal profile reads. The profiles `ollama-gpt-oss-20b`, `ollama-llava-llama3-ctx2048` and `ollama-phi4-mini` have no local weights now; they were never measured (not eligible on this machine, or disqualified).
+
 - `docker` and `docker compose` are Podman 5.8.3 (machine `podman-machine-default`, WSL2 backend);
   `dagger` v0.21.11 with its engine in the Podman VM.
 - Hosts and ports: llama-server 11570 (gateway 11571, `scripts/serve_local_llamacpp.ps1`),
