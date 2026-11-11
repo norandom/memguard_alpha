@@ -203,7 +203,7 @@ def test_gemma_command_serves_dense_bf16_without_quantization_or_moe_flags():
     assert command[command.index("--revision") + 1] == plan.artifacts.model_revision
     assert command[command.index("--tokenizer-revision") + 1] == plan.artifacts.tokenizer_revision
     assert command[command.index("--dtype") + 1] == "bfloat16"
-    assert command[command.index("--attention-backend") + 1] == "FLASH_ATTN"
+    assert command[command.index("--attention-backend") + 1] == "TRITON_ATTN"
     assert "--quantization" not in command and "--moe-backend" not in command
     assert command[command.index("--max-logprobs") + 1] == str(plan.limits.top_logprobs) == "5"
     assert command[command.index("--logprobs-mode") + 1] == "raw_logprobs"

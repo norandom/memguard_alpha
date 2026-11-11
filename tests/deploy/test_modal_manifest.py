@@ -150,7 +150,7 @@ def test_gemma_manifest_loads_without_a_harmony_tokenizer():
     assert (a.model, a.tokenizer, a.model_revision, a.tokenizer_revision) == (
         "google/gemma-3-4b-it", "google/gemma-3-4b-it", GEMMA_REVISION, GEMMA_REVISION)
     assert (a.quantization, a.moe_backend, a.attention_backend, a.runtime) == (
-        "bf16", "none", "FLASH_ATTN", "vllm==0.17.0")
+        "bf16", "none", "TRITON_ATTN", "vllm==0.17.0")
     assert (plan.resources.gpu, plan.resources.gpu_count, plan.memory_mib) == ("A10", 1, 16384)
     assert raw["cache"]["volume"] == "recall-guard-gemma-3-4b-weights" and raw["cache"]["staging_gpu_count"] == 0
     assert (plan.limits, raw["cost"]["target_usd"]) == REVIEWED_LIMITS[GEMMA_MANIFEST]

@@ -106,7 +106,7 @@ _GPT_OSS_ARTIFACTS = ("openai/gpt-oss-20b", "openai/gpt-oss-20b", "mxfp4", "vllm
 _GPT_OSS_RESOURCES = Resources("A100-40GB", 1, 4, 32, 4096, 1, 1, 1, 0, 1, 0, 60)
 # Dense bf16 model: no quantization method and no MoE kernel (moe_backend "none").
 _GEMMA_ARTIFACTS = ("google/gemma-3-4b-it", "google/gemma-3-4b-it", "bf16", "vllm==0.17.0", "1.6.3", "linux/amd64",
-                    "natural_log_probabilities", "FLASH_ATTN", "none")
+                    "natural_log_probabilities", "TRITON_ATTN", "none")
 _GEMMA_RESOURCES = Resources("A10", 1, 4, 16, 4096, 1, 1, 1, 0, 1, 0, 60)
 
 
