@@ -75,6 +75,12 @@ What is wrong today:
 8. The report template and the research-reports steering updated so that
    future runs are recorded the same way.
 
+9. A front (owner's amendment, 2026-11-11): "objective for us is to provide a
+   front, where people run these prompt, and we make PiT inference answers
+   possible as good as we can. this should be our basis for integration (tests
+   and demos)". The front is the existing Python interface, improved and
+   extended; it takes any prompt with a decision definition.
+
 **Out of scope.** New paid runs, new model runs, and any change to a measured
 number. The first catalogue is filled from results already recorded.
 
@@ -104,7 +110,14 @@ with their statistics, a summary first, no retelling of specs.
   restructured synthesis, register and dated report R43; the repeat-the-prompt
   baseline; figures in academic style; the report template and the
   research-reports steering.
-- **Out of scope**: new model runs, paid runs, new calibrations, any change to
+- **In scope (amendment 2026-11-11)**: the front, as an extension of the
+  existing Python interface: one call that runs a caller's prompt for a
+  catalogue entry and returns the point-in-time answer with its recall
+  estimate, correction, status and limits; its offline integration tests; its
+  demos; one documentation page.
+- **Out of scope**: a web page, an HTTP service, a command-line product, prompt
+  construction for callers (the fenced macro prompt ships as the worked
+  example only), new model runs, paid runs, new calibrations, any change to
   a measured number, changes to `macro_framework` or to the tilt correction
   itself, and the rewriting of dated reports other than R43 beyond adding a
   summary block, a class and dated notes.
@@ -375,3 +388,51 @@ results intact, so that the new record can be trusted as much as the old one.
 7. Where a figure or table of the finance simulation is published, it shall
    come from the guarded replay and compare byte for byte with the published
    copy.
+### Requirement 11: The front for point-in-time answers
+**Objective:** As a person with a prompt, I want one place to run it and get
+the best point-in-time answer Recall Guard can give, so that integration tests
+and demos all enter the same way I do.
+
+#### Acceptance Criteria
+1. The Front shall be the existing Python interface of Recall Guard, extended;
+   every existing public name shall keep its behaviour.
+2. When a caller gives the Front a prompt, a decision definition and a
+   catalogue entry, the Front shall return the answer, the recall estimate,
+   the corrected answer where one applies, and the entry, mode, status and
+   reason it ran under.
+3. The Front shall accept any prompt with a decision definition and shall not
+   require the prompt to be built by Recall Guard.
+4. When the caller names no mode, the Front shall choose one by a stated order:
+   a qualified mode first; otherwise an available mode for which the caller
+   supplied a calibrator; otherwise the logprobs mode if available, else the
+   logits mode; and shall state in the result which mode it chose and why.
+5. If the entry and mode is not qualified or not tested, then the Front shall
+   still return the answer, uncorrected and marked with the status and reason,
+   and shall not refuse.
+6. Where the caller supplies no calibrator, the Front shall return the answer
+   and the status without a recall estimate and shall state that no calibrator
+   was supplied.
+7. Where the caller supplies no client, the Front shall reach the model through
+   the entry's provider profile.
+8. The Front shall state with each result what limited it: no qualified mode,
+   no calibrator supplied, a calibrator other than the recorded one, an
+   estimate that could not be computed, or nothing.
+9. If the Front cannot produce an answer (the entry is unknown, neither mode is
+   available, the model cannot be reached, or the reply cannot be read), then
+   the Front shall say which step failed and what the caller can change, and
+   shall return no partial result as an answer.
+10. The Front shall ship one worked example: the fenced point-in-time macro
+    prompt with its decision definition.
+11. The integration tests of this feature shall enter through the Front and
+    shall run offline with fixed replies, without a key and without a network,
+    covering every status, both modes, the mode choice, the missing calibrator
+    and each failure of criterion 9.
+12. Where a local model host is declared available, an integration test shall
+    run the worked example through the Front against it and record the entry,
+    mode and status of the result; it shall be skipped otherwise.
+13. The demos of this feature shall enter through the Front: a script and a
+    notebook that list the catalogue, select an entry, run the worked example
+    and show the result, both runnable offline.
+14. The documentation shall describe the Front on one page: how to list the
+    catalogue, select an entry, run a prompt and read the result, with the
+    meaning of each status and a link to the catalogue.

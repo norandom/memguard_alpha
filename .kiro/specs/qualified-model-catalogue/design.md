@@ -661,3 +661,124 @@ flowchart LR
 - Commit and push before and after each step.
 - The asset republish and the report edits that reference the new file names
   land in one commit, so the strict build never sees a missing figure.
+
+## Amendment 2026-11-11: the front (Requirement 11)
+
+The owner's objective: a front where people run their prompts and get
+point-in-time answers as good as we can make them; integration tests and demos
+enter through it. The front is the existing Python interface, extended. The
+catalogue, `select` and `guarded_select` are its back.
+
+### Boundary
+- **Owns**: `ask`, `FrontAnswer`, `FrontFailure`, the mode-choice order, the
+  fixed-reply client for offline use, the worked example, the integration
+  tests, the demo script and notebook, the front page of the docs.
+- **Out of boundary**: the guard, the catalogue rule, provider profiles, the
+  consumer pipeline, any web or command-line product.
+- **Allowed dependencies**: `recall_guard.harness.front` may import
+  `harness.selection`, `harness.guarded_decision`, `core.catalogue`,
+  `core.profiles`, `core.decision`, `mia.estimate_source` and
+  `dataset.macro_regime` (for the worked example only).
+- **Revalidation triggers**: a change to `SelectedDecision`, to the status
+  vocabulary, or to how a profile builds a client.
+
+### Component: Front (harness)
+
+| Field | Detail |
+|-------|--------|
+| Intent | Run a caller's prompt for a catalogue entry and return the best answer available, with what limited it |
+| Requirements | 11.1 to 11.10 |
+
+```python
+@dataclass(frozen=True)
+class FrontFailure:
+    step: str            # "entry" | "mode" | "client" | "request" | "reply"
+    detail: str
+    remedy: str          # what the caller can change
+
+@dataclass(frozen=True)
+class FrontAnswer:
+    entry_id: str
+    mode: Mode | None
+    mode_choice: str                         # why this mode was used
+    status: Status | None
+    reason: str
+    answer: Mapping[str, float] | None       # the uncorrected decision
+    p_memorized: float | None
+    corrected: Mapping[str, float] | None    # only when status is qualified
+    limits: tuple[str, ...]                  # empty when nothing limited the answer
+    failure: FrontFailure | None
+    selected: SelectedDecision | None        # the guard's own result, untouched
+
+def choose_mode(entry: CatalogueEntry, *, catalogue: Catalogue,
+                calibrators: Mapping[Mode, SourceCalibrator]) -> tuple[Mode, str]: ...
+
+def ask(prompt: str, definition: DecisionDefinition, *, entry: str, mode: Mode | None = None,
+        client: CompletionClient | None = None,
+        calibrator: SourceCalibrator | Mapping[Mode, SourceCalibrator] | None = None,
+        full_distribution: FullDistributionClient | None = None,
+        catalogue: Catalogue | None = None, draws: int = 32, min_parsed: int = 24,
+        environment: Mapping[str, str] | None = None) -> FrontAnswer: ...
+
+class FixedReplies(CompletionClient): ...   # replays given replies with their token evidence, no network
+
+def worked_example() -> tuple[str, DecisionDefinition]: ...   # fenced macro prompt and its definition
+```
+- Mode choice (11.4): a qualified available mode; otherwise an available mode
+  that has a supplied calibrator; otherwise logprobs if available, else logits.
+  `mode_choice` states which rule applied.
+- With a calibrator, `ask` calls `guarded_select` unchanged; the status, the
+  recall estimate and the correction are exactly its result (11.2, 11.5).
+- Without a calibrator (11.6), `ask` asks the model for the ensemble and
+  reduces it with the same decision definition, returns the answer with
+  `p_memorized=None`, the catalogue status of the mode, and the limit "no
+  calibrator supplied". It computes no estimate of its own.
+- Without a client (11.7), `ask` builds one from the entry's profile through
+  the existing profile connection; an entry without a profile needs a client.
+- Failures (11.9) are returned as `FrontAnswer.failure` with `answer=None`;
+  programming errors (wrong types) still raise.
+- `limits` (11.8) is derived, not free text: fixed phrases for no qualified
+  mode, no calibrator, calibrator not the recorded one, estimate unavailable.
+- `ask`, `FrontAnswer`, `FrontFailure`, `FixedReplies` and `worked_example`
+  are exported at the package root; the root still imports no plotting
+  library and reads no file at import.
+
+### Files
+```
+recall_guard/harness/front.py            # ask, FrontAnswer, FrontFailure, choose_mode, FixedReplies, worked_example
+tests/harness/test_front.py              # unit tests with fakes
+tests/integration/test_front_offline.py  # every status, both modes, mode choice, failures, through ask()
+tests/integration/test_front_live.py     # opt-in, local host, skipped unless declared available
+examples/pit_front.py                    # demo script, --fixture runs offline
+notebooks/pit_front.ipynb                # the same demo as a notebook
+docs/front.md                            # the one page for the front
+```
+Modified: `recall_guard/__init__.py` (exports), `tests/test_root_exports.py`
+(pins the new block), `mkdocs.yml` and `docs/index.md` (link to the page).
+
+### Traceability
+
+| Requirement | Summary | Components | Interfaces |
+|-------------|---------|------------|------------|
+| 11.1 | Existing interface kept | Front | root exports, `tests/test_root_exports.py` |
+| 11.2, 11.3, 11.5 | Answer with estimate, correction, status; any prompt; never refuses for status | Front, Selection | `ask`, `FrontAnswer` |
+| 11.4 | Mode choice with its reason | Front | `choose_mode`, `FrontAnswer.mode_choice` |
+| 11.6, 11.7 | No calibrator; no client | Front | `ask` |
+| 11.8, 11.9 | Limits and failures | Front | `FrontAnswer.limits`, `FrontFailure` |
+| 11.10 | Worked example | Front | `worked_example` |
+| 11.11 | Offline integration tests | Integration tests | `FixedReplies` |
+| 11.12 | Opt-in live test | Integration tests | `tests/integration/test_front_live.py` |
+| 11.13 | Demos | Demo script, notebook | `examples/pit_front.py`, `notebooks/pit_front.ipynb` |
+| 11.14 | Front page | Docs | `docs/front.md` |
+
+### Testing
+- Unit: mode choice for each branch; limits for each cause; each failure step;
+  no-calibrator path returns no estimate; the guard's result is passed through
+  untouched.
+- Integration, offline: through `ask` only, with `FixedReplies` and fixture
+  catalogues: qualified with correction, not qualified, not tested, calibrator
+  mismatch, both modes, chosen mode, no calibrator, each failure.
+- Integration, live: the worked example on the local route, opt-in by an
+  environment variable; records entry, mode and status in the test output.
+- Demos: the script runs with `--fixture` in a test; the notebook executes
+  offline in a test.

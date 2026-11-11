@@ -160,6 +160,44 @@ records and is not part of CI; it is run locally where a task names it.
   - Done when all of them pass and their logs are stored with the private validation logs
   - _Requirements: 10.5, 10.6, 10.7_
 
+- [ ] 7. The front (amendment 2026-11-11; group 6 validation runs after this group)
+- [ ] 7.1 The front call
+  - One call that takes a prompt, a decision definition and a catalogue entry and returns the answer, the recall estimate, the corrected answer where one applies, and the entry, mode, status and reason; with a calibrator it passes the selection interface's result through untouched
+  - Mode choice when none is named, in the stated order, with the reason in the result; limits stated as fixed phrases; without a calibrator the answer comes back with the status and no estimate; without a client the model is reached through the entry's profile
+  - Failures are returned with the step that failed and what the caller can change, and never as a partial answer
+  - Export the front names at the package root; the root still loads no plotting library and reads no file at import; the root-exports test pins the new block
+  - Done when unit tests with fakes show each mode-choice branch, each limit, each failure step, the no-calibrator path and an estimate identical to the guard's
+  - _Boundary: Front_
+  - _Depends: 2.2_
+  - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9_
+- [ ] 7.2 Fixed-reply client and the worked example
+  - A client that replays given replies with their token evidence and touches no network, for offline tests and demos
+  - The worked example: the fenced point-in-time macro prompt with its decision definition, from the existing macro renderer
+  - Done when tests show the client returns the given replies in order with their evidence, refuses when it runs out, and the worked example's prompt carries no date, ticker or raw level and parses with its definition
+  - _Boundary: Front_
+  - _Depends: 7.1_
+  - _Requirements: 11.10, 11.11_
+- [ ] 7.3 Offline integration tests through the front
+  - Tests that enter only through the front call, with fixed replies and fixture catalogues: qualified with correction, not qualified, not tested, calibrator mismatch, both modes, the chosen mode, no calibrator, and each failure
+  - Done when the tests pass without a key and without a network (a test asserts that no socket is opened), and no test of this file imports the selection or guard modules directly
+  - _Depends: 7.2_
+  - _Requirements: 11.11_
+- [ ] 7.4 Demo script and notebook
+  - A script and a notebook that list the catalogue, select an entry, run the worked example through the front and show the result with its status and limits; both run offline with fixed replies
+  - Done when a test runs the script in its offline mode and executes the notebook offline, and both print the entry, mode, status and limits
+  - _Depends: 7.2_
+  - _Requirements: 11.13_
+- [ ] 7.5 Live integration test, opt-in
+  - A test that runs the worked example through the front against the local route when the host is declared available by an environment variable, and records entry, mode and status; skipped otherwise
+  - Done when the test is skipped by default with a message naming the variable, and its body is exercised offline by a test that substitutes fixed replies for the host
+  - _Depends: 7.2_
+  - _Requirements: 11.12_
+- [ ] 7.6 Front page in the documentation
+  - One page: list the catalogue, select an entry, run a prompt, read the result; the meaning of each status and each limit; a link to the catalogue and to the demo; linked from the index and the navigation
+  - Done when the strict documentation build passes, the page's code sample is executed by a test in its offline form, and the page has no em dash
+  - _Depends: 7.4_
+  - _Requirements: 11.14_
+
 ## Implementation Notes
 
 - 1.3: a record without any quality value is not tested even when another recorded field would fail a check (design invariant, Requirement 1.8); the checks mapping still shows the failing check as False. The cutoff check compares the inside and after means and ignores the recorded difference field; the loader (1.4) should validate that the two agree.
