@@ -1,6 +1,6 @@
 # Handover: memorization-adjusted-finance-sim
 
-State as of 2026-11-11, morning (system clock). Repository `norandom/recall_guard` (local folder
+State as of 2026-11-11, about 07:00 (system clock). Repository `norandom/recall_guard` (local folder
 `D:\Source\memguard_alpha`, branch `main`). The overnight live run authorized on 2026-11-10 ("Yes, run it
 all except Modal") is complete. CI has been green on every commit since the 8.3c fix (`9f8a75a`); check the
 latest pushes with `gh run list --limit 5` (strip ANSI codes before printing).
@@ -61,9 +61,8 @@ latest pushes with `gh run list --limit 5` (strip ANSI codes before printing).
 
 ## Do this first in a new session
 
-1. `git status`; the 9.5 draft is committed (`086ab5a`); if the 9.1b runner fix is still uncommitted
-   (scripts/finance_sim/recording.py, run_study.py and their tests), finish its review and commit it with
-   explicit paths, then check CI.
+1. `git status` (nothing of the spec should be uncommitted; `.openidea/` stays untracked); check CI with
+   `gh run list --limit 6` (strip ANSI codes before printing).
 2. Reproduce the published assets at any time, no host needed:
    `uv run --no-sync python -m scripts.finance_sim.run_study replay --plan-sha256 <hash> --out-root D:\BuildArtifacts\memguard_alpha\replay-<date> --require-guard --compare docs\assets\finance-sim`
    (exit 0 and a byte-for-byte comparison are the pass; the 6 DTB3 warnings are expected).
@@ -75,8 +74,9 @@ latest pushes with `gh run list --limit 5` (strip ANSI codes before printing).
 
 ## Follow-ups recorded by the reviewers (none blocks acceptance)
 
-- 9.1b (in progress at handover time, see the last Implementation Notes entry): a refused or failed pass
-  must be recorded as such in the receipt, and `last_session.evidence_batches` must carry the real count.
+- 9.1b is done (`2c357ae`): a refused or failed pass is recorded as such and the receipt counts the evidence
+  batches; the generation session's own counters still stay 0 on the runner's path (the runner line carries
+  them), and a failed exception still propagates with its traceback.
 - `dtb3_probes` keeps duplicate runs, which inflates `guard.warnings` counts; apply `_distinct` as
   `fmp_probes` does (changes the DTB3 probe count that one test pins).
 - Keep a bounded head of the raw reply for failed draws (today a failed draw keeps no reply text, which is
@@ -142,6 +142,5 @@ stage explicit paths, never `git add -A`; commit messages end with
 `0efa54d` upstream chore, `645fb5a` 7.2, `6fae278` 7.1, `0d386d1` 7.5, `340cc7f` 8.1, `b2009c5` 7.3,
 `3e78d53` 6.4, `2273ea7` 7.6, `c50495e` 7.4, `c3b0a64` 7.7, `66a9694` 7.9, `233ef89` 7.8, `ef04406` 7.12,
 `507efd3` 7.3b, `bd33e81` 7.10, `1c4035c` 7.11, `d023b17` 8.2, `c0b3abb` 8.3, `9f8a75a` 8.3c, `cb177f2` 8.4,
-`657a015` 9.1, `73cb8e4` 9.2a, `6d9927d` 9.3a, `724c966` 8.3d (F4 labels), `086ab5a` 9.5 draft; live-run notes `b550e88`, `1ff1591`, `69f78ea`; design
-`35764dc`; test-threshold fixes `8dc3f0f`, `79b3909`. 9.1b and this handover follow (see
-`git log --oneline -8`).
+`657a015` 9.1, `73cb8e4` 9.2a, `6d9927d` 9.3a, `724c966` 8.3d (F4 labels), `086ab5a` 9.5 draft, `2c357ae` 9.1b; live-run notes `b550e88`, `1ff1591`, `69f78ea`; design
+`35764dc`; test-threshold fixes `8dc3f0f`, `79b3909`. Notes commits `85e16d6` and the one carrying this handover follow.
