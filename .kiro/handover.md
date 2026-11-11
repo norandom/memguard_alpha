@@ -1,9 +1,144 @@
-# Handover: memorization-adjusted-finance-sim
+# Handover: qualified-model-catalogue (active), memorization-adjusted-finance-sim (closed)
 
-State as of 2026-11-11, evening (system clock). Repository `norandom/recall_guard` (local folder
-`D:\Source\memguard_alpha`, branch `main`). The overnight live run authorized on 2026-11-10 ("Yes, run it
-all except Modal") is complete. CI has been green on every commit since the 8.3c fix (`9f8a75a`); check the
-latest pushes with `gh run list --limit 5` (strip ANSI codes before printing).
+State as of 2026-11-11, end of day (system clock). Repository `norandom/recall_guard` (local folder
+`D:\Source\memguard_alpha`, branch `main`). The owner ended the session while task 4.1 was in review. This
+first part is the current state and overrides the older sections below where they differ.
+
+## The objective and the active spec
+
+The owner's objective: recall-aware answers. An answer carries a calibrated recall estimate and is corrected
+by it. A forecast at 50:50 is the design condition, never a finding. Delivery: a front where people run a
+point-in-time prompt and get the best answer the catalogue allows; integration tests and demos go through it.
+Models and serving routes are data; what matters is that a model on a route can be qualified from a catalogue,
+in the logprobs mode or the logits mode.
+
+Spec `.kiro/specs/qualified-model-catalogue/` (requirements 1 to 11, design with "Amendment 2026-11-11: the
+front", tasks in groups 1 to 7, all phases approved). `tasks.md` ends with "## Implementation Notes": one
+entry per task, with the follow-ups each review routed to a later task. Read them before starting a task.
+
+| Group | Done | Open |
+|---|---|---|
+| 1 Foundation | 1.1 to 1.4 | none |
+| 2 Core | 2.1 to 2.4 | none |
+| 3 Analyses and figures | 3.1, 3.1b, 3.2 to 3.5 | none |
+| 4 Integration | none | 4.1 implemented, uncommitted, in review; 4.2, 4.3 |
+| 5 Research record | 5.1 | 5.2 to 5.6 |
+| 7 Front | 7.1 to 7.5, 7.3b | 7.6 documentation page |
+| 6 Validation | none | 6.1, last |
+
+## Do this first in the next session
+
+1. `git status`. Expected uncommitted: the task 4.1 files listed below, and `.openidea/` untracked (never add
+   it). Everything else is committed and pushed (last commit of the day: this handover).
+2. Task 4.1 has no recorded review verdict. The review was started at session end; if no verdict is recorded
+   in `tasks.md`, dispatch a fresh review (brief below), then commit on APPROVED or remediate.
+3. Check CI: `gh run list --workflow CI --limit 6` (strip ANSI codes). See "CI" below for what to expect.
+
+## Task 4.1 (replay integration): implemented, not reviewed, not committed
+
+Uncommitted files: `scripts/finance_sim/replay.py`, `published_text.py` (new), `figures.py`,
+`figures_draws.py`, `figures_convergence.py`, `figures_catalogue.py`, `repeat_baseline.py`; under
+`tests/scripts/finance_sim/`: `test_published_text.py` (new), `test_replay.py`, `test_run_study.py`,
+`test_figures.py`, `test_figures_draws.py`, `test_figures_convergence.py`, `test_figures_catalogue.py`,
+`test_repeat_baseline.py`.
+
+Implementer's report (not independently verified): `test_replay.py` 30 passed, `test_run_study.py` 52 passed,
+the figure and analysis tests 390 passed, ruff and the architecture check clean. Only the test fixture study
+was replayed; `runs/` and `docs/` are untouched. A fixture replay's 38 published files are under
+`D:\BuildArtifacts\memguard_alpha\task-4.1-published\`.
+
+What it does: the guarded replay writes the cutoff check, the mode comparison (which receives the logits
+cutoff result for the identifying prompt) and the repeat baseline, and publishes Figures 5 to 7 beside
+Figures 1 to 4 and 8. The replay reads draw logs only through the read-only `recording.read_draw_log`.
+`published_text.published_reason` turns stored reason strings into plain sentences and refuses an unknown
+one. Published tables drop `arm` and `role` and carry plain variant labels. The repeat baseline's route label
+comes from the frozen plan.
+
+Open questions the review was asked to judge (decide them before 4.2):
+
+- The 14 published analysis copies (pre-registered, ensemble, negative-control, convergence, cutoff-check,
+  mode-comparison, repeat-baseline-analysis) are copied unchanged in the study's working vocabulary, with
+  requirement numbers and identifiers. This is against the owner's rule for published text. Either stop
+  publishing the copies (the eight figures with their tables may satisfy Requirement 10) or rewrite the
+  Markdown writers of the seven analysis modules.
+- Published figure tables still carry internal values in other columns (`draw_mode`, `adjustment`, `status`,
+  `stage`, `rendering`, `quantity`, `evidence`, the `statistic` identifiers of Figures 5 to 7).
+- A Wilson lower bound of 0 of 40 prints as "0.0000000000000000069" in a caption on the fixture.
+
+Review brief: the licensing guard must be unchanged in logic and scan every new file; no path may modify a
+private record; two fresh processes must give identical bytes; no published sentence may be untrue relative
+to its stored reason.
+
+## Remaining tasks, in order
+
+- 4.2 Republish from the recorded data and complete the catalogue: run the replay on the real records with
+  `--require-guard`, fill the permutation p, the cutoff checks and the calibrator fingerprints for the
+  entries of report R43, repoint R43 to the new asset names (it links `-light`/`-dark` SVG files and uses the
+  old variant keys). A stored reason without a rule refuses the replay by design: add the rule with a test.
+- 4.3 Catalogue page: caveat the serving EDGAR AUC of 0.000, show valid-draw counts, do not print a profile
+  display name that contains "RAM".
+- 5.2 methods page (turn the template's methods-page path into a link, tighten the head matcher, name the
+  figure style in the template), 5.3 synthesis from `blueprint.md` with a humanizer pass, 5.4 R43 rewrite,
+  5.5 register, 5.6 summary blocks for the 19 other dated reports.
+- 7.6 Front documentation page (`docs/front.md`), with the wording suggestions of the 7.4 review: point the
+  demo's calibrator sentence to the new page; "qualified ... can be corrected when its recorded calibrator
+  is supplied"; one sentence each in the script on the recall estimate and the two modes; take the draw
+  count from the result; add "or run with --fixture" to a client failure. Also: the mode failure remedy in
+  `front.py` prints "not_tested" with an underscore; one catalogue reason cites "(R41)"; update the design's
+  allowed-dependency list for the front.
+- 6.1 Whole-feature validation: full suite, ruff, architecture check, strict docs build, replay compare, CI.
+
+## The front today
+
+`from recall_guard import ask, front, FixedReplies, worked_example, load_catalogue, ModelConfig`.
+`ask(prompt, definition, *, entry, mode=None, client=None, calibrator=None, ...)` returns a `FrontAnswer`
+(entry, mode, mode choice, status, reason, answer, `p_memorized`, corrected answer, limits, failure, draws
+asked and used). Limit and mode-choice phrases are `front.LIMIT_*` and `front.CHOICE_*`.
+
+- Demo, offline: `uv run --no-sync python examples/pit_front.py --fixture` (also `--entry`, `--mode`,
+  `--json`); notebook `notebooks/pit_front.ipynb`.
+- Integration tests: `tests/integration/` (`test_front_offline.py`, `test_pit_front_demo.py`,
+  `test_front_live.py`).
+- Live test, not yet run against a real route. With the local llama.cpp route up and `LOCAL_MODEL_API_KEY`
+  set: `$env:RECALL_GUARD_LIVE_ENTRY = "llamacpp-gemma3-4b"`, then
+  `uv run --no-sync pytest -q -rs tests/integration/test_front_live.py -k declared_route`. It starts no host.
+- The shipped catalogue has 14 entries and no qualified mode: `llamacpp-gemma3-4b` is not tested in both
+  modes (no permutation p recorded), `modal-gemma3-4b` logprobs is not qualified (AUC 0.583), six
+  document-text entries are not qualified, the rest are not tested. Task 4.2 fills the missing inputs.
+- Recorded for a later spec: a person cannot obtain a calibrator through the front (Requirement 11 has the
+  caller supply it). Candidates: a calibrate step in the front, or a shipped calibrator for the worked example.
+
+## Results on the recorded data (from tasks 3.1 to 3.3; no new run)
+
+- Repeat baseline: llama.cpp at temperature 0.7, 3 of 29 prompts gave one answer on every draw (0.103, Wilson
+  0.036 to 0.264); Modal at temperature 0, 31 of 35 (0.886, 0.740 to 0.955).
+- Cutoff check, identifying prompt, 12 months inside the training range and 5 after: logprobs difference
+  +0.096 (-0.00033 to +0.192, p 0.102); logits +0.044 (-0.166 to +0.313, p 0.335). Neither passes.
+- Mode comparison, macro, 11 held-out prompts: AUC logprobs 0.722 (0.586 to 0.855), logits 1.000; paired
+  difference +0.2783 (0.1403 to 0.4106); limits of agreement -0.7763 to +0.6693; correction factor
+  difference 0.0414 (-0.0571 to 0.1466). Answer on whether logits help: undecided.
+
+## CI
+
+Four of the last 30 runs failed. Two (`0eedff5`, `ae6b9cd`) failed on
+`ImportError: cannot import name 'FIGURE_WIDTH_IN'`: the committed 3.4 tests needed a constant that was only
+in the then-uncommitted 3.5 work; fixed by `90f7f07`, which the end-of-day push carries. One (`caaf818`)
+failed on a dropped local connection in `tests/scripts/test_serve_full_distribution_batch.py` on Windows
+(5,575 other tests passed). One (`33b47d0`) gave no readable failure lines. The CI result of the end-of-day
+push was not awaited.
+
+## Working rules added today
+
+- Research documents are quant documents: summary first, each fact once, models and routes as data rows, no
+  operating-system or tooling narrative, never a retelling of the spec (link it under references). Figures in
+  academic journal style. Statistics with the calculation shown.
+- Commit per task, push per group of tasks. Stage explicit paths.
+- Private draw logs must never be modified by an analysis; read them with `recording.read_draw_log`.
+- Implementers on Fable, reviewers on Opus at medium effort; one independent review per task.
+
+# Earlier spec: memorization-adjusted-finance-sim (closed 2026-11-11)
+
+The overnight live run authorized on 2026-11-10 ("Yes, run it all except Modal") is complete.
 
 ## Where the spec stands
 
