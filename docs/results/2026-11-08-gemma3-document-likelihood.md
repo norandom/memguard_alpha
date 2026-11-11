@@ -8,6 +8,9 @@ measurement: Gemma 3 4B shows no predictive capacity on held-out data. That is
 the result the study design expects. The method is stronger than Phase A's,
 because it uses every token of the candidate text and exact probabilities.
 
+> **Later evidence (2026-11-11):** the intervals in this report are row-level stratified
+> bootstraps with 1,000 resamples at 95 percent (`scripts/evaluate_document_likelihood.py`).
+
 ## Question
 
 Does the per-token likelihood of a document under Gemma 3 4B separate press

@@ -9,6 +9,12 @@ the models are not supposed to have predictive capacity here, and establishing
 that is part of the research. These are single draws; the ensemble test (Phase B)
 follows.
 
+> **Later evidence (2026-11-11):** held-out rows per class, from each run's evaluation report
+> (memorized, control): Gemma 3 4B 40 and 39; Llama 3.2 3B 40 and 39; Llama 3.1 8B 39 and 40;
+> GPT-OSS-20B 38 and 29; Gemma 3 4B on the NPU 40 and 40; Gemma 4 E4B on the NPU 40 and 33. Each
+> run had 80 labeled held-out rows; the counts are the rows that were usable for scoring. The
+> intervals in the table are row-level stratified bootstraps with 1,000 resamples at 95 percent.
+
 ## Question
 
 Does a freshly fitted `p_memorized` calibrator rank memorized text above unseen
