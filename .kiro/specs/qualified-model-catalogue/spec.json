@@ -1,9 +1,9 @@
 {
   "feature_name": "qualified-model-catalogue",
   "created_at": "2026-11-11T19:45:00Z",
-  "updated_at": "2026-11-11T21:45:00Z",
+  "updated_at": "2026-11-11T22:30:00Z",
   "language": "en",
-  "phase": "design-generated",
+  "phase": "tasks-generated",
   "approvals": {
     "requirements": {
       "generated": true,
@@ -14,10 +14,10 @@
       "approved": true
     },
     "tasks": {
-      "generated": false,
-      "approved": false
+      "generated": true,
+      "approved": true
     }
   },
-  "ready_for_implementation": false,
-  "approval_context": "User approved the requirements on 2026-11-11 (\"approved\") after answering the open questions: catalogue first; entry = model plus serving route; recall = financial time series inside the training range, corrected by a logprobs heuristic; research question = do logits help. Design approved on 2026-11-11 (\"approved\"): qualification rule with four required checks (time-series boundary, 50 valid draws per class, AUC at least 0.6 with permutation p below 0.05, estimate higher inside the training range than after the cutoff); thresholds for the logits answer (improve, match within 0.05 and agreement limits within 0.10, otherwise undecided); approval also accepts the blueprint grid."
+  "ready_for_implementation": true,
+  "approval_context": "User approved the requirements on 2026-11-11 (\"approved\") after answering the open questions: catalogue first; entry = model plus serving route; recall = financial time series inside the training range, corrected by a logprobs heuristic; research question = do logits help. Design approved on 2026-11-11 (\"approved\"): qualification rule with four required checks (time-series boundary, 50 valid draws per class, AUC at least 0.6 with permutation p below 0.05, estimate higher inside the training range than after the cutoff); thresholds for the logits answer (improve, match within 0.05 and agreement limits within 0.10, otherwise undecided); approval also accepts the blueprint grid. Tasks approved on 2026-11-11 (\"start impl\") after two independent task-graph reviews (both NEEDS_FIXES, all findings repaired; the owner chose to start without a third pass)."
 }
