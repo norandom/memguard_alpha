@@ -149,7 +149,7 @@ generation settings; this unsteered calibrator cannot simply be reused.
 The hypothesis fails if apparent recall reduction comes from lost task
 ability, changed factual inputs or more failed responses. A reduction in
 historical accuracy alone is insufficient. A completion-only rewriting
-experiment would additionally need checks that the rewritten prompt preserves
+experiment would also need checks that the rewritten prompt preserves
 the information available at the decision time.
 
 ## Evidence

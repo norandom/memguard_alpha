@@ -98,7 +98,7 @@ published v0.5.0 release.
 Downloaded models live in the checkout's `models/` directory, excluded from Git,
 Docker build contexts and Dagger uploads. The existing Ollama store was copied
 and SHA-256 verified there on November 6, retaining its blobs and manifests.
-The original copy remains pending cleanup; see the
+The original copy is still pending cleanup; see the
 [storage and sequential test receipt](results/2026-11-06-local-model-storage.md).
 To start the optional
 host from this location, quit any existing Ollama server, then use PowerShell.

@@ -7,9 +7,9 @@ full-distribution host. Literature only; no new measurement.
 
 An adopter who runs the guarded decision against a hosted endpoint has one
 exposure that no calibrator can absorb: the weights behind the endpoint change
-and nobody tells them. A quantised replacement, a silent update, a different
-serving kernel. The calibrator keeps producing numbers, and the numbers are
-about a model that no longer exists.
+and nobody tells them. The cause can be a quantised replacement, a silent
+update or a different serving kernel. The calibrator keeps producing numbers,
+but they describe a model that is no longer served.
 
 The fingerprinting literature shows that the same evidence Recall Guard uses
 for `p_memorized`, top-k log-probabilities, already carries the model's
@@ -89,8 +89,8 @@ binds model, protocol, endpoint, response mapping, estimate source, generation
 settings and calibration corpus. A calibrator is refused on evidence from a
 different source or different settings, naming the field. The fingerprinting
 work is the argument for why this has to be explicit: an endpoint's identity is
-recoverable from its logits, so a guard that does not pin identity is one silent
-update away from scoring a stranger.
+recoverable from its logits, so a guard that does not pin identity can score a
+different model after one silent update without noticing.
 
 Values compare only within one set of weights. The subspace is per model.
 Features and estimates from top-k and from the full distribution are compared

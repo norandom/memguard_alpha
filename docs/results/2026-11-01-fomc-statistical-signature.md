@@ -61,8 +61,8 @@ selected to make a small lexical feasibility check possible.
 
 | Probe | Exposure shift | Shift relative to old-only volume control | Interpretation |
 | --- | ---: | ---: | --- |
-| Rate wording ending in “rate at” | +30.58 | +34.54 | Later zero-rate candidate gains relative support |
-| Rate wording ending in “rate to” | +32.71 | +35.16 | Same direction under a second context |
+| Rate wording ending in "rate at" | +30.58 | +34.54 | Later zero-rate candidate gains relative support |
+| Rate wording ending in "rate to" | +32.71 | +35.16 | Same direction under a second context |
 | Coronavirus wording | +18.67 | +18.67 | Positive, but comparison candidate contains an unknown token |
 | Risk wording | +11.04 | +11.04 | Positive, but comparison candidate contains an unknown token |
 

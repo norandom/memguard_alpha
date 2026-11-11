@@ -61,7 +61,7 @@ makes no calls. Read `unsupported` and `requires_probe`; a supported declaration
 without observed evidence still requires a probe.
 
 `workflow.validate(rewrite=..., ensemble=...)` checks the selected configuration
-locally. `workflow.preflight(rewrite=..., ensemble=...)` actually calls each
+locally. `workflow.preflight(rewrite=..., ensemble=...)` calls each
 active role. Inspect `ready_for_batch`, `affected_role`, `failure_kind`, `error`
 and `diagnostics` before proceeding. `run()` also preflights and reuses cached
 probes while the configuration remains identical. A successful probe establishes

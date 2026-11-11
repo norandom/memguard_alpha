@@ -5,7 +5,8 @@
 Gemma 4 E4B shows no predictive capacity on held-out documents, as the study
 design expects. This is the same full-logit document-likelihood method as for
 Gemma 3 4B ([report](2026-11-08-gemma3-document-likelihood.md)), run on the AMD
-Ryzen AI NPU. One method, two models, two kinds of hardware: the same null.
+Ryzen AI NPU. The same method on two models and two kinds of hardware gives the
+same null.
 
 > **Later evidence (2026-11-11):** the intervals in this report are row-level stratified
 > bootstraps with 1,000 resamples at 95 percent (`scripts/evaluate_document_likelihood.py`).

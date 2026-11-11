@@ -33,12 +33,12 @@ Read the premium as a diagnostic contrast, not as deployable alpha. If the ident
 
 The twin comparison is stronger when several channels move in the same direction:
 
-1. **Logprob signature** — the per-call `p_memorized` score from the MIA features and per-model classifier.
-2. **Realized performance** — both twins go through the same allocation and simulation pipeline, so their deltas show the downstream portfolio effect.
-3. **Stated predictions** — a plain directional evaluation of what the model says, independent of the logprob-based score.
-4. **The training-cutoff boundary** — extending both twins beyond the model's published training cutoff tests whether any premium survives on later dates.
+1. **Logprob signature**: the per-call `p_memorized` score from the MIA features and per-model classifier.
+2. **Realized performance**: both twins go through the same allocation and simulation pipeline, so their deltas show the downstream portfolio effect.
+3. **Stated predictions**: a plain directional evaluation of what the model says, independent of the logprob-based score.
+4. **The training-cutoff boundary**: extending both twins beyond the model's published training cutoff tests whether any premium survives on later dates.
 
-Agreement across these channels is suggestive. It still does not collapse every alternative explanation into a single cause on its own.
+Agreement across these channels is suggestive. On its own it does not reduce every alternative explanation to a single cause.
 
 ## How `p_memorized` is determined, per call
 
@@ -56,4 +56,4 @@ The model-selection screen is a separate one-time statistic computed before depl
 
 ## Framing
 
-The twin design is a way to turn a vague concern about look-ahead contamination into a repeatable contrast. It does not make the causal story trivial. What it does give you is a structured before/after comparison: same pipeline, same dates, same prices, different prompt exposure.
+The twin design turns a vague concern about look-ahead contamination into a repeatable contrast. It does not make the causal story trivial. It gives a structured before/after comparison: same pipeline, same dates, same prices, different prompt exposure.

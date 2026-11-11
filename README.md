@@ -10,8 +10,10 @@ Historical accuracy can come from recall as well as reasoning. The score is a
 warning signal learned from your calibration data, not proof that an individual
 answer was memorized. Recall Guard is not a forecaster.
 
-**What it does and does not do.** Recall Guard measures and calibrates how likely
-an answer is recalled; it does not remove memorization from a model. Serving
+It installs with uv from the GitHub repository: see "Install the scorer" below.
+
+Recall Guard measures and calibrates how likely an answer is recalled; it does
+not remove memorization from a model. Serving
 stacks are nondeterministic even at temperature 0, so one call can return a
 different answer and score than the next. The [ensemble](docs/ensemble.md) draws
 the same prompt many times and returns one consensus answer and one
@@ -45,13 +47,13 @@ same model family. Pick the backend that fits your machine and budget:
 | [Modal, remote GPU](docs/modal-provider.md) | The model is too large for your machine | GPT-OSS-20B returned eligible final-answer logprobs with five alternatives in one live request on 2026-11-08, through the [repaired Harmony mapping](docs/results/2026-11-06-gpt-oss-response-mapping.md); not yet calibrated |
 | NVIDIA NIM, hosted | You have NIM credentials and capacity | Recent eligibility attempts timed out or returned 504; treat as unavailable until a fresh probe passes |
 
-**Sizing GPT-OSS-20B locally:** plan for **20 GiB of free RAM**. On CPU, Ollama
+To run GPT-OSS-20B locally, plan for 20 GiB of free RAM. On CPU, Ollama
 allocated 13.9 GB for it at a 2,048-token context, and the rest of the system
 needs headroom. A small integrated GPU does not help, because Ollama ignores
 integrated GPUs by default (`OLLAMA_IGPU_ENABLE`) and runs on the CPU. The
 smaller models above run comfortably on a 32 GB laptop.
 
-**If your machine is short on memory, nothing is loaded.** `connect()` measures
+If your machine is short on memory, nothing is loaded. `connect()` measures
 free RAM first and stops with a plain explanation and alternatives:
 
 ```text
@@ -355,7 +357,7 @@ the Jane Street feature.
 
 ### Recall Guard
 
-If you want to cite the software itself, use the Zenodo DOI. Cite the version you actually ran; the all-versions DOI always resolves to the latest release.
+To cite the software itself, use the Zenodo DOI. Cite the version you ran; the all-versions DOI always resolves to the latest release.
 
 - v0.5.0: [GitHub Release](https://github.com/norandom/recall_guard/releases/tag/v0.5.0); version-specific DOI pending.
 - v0.4.1: <https://doi.org/10.5281/zenodo.21806959>

@@ -176,8 +176,8 @@ the source, and wording that narrowed a general revision caveat to possible
 past revisions. Repeated as-of dates, equivalent date spelling and capitalized
 prose words contributed to disagreement with the token gate.
 
-Budget: eligibility consumed all four requests: three NIM failures and one
-Anthropic success. Calibration's 220-request cap and NIM evaluation's
+Budget: eligibility consumed all four requests (three NIM failures and one
+Anthropic success). Calibration's 220-request cap and NIM evaluation's
 144-request cap remain unused. Opus evaluation used 67/144. The source plan's
 overall cap is 512, with no automatic transfer of unused phase budgets.
 

@@ -8,7 +8,7 @@
 
 # Test divergence decoding with open weights and a controlled generation loop
 
-Proposal dated **2026-11-01**. Status: proposed experiment; no additional live
+Proposal dated 2026-11-01. Status: proposed experiment; no additional live
 requests, model downloads, compute provisioning or implementation are authorized
 by this document. Existing results are documented
 [without ensembles](results/2026-11-01-recall-guard-single.md) and

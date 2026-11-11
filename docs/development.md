@@ -66,8 +66,8 @@ docker compose run --rm dev uv run --no-sync mkdocs build --strict --site-dir /o
 ```
 
 Artifacts appear under `runs/container/dist` and `runs/container/site` on the
-host. Run focused checks while changing behavior and one full regression at the
-completed integration boundary. Existing release compatibility jobs retain their
+host. Run focused checks while changing behavior and one full regression when
+the integration is complete. Existing release compatibility jobs retain their
 Python matrix; there is no need to replay that matrix for each helper.
 
 Dependencies install with `uv sync --frozen` during the image build. Runtime
@@ -98,7 +98,7 @@ docker compose --profile notebook down
 
 For background operation use `up --detach notebook` with the same profile.
 The long flag also avoids PowerShell functions interpreting `-d` as Debug.
-No provider requests or credential injection occur at notebook startup.
+Notebook startup sends no provider requests and injects no credentials.
 
 ## Install only the runtime when development tools are unnecessary
 
@@ -172,8 +172,8 @@ the same wheel/sdist/site artifacts from writable `/outputs` subdirectories.
 Dagger source arguments exclude secrets and bulky local state before upload.
 The complete build-context exclusions are then read from `.dockerignore`. Keep
 the pre-upload secret/large-directory filters aligned when adding such paths;
-the current build filter deliberately rejects negated ignore rules. Docker and
-Dagger ignore syntax are not assumed interchangeable for arbitrary future rules.
+the current build filter deliberately rejects negated ignore rules. Do not
+assume that Docker and Dagger ignore syntax are interchangeable for future rules.
 
 ## Resolve the concrete failure
 

@@ -2,7 +2,7 @@
 
 This describes the offline accounting contract for `scripts/probe_modal_model.py`.
 It authorizes no paid work. Staging weights, building, deploying and verifying
-live prices/account access remain separately reviewed prerequisites. The USD 5
+live prices/account access are still separately reviewed prerequisites. The USD 5
 target is not a hard ceiling. Monthly provider budgets include prior usage;
 environment budgets cover compute, while workspace budgets cover broader usage.
 The runner never changes shared account policy.
@@ -11,10 +11,10 @@ The default plan prints artifact/resource configuration, frozen prompts and
 request/token/time bounds, dated pricing sources, and the configured-resource
 estimate for the maximum GPU phase. The total estimate stays null because
 staging, build, storage, expiry control, egress and cleanup tails are excluded.
-Review these additional costs before paid approval; the subtotal is insufficient
+Review these additional costs before paid approval; the subtotal alone is not enough
 to establish a complete pilot allowance.
 
-The existing reviewed execution approval must additionally contain `monthly_budget`:
+The existing reviewed execution approval must also contain `monthly_budget`:
 
 ```json
 {
@@ -46,15 +46,15 @@ a short identifier, never an invoice, raw provider error or credential.
 
 Each `attempts` row describes one physical inference intent/outcome. `position`
 is the zero-based index into frozen prompts, not a generated-token index.
-`input_tokens` and `usage` are counts, not token arrays. Token evidence remains
+`input_tokens` and `usage` are counts, not token arrays. Token evidence stays
 in the existing validator; generated text, token strings and logprob arrays are
 not exported. `elapsed_seconds` measures request wall time, including transport
 and validation; it is not model-only token generation time.
 
 `control_events` describe cache inventory and readiness without incrementing
 inference counts. `staging_events` explicitly marks external weight staging as
-a separate prerequisite with unknown cost. Cleanup and expiry outcomes remain
-in `lifecycle`, independently of inference success. `cost_report` is one summary
+a separate prerequisite with unknown cost. Cleanup and expiry outcomes stay
+in `lifecycle`, whether or not inference succeeded. `cost_report` is one summary
 row per run: cold startup runs from deployment admission to readiness; generation
 seconds sum inference elapsed time. HTTP success counts any 2xx result; usable
 measurements require eligible evidence and the measurement stage. The eligibility
@@ -83,4 +83,4 @@ fields are published. Entries append to `billing_reconciliations`; they are
 snapshots, not additive charges. The latest snapshot supplies the summary;
 partial coverage cannot establish a whole-pilot observed total. Existing attempts
 and frozen price assumptions remain unchanged. Reconciliation uses atomic local
-replacement; run one writer per receipt. No provider billing access occurs.
+replacement; run one writer per receipt. It does not access provider billing.

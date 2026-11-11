@@ -14,21 +14,21 @@ that historical response remains excluded from scoring. The
 runner verified model-app shutdown, and final inventory confirmed every owned
 model, expiry and diagnostic app stopped.
 The [response-handling diagnostic](results/2026-11-06-gpt-oss-response-mapping.md)
-subsequently identified an adapter bug: vLLM reports full Harmony-generation
+later found an adapter bug: vLLM reports full Harmony-generation
 probabilities separately from final-answer text. Use the explicit Harmony profile
 below. The mismatch was not a finding that GPT-OSS lacks usable logprobs, and
 different generations are never required to match.
 Startup diagnostics identified the inherited vLLM entrypoint and an incompatible
 `typing_extensions` import. The recipe clears that entrypoint and pins 4.16.0;
 a fresh CPU-only check confirmed `Sentinel` and `pydantic_core` imports. Keep every image operation
-before deferred local-file additions. Weights remain retained after app shutdown.
+before deferred local-file additions. Weights are retained after app shutdown.
 
 The GPU request was A100-40GB; the observed device was A100-SXM4-80GB. Preserve
 both facts in comparisons. This historical run establishes neither 40 GB fit nor
 actual attributable GPU cost. The separately authorized diagnostic observed an
 A100-40GB; its response was captured for offline mapping replay without further
 inference.
-The original local CPU result remains in the
+The original local CPU result is in the
 [local integration guide](local-provider.md).
 
 ## Select the GPT-OSS Harmony response profile
@@ -72,7 +72,7 @@ Control IDs come from the pinned tokenizer; no tokenizer framework is loaded.
 Original output IDs and logprob entries share one position axis. The mapper
 selects one complete final-message span and preserves its probabilities and
 alternatives. It rejects unsupported or ambiguous layouts instead of guessing a
-text suffix. The generic client remains available for other response contracts.
+text suffix. The generic client is still available for other response contracts.
 The diagnostic validates mapping by replaying the same captured response;
 fresh calibration is required before scoring claims.
 
@@ -138,7 +138,7 @@ environment.
 Modal serializes the serving class and expiry function, so the operator's Python
 minor must match both remote images. Execution and recipe construction reject
 other minors locally, before SDK import, cache inventory or deployment. Offline
-planning remains usable on the root project's supported Python versions.
+planning still works on the root project's supported Python versions.
 
 The pinned vLLM image uses Python 3.12, matching the expiry image's explicit
 `debian_slim(python_version="3.12")`. On 2026-11-06, read-only Docker Registry
@@ -192,11 +192,11 @@ planning (`plan`, `lock`) reads no credentials. This bearer protects the Web Fun
 credentials are separate. The recipe sets `requires_proxy_auth=True`.
 [Modal proxy authentication](https://modal.com/docs/guide/webhook-proxy-auth)
 documents this scheme (checked 2026-11-06). Live denial without waking a GPU
-remains a required task 10.2 check.
+is still a required task 10.2 check.
 
 Set `target.workspace` and the explicit `https://YOUR-HOST.modal.run/v1` endpoint
 in the reviewed manifest before freezing its hash. Confirm the expected URL
-with the operator; no URL is discovered or silently rewritten by the runner.
+with the operator; the runner neither discovers a URL nor silently rewrites one.
 Keep `cost.provider_budget` null: the reviewed budget belongs in the separate
 approval record. The serving recipe uploads the canonical manifest, so its app,
 environment, artifacts, resources and limits must match the runner's plan.
@@ -224,7 +224,7 @@ is unknown until these additional costs are reviewed. Recheck
 
 No staging command has been executed or automated by the GPT-OSS-20B runner.
 The `stage` mode above exists for the finance study's Gemma 3 4B weights; this
-manual strategy remains the GPT-OSS-20B route. It is for a separately approved setup window and needs disk/network and
+manual strategy is still the GPT-OSS-20B route. It is for a separately approved setup window and needs disk/network and
 storage cost review. Local Ollama GGUF blobs are incompatible with this vLLM
 MXFP4/safetensors recipe. Do not upload the Ollama store or the checkout.
 
@@ -289,7 +289,7 @@ Inventory proves presence, not shard content integrity or a successful vLLM load
 ## Freeze approval and start only the reviewed pilot
 
 Save approval outside tracked files, for example `runs/container/modal-approval.json`.
-This is the runner's accepted record shape, intentionally unauthorized. Replace
+This is the record shape the runner accepts, left unauthorized on purpose. Replace
 hashes with the final plan output and all review assertions with actual evidence;
 copying this example cannot grant approval.
 
@@ -385,7 +385,7 @@ nothing. What remains is storage: the weight volume (about 13 GiB) is kept on
 purpose until the last planned Modal measurement, then deleted (release-1.0 task
 M4.4). The small provenance Dict stays with it. Scale-to-zero does not delete
 storage or replace verified shutdown. The recorded storage assumption is USD
-0.09/GiB-month; actual billing and retention duration remain unknown.
+0.09/GiB-month; actual billing and retention duration are unknown.
 
 Receipt `attempts` have one row per physical inference intent/outcome; `position`
 is a zero-based frozen prompt index. Lifecycle/control rows are separate.
@@ -403,7 +403,7 @@ Inference ancestry and provider response-error branches remain opaque through
 later cleanup exception chains, including their nested causes.
 Redaction uses nonempty credential values already present in the executing child
 process, including proxy bearer components, and never opens `.env`. Default
-planning remains independent of credentials. Old receipts are unchanged and
+planning does not depend on credentials. Old receipts are unchanged and
 cannot recover previously omitted exception messages.
 
 Token positions in the adapter are generated-token positions, alternatives align
@@ -430,5 +430,5 @@ measure discrimination; calibration and mitigation efficacy require their own
 experiments. [Jane Street's approach](https://blog.janestreet.com/mitigating-memorization-in-llms/)
 motivates the separate divergence work (source checked 2026-11-06). This provider
 extension does not establish generation control or successful divergence decoding.
-Frontier APIs without logprobs remain on the separate
+Frontier APIs without logprobs stay on the separate
 [completion-only workflow](completion-api.md), with no silent fallback here.

@@ -6,7 +6,7 @@ The approved GPT-OSS-20B pilot reached model readiness and sent one eligibility
 request. Strict evidence validation rejected the response with
 `token_text_alignment_failed`; the runner stopped without sending the seven
 measurement prompts. Hosting works for this observed configuration, but it is
-blocked by an integration bug, rather than a model capability failure.
+blocked by an integration bug, not a model capability failure.
 
 The [subsequent response-handling retest](2026-11-06-gpt-oss-response-mapping.md)
 confirmed the defect: full-generation Harmony probabilities were attached to
@@ -21,7 +21,7 @@ evidence eligibility before its measurement prompts?
 
 ## Setup
 
-What was actually verified:
+What was verified:
 
 - Root `.env` account authentication and proxy-token registration in `wishinet`.
 - Registered endpoint identity and unauthenticated HTTP 401 before GPU readiness
@@ -88,7 +88,7 @@ measurement completed. Unused allowance does not bypass the stop gate.
 
 How startup was repaired: the pinned image configuration contains
 `ENTRYPOINT ["vllm", "serve"]`. Modal's registry-image construction preserves
-it. The remote traceback starts in that CLI, rather than the serving hook's
+it. The remote traceback starts in that CLI, not in the serving hook's
 `python -m` subprocess. Clearing the inherited entrypoint is therefore a verified
 configuration repair; it allows Modal's bootstrap arguments to run. See
 [Modal's image guidance](https://modal.com/docs/guide/existing-images).

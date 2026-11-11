@@ -2,7 +2,7 @@
 
 Snapshot from two local example runs. Regenerate by re-running `./start.sh` (recall-guard check) or `scripts/run_cmmd_backtest.py` (`cmmd` backtest). A fixed seed keeps the local sampling and bootstrap steps stable, but hosted model outputs and upstream price data can still move the numbers.
 
-## Recall-guard check — `runs/20260429T073229Z`
+## Recall-guard check: `runs/20260429T073229Z`
 
 Source: `runs/20260429T073229Z/summary.csv`.
 
@@ -16,7 +16,7 @@ Source: `runs/20260429T073229Z/summary.csv`.
 
 No model beat the majority baseline on this stream, so all four score 0 and none survive the gates. On this eval set (next-day ETF direction) that is not surprising; see [What this measures](index.md) in the project overview.
 
-## `cmmd` backtest — `runs/cmmd_20260429T104542Z`
+## `cmmd` backtest: `runs/cmmd_20260429T104542Z`
 
 Single-model run (`openai/gpt-oss-20b`). Sources: `summary.csv`, `is_oos_gap.csv`, `backtest_summary.csv` in the run directory.
 

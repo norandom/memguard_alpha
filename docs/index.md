@@ -8,11 +8,11 @@ score. It does not remove memorization; the divergence utility below is a
 separate, optional experiment. Evidence for each claim is dated in the
 [research register](research-register.md).
 
-Choose a released scorer or mathematical interface, or opt into the development
-completion workflow. The scorer measures contamination-related
-features in hosted model responses. The experimental divergence utility changes
-next-token logits inside a generation loop you control. Choose the interface
-that matches your runtime.
+Choose the interface that matches your runtime: a released scorer or
+mathematical interface, or the development completion workflow. The scorer
+measures contamination-related features in hosted model responses. The
+experimental divergence utility changes next-token logits inside a generation
+loop you control.
 
 | Interface | Input | Output | Runtime |
 | --- | --- | --- | --- |
@@ -192,7 +192,7 @@ Evaluate your own corpora and task before relying on the scores. If source,
 format or period differences explain the classifier's separation, revise the
 calibration data. For divergence decoding, if the model's useful behavior
 deteriorates without independent evidence of reduced recall, the intervention
-has not demonstrated its intended benefit.
+has not shown its intended benefit.
 
 ## Hosted access preflight
 
