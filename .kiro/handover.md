@@ -59,6 +59,21 @@ latest pushes with `gh run list --limit 5` (strip ANSI codes before printing).
   0 licensed leaks and 6 warnings (`runs/finance-sim/validation/live-9.3-replay-2.log`), the committed copy
   compares byte for byte (`live-9.5-replay-compare.log`), and the strict docs build passes.
 
+## Live state of 9.4 (2026-11-11 from 08:41)
+
+The Modal serving arm runs under the user's approval record (runs/finance-sim/approvals/<plan>.json, re-written
+for the TRITON_ATTN manifest) through a detached driver, `scratchpad\live\run_serving.ps1`, whose status file
+is `scratchpad\live\serving.status` (lines START/EXIT/SERVE/RESULT/STOP/FAILED/DONE) and whose per-step logs
+sit under `runs/finance-sim/records/serving/<stage>/driver-*.log`. The driver survives this session: it runs
+calibration, then the full run, then the negative control, each as one serve lifecycle (expiry controller armed
+at the stage's frozen max_seconds), and stops at the first non-zero runner exit. If a lifecycle is interrupted,
+the controller stops the app at its deadline; `modal app list --env recall-guard-pilot` (through
+`uv run --project deploy/modal --no-sync python -m modal ...` with MODAL_TOKEN_ID and MODAL_TOKEN_SECRET loaded
+by name) shows what remains, and `serve_modal_model.py stop-serve --manifest runs/finance-sim/plan/serving-manifest.json --receipt <serve-receipt>`
+stops it. One serve per stage per approval: a stage whose runner session opened cannot be re-served under this
+record. After the driver's DONE: `run_study analyses --arm serving ...`, the replay for both arms, the final 9.5.
+Smoke run facts: cold start about 2.5 min, 65 output tokens in 4.84 s, 5 top logprobs at every position.
+
 ## Do this first in a new session
 
 1. `git status` (nothing of the spec should be uncommitted; `.openidea/` stays untracked); check CI with
