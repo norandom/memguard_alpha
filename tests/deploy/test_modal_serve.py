@@ -611,6 +611,45 @@ def test_snapshot_has_observed_runtime_and_no_claimed_hardware(monkeypatch, tmp_
     json.dumps(snapshot)
 
 
+def test_startup_failure_reports_the_engine_output_tail_before_any_request(monkeypatch):
+    monkeypatch.setattr(serve, "require_operator_python", lambda: None)
+    observed_id = "ap-" + "b" * 22
+    monkeypatch.setattr(serve, "running_app_id", lambda: observed_id)
+    sdk = FakeSDK()
+    serve.create_app(sdk=sdk)
+    monkeypatch.setattr(serve, "_expiry_store", lambda plan: sdk.store)
+    monkeypatch.setattr(serve, "require_remote_expiry", lambda plan, app_id, store: None)
+    monkeypatch.setattr(serve, "version", lambda name: "0.17.0")
+    monkeypatch.setattr(serve, "snapshot", lambda plan, app_id, phase: {
+        "app_id": app_id, "app_name": plan.target.app, "environment": plan.target.environment, "phase": phase})
+
+    def popen(command, *, stdout, stderr):
+        # The engine prints its diagnostics and exits before it ever listens.
+        assert stderr is subprocess.STDOUT
+        stdout.write(b"INFO engine starting\n" + b"x" * 5000 + b"\nValueError: unrecognized arguments: --no-such-flag\n")
+        return SimpleNamespace(poll=lambda: 2, terminate=lambda: None, wait=lambda **kwargs: None)
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
+
+    def unreachable(url, **kwargs):
+        raise serve.URLError("refused")
+
+    monkeypatch.setattr(serve, "urlopen", unreachable)
+    service = sdk.service()
+    with pytest.raises(RuntimeError, match=r"(?s)engine exit 2.*unrecognized arguments: --no-such-flag") as raised:
+        service.start()
+    failure = sdk.store[("startup_failure", observed_id, service.instance_id)]
+    assert failure["exit_code"] == 2 and failure["detail"].endswith("unrecognized arguments: --no-such-flag")
+    assert len(failure["detail"]) <= serve.STARTUP_TAIL_BYTES and "engine starting" not in failure["detail"]
+    assert [value.get("phase") for value in sdk.store.values()] == ["starting", "failed", None]
+    assert "x" * 100 in str(raised.value)
+    # The provenance reader ignores the failure row, so the tail never reaches a receipt built from it.
+    rows = serve.read_observations(load_plan(MANIFEST), observed_id, sdk=sdk)
+    assert [row["phase"] for row in rows] == ["starting", "failed"]
+    assert all("detail" not in row and "no-such-flag" not in json.dumps(row) for row in rows)
+    service.close()
+
+
 def test_startup_and_closing_observations_use_control_plane(monkeypatch):
     monkeypatch.setattr(serve, "require_operator_python", lambda: None)
     observed_id = "ap-" + "a" * 22

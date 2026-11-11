@@ -18,6 +18,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -475,6 +476,24 @@ def _weight_format(artifacts) -> list[str]:
     return options
 
 
+#: Bytes of the engine's output kept in a startup failure: enough for the final traceback, never a request.
+STARTUP_TAIL_BYTES = 4096
+
+
+def startup_tail(log) -> str:
+    """The last bytes of the engine's output file, read only after a failed startup.
+
+    No request has been sent at that point, so the text can hold engine
+    diagnostics only; it reaches the raised error and the control-plane store,
+    never a receipt.
+    """
+    log.flush()
+    log.seek(0, os.SEEK_END)
+    size = log.tell()
+    log.seek(max(0, size - STARTUP_TAIL_BYTES))
+    return log.read().decode("utf-8", errors="replace").strip()
+
+
 def server_command(plan: Plan) -> list[str]:
     """Pass through native completion evidence; never normalize a top-k subset."""
     a, r = plan.artifacts, plan.resources
@@ -676,8 +695,11 @@ def create_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANIFEST):
             self.record("starting")
             if version("vllm") != plan.artifacts.runtime.split("==")[1]:
                 raise RuntimeError("Serving runtime differs from manifest")
-            # Suppress engine diagnostics too: errors can contain request contents.
-            self.process = subprocess.Popen(server_command(plan), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # The engine's output stays in an anonymous file inside the container and is read once, on a
+            # failed startup, before any request was sent; after readiness it is never read, since engine
+            # errors can contain request contents.
+            self.log = tempfile.TemporaryFile(mode="w+b")
+            self.process = subprocess.Popen(server_command(plan), stdout=self.log, stderr=subprocess.STDOUT)
             deadline = time.monotonic() + plan.limits.startup_seconds
             while time.monotonic() < deadline and self.process.poll() is None:
                 try:
@@ -688,7 +710,15 @@ def create_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANIFEST):
                 except (URLError, TimeoutError):
                     pass
                 time.sleep(1)
-            raise RuntimeError("Serving startup failed; no inference sent")
+            detail = startup_tail(self.log)
+            exit_code = self.process.poll()
+            self.record("failed")
+            # Keyed outside the provenance reader's key space (its keys start with the app ID), so the
+            # tail never reaches read_observations and the receipts built from it.
+            self.observations[("startup_failure", self.app_id, self.instance_id)] = {
+                "app_id": self.app_id, "exit_code": exit_code, "detail": detail}
+            engine = f"engine exit {exit_code}" if exit_code is not None else "engine still running at the readiness timeout"
+            raise RuntimeError(f"Serving startup failed; no inference sent ({engine}): {detail}")
 
         def record(self, phase):
             self.observations[(self.app_id, self.instance_id, phase)] = snapshot(plan, self.app_id, phase)
@@ -715,5 +745,7 @@ def create_app(*, sdk=None, root: Path = ROOT, manifest: str = PILOT_MANIFEST):
                         self.process.wait(timeout=5)
                     except subprocess.TimeoutExpired:
                         self.process.kill()
+                if getattr(self, "log", None) is not None:
+                    self.log.close()
 
     return app
