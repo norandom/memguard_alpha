@@ -217,7 +217,7 @@ def test_the_calibrator_path_is_guarded_select_field_for_field(catalogue, series
     assert spy.call_count == 1
     assert spy.call_args.args[0] == PROMPT and spy.call_args.args[1] == chosen
     assert spy.call_args.kwargs == {"client": client, "calibrator": series, "full_distribution": None,
-                                    "draws": 8, "min_parsed": 8}
+                                    "draws": 8, "min_parsed": 8, "temperature": None}
     assert result.selected is spy.spy_return
     assert result.selected == expected
     for name in ("entry_id", "mode", "status", "reason", "answer", "p_memorized", "corrected"):
@@ -412,7 +412,7 @@ def test_without_a_calibrator_the_draws_and_the_reduction_are_the_guards(catalog
 
     assert spy.call_count == 1
     assert spy.call_args.args[0] == PROMPT
-    assert spy.call_args.kwargs == {"client": client, "draws": 8, "min_parsed": 8}
+    assert spy.call_args.kwargs == {"client": client, "draws": 8, "min_parsed": 8, "temperature": None}
     assert result.answer is spy.spy_return.decision
 
 

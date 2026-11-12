@@ -141,6 +141,7 @@ from recall_guard.harness.front import (
     fixed_reply,
     worked_example,
 )
+from recall_guard.harness.offline_example import OfflineExample, offline_example
 
 __all__ = [
     # façade (the headline surface)
@@ -212,6 +213,8 @@ __all__ = [
     "WORKED_EXAMPLE_REPLY",
     "ModelConfig",
     "front",
+    "offline_example",
+    "OfflineExample",
     # ensemble surface (opt-in; see EnsembleSpec)
     "EnsembledScore",
     "EnsembleSpec",

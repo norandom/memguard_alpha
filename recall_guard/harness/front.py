@@ -305,6 +305,7 @@ def ask(
     draws: int = 32,
     min_parsed: int = 24,
     environment: Mapping[str, str] | None = None,
+    temperature: float | None = None,
 ) -> FrontAnswer:
     """Run ``prompt`` for the catalogue entry ``entry`` and return the best answer available.
 
@@ -321,8 +322,11 @@ def ask(
     passed or built, before any request, whether its bearer is usable
     (``credential_problem()``, which reads the client's own environment). A
     passed host object without that method is not checked before the run.
-    ``catalogue`` None loads the shipped catalogue. ``draws`` and
-    ``min_parsed`` are the guard's.
+    ``catalogue`` None loads the shipped catalogue. ``draws``,
+    ``min_parsed`` and ``temperature`` are the guard's. ``temperature`` is the
+    sampling temperature of every draw; None uses the client's own. A
+    calibrator is used only when the draws are made at the temperature it was
+    fitted at, so pass that temperature with it.
 
     ``k`` is the number of alternatives per token the evidence carries in the
     mode in use, as :func:`~recall_guard.harness.selection.select` defines it:
@@ -357,7 +361,8 @@ def ask(
         raise TypeError("environment must be a mapping or None")
     calibrators = _calibrators(calibrator)
     # The guard's own validation of the definition and the ensemble size, before anything is read or sent.
-    GuardConfig(definition, SourceLabel(EstimateSource.TOP_K, None), draws=draws, min_parsed=min_parsed)
+    GuardConfig(definition, SourceLabel(EstimateSource.TOP_K, None), draws=draws, min_parsed=min_parsed,
+                temperature=temperature)
     if catalogue is None:
         catalogue = load_catalogue()
 
@@ -452,13 +457,15 @@ def ask(
         if used is not None:
             try:
                 selected = guarded_select(prompt, selection, definition, client=client, calibrator=used,
-                                          full_distribution=full_distribution, draws=draws, min_parsed=min_parsed)
+                                          full_distribution=full_distribution, draws=draws, min_parsed=min_parsed,
+                                          temperature=temperature)
             except CalibrationMismatchError:
                 # The guard compares the calibrator's identity with the client's before it sends anything, so
                 # no request has been made; the ensemble below is the only one drawn.
                 mismatched = True
         if selected is None:
-            plain = decide_without_estimate(prompt, definition, client=client, draws=draws, min_parsed=min_parsed)
+            plain = decide_without_estimate(prompt, definition, client=client, draws=draws, min_parsed=min_parsed,
+                                            temperature=temperature)
             answer, why, replies, parsed = plain.decision, plain.reason, plain.n_replies, plain.n_parsed
         else:
             decision = selected.decision
@@ -543,6 +550,8 @@ def fixed_reply(
     by descending logprob. For a realized token outside its alternatives, build
     the :class:`~recall_guard.core.completion.TokenEvidence` values directly.
 
+    Examples
+    --------
     >>> reply = fixed_reply('{"a": 1}', [
     ...     ('{"a"', {'{"a"': -0.1, '{"b"': -2.5}),
     ...     (': 1}', [(': 1}', -0.3), (': 0}', -1.4)]),

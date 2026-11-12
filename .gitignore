@@ -32,3 +32,6 @@ runs/
 data/lookaheadbench/
 site/
 /tools/
+
+# mkdocs-jupyter's conversion cache
+/.cache/

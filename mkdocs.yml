@@ -38,6 +38,10 @@ plugins:
         - docs/gen_benchmark_page.py
   - literate-nav:
       nav_file: SUMMARY.md
+  # Renders the committed notebooks under docs/notebooks as pages, with their stored outputs (no execution).
+  - mkdocs-jupyter:
+      execute: false
+      include: ["notebooks/*.ipynb"]
   - mkdocstrings:
       handlers:
         python:
@@ -52,6 +56,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - "Recall-adjusted answers in two modes (notebook)": notebooks/recall_adjusted_answers.ipynb
   - Research:
     - Research report: research-report.md
     - Research register: research-register.md

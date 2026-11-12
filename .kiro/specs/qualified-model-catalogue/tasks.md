@@ -198,7 +198,7 @@ records and is not part of CI; it is run locally where a task names it.
   - _Depends: 7.4_
   - _Requirements: 11.14_
 
-- [ ] 8. The two evidence modes (amendment 2026-11-12, proposed, not approved; runs before 4.2; each task ends at a stop for the owner)
+- [ ] 8. The two evidence modes (amendment 2026-11-12, approved 2026-11-12; runs before 4.2; each task ends at a stop for the owner)
 - [ ] 8.1 Mode Note
   - Read the code of both modes and write the note: evidence per mode, each feature as a formula with its value in each mode and whether the two are equal by construction, the calibrator and the recall estimate, the correction of the answer, the estimand and what it is not, the recorded statistics with their labels, the open step
   - Every statement about the code cites the function it was read from
@@ -209,18 +209,19 @@ records and is not part of CI; it is run locally where a task names it.
   - Done when the owner has approved the specification
   - _Depends: 8.1_
   - _Requirements: 12.6, 12.7, 12.8, 12.15_
-- [ ] 8.3 Two-mode notebook
-  - One prompt through the front in both modes; for each mode the raw answer, the recall estimate, the corrected answer, the feature values, the entry, mode, status and limits; the differences marked as zero by construction or as measured; the mapping section with the note's table and the recorded statistics with labels
-  - Needs the owner's decision on where the notebook's calibrators come from (design, open question)
-  - Done when a test executes the notebook offline, both modes return a recall estimate and a corrected answer, and the owner has seen it run
-  - _Depends: 8.1_
-  - _Requirements: 12.9, 12.10, 12.11, 12.12, 12.13, 12.14_
+- [x] 8.3 Two-mode usage notebook under `docs/`
+  - A simple usage example (owner, 2026-11-12): one prompt through the front in both modes; for each mode the status, the recall estimate, the answer and the corrected answer; each term defined once; one table of what differs between the modes for a user; how the call changes on a person's own route; the status of every shipped entry
+  - Runs offline on an invented setup the package provides (`offline_example`), stated as invented; rendered in the documentation with its stored outputs
+  - States that the estimate is the result and its use the analyst's decision, and that it applies on or before the training cutoff only (after the cutoff it is noise, no correction)
+  - Online groups, off by default: logprobs and logits on the local model (one host at a time, the logits group on the replies of the logprobs group, with the recorded calibrators at temperature 0.7), logprobs on the NPU; start scripts `scripts/start_model_online_*`; `ask` takes `temperature`
+  - Done when a test executes the notebook offline, both modes return a recall estimate and a corrected answer, the stored outputs equal a fresh run, the strict documentation build passes, and the owner has approved the page for publication
+  - _Requirements: 12.9, 12.10, 12.11, 12.12, 12.13, 12.14, 12.15, 12.16, 12.17, 12.18, 12.19, 12.20_
 - [ ] 8.4 Figures reworked to the specification
   - Change the figure modules and their captions and tables to the approved specification; the replay's published set, guard and byte identity stay as tested in 4.1
   - Done when the replay tests pass with the reworked set and the owner has seen the fixture figures
   - _Depends: 8.2_
   - _Requirements: 12.6, 12.7, 10.5, 10.7_
-- Order change proposed with this group: 4.2 depends on 8.4; 5.2 depends on 8.1
+- Order change with this group: 4.2 depends on 8.4; 5.2 depends on 8.1
 
 ## Implementation Notes
 
@@ -246,3 +247,4 @@ records and is not part of CI; it is run locally where a task names it.
 - 7.3b (done): ModelConfig and the front module are root exports (from recall_guard import ask, front; front.LIMIT_*, front.CHOICE_*, front.LIMITS, front.MODE_CHOICES). The integration file uses these names, covers the weak-calibrator limit and both tie choices, and runs under the offline fixture of tests/integration/conftest.py (not autouse, applied by pytestmark; the demo test starts a notebook kernel over local sockets), which is self-tested through pytester.
 - 7.5: tests/integration/test_front_live.py is skipped unless RECALL_GUARD_LIVE_ENTRY names a catalogue entry whose route is already running; it starts and configures no host. RECALL_GUARD_LIVE_DRAWS (default 8, min_parsed three quarters rounded up), RECALL_GUARD_LIVE_RECORD (optional path of the JSON record: entry, mode, mode choice, status, limits, draws asked and used, and for a failure the step and remedy; no reply text, no credential). A front failure fails the test with step and remedy. Not yet run against a real route.
 - 4.1 (done 2026-11-12, mechanics only): the replay publishes the eight figures and nothing else (24 files: SVG, CSV and markdown each); the analysis markdown stays private (owner's decision 2026-11-11), so the published header, the copy names and the manifest entry published_wording are gone. Draw logs are read only through recording.read_draw_log. The Wilson bound of the repeat baseline is exactly 0 at 0 of n and exactly 1 at n of n. Independent review APPROVED on the guard, private records, determinism and the truth of published reasons; it did not judge whether the figures are meaningful. Owner's decision 2026-11-12: the figures are reworked from a mathematical note on the two modes and a figure specification, both to be approved first; the internal values in table columns (draw_mode, adjustment, status, stage, rendering, quantity, evidence, the statistic identifiers of Figures 5 to 7) go into that specification. Routed to 4.2: replay the real records into a scratch root first, because a stored reason without a rule and a draw log with an incomplete last line each refuse the replay, and Figures 5 and 6 are rendered only when the probe arm has both macro calibrators and stored full-run results (fewer than 24 files otherwise); the report must be repointed in the same commit (columns arm and role are gone, variants are plain labels).
+- 8.3 (done 2026-11-12, approved by the owner for publication): docs/notebooks/recall_adjusted_answers.ipynb, rendered by mkdocs-jupyter with stored outputs. Offline part on recall_guard.offline_example() (invented entry, calibrators and replies; root exports offline_example and OfflineExample). Section "Using the estimate": the estimate is the result, its use the analyst's decision; it applies on or before the training cutoff, after it the estimate is noise and nothing is corrected. Online groups (off unless RECALL_GUARD_ONLINE names one; cells tagged online): one prompt, 8 draws at temperature 0.7, run once on the owner's machine: logprobs 0.305 and logits 0.024 on the same replies with the recorded probe-arm macro calibrators (status not tested, no corrected answer), NPU answer without an estimate (logprobs only, no calibrator). These are exploratory, one prompt. ask() and guarded_select() take temperature: the recorded calibrators are refused at the profile's temperature 0 and accepted at 0.7 through endpoint port 11571. Start scripts scripts/start_model_online_* run in the foreground and stop on Ctrl+C; the older host scripts are in scripts/hosts/. Found on the way, not changed: the FastFlowLM profile allows 32 output tokens and its host check expects the old gateway; a client built by ask() refuses an already loaded local model on the free-memory check (the online cells build the client with enforce_preflight=False); on the NPU route the model fences its JSON and adds prose, which the strict reader refuses.

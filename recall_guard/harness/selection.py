@@ -228,8 +228,13 @@ def guarded_select(
     full_distribution: FullDistributionClient | None = None,
     draws: int = 32,
     min_parsed: int = 24,
+    temperature: float | None = None,
 ) -> SelectedDecision:
     """Run the guard in the selected mode and mark the answer with the entry, mode and status.
+
+    ``temperature`` is the guard's: the sampling temperature of every draw, or
+    None for the client's own. A calibrator is refused unless the draws use the
+    temperature it was fitted at.
 
     The guard is :func:`~recall_guard.harness.guarded_decision.guarded_decide`
     with the selection's estimate source; its result is returned untouched as
@@ -241,7 +246,7 @@ def guarded_select(
     """
     if not isinstance(selection, Selection):
         raise TypeError(f"selection must be a Selection, as select() returns it; got {type(selection).__name__}")
-    config = GuardConfig(definition, selection.source, draws=draws, min_parsed=min_parsed)
+    config = GuardConfig(definition, selection.source, draws=draws, min_parsed=min_parsed, temperature=temperature)
     decision = guarded_decide(prompt, config, client=client, calibrator=calibrator,
                               full_distribution=full_distribution)
     status, reason = _status(selection, calibrator)

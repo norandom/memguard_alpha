@@ -439,8 +439,8 @@ and demos all enter the same way I do.
 
 ### Requirement 12: The two evidence modes, defined and shown side by side
 
-> Amendment 2026-11-12, proposed on the owner's instruction ("amend current
-> spec"); not approved yet. It follows the research guardrails in
+> Amendment 2026-11-12, on the owner's instruction ("amend current spec"),
+> approved by the owner on 2026-11-12 ("approved, go"). It follows the research guardrails in
 > `.kiro/steering/research-guardrails.md`.
 
 **Objective:** As a quant reader, I want the logprobs mode and the logits mode
@@ -473,24 +473,45 @@ they differ, and what the recorded data supports.
    owner's reason to keep it.
 8. The owner shall approve the Figure Specification before a figure is
    reworked.
-9. When a person runs the Notebook, it shall send one point-in-time prompt
+9. The Notebook shall be a usage example under `docs/`, not a research
+   document (owner, 2026-11-12: "simple and clear ... just how to use the
+   tool"). When a person runs it, it shall send one point-in-time prompt
    through the Front in the logprobs mode and in the logits mode and shall show
-   for each mode the raw answer, the recall estimate, the corrected answer, the
-   feature values, and the entry, mode, status and limits the answer ran under.
-10. The Notebook shall show the difference between the two modes for the
-    recall estimate and for each feature, and shall mark each difference as
-    zero by construction or as measured.
-11. Where a mode is not qualified or not tested for the entry, the Notebook
-    shall show its corrected answer marked with that status and shall not
-    present it as a qualified answer.
-12. The Notebook shall contain a mapping section that restates the Mode Note's
-    table of equalities and differences and the recorded statistics with their
-    labels, each number taken from a published table or computed in the
-    Notebook from inputs it shows.
-13. The Notebook shall run offline from fixed evidence, and shall state in its
-    output whether a result comes from fixed evidence or from a live route.
-14. A test shall execute the Notebook offline and shall check that both modes
-    return a recall estimate and a corrected answer.
+   for each mode the status, the recall estimate, the answer and the corrected
+   answer.
+10. The Notebook shall define each term it uses once, and shall state in one
+    table what differs between the two modes for a person who uses them: the
+    evidence read, the extra host, when the mode applies and the calibrator.
+    The derivations and the recorded statistics belong to the Mode Note.
+11. The Notebook shall state how the call changes on a person's own route, and
+    shall show the status of every entry of the shipped catalogue, so that a
+    mode that is not qualified or not tested is not read as qualified.
+12. The Notebook shall run offline on an invented setup that the package
+    provides, and shall state that the entry, the calibrators and the replies
+    are invented and that its numbers say nothing about any model.
+13. The documentation shall show the Notebook as a page with its stored
+    outputs.
+14. A test shall execute the Notebook offline, shall check that both modes
+    return a recall estimate and a corrected answer, and shall check that the
+    stored outputs equal those of a fresh run.
+16. The Notebook shall state that the recall estimate is the result and that
+    its use is the analyst's decision, the multiplication of `corrected` being
+    one rule among others (owner, 2026-11-12).
+17. The Notebook shall state that the estimate applies to periods on or before
+    the model's training cutoff, where an answer needs correction, and that
+    for periods after the cutoff an estimate is noise and no correction is
+    applied; and that the caller compares the period of the data with the
+    cutoff, because the Front does not know it (owner, 2026-11-12).
+18. Where a person turns an online group on, the Notebook shall run the same
+    call against a running local model: the logprobs mode, the logits mode on
+    the replies the logprobs group drew (one model host at a time), and the
+    logprobs mode on the NPU. The groups are off by default, their cells are
+    tagged, and their stored outputs are exempt from the comparison of 12.14.
+19. One start script per online group shall start its model in the foreground
+    and stop it on Ctrl+C.
+20. The Front shall take the sampling temperature of the draws as an optional
+    argument, because a calibrator is used only at the temperature it was
+    fitted at.
 15. Every text of this requirement shall follow the research guardrails, and a
     text published under `docs/` shall pass the structure pass and the wording
     pass named there before publication.

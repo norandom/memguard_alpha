@@ -91,6 +91,10 @@ FRONT_EXPORTS = (
     # with. The module is pinned like a name: it is the attribute ``front`` of its package.
     ("ModelConfig", "recall_guard.core.completion"),
     ("front", "recall_guard.harness"),
+    # the invented offline setup the usage notebook runs on (task 8.3): one entry qualified in both modes,
+    # its calibrators, fixed replies and a fixed logits host
+    ("offline_example", "recall_guard.harness.offline_example"),
+    ("OfflineExample", "recall_guard.harness.offline_example"),
 )
 FRONT_NAMES = tuple(name for name, _module in FRONT_EXPORTS)
 

@@ -785,7 +785,7 @@ Modified: `recall_guard/__init__.py` (exports), `tests/test_root_exports.py`
 
 ## Amendment 2026-11-12: the two evidence modes (Requirement 12)
 
-Proposed on the owner's instruction; not approved yet. The owner's finding:
+On the owner's instruction; approved by the owner on 2026-11-12. The owner's finding:
 the figures and pages exist, but what each mode computes, how the modes differ
 and which result matters are not stated. This amendment puts a mathematical
 note first and builds the figure rework and a notebook on it. Rules:
@@ -839,26 +839,35 @@ the note of task 4.1) with their plain replacement.
 
 ### Component: Two-mode notebook
 
-`notebooks/recall_modes.ipynb`. It enters through `ask` twice with the same
-prompt and definition, once per mode, and tabulates the two `FrontAnswer`
-results side by side. Offline it uses the fixed-reply client and the fixed
-evidence host of the front tests.
+`docs/notebooks/recall_adjusted_answers.ipynb`, a usage example (owner,
+2026-11-12: a notebook under `docs/`, simple and clear, how to use the tool,
+not a research project). It enters through `ask` twice with the same prompt
+and definition, once per mode, and prints the two `FrontAnswer` results side
+by side. It does not depend on the Mode Note.
 
-Open design question for the owner (decide before task 8.3): where the two
-calibrators of the notebook come from. The front has the caller supply the
-calibrator (Requirement 11.6), and the shipped catalogue has no qualified
-mode. Candidates: (a) fixture calibrators shipped for the worked example,
-stated as illustrative; (b) the recorded calibrators of the probe arm loaded
-from the private records by path, on the owner's machine only; (c) both, (a)
-by default and (b) by a setting.
+The front has the caller supply the calibrator (Requirement 11.6) and the
+shipped catalogue has no qualified mode, so a usage example needs an offline
+setup. `recall_guard.offline_example()` (module
+`recall_guard/harness/offline_example.py`, root export with `OfflineExample`)
+returns an invented entry qualified in both modes, a calibrator per mode
+fitted in process on made-up prompts, and per call a fresh fixed-reply client
+and fixed logits host. Everything in it is invented and says so; the entry
+names no model. The notebook closes with the status of every shipped entry.
+
+The documentation renders the notebook with its stored outputs through the
+`mkdocs-jupyter` plugin (development dependency, no execution at build time).
 
 ### Files
 ```
 .kiro/specs/qualified-model-catalogue/modes-note.md            # Mode Note
 .kiro/specs/qualified-model-catalogue/figure-specification.md  # Figure Specification
-notebooks/recall_modes.ipynb                                   # two-mode notebook
+docs/notebooks/recall_adjusted_answers.ipynb                   # two-mode usage notebook
+recall_guard/harness/offline_example.py                        # invented offline setup for it
 tests/integration/test_recall_modes_notebook.py                # executes it offline
 ```
+Modified for the notebook: `recall_guard/__init__.py` and
+`tests/test_root_exports.py` (two root names), `pyproject.toml` and `uv.lock`
+(`mkdocs-jupyter`), `mkdocs.yml` (plugin and navigation).
 Modified by the figure rework: the figure modules under `scripts/finance_sim/`
 and their tests.
 
@@ -868,11 +877,11 @@ and their tests.
 |-------------|---------|------------|
 | 12.1 to 12.5 | Definitions, equalities, estimand, labels, approval | Mode Note |
 | 12.6 to 12.8 | Question, estimand and emphasis per figure, approval | Figure Specification |
-| 12.9 to 12.14 | Both modes side by side, differences, mapping, offline test | Two-mode notebook |
+| 12.9 to 12.14 | Usage example: both modes side by side, terms, own route, invented offline setup, page, test | Two-mode notebook, `offline_example` |
 | 12.15 | Guardrails and the two passes before publication | all texts |
 
 ### Testing
 - The notebook executes offline in a test; both modes return a recall estimate
-  and a corrected answer; the differences marked zero by construction are zero.
+  and a corrected answer; the stored outputs equal those of a fresh run.
 - The reworked figures keep the replay tests of task 4.1: the published set,
   the licensing guard, identical bytes from two fresh processes.
