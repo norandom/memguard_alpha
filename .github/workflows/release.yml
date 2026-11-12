@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Dagger CLI
         run: |
-          curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.21.4 BIN_DIR="$HOME/.local/bin" sh
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.21.11 BIN_DIR="$HOME/.local/bin" sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # Gate: a failing test or build aborts the job before any publish step (Req 7.5).
