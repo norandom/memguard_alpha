@@ -52,16 +52,27 @@ decides whether a statistic may be reported at all.
 - Order: definition, formula, number, limitation.
 - Each term is defined once, in the glossary of the methods page, and used with
   that meaning only.
-- No narrative, no adjectives of merit, no rhetorical framing. No rewriting
-  pass for style on a page that reports statistics.
+- No narrative, no adjectives of merit, no rhetorical framing.
+- Three properties decide whether a page is fit to publish: grounded language
+  (each sentence traces to a definition, a number or a cited source), a
+  quantitative assessment methodology (stated before the result), and
+  evidence-based reasoning (each conclusion names the evidence it rests on and
+  its label).
 - Engineering vocabulary (hosts, routes, runners, lifecycles, receipts) does
   not appear in research pages except as data rows.
 
 ## Documents
 
-- `docs/` is frozen. Nothing new is published until the existing pages have
-  been checked against the statistics gate and the language rules.
-- A page that fails is corrected or withdrawn before a new page is written.
+Owner's amendment, 2026-11-12: publishing into `docs/` is allowed when the
+page has passed both skills below.
+
+- Every page passes `/cobesy` (structure: skeleton, headlines and the order of
+  the argument before prose) and then `/humanizer` (wording) before it is
+  published.
+- Neither pass may change a number, a label, a definition or a limitation. The
+  statistics gate is applied first and checked again after the two passes.
+- An existing page that fails the statistics gate or the language rules is
+  corrected or withdrawn when it is next touched.
 
 ## Acceptance artefact
 
@@ -88,7 +99,7 @@ The agent stops and waits for the owner's go:
   new estimator);
 - after a derivation, before anything is built on it;
 - before any live or paid run;
-- before any publication into `docs/`.
+- before any publication into `docs/`, with the page after both passes.
 
 A stretch of work between two checkpoints has one focus. The agent does not
 widen it.
