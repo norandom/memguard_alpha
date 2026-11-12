@@ -112,6 +112,7 @@ The [research report](docs/research-report.md) holds the measurements and the [r
 
 To cite the software, use the Zenodo DOI of the version you ran. The all-versions DOI resolves to the latest release.
 
+- v0.6.0: [GitHub Release](https://github.com/norandom/recall_guard/releases/tag/v0.6.0); version-specific DOI pending.
 - v0.5.0: [GitHub Release](https://github.com/norandom/recall_guard/releases/tag/v0.5.0); version-specific DOI pending.
 - v0.4.1: <https://doi.org/10.5281/zenodo.21806959>
 - v0.4.0: <https://doi.org/10.5281/zenodo.21795891>
