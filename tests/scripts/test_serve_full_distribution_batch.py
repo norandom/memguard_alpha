@@ -17,8 +17,8 @@ import pytest
 
 from recall_guard.core.full_distribution import BATCH_ENDPOINT_PATH, ENDPOINT_PATH
 from recall_guard.core.request_control import RequestError
-from scripts import serve_full_distribution as sfd
-from scripts.llamacpp_native import N_CTX, Llama
+from scripts.hosts import serve_full_distribution as sfd
+from scripts.hosts.llamacpp_native import N_CTX, Llama
 from tests.scripts.test_serve_full_distribution import (
     DIGEST,
     FakeLlama,

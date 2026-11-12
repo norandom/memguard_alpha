@@ -74,7 +74,7 @@ from recall_guard.harness.local_evaluation import MeasurementLimits, load_plan  
 LOCAL_PROFILES = ("ollama-phi4-mini", "ollama-llama3.2-3b", "ollama-gemma3-4b", "ollama-llama3.1-8b",
                   "ollama-llava-llama3-ctx2048")
 MODAL_PROFILE = "modal-gpt-oss-20b"
-#: Native Windows FastFlowLM (AMD NPU), reached through scripts/serve_local_flm.ps1.
+#: Native Windows FastFlowLM (AMD NPU), reached through scripts/hosts/serve_local_flm.ps1.
 NPU_PROFILES = ("flm-llama3.2-3b", "flm-gemma3-4b", "flm-gemma4-e4b")
 PROFILES = (*LOCAL_PROFILES, MODAL_PROFILE, *NPU_PROFILES)
 #: Profile -> cutoff registry key (data/cutoffs.yaml). FLM serves the same base models.

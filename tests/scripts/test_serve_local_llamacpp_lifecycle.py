@@ -1,6 +1,6 @@
 """Lifecycle of llama-server behind its bearer gateway (task 6.3, Requirements 3.1 and 11.1).
 
-``scripts/serve_local_llamacpp.ps1`` starts llama-server b12199 on the pinned GGUF on loopback,
+``scripts/hosts/serve_local_llamacpp.ps1`` starts llama-server b12199 on the pinned GGUF on loopback,
 puts the bearer gateway in front of it, stops both on idle, on host exit or on request and
 verifies that no process and no listener remain. These tests load no model: they parse the
 script's ``param`` defaults and its server command line, drive the real gateway against a fake
@@ -28,7 +28,7 @@ import pytest
 from recall_guard.core.completion import FeatureChoices
 from recall_guard.core.profiles import _ram_recommendation, connect, load_profile
 from recall_guard.core.request_control import CallBudget, RequestError
-from scripts.llamacpp_native import LLAMA_DIR, MODEL_DIGEST, MODEL_PATH, SERVER_FLAGS
+from scripts.hosts.llamacpp_native import LLAMA_DIR, MODEL_DIGEST, MODEL_PATH, SERVER_FLAGS
 from tests.core.test_profiles import GGUF_DIGEST, LLAMA_SERVER_PORT, LLAMACPP, STATE_FOLDERS, gateway_port
 from tests.scripts.test_serve_full_distribution_lifecycle import (
     PARAM_PROBE,
@@ -46,8 +46,8 @@ from tests.scripts.test_serve_full_distribution_lifecycle import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts/serve_local_llamacpp.ps1"
-SIBLING_SCRIPT = ROOT / "scripts/serve_full_distribution.ps1"
+SCRIPT = ROOT / "scripts/hosts/serve_local_llamacpp.ps1"
+SIBLING_SCRIPT = ROOT / "scripts/hosts/serve_full_distribution.ps1"
 PROFILE_FILE = ROOT / "recall_guard/core/provider_profiles/llamacpp-gemma3-4b.json"
 LLAMA_SERVER = LLAMA_DIR / "llama-server.exe"
 STATE_FOLDER = STATE_FOLDERS[0]  # runs/finance-sim/hosts/llama-server
@@ -118,7 +118,7 @@ def _gateway_log(rig) -> str:
     return (rig.state / "gateway.log").read_text(encoding="utf-8")
 
 
-# --- param defaults and the server command line (task 3.3 ports, scripts/llamacpp_native.py) -----
+# --- param defaults and the server command line (task 3.3 ports, scripts/hosts/llamacpp_native.py) -----
 
 
 def test_param_defaults_follow_the_profile_ports_the_state_folder_and_the_pinned_gguf(tmp_path):
@@ -144,7 +144,7 @@ def test_param_defaults_follow_the_profile_ports_the_state_folder_and_the_pinned
     assert load_profile(ROOT / defaults["ProfilePath"]).profile_id == LLAMACPP
     assert defaults["IdleMinutes"] == 30
     assert params["Action"]["validate_set"] == ["start", "stop", "status", "gateway"]
-    # The pinned GGUF of scripts/llamacpp_native.py, which is the profile's declared digest.
+    # The pinned GGUF of scripts/hosts/llamacpp_native.py, which is the profile's declared digest.
     assert (ROOT / defaults["ModelPath"]).resolve() == MODEL_PATH.resolve()
     assert PureWindowsPath(defaults["ModelPath"]).name == BLOB
     assert MODEL_DIGEST == GGUF_DIGEST == profile.model_config.local_identity.declared.artifact_digest
@@ -191,7 +191,7 @@ def test_server_build_is_read_from_the_version_output(tmp_path):
     assert _run_functions(tmp_path, ["Get-ServerBuild"], body) == ["12199", "12199", ""]
 
 
-@pytest.mark.skipif(not LLAMA_SERVER.is_file(), reason="needs the winget llama.cpp build of scripts/llamacpp_native.py")
+@pytest.mark.skipif(not LLAMA_SERVER.is_file(), reason="needs the winget llama.cpp build of scripts/hosts/llamacpp_native.py")
 def test_installed_llama_server_is_the_pinned_build_and_takes_logprobs_per_request(tmp_path):
     def output(*args: str) -> str:
         done = _launch(lambda: subprocess.run([str(LLAMA_SERVER), *args], capture_output=True, text=True,
@@ -667,7 +667,7 @@ def test_sibling_is_resident_only_when_a_python_process_listens_on_its_port(tmp_
 
 # --- helpers shared with the 6.2 lifecycle script --------------------------------------------------
 
-#: Copied verbatim from scripts/serve_full_distribution.ps1, whose tests cover them; kept identical here.
+#: Copied verbatim from scripts/hosts/serve_full_distribution.ps1, whose tests cover them; kept identical here.
 SHARED_HELPERS = ("Read-State", "Write-State", "Read-Token", "Initialize-Token", "Get-ProcessTree", "Test-Tracked",
                   "Stop-Tree", "Get-Listeners", "Get-FreeRamBytes", "Format-Gib", "Wait-FreeRam", "Send-Response",
                   "Send-Error", "Read-Request", "Test-Token", "Disable-OutputInheritance")

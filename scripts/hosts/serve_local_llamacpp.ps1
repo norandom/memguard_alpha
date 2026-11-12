@@ -3,11 +3,11 @@
 Serve llama-server b12199 on the pinned Gemma 3 4B GGUF (top-k logprobs) behind an authenticated gateway, with idle stop and verified teardown.
 
 .DESCRIPTION
-Host-side tooling (PowerShell 7, no admin), the sibling of scripts/serve_full_distribution.ps1
+Host-side tooling (PowerShell 7, no admin), the sibling of scripts/hosts/serve_full_distribution.ps1
 (same state, token, gateway and teardown structure; its shared helpers are copied here verbatim
-and a test keeps them identical; that script and scripts/serve_local_flm.ps1 are unchanged).
+and a test keeps them identical; that script and scripts/hosts/serve_local_flm.ps1 are unchanged).
 `start` launches ONE llama-server natively on Windows (the model-host exception) with the
-reference server's command line of scripts/llamacpp_native.py:
+reference server's command line of scripts/hosts/llamacpp_native.py:
 
     llama-server.exe -m <pinned GGUF> --host 127.0.0.1 --port 11570 -ngl 99 -dev Vulkan0 -fa off
                      -c 2048 -np 1 --swa-full --no-webui
@@ -49,10 +49,10 @@ listens on either port; otherwise it names what remains and exits 1. State and l
 runs/finance-sim/hosts/llama-server/ (private).
 
 .EXAMPLE
-pwsh -File scripts/serve_local_llamacpp.ps1 start
-pwsh -File scripts/serve_local_llamacpp.ps1 status
-pwsh -File scripts/serve_local_llamacpp.ps1 stop
-pwsh -File scripts/serve_local_llamacpp.ps1 start -BindAddress 192.168.1.20   # adapter address for a container or another machine
+pwsh -File scripts/hosts/serve_local_llamacpp.ps1 start
+pwsh -File scripts/hosts/serve_local_llamacpp.ps1 status
+pwsh -File scripts/hosts/serve_local_llamacpp.ps1 stop
+pwsh -File scripts/hosts/serve_local_llamacpp.ps1 start -BindAddress 192.168.1.20   # adapter address for a container or another machine
 #>
 param(
     [Parameter(Position = 0, Mandatory)]
@@ -72,7 +72,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Root = Split-Path -Parent $PSScriptRoot
+$Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 function Resolve-RootPath([string]$Path) {
     $full = if ([IO.Path]::IsPathRooted($Path)) { [IO.Path]::GetFullPath($Path) } else { [IO.Path]::GetFullPath((Join-Path $Root $Path)) }
@@ -129,7 +129,7 @@ function Initialize-Token {
         $text = [regex]::Replace($text, "(?m)^\s*$TokenName\s*=[ \t]*(?=\r?$)", $line)  # Fill an empty entry.
     } else {
         if ($text -and -not $text.EndsWith("`n")) { $text += $newline }
-        $text += "# Bearer token for the local model gateways (scripts/serve_local_ollama.ps1, serve_local_flm.ps1, serve_full_distribution.ps1).$newline$line$newline"
+        $text += "# Bearer token for the local model gateways (scripts/hosts/serve_local_ollama.ps1, serve_local_flm.ps1, serve_full_distribution.ps1).$newline$line$newline"
     }
     [IO.File]::WriteAllText($EnvFile, $text, [Text.UTF8Encoding]::new($false))
     return 'generated'
@@ -369,7 +369,7 @@ function Test-SiblingResident([int]$SiblingPort) {
 
 function Write-SiblingRefusal([int]$SiblingPort) {
     Write-Output ("Refusing to start: the full-distribution host (task 6.1) is resident on port $SiblingPort, and only one " +
-                  "model host runs at a time. Stop it first (pwsh -File scripts/serve_full_distribution.ps1 stop). Nothing " +
+                  "model host runs at a time. Stop it first (pwsh -File scripts/hosts/serve_full_distribution.ps1 stop). Nothing " +
                   "was loaded and no request was sent.")
 }
 
@@ -393,7 +393,7 @@ function Write-RamRefusal([hashtable]$HostProfile, [System.Collections.IDictiona
 # ---------- llama-server: command line, build, model file, readiness ----------
 
 function Get-ServerCommand([string]$Directory, [string]$Model, [int]$ServerPort) {
-    # = scripts/llamacpp_native.py: llama-server.exe in LLAMA_DIR, with the reference server's command line
+    # = scripts/hosts/llamacpp_native.py: llama-server.exe in LLAMA_DIR, with the reference server's command line
     # (-m MODEL_PATH --host 127.0.0.1 --port PORT, then SERVER_FLAGS). b12199 has no server switch for
     # logprobs: each request asks for them (logprobs, top_logprobs).
     if (-not $Directory) { $Directory = Join-Path $env:LOCALAPPDATA 'Microsoft/WinGet/Packages/ggml.llamacpp_Microsoft.Winget.Source_8wekyb3d8bbwe' }

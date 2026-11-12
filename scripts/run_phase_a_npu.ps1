@@ -6,7 +6,7 @@ Run release-1.0 Phase A for the three FastFlowLM (AMD NPU) profiles, one FLM pro
 Host-side orchestration (PowerShell 7, no admin); the NPU sibling of
 scripts/run_phase_a_local.ps1. FastFlowLM runs natively on Windows (WSL and
 Docker have no NPU access); only the dev container talks to it, through the
-authenticated FLM gateway (scripts/serve_local_flm.ps1, port 11541). It performs
+authenticated FLM gateway (scripts/hosts/serve_local_flm.ps1, port 11541). It performs
 inference only without -DryRun. Inputs are the frozen files written by
 scripts/build_phase_a_inputs.py --profiles npu under runs/phase-a/<profile>/; the
 container sees them read-only at /phase-a. Journals and reports go to
@@ -44,7 +44,7 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $InputDir = Join-Path $Root 'runs/phase-a'
 $Outputs = Join-Path $Root 'runs/container/phase-a'
-$Serve = Join-Path $PSScriptRoot 'serve_local_flm.ps1'
+$Serve = Join-Path $PSScriptRoot 'hosts/serve_local_flm.ps1'
 $Snapshot = Join-Path $PSScriptRoot 'host_memory_snapshot.ps1'
 $Ports = 11540, 11541
 

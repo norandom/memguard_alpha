@@ -1,7 +1,7 @@
 """Soak of the full-distribution host through its bearer gateway (task 6.4, Requirement 11.1).
 
 Native Windows host-side check, run from the checkout after
-``pwsh -File scripts/serve_full_distribution.ps1 start``::
+``pwsh -File scripts/hosts/serve_full_distribution.ps1 start``::
 
     uv run --no-sync python scripts/soak_full_distribution.py [--duration-s 1800] [--interval-s 30]
         [--sample-s 5] [--stop-after]
@@ -41,10 +41,10 @@ if str(ROOT) not in sys.path:  # Run as a file; the host helpers live in scripts
     sys.path.insert(0, str(ROOT))
 from recall_guard.core.full_distribution import FullDistributionClient  # noqa: E402
 from recall_guard.core.request_control import RequestError  # noqa: E402
-from scripts.serve_full_distribution import HOST, MODEL_DIGEST, PORT, _free_ram, _listeners, _now  # noqa: E402
+from scripts.hosts.serve_full_distribution import HOST, MODEL_DIGEST, PORT, _free_ram, _listeners, _now  # noqa: E402
 
 STATE_DIR = ROOT / 'runs/finance-sim/hosts/full-distribution'
-SCRIPT = ROOT / 'scripts/serve_full_distribution.ps1'
+SCRIPT = ROOT / 'scripts/hosts/serve_full_distribution.ps1'
 CREDENTIAL_NAME = 'LOCAL_MODEL_API_KEY'
 GATEWAY_URL = f'http://{HOST}:{PORT + 1}'  # The gateway listens on the host's loopback port plus one.
 SOAK_ITEM = {  # Synthetic, no licensed text: one prompt carrying four responses.

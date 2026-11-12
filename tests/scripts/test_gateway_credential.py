@@ -139,7 +139,7 @@ def test_smoke_dry_run_records_authentication_mode(http, monkeypatch):
 
 @pytest.mark.skipif(shutil.which('pwsh') is None, reason='PowerShell 7 not installed')
 def test_gateway_script_parses():
-    script = ROOT / 'scripts' / 'serve_local_ollama.ps1'
+    script = ROOT / 'scripts' / 'hosts' / 'serve_local_ollama.ps1'
     command = ("$e=$null; [System.Management.Automation.Language.Parser]::ParseFile("
                f"'{script}', [ref]$null, [ref]$e) | Out-Null; exit $e.Count")
     assert subprocess.run(['pwsh', '-NoProfile', '-Command', command], timeout=60).returncode == 0

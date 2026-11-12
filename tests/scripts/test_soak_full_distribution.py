@@ -16,8 +16,8 @@ from pathlib import Path
 import psutil
 import pytest
 
-from scripts import serve_full_distribution as sfd
 from scripts import soak_full_distribution as soak
+from scripts.hosts import serve_full_distribution as sfd
 from tests.scripts.test_serve_full_distribution import DIGEST
 from tests.scripts.test_serve_full_distribution_batch import CachedFakeLlama
 from tests.scripts.test_serve_full_distribution_lifecycle import PWSH, _free_ports, _kill_tree, _running_hosts

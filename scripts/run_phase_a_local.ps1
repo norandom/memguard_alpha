@@ -42,7 +42,7 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $InputDir = Join-Path $Root 'runs/phase-a'
 $Outputs = Join-Path $Root 'runs/container/phase-a'
-$Serve = Join-Path $PSScriptRoot 'serve_local_ollama.ps1'
+$Serve = Join-Path $PSScriptRoot 'hosts/serve_local_ollama.ps1'
 $Snapshot = Join-Path $PSScriptRoot 'host_memory_snapshot.ps1'
 $Ollama = 'http://127.0.0.1:11434'
 

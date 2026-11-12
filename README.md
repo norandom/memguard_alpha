@@ -257,7 +257,7 @@ architecture check natively with `uv` from PowerShell (`uv sync --locked`, then
 symlink privileges skip on Windows; the Linux CI run covers them on every push.
 
 Ollama may still run natively on Windows as an external model host
-(`scripts/start_local_ollama.ps1`). The container reaches it over the network;
+(`scripts/hosts/start_local_ollama.ps1`). The container reaches it over the network;
 see [Local Ollama from a container](docs/local-provider.md#local-ollama-from-a-container).
 
 NIM scoring needs NVIDIA credentials and network access on every operating

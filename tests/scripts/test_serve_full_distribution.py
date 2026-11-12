@@ -17,8 +17,8 @@ import pytest
 from recall_guard.core.full_distribution import FullDistributionClient, FullDistributionEvidence
 from recall_guard.core.profiles import load_profile
 from recall_guard.core.request_control import RequestError
-from scripts import serve_full_distribution as sfd
-from scripts.llamacpp_native import token_statistics
+from scripts.hosts import serve_full_distribution as sfd
+from scripts.hosts.llamacpp_native import token_statistics
 
 DIGEST = 'sha256:' + 'ab' * 32
 BEARER_ENV = {'TEST_FULL_DISTRIBUTION_BEARER': 'test-bearer'}

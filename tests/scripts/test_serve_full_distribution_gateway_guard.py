@@ -1,6 +1,6 @@
 """Task 6.4: the lifecycle script's batch route, gateway memory sampling and faulthandler launch.
 
-``scripts/serve_full_distribution.ps1`` forwards ``POST /v1/full_distribution_batch`` besides the
+``scripts/hosts/serve_full_distribution.ps1`` forwards ``POST /v1/full_distribution_batch`` besides the
 single route, samples free physical memory into gateway.log (also while it waits for a long
 host request), logs the host's 503 ``memory_low`` refusals and launches the host with
 ``python -X faulthandler`` and the profile's memory floor. The gateway runs against a fake
@@ -217,7 +217,7 @@ def _run(tmp_path, body: str) -> object:
     header = FUNCTION_PROBE.replace("'Get-RamRequirement', 'Wait-FreeRam', 'Disable-OutputInheritance'",
                                     ", ".join(f"'{name}'" for name in PROBE_FUNCTIONS))
     assert header != FUNCTION_PROBE
-    probe.write_text(header + "$HostScript = 'scripts/serve_full_distribution.py'\n" + body + "\n", encoding="utf-8")
+    probe.write_text(header + "$HostScript = 'scripts/hosts/serve_full_distribution.py'\n" + body + "\n", encoding="utf-8")
     result = _pwsh("-File", str(probe), str(SCRIPT))
     assert result.returncode == 0, result.stdout + result.stderr
     return json.loads(result.stdout.strip().splitlines()[-1])
@@ -225,7 +225,7 @@ def _run(tmp_path, body: str) -> object:
 
 def test_the_host_is_launched_with_faulthandler_and_the_memory_floor(tmp_path):
     arguments = _run(tmp_path, f"ConvertTo-Json -Compress -InputObject @(Get-HostArguments 11580 {FLOOR})")
-    assert arguments == ["run", "--no-sync", "python", "-X", "faulthandler", "scripts/serve_full_distribution.py",
+    assert arguments == ["run", "--no-sync", "python", "-X", "faulthandler", "scripts/hosts/serve_full_distribution.py",
                          "--port", "11580", "--memory-floor-bytes", str(FLOOR)]
 
 

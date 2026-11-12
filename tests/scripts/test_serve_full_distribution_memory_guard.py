@@ -16,7 +16,7 @@ import pytest
 from recall_guard.core.full_distribution import BATCH_ENDPOINT_PATH, ENDPOINT_PATH
 from recall_guard.core.profiles import load_profile
 from recall_guard.core.request_control import RequestError
-from scripts import serve_full_distribution as sfd
+from scripts.hosts import serve_full_distribution as sfd
 from tests.scripts.test_serve_full_distribution import (
     DIGEST,
     FakeLlama,

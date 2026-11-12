@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 from recall_guard.core.full_distribution import BATCH_ENDPOINT_PATH
-from scripts import serve_full_distribution as sfd
+from scripts.hosts import serve_full_distribution as sfd
 from tests.scripts.test_serve_full_distribution import free_port, log_softmax
 from tests.scripts.test_serve_full_distribution_batch import CachedFakeLlama
 

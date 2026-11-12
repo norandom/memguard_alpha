@@ -354,7 +354,7 @@ def run_flm_smoke(profile_id: str, endpoint: str, output: Path | None = None, *,
 
     FLM loads its one model at ``flm serve`` start, so the model must be resident
     before and after the request. There is no unload: stopping the FLM process is
-    host-side (scripts/serve_local_flm.ps1 stop). Evidence uses the profile's
+    host-side (scripts/hosts/serve_local_flm.ps1 stop). Evidence uses the profile's
     ``logprob_mass_tolerance``. Same receipt rules as :func:`run_smoke`.
     """
     profile = load_profile(profile_id)

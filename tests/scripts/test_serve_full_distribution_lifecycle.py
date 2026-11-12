@@ -1,6 +1,6 @@
 """Lifecycle of the full-distribution host behind its bearer gateway (task 6.2, Requirement 11.1).
 
-``scripts/serve_full_distribution.ps1`` starts the teacher-forcing host of task 6.1 on loopback,
+``scripts/hosts/serve_full_distribution.ps1`` starts the teacher-forcing host of task 6.1 on loopback,
 puts the bearer gateway in front of it, stops both on idle or on request and verifies that no
 process and no listener remain. These tests load no model: they parse the script's ``param``
 defaults, drive the real gateway against a fake upstream host (an ephemeral loopback HTTP server
@@ -32,7 +32,7 @@ from recall_guard.core.request_control import RequestError
 from tests.core.test_profiles import FULL_DISTRIBUTION_PORT, LLAMACPP, STATE_FOLDERS, gateway_port
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts/serve_full_distribution.ps1"
+SCRIPT = ROOT / "scripts/hosts/serve_full_distribution.ps1"
 PROFILE_FILE = ROOT / "recall_guard/core/provider_profiles/llamacpp-gemma3-4b.json"
 STATE_FOLDER = STATE_FOLDERS[1]  # runs/finance-sim/hosts/full-distribution
 TOKEN_NAME = "LOCAL_MODEL_API_KEY"
@@ -480,7 +480,7 @@ def test_stop_kills_the_recorded_host_tree_and_records_the_stop(rig, quiet_host)
 def test_stop_reaches_the_recorded_listener_when_its_launcher_is_gone(rig, quiet_host):
     """The live 6.4 soak left the python host listening after uv exited; stop reaches it through the
     listener recorded at readiness."""
-    listener, handle = _sleeper("scripts/serve_full_distribution.py")  # A host command line, as the real one.
+    listener, handle = _sleeper("scripts/hosts/serve_full_distribution.py")  # A host command line, as the real one.
     try:
         _write_state(rig, host_pid=None, host_name="uv", listener_pid=listener.pid,
                      listener_name=Path(handle.name()).stem)
@@ -529,7 +529,7 @@ def test_stop_reports_a_listener_that_remains_and_exits_non_zero(rig, quiet_host
 
 def test_stop_reports_a_stray_host_process_and_exits_non_zero(rig, quiet_host):
     stray = subprocess.Popen([sys.executable, "-I", "-c", "import time; time.sleep(120)",
-                              "scripts/serve_full_distribution.py"])
+                              "scripts/hosts/serve_full_distribution.py"])
     handle = psutil.Process(stray.pid)
     try:
         result = _script("stop", *rig.args)

@@ -2,9 +2,9 @@
 
 Native Windows model host (the model-host exception of the execution
 environment): run it on the Windows side with the checkout's
-``uv run --no-sync python scripts/serve_full_distribution.py``, never in a
+``uv run --no-sync python scripts/hosts/serve_full_distribution.py``, never in a
 container. One process loads ONE llama.cpp model instance through
-``scripts/llamacpp_native.py`` (b12199, Vulkan iGPU, the reference server's
+``scripts/hosts/llamacpp_native.py`` (b12199, Vulkan iGPU, the reference server's
 settings) on the pinned GGUF, computes the file's SHA-256 once and refuses to
 start when it differs from the pin, decodes a fixed warm-up text once and only
 then listens on 127.0.0.1:11580, so a listening port means ready. It binds
@@ -105,7 +105,7 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:  # Run as a file; the bindings live in scripts/, the contract in recall_guard/.
     sys.path.insert(0, str(ROOT))
 from recall_guard.core.full_distribution import (  # noqa: E402
@@ -114,7 +114,7 @@ from recall_guard.core.full_distribution import (  # noqa: E402
     FullDistributionEvidence,
     logprobs_from_logits,
 )
-from scripts.llamacpp_native import (  # noqa: E402
+from scripts.hosts.llamacpp_native import (  # noqa: E402
     LLAMA_DIR,
     MODEL_DIGEST,
     MODEL_PATH,
@@ -318,7 +318,7 @@ class FullDistributionHost:
     ``llama`` provides ``tokenize(text, add_special, parse_special)``,
     ``incremental_logits(tokens, rows)``, ``n_vocab`` and ``close()``, and for
     the batch route ``continue_logits(tokens, start)`` and ``truncate(n_keep)``
-    (``scripts.llamacpp_native.Llama``, or a fake in tests). ``memory_guard``
+    (``scripts.hosts.llamacpp_native.Llama``, or a fake in tests). ``memory_guard``
     (a ``MemoryGuard``) admits each request when given.
     """
 

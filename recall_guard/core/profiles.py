@@ -666,7 +666,7 @@ def observe_ollama_host(endpoint: str, model: str, *, http_get=None, headers: Ma
             "observed_backend": backend, "model_installed": installed is not None}
 
 
-#: Marker of the gateway-synthesized FastFlowLM ``/api/tags`` (scripts/serve_local_flm.ps1).
+#: Marker of the gateway-synthesized FastFlowLM ``/api/tags`` (scripts/hosts/serve_local_flm.ps1).
 #: FLM's own ``/api/tags`` lists its whole catalog, so only this answer proves installation.
 FLM_INSTALLED_TAGS_SOURCE = "flm list --filter installed --json"
 FLM_RUNTIME = "fastflowlm"
@@ -932,7 +932,7 @@ def _fastflowlm_verdict(profile, endpoint, http_get, headers, base, memory) -> H
         return HostPreflightReport(
             passed=False, reason="host_metadata_unavailable", **base, **memory,
             recommendation=(f"FastFlowLM metadata at {where} did not answer. On the Windows host run "
-                            f"scripts/serve_local_flm.ps1 start {model}, or check the endpoint; nothing was loaded."))
+                            f"scripts/hosts/serve_local_flm.ps1 start {model}, or check the endpoint; nothing was loaded."))
     host_fields = {"runtime_version": observed["runtime_version"], "artifact_digest": observed["digest"],
                    "model_installed": observed["model_installed"], "loaded_models": tuple(observed["loaded_models"]),
                    "observed_backend": observed["observed_backend"],
@@ -944,7 +944,7 @@ def _fastflowlm_verdict(profile, endpoint, http_get, headers, base, memory) -> H
     if observed["model_installed"] is None:
         return refuse("installed_models_unknown",
                       f"{where} answered with FastFlowLM's catalog, which does not show installed models. Use the "
-                      "FLM gateway (scripts/serve_local_flm.ps1), whose /api/tags lists installed models only.")
+                      "FLM gateway (scripts/hosts/serve_local_flm.ps1), whose /api/tags lists installed models only.")
     if not observed["model_installed"]:
         return refuse("model_not_installed",
                       f"{model} is not installed for FastFlowLM on this host. Nothing is downloaded automatically; "

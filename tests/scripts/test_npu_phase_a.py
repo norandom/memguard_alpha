@@ -268,7 +268,7 @@ def test_gateway_synthesizes_installed_only_tags_with_catalog_digest(tmp_path):
     (fake / "model_info.json").write_text(json.dumps({"gemma3:4b": [
         {"path": "config.json"}, {"path": "model.q4nx", "lfs": {"oid": DIGEST.removeprefix("sha256:")}}]}),
         encoding="utf-8")
-    script = ROOT / "scripts/serve_local_flm.ps1"
+    script = ROOT / "scripts/hosts/serve_local_flm.ps1"
     result = _pwsh("-File", str(script), "tags", "gemma3:4b", "-FlmPath", str(fake / "flm.cmd"))
     assert result.returncode == 0, result.stderr
     tags = json.loads(result.stdout)

@@ -106,7 +106,7 @@ This launches the Ollama model host natively on Windows; Recall Guard itself
 still runs in a container:
 
 ```powershell
-.\scripts\start_local_ollama.ps1
+.\scripts\hosts\start_local_ollama.ps1
 ```
 
 The launcher sets `OLLAMA_MODELS` for its process, resolves the directory from
@@ -184,7 +184,7 @@ a snapshot taken on the model host less than 10 minutes before the run.
 
 **Recommended on Windows: native Ollama behind the authenticated gateway.**
 Ollama runs on Windows to use the GPU; Recall Guard runs in the dev container
-under Docker Engine in WSL (NAT networking). `scripts/serve_local_ollama.ps1`
+under Docker Engine in WSL (NAT networking). `scripts/hosts/serve_local_ollama.ps1`
 (PowerShell 7, no admin) starts Ollama like `start_local_ollama.ps1` plus
 `OLLAMA_IGPU_ENABLE=1` (use `-NoIgpu` to turn the integrated GPU off), bound to
 `127.0.0.1:11434` only. It also starts a small gateway on the Windows address of
@@ -200,7 +200,7 @@ logs are in `runs/ollama-gateway/`.
 In PowerShell on Windows, in the checkout:
 
 ```powershell
-pwsh -File scripts/serve_local_ollama.ps1 start
+pwsh -File scripts/hosts/serve_local_ollama.ps1 start
 pwsh -File scripts/host_memory_snapshot.ps1
 ```
 
@@ -214,7 +214,7 @@ docker compose run --rm -e LOCAL_MODEL_API_KEY dev uv run --no-sync python scrip
 Then, in PowerShell:
 
 ```powershell
-pwsh -File scripts/serve_local_ollama.ps1 stop
+pwsh -File scripts/hosts/serve_local_ollama.ps1 stop
 ```
 
 `stop` also stops the model runner and fails unless no process remains and
@@ -232,7 +232,7 @@ New-NetFirewallRule -DisplayName "Recall Guard Ollama gateway (WSL)" -Direction 
 **Alternative: Ollama in a container in WSL (CPU).** Run Docker Engine in
 WSL and start the optional `ollama` Compose service (`ollama/ollama:0.40.11`,
 CPU). It serves the checkout's `models/` store read-only with the same settings
-as `scripts/start_local_ollama.ps1`, never pulls, and publishes no port. Only
+as `scripts/hosts/start_local_ollama.ps1`, never pulls, and publishes no port. Only
 containers on the internal `model-host` network reach it, as
 `http://ollama:11434`; Windows, the LAN and the internet cannot. From a WSL shell
 in the checkout:

@@ -2,7 +2,7 @@
 param([string]$OllamaPath)
 
 $ErrorActionPreference = 'Stop'
-$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $env:OLLAMA_MODELS = (Resolve-Path -LiteralPath (Join-Path $repositoryRoot 'models')).Path
 $env:OLLAMA_CONTEXT_LENGTH = '2048'
 $env:OLLAMA_NUM_PARALLEL = '1'

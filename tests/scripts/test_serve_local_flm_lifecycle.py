@@ -1,4 +1,4 @@
-"""Launch inheritance of ``scripts/serve_local_flm.ps1`` (upstream fix found in task 6.2).
+"""Launch inheritance of ``scripts/hosts/serve_local_flm.ps1`` (upstream fix found in task 6.2).
 
 ``start`` launches the FLM process and then the gateway with ``Start-Process``. Unless the inherit
 flag is cleared on the script's stdout and stderr handles first, both children hold a capturing
@@ -24,7 +24,7 @@ import psutil
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts/serve_local_flm.ps1"
+SCRIPT = ROOT / "scripts/hosts/serve_local_flm.ps1"
 TOKEN_NAME = "LOCAL_MODEL_API_KEY"
 TOKEN = "test-token-not-a-secret"
 
@@ -161,9 +161,9 @@ def test_start_returns_while_the_flm_process_and_the_gateway_keep_running(tmp_pa
     if " " in str(tmp_path):
         pytest.skip("the script passes its own path unquoted to the gateway's Start-Process")
     root = tmp_path / "root"
-    (root / "scripts").mkdir(parents=True)
+    (root / "scripts/hosts").mkdir(parents=True)
     (root / "models/flm").mkdir(parents=True)
-    script = root / "scripts" / SCRIPT.name  # $Root is the copy's parent folder: state and .env stay here.
+    script = root / "scripts/hosts" / SCRIPT.name  # $Root is two folders above the copy: state and .env stay here.
     shutil.copyfile(SCRIPT, script)
     env_file = root / ".env"
     env_file.write_text(f"{TOKEN_NAME}={TOKEN}\n", encoding="utf-8")

@@ -6,4 +6,4 @@ if (-not (Test-Path $python)) { 'Python environment missing. Run: uv sync'; exit
 # A model left loaded by an earlier start holds the ports or the memory: stop it.
 Get-NetTCPConnection -State Listen -LocalPort 11570, 11571, 11580, 11581 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
 Set-Location $root
-& $python scripts/serve_full_distribution.py --port 11580
+& $python scripts/hosts/serve_full_distribution.py --port 11580

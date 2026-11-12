@@ -89,18 +89,18 @@ repository root, with ``LOCAL_MODEL_API_KEY``, ``FRED_API_KEY`` and
 printed); the gateways keep their loopback defaults (no bind address
 argument) and the runner reaches them through the two endpoint variables::
 
-    pwsh -NoProfile -File scripts/serve_local_llamacpp.ps1 start -IdleMinutes 180
+    pwsh -NoProfile -File scripts/hosts/serve_local_llamacpp.ps1 start -IdleMinutes 180
     $env:LLAMACPP_ENDPOINT_URL = "http://127.0.0.1:11571/v1/chat/completions"
     $env:FULL_DISTRIBUTION_ENDPOINT_URL = "http://127.0.0.1:11581"
     uv run --no-sync python -m scripts.finance_sim.run_study check-hosts --arm sampling --host generation `
       --plan runs/finance-sim/plan/plan.json --plan-sha256 <plan_sha256>
     uv run --no-sync python -m scripts.finance_sim.run_study calibrate --arm sampling --pass generation `
       --plan runs/finance-sim/plan/plan.json --plan-sha256 <plan_sha256>
-    pwsh -NoProfile -File scripts/serve_local_llamacpp.ps1 stop *> runs/finance-sim/records/sampling/calibration/llama-server-stop.txt
-    pwsh -NoProfile -File scripts/serve_full_distribution.ps1 start -IdleMinutes 180
+    pwsh -NoProfile -File scripts/hosts/serve_local_llamacpp.ps1 stop *> runs/finance-sim/records/sampling/calibration/llama-server-stop.txt
+    pwsh -NoProfile -File scripts/hosts/serve_full_distribution.ps1 start -IdleMinutes 180
     uv run --no-sync python -m scripts.finance_sim.run_study calibrate --arm sampling --pass evidence `
       --plan runs/finance-sim/plan/plan.json --plan-sha256 <plan_sha256>
-    pwsh -NoProfile -File scripts/serve_full_distribution.ps1 stop *> runs/finance-sim/records/sampling/calibration/full-distribution-stop.txt
+    pwsh -NoProfile -File scripts/hosts/serve_full_distribution.ps1 stop *> runs/finance-sim/records/sampling/calibration/full-distribution-stop.txt
     uv run --no-sync python -m scripts.finance_sim.run_study teardown --arm sampling --stage calibration `
       --stop-output runs/finance-sim/records/sampling/calibration/llama-server-stop.txt runs/finance-sim/records/sampling/calibration/full-distribution-stop.txt `
       --plan runs/finance-sim/plan/plan.json --plan-sha256 <plan_sha256>
@@ -118,14 +118,14 @@ the gateways bind the Podman adapter address and the container reaches them
 as ``host.containers.internal``::
 
     docker compose run --rm dev getent hosts host.containers.internal
-    pwsh -NoProfile -File scripts/serve_local_llamacpp.ps1 start -BindAddress <adapter IP> -IdleMinutes 180
+    pwsh -NoProfile -File scripts/hosts/serve_local_llamacpp.ps1 start -BindAddress <adapter IP> -IdleMinutes 180
     docker compose run --rm -e LOCAL_MODEL_API_KEY `
       -e LLAMACPP_ENDPOINT_URL=http://host.containers.internal:11571/v1/chat/completions `
       -e FULL_DISTRIBUTION_ENDPOINT_URL=http://host.containers.internal:11581 `
       -v "${PWD}/runs/finance-sim:/app/runs/finance-sim" dev `
       uv run --no-sync python -m scripts.finance_sim.run_study check-hosts --arm sampling --host generation `
       --plan runs/finance-sim/plan/plan.json --plan-sha256 <plan_sha256>
-    pwsh -NoProfile -File scripts/serve_full_distribution.ps1 start -BindAddress <adapter IP> -IdleMinutes 180
+    pwsh -NoProfile -File scripts/hosts/serve_full_distribution.ps1 start -BindAddress <adapter IP> -IdleMinutes 180
 
 The serving arm (task 9.4) runs ``smoke-run``, ``calibrate``, ``full-run`` and
 ``negative-control`` with ``--arm serving --pass both``, each after

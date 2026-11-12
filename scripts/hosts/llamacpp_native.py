@@ -1,7 +1,7 @@
 """llama.cpp on this host: the pinned GGUF, ctypes bindings to ``llama.dll`` and float64 token statistics.
 
 Shared by ``scripts/score_documents_llamacpp.py`` (R37/R40 document scores) and
-``scripts/serve_full_distribution.py`` (task 6.1 teacher-forcing host). Host-side
+``scripts/hosts/serve_full_distribution.py`` (task 6.1 teacher-forcing host). Host-side
 tooling, run NATIVELY on Windows with the checkout's Python (stdlib + numpy
 only; no Recall Guard import). The model runs on the iGPU through the
 user-installed llama.cpp build (winget, b12199, Vulkan) with the settings of the
@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 LLAMA_DIR = Path(os.environ.get('LOCALAPPDATA', '')) / 'Microsoft/WinGet/Packages/ggml.llamacpp_Microsoft.Winget.Source_8wekyb3d8bbwe'
 MODEL_DIGEST = 'sha256:f06e91e18fc74295d0c781bf91622508c75655e2c18ed869d52447ffe1e667e1'
 MODEL_PATH = ROOT / 'models/blobs' / MODEL_DIGEST.replace(':', '-')

@@ -37,8 +37,8 @@ Subcommands:
   verify     both routes against both references, plus bitwise repeat runs.
 
 The ctypes bindings (``Llama``), ``token_statistics`` and the pinned paths live
-in ``scripts/llamacpp_native.py``, shared with the task 6.1 teacher-forcing host
-(``scripts/serve_full_distribution.py``).
+in ``scripts/hosts/llamacpp_native.py``, shared with the task 6.1 teacher-forcing host
+(``scripts/hosts/serve_full_distribution.py``).
 
 Outputs go under runs/container/gemma-doc/ (ignored), read in the dev
 container by scripts/evaluate_document_likelihood.py.
@@ -59,7 +59,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:  # Run as a file; the shared bindings live in scripts/.
     sys.path.insert(0, str(ROOT))
-from scripts.llamacpp_native import (  # noqa: E402,F401  (token_statistics is re-exported for existing callers)
+from scripts.hosts.llamacpp_native import (  # noqa: E402,F401  (token_statistics is re-exported for existing callers)
     LLAMA_DIR,
     MODEL_DIGEST,
     MODEL_PATH,

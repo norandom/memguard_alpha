@@ -3,9 +3,9 @@
 Serve the teacher-forcing full-distribution host (task 6.1) behind an authenticated gateway, with idle stop and verified teardown.
 
 .DESCRIPTION
-Host-side tooling (PowerShell 7, no admin), the sibling of scripts/serve_local_flm.ps1
+Host-side tooling (PowerShell 7, no admin), the sibling of scripts/hosts/serve_local_flm.ps1
 (same state, token, gateway and teardown structure; that script is unchanged). `start`
-launches ONE host, `uv run --no-sync python scripts/serve_full_distribution.py --port 11580`,
+launches ONE host, `uv run --no-sync python scripts/hosts/serve_full_distribution.py --port 11580`,
 natively on Windows (the model-host exception). The host hashes the pinned GGUF, loads one
 llama.cpp instance, decodes a warm-up text and only then listens on 127.0.0.1:11580, so a
 listening port means ready. `start` then launches a hidden pwsh gateway on 127.0.0.1:11581
@@ -50,10 +50,10 @@ stops only when the listener exits, and every stop also stops the recorded liste
 logs: runs/finance-sim/hosts/full-distribution/ (private).
 
 .EXAMPLE
-pwsh -File scripts/serve_full_distribution.ps1 start
-pwsh -File scripts/serve_full_distribution.ps1 status
-pwsh -File scripts/serve_full_distribution.ps1 stop
-pwsh -File scripts/serve_full_distribution.ps1 start -BindAddress 192.168.1.20   # adapter address for a container or another machine
+pwsh -File scripts/hosts/serve_full_distribution.ps1 start
+pwsh -File scripts/hosts/serve_full_distribution.ps1 status
+pwsh -File scripts/hosts/serve_full_distribution.ps1 stop
+pwsh -File scripts/hosts/serve_full_distribution.ps1 start -BindAddress 192.168.1.20   # adapter address for a container or another machine
 #>
 param(
     [Parameter(Position = 0, Mandatory)]
@@ -72,7 +72,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Root = Split-Path -Parent $PSScriptRoot
+$Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 function Resolve-RootPath([string]$Path) {
     $full = if ([IO.Path]::IsPathRooted($Path)) { [IO.Path]::GetFullPath($Path) } else { [IO.Path]::GetFullPath((Join-Path $Root $Path)) }
@@ -88,7 +88,7 @@ $MaxResponseBytes = 64MB
 $TokenName = 'LOCAL_MODEL_API_KEY'
 # = ENDPOINT_PATH and BATCH_ENDPOINT_PATH in recall_guard.core.full_distribution
 $EvidenceRoutes = @('POST /v1/full_distribution', 'POST /v1/full_distribution_batch')
-$HostScript = 'scripts/serve_full_distribution.py'
+$HostScript = 'scripts/hosts/serve_full_distribution.py'
 # Command lines of a host (uv and its python children) and of a gateway (pwsh) on this machine.
 $HostCommand = '(?<![\w.-])serve_full_distribution\.py\b'
 $GatewayCommand = 'serve_full_distribution\.ps1"?\s+gateway\b'
@@ -129,7 +129,7 @@ function Initialize-Token {
         $text = [regex]::Replace($text, "(?m)^\s*$TokenName\s*=[ \t]*(?=\r?$)", $line)  # Fill an empty entry.
     } else {
         if ($text -and -not $text.EndsWith("`n")) { $text += $newline }
-        $text += "# Bearer token for the local model gateways (scripts/serve_local_ollama.ps1, serve_local_flm.ps1, serve_full_distribution.ps1).$newline$line$newline"
+        $text += "# Bearer token for the local model gateways (scripts/hosts/serve_local_ollama.ps1, serve_local_flm.ps1, serve_full_distribution.ps1).$newline$line$newline"
     }
     [IO.File]::WriteAllText($EnvFile, $text, [Text.UTF8Encoding]::new($false))
     return 'generated'
@@ -235,7 +235,7 @@ function Test-SiblingResident([int]$SiblingPort) {
 
 function Write-SiblingRefusal([int]$SiblingPort) {
     Write-Output ("Refusing to start: llama-server (task 6.3) is resident on port $SiblingPort, and only one model host " +
-                  "runs at a time. Stop it first (pwsh -File scripts/serve_local_llamacpp.ps1 stop). Nothing was loaded " +
+                  "runs at a time. Stop it first (pwsh -File scripts/hosts/serve_local_llamacpp.ps1 stop). Nothing was loaded " +
                   "and no request was sent.")
 }
 
