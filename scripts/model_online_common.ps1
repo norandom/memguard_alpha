@@ -131,6 +131,7 @@ function Confirm-LlamaCpp {
 function Invoke-HostScript([string]$Name, [string[]]$Arguments) {
     # The pwsh that runs this script, by path: the Store alias of pwsh fails to launch on some machines.
     $pwsh = (Get-Process -Id $PID).Path
-    & $pwsh -NoProfile -File (Join-Path $PSScriptRoot $Name) @Arguments
+    # The host script's lines go to the console; only the exit code is returned to the caller.
+    & $pwsh -NoProfile -File (Join-Path $PSScriptRoot $Name) @Arguments | Out-Host
     return $LASTEXITCODE
 }
