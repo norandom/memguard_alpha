@@ -8,5 +8,7 @@ if (-not (Test-Path $model)) {
     exit 2
 }
 if (-not (Test-Path $server)) { 'llama-server not found. Install it: winget install ggml.llamacpp'; exit 2 }
+# A model left loaded by an earlier start holds the ports: stop it.
+Get-NetTCPConnection -State Listen -LocalPort 11570, 11571 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
 $key = (Select-String -Path (Join-Path $root '.env') -Pattern '^LOCAL_MODEL_API_KEY=(.+)$').Matches[0].Groups[1].Value
 & $server -m $model --host 127.0.0.1 --port 11571 --api-key $key -ngl 99 -dev Vulkan0 -fa off -c 2048 -np 1 --swa-full --no-webui
