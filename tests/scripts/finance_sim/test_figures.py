@@ -65,6 +65,7 @@ from scripts.finance_sim.figures import (  # noqa: E402
     DEFAULT_ARMS,
     FIGURE_NAMES,
     FIGURES_DIR,
+    GAP_COLUMNS,
     FigureError,
     bin_interval,
     figure_paths,
@@ -81,9 +82,11 @@ from scripts.finance_sim.figures import (  # noqa: E402
     reliability_table,
     render_figures,
     route_label,
+    variant_label,
 )
 from scripts.finance_sim.limits import BudgetLedger, LedgerCallBudget, StudyLimits  # noqa: E402
 from scripts.finance_sim.plan import SERVING_FULL_DISTRIBUTION_REASON, VARIANTS, write_plan  # noqa: E402
+from scripts.finance_sim.published_text import published_reason  # noqa: E402
 from tests.scripts.finance_sim.test_analysis import FAST, serving_results  # noqa: E402
 from tests.scripts.finance_sim.test_execute import (  # noqa: E402
     ALLOWANCE,
@@ -194,6 +197,13 @@ def panels(study) -> tuple:
 
 def csv_rows(text: str) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(text)))
+
+
+def published_rows(table) -> dict[tuple[str, str], dict[str, str]]:
+    """The rows of a published gap table by (arm, variant): the table itself carries the route and the plain label."""
+    arm_of = {route: arm for arm, route in ROUTES.items()}
+    variant_of = {variant_label(variant): variant for variant in VARIANTS}
+    return {(arm_of[row["route"]], variant_of[row["variant"]]): row for row in csv_rows(table.to_csv())}
 
 
 def gids(figure, kind=Line2D) -> set[str]:
@@ -391,23 +401,27 @@ def test_the_gap_figure_reads_every_number_from_the_stored_analysis_and_recomput
     serving = read_gap_panel(analysis_path("serving", "full_run", study.analysis_dir), route=ROUTES["serving"])
     expected = len(cell(metric(stored(study, "serving"), "did_accuracy_gap"), "single_top_k")["missing_months"])
     assert serving.point("single_top_k").missing_months == expected == 2
-    row = next(row for row in csv_rows(gap_table([serving]).to_csv()) if row["variant"] == "single_top_k")
+    row = next(row for row in csv_rows(gap_table([serving]).to_csv())
+               if row["variant"] == variant_label("single_top_k"))
     assert row["missing_months"] == "2" and row["missing"] == "" and row["route"] == ROUTES["serving"]
     # A changed stored value is what the table shows: the figure reads the file, it does not recompute it.
     changed = copy.deepcopy(stored(study, "serving"))
     cell(metric(changed, "did_accuracy_gap"), "single_top_k")["statistic"] = 0.123456
     row = next(row for row in csv_rows(gap_table([gap_panel(changed, route=ROUTES["serving"])]).to_csv())
-               if row["variant"] == "single_top_k")
+               if row["variant"] == variant_label("single_top_k"))
     assert row["gap"] == "0.123456"
 
 
 def test_the_first_routes_missing_variants_are_listed_in_the_table_and_caption_and_not_drawn(panels):
     table = gap_table(panels)
-    rows = {(row["arm"], row["variant"]): row for row in csv_rows(table.to_csv())}
+    rows = published_rows(table)
     assert len(rows) == 12
     for variant in SERVING_MISSING:
         row = rows[("serving", variant)]
-        assert row["missing"] == SERVING_FULL_DISTRIBUTION_REASON
+        # The table gives the reason in the published vocabulary; the stored reason stays in the private analysis.
+        assert row["missing"] == published_reason(SERVING_FULL_DISTRIBUTION_REASON) == (
+            "logits are not available on this serving route: they would come from other weights than the served "
+            "model, and values from different weights are not comparable")
         assert row["gap"] == row["interval_low"] == row["interval_high"] == row["p_raw"] == ""
     for variant in COMPUTED_SERVING:
         assert rows[("serving", variant)]["missing"] == "" and rows[("serving", variant)]["gap"] != ""
@@ -438,11 +452,15 @@ def test_a_panel_is_labelled_by_its_serving_route_as_data_from_the_plan(panels, 
         assert ROUTES[arm] == f"{arm_plan.profile_id} at temperature {arm_plan.temperature:g}"
     assert ROUTES == {"serving": "modal-gemma3-4b at temperature 0", "sampling": "llamacpp-gemma3-4b at temperature 0.7"}
     table = gap_table(panels)
-    rows = {(row["arm"], row["variant"]): row for row in csv_rows(table.to_csv())}
-    # The column names and the keys in them stay as the data keys other code reads; the route is beside them.
-    assert {row["role"] for (arm, _), row in rows.items() if arm == "serving"} == {"primary"}
-    assert {row["role"] for (arm, _), row in rows.items() if arm == "sampling"} == {"probe"}
-    assert {(arm, row["route"]) for (arm, _), row in rows.items()} == set(ROUTES.items())
+    rows = csv_rows(table.to_csv())
+    # A published table names the route and plain labels: no arm, no role and no internal variant key.
+    assert "arm" not in GAP_COLUMNS and "role" not in GAP_COLUMNS and GAP_COLUMNS[:2] == ("route", "variant")
+    assert {row["route"] for row in rows} == set(ROUTES.values())
+    assert {row["variant"] for row in rows} == {variant_label(variant) for variant in VARIANTS}
+    assert variant_label("single_none") == "single draw, unadjusted"
+    assert variant_label("ensemble_full_distribution") == "ensemble, adjusted with logits"
+    cells = {cell for row in rows for cell in row.values()}
+    assert not {"serving", "sampling", "primary", "probe", *VARIANTS} & cells
     figure = plot_gap(panels)
     (axes,) = figure.axes
     assert axes.get_xlabel() == "serving route"
@@ -567,7 +585,7 @@ def test_the_gap_caption_states_the_months_the_gap_rests_on_and_the_planned_mont
             "(13, 4) on llamacpp-gemma3-4b. ") in table.caption
     assert_journal_caption(table.caption, 1)
     assert_caption_numbers(table, stored=(95, 90, 20))
-    rows = {(row["arm"], row["variant"]): row for row in csv_rows(table.to_csv())}
+    rows = published_rows(table)
     assert (rows[("serving", "ensemble_none")]["months"], rows[("serving", "ensemble_none")]["missing_months"]) == (
         "80", "10")
     # Planned equals drawn everywhere: the planned number is not named.
@@ -684,7 +702,8 @@ def test_reliability_panels_come_from_the_calibrators_retained_held_out_pairs(st
     first = found[0]
     head = next(row for row in rows if (row["kind"], row["source"]) == (first.kind, first.source))
     assert head["ece"] == f"{first.ece:.6g}" and head["bin_count"] == str(first.bins[0].count)
-    assert head["variants"] == "single_top_k; ensemble_top_k" and head["route"] == ROUTES["sampling"]
+    assert head["variants"] == "single draw, adjusted with logprobs; ensemble, adjusted with logprobs"
+    assert head["route"] == ROUTES["sampling"] and "arm" not in head and "role" not in head
 
 
 def test_the_reliability_gate_is_the_reports_minimum_per_class():
@@ -778,6 +797,13 @@ def test_bins_are_unconnected_markers_set_apart_by_evidence_mode_one_panel_per_c
         assert offsets[(kind, "top_k")] < 0 < offsets[(kind, "full_distribution")]
         assert offsets[(kind, "full_distribution")] - offsets[(kind, "top_k")] == pytest.approx(0.02)
     assert offsets[("macro", "top_k")] == offsets[("edgar", "top_k")]
+    # The table says so, with the size of the offset the figure uses, so a reader does not take it for data.
+    size = abs(offsets[("macro", "top_k")])
+    assert size == pytest.approx(0.01)
+    note = (f"In the figure the markers of the two evidence modes are offset sideways by {size:g} on the probability "
+            "axis, logprobs to the left and logits to the right, so that both stay visible; the table gives the "
+            "values without the offset.")
+    assert note in reliability_table(found).notes and note in reliability_table(found).to_markdown()
     for kind, axes in zip(KINDS, figure.axes, strict=True):
         diagonal = by_gid(figure, f"reliability-diagonal-{kind}")
         assert diagonal.axes is axes and diagonal.get_marker() == "None" and is_grey(diagonal.get_color())
@@ -797,7 +823,9 @@ def test_an_insufficient_calibrator_is_not_drawn_and_the_caption_says_why(study)
     table = reliability_table([panel, *others])
     row = csv_rows(table.to_csv())[0]
     assert (row["status"], row["ece"], row["bin_count"]) == ("insufficient", "insufficient", "")
-    assert row["reason"] == panel.reason and "1 memorized and 3 control held-out draws" in panel.reason
+    assert "1 memorized and 3 control held-out draws" in panel.reason
+    assert row["reason"] == published_reason(panel.reason) == (
+        "too few held-out draws: 1 memorized and 3 control, and at least 2 are needed in each class")
     # Not drawn, and the caption says why in a few words: no note is written inside the plot.
     assert "Not drawn, with fewer than 2 held-out draws in a class: logprobs in (a)." in table.caption
     # The sample size counts the drawn calibrators only: (a) now holds one evidence mode.
@@ -828,7 +856,11 @@ def test_a_route_without_calibrator_files_or_logits_is_listed_missing_and_not_dr
                                                    "calibrators directory: the calibration has not been fitted")
     table = reliability_table(found)
     rows = csv_rows(table.to_csv())
-    missing = [row for row in rows if row["arm"] == "serving"]
+    missing = [row for row in rows if row["route"] == ROUTES["serving"]]
+    assert {row["reason"] for row in missing} == {
+        published_reason(SERVING_FULL_DISTRIBUTION_REASON),
+        "no logprobs calibrator has been fitted on macro prompts for this serving route",
+        "no logprobs calibrator has been fitted on EDGAR releases for this serving route"}
     assert len(missing) == 4 and {row["status"] for row in missing} == {"missing"}
     assert {row["route"] for row in missing} == {ROUTES["serving"]}
     assert f"No calibrator of {ROUTES['serving']} is drawn (reasons in the table)." in table.caption
@@ -920,7 +952,8 @@ def test_both_figures_are_drawn_in_the_academic_style_with_both_axes_labelled(pa
     for figure in (gap, reliability):
         assert_academic_svg(figure_svg(figure))
     # A route with no variant drawn leaves its place empty; nothing is written there.
-    absent = replace(panels[0], points=tuple(replace(point, missing="too few months") for point in panels[0].points))
+    stored = "no planned month carries the value in both renderings"
+    absent = replace(panels[0], points=tuple(replace(point, missing=stored) for point in panels[0].points))
     empty = plot_gap([absent])
     assert_academic_figure(empty, panels=1)
     assert not [gid for gid in gids(empty, kind=None) if gid.startswith("gap-serving-")] and not empty.axes[0].texts
@@ -928,7 +961,12 @@ def test_both_figures_are_drawn_in_the_academic_style_with_both_axes_labelled(pa
     assert ("Not drawn on modal-gemma3-4b: both variants unadjusted; both variants adjusted with logprobs; both "
             "variants adjusted with logits.") in table.caption
     assert "no variant has a value" in table.caption and " n = no month with a value. " in table.caption
-    assert "too few months" in table.to_csv() and "too few months" not in table.caption
+    published = "no planned month has the value under both the identifying and the anonymised prompt"
+    assert published in table.to_csv() and published not in table.caption and stored not in table.to_markdown()
+    # A reason without a published wording is refused: it is never published as stored.
+    unknown = replace(panels[0], points=tuple(replace(point, missing="too few months") for point in panels[0].points))
+    with pytest.raises(FigureError, match="no published wording"):
+        gap_table([unknown])
     assert_journal_caption(table.caption, 1)
 
 

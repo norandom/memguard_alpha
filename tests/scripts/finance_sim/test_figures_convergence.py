@@ -248,7 +248,23 @@ def test_k_above_the_kept_count_is_listed_in_the_table_not_drawn(study, stages):
     rows = csv_rows(figure_table(stages, PLAN).to_csv())
     above = [entry for entry in rows if entry["evidence"] == "host_top_k" and entry["k"] in ("50", "100")]
     assert above and {entry["drawn"] for entry in above} == {"no"}
-    assert all("above the 20 alternatives" in entry["missing"] for entry in above)
+    assert {(entry["k"], entry["missing"]) for entry in above} == {
+        ("50", "k 50 is above the 20 alternatives kept"), ("100", "k 100 is above the 20 alternatives kept")}
+    # A published table names the route: no arm and no role column.
+    assert not {"arm", "role"} & set(rows[0]) and {entry["route"] for entry in rows} == {
+        "llamacpp-gemma3-4b at temperature 0.7"}
+
+
+def test_the_table_states_the_prompts_and_draws_the_caption_counts(stages):
+    """The caption states how many prompts and draws were compared; a note under the table gives the same counts,
+    so a reader can check the caption against the table."""
+    table = figure_table(stages, PLAN)
+    prompts = {"full_run": "macro prompts", "negative_control": "EDGAR releases"}
+    counted = " and ".join(f"{stage.n_draws} draws of {stage.n_items} {prompts[stage.stage]}" for stage in stages)
+    note = f"Compared: {counted}; n in a row is the number of draws compared at that k."
+    assert note in table.notes and note in table.to_markdown()
+    for stage in stages:
+        assert f"{stage.n_draws} draws of {stage.n_items} " in table.caption
 
 
 def test_the_served_values_are_one_marker_of_the_mean_at_the_served_k_never_joined_to_the_lines(study, stages):
@@ -454,8 +470,9 @@ def test_a_missing_stage_or_a_route_without_logits_is_listed_not_drawn(study):
     assert_journal_caption(table.caption, 4)
     rows = csv_rows(table.to_csv())
     assert [entry for entry in rows if entry["stage"] == "negative_control"] == [
-        {**{column: "" for column in rows[0]}, "arm": "sampling", "route": ROUTE, "role": "probe",
-         "stage": "negative_control", "drawn": "no", "missing": found[1].reason}]
+        {**{column: "" for column in rows[0]}, "route": ROUTE, "stage": "negative_control", "drawn": "no",
+         "missing": "the convergence analysis has not been run for these prompts"}]
+    assert "arm" not in rows[0] and "role" not in rows[0] and ".json" not in table.to_csv()
     figure = plot_convergence(found)
     assert not [gid for gid in gids(figure) if "negative_control" in gid]
     assert legend_labels(figure) == ["macro prompts, mean over draws", "macro prompts, worst draw",

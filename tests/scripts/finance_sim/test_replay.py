@@ -50,6 +50,7 @@ from recall_guard.harness.guarded_decision import GuardIdentity  # noqa: E402
 from recall_guard.mia.estimate_source import EstimateSource, SourceLabel  # noqa: E402
 from scripts.finance_sim.analysis import DID, pre_registered_analysis, write_analysis  # noqa: E402
 from scripts.finance_sim.calibrate import (  # noqa: E402
+    CalibrationDraw,
     DrawSettings,
     EdgarRelease,
     EvidenceSettings,
@@ -57,6 +58,12 @@ from scripts.finance_sim.calibrate import (  # noqa: E402
     run_calibration,
 )
 from scripts.finance_sim.convergence import convergence_table, write_table  # noqa: E402
+from scripts.finance_sim.cutoff_check import (  # noqa: E402
+    RULE_PROMPT,
+    cutoff_check_from_records,
+    cutoff_check_path,
+    write_cutoff_check,
+)
 from scripts.finance_sim.ensemble_metrics import (  # noqa: E402
     FIRST_DRAW_RATE,
     HALF_SUMMARY,
@@ -76,6 +83,13 @@ from scripts.finance_sim.execute import (  # noqa: E402
     write_result,
 )
 from scripts.finance_sim.figures import DERIVED_ONLY, FIGURE_NUMBERS, PUBLISHED_FIGURES, figure_paths  # noqa: E402
+from scripts.finance_sim.figures_catalogue import (  # noqa: E402
+    CATALOGUE_FIGURES,
+    MODE_COMPARISON,
+    REPEAT_BASELINE,
+    catalogue_figure_paths,
+)
+from scripts.finance_sim.figures_catalogue import FIGURE_NUMBERS as CATALOGUE_NUMBERS  # noqa: E402
 from scripts.finance_sim.figures_draws import EXAMPLE_DEFAULT  # noqa: E402
 from scripts.finance_sim.items import (  # noqa: E402
     CASH_SERIES,
@@ -87,7 +101,12 @@ from scripts.finance_sim.items import (  # noqa: E402
     load_edgar_items,
     row_to_dict,
 )
-from scripts.finance_sim.limits import BudgetLedger, LedgerCallBudget, StudyLimits, budget_path  # noqa: E402
+from scripts.finance_sim.limits import ARMS, BudgetLedger, LedgerCallBudget, StudyLimits, budget_path  # noqa: E402
+from scripts.finance_sim.mode_comparison import (  # noqa: E402
+    comparison_path,
+    mode_comparison_from_records,
+    write_comparison,
+)
 from scripts.finance_sim.negative_control import (  # noqa: E402
     negative_control_change,
     run_negative_control,
@@ -96,6 +115,7 @@ from scripts.finance_sim.negative_control import (  # noqa: E402
 from scripts.finance_sim.plan import (  # noqa: E402
     ARM_REGISTRY_IDS,
     EDGAR_FILES,
+    FULL_DISTRIBUTION,  # noqa: E402
     EdgarRow,
     MonthClass,
     PilotSettings,
@@ -107,12 +127,18 @@ from scripts.finance_sim.plan import (  # noqa: E402
     split_months,
     write_plan,
 )
+from scripts.finance_sim.published_text import check_published_text  # noqa: E402
 from scripts.finance_sim.recording import (  # noqa: E402
     EVIDENCE_SCHEMA,
     DrawLog,
     draw_log_path,
     evidence_path,
     pinned_digest,
+)
+from scripts.finance_sim.repeat_baseline import (  # noqa: E402
+    baseline_path,
+    repeat_baseline_from_records,
+    write_baseline,
 )
 from scripts.finance_sim.replay import (  # noqa: E402
     CLOSES_LABEL,
@@ -122,7 +148,6 @@ from scripts.finance_sim.replay import (  # noqa: E402
     MATPLOTLIB_VERSION,
     PRIVATE_DIR,
     PUBLISHED_DIR,
-    PUBLISHED_HEADER,
     REPLY_LABEL,
     SVG_CREATOR,
     WARNING_LABELS,
@@ -159,11 +184,11 @@ from tests.scripts.finance_sim.test_convergence import (  # noqa: E402
     TEMPERATURE,
     Clock,
     FakeFull,
-    FakeHost,
     canonical_sha256,
     digest,
     small_arm,
 )
+from tests.scripts.finance_sim.test_mode_comparison import StampedHost  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[3]
 GEMMA = "google/gemma-3-4b-it"
@@ -388,6 +413,12 @@ def stage_records(plan: StudyPlan, records_dir: Path, stage: str) -> SimpleNames
     return SimpleNamespace(ledger=ledger, log=log, evidence=evidence, on_evidence=on_evidence)
 
 
+def draw_log_state(records_dir: Path) -> dict[Path, tuple[bytes, int]]:
+    """Bytes and modification time of every draw log under ``records_dir``, by its path relative to it."""
+    return {path.relative_to(records_dir): (path.read_bytes(), path.stat().st_mtime_ns)
+            for path in sorted(records_dir.rglob("draws.jsonl"))}
+
+
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch):
     def forbidden(*args, **kwargs):
@@ -409,26 +440,31 @@ def study(tmp_path_factory) -> SimpleNamespace:
     ledger = BudgetLedger.open(root / "calibration" / "budget.json", plan,
                                StudyLimits(plan.plan_sha256, "sampling", "calibration", 1000, 1_000_000, 1_000_000),
                                ALLOWANCE, clock=Clock())
+    # The generation host declares the weights it serves (the arm's pinned digest), as the recorded study's host
+    # does, so both calibrators carry one weights identity and the two evidence modes can be compared; the
+    # calibration draws are recorded like the runner records them.
+    calibration_log = DrawLog(draw_log_path("sampling", "calibration", records_dir), plan=plan,
+                              loads=CalibrationDraw.from_dict)
     run_calibration(plan, arm="sampling", macro_rows=[macro_row(month) for month in plan.months.calibration],
                     edgar_releases=[EdgarRelease(item.item_id, item.label, item.release_text)
                                     for item in edgar.calibration],
-                    client=FakeHost(LedgerCallBudget(ledger)), ledger=ledger,
+                    client=StampedHost(LedgerCallBudget(ledger)), ledger=ledger,
                     settings=DrawSettings(draws=2, temperature=TEMPERATURE, seed_base=SEED_BASE),
                     sources=("top_k", "full_distribution"), full_distribution=FakeFull(),
                     fit=FitSettings(min_auc=0.6, min_valid=10), evidence=EvidenceSettings(top_k_keep=KEEP),
-                    calibrators_dir=calibrators_dir, sleep=lambda seconds: None)
+                    on_draw=calibration_log, calibrators_dir=calibrators_dir, sleep=lambda seconds: None)
     macro = load_calibrators(plan, arm="sampling", kind="macro", calibrators_dir=calibrators_dir)
     edgar_calibrators = load_calibrators(plan, arm="sampling", kind="edgar", calibrators_dir=calibrators_dir)
     full_records = stage_records(plan, records_dir, "full_run")
     full = execute_items(plan, macro_items(plan, MACRO_ITEMS, stage="full_run", arm="sampling"), arm="sampling",
-                         stage="full_run", client=FakeHost(LedgerCallBudget(full_records.ledger), prose=(PROSE_CALL,)),
+                         stage="full_run", client=StampedHost(LedgerCallBudget(full_records.ledger), prose=(PROSE_CALL,)),
                          ledger=full_records.ledger, calibrators=macro, full_distribution=FakeFull(),
                          on_draw=full_records.log, on_evidence=full_records.on_evidence, results_dir=results_dir,
                          sleep=lambda seconds: None)
     assert full.status == "complete"
     negative_records = stage_records(plan, records_dir, "negative_control")
     negative = run_negative_control(plan, edgar.negative_control, arm="sampling",
-                                    client=FakeHost(LedgerCallBudget(negative_records.ledger)),
+                                    client=StampedHost(LedgerCallBudget(negative_records.ledger)),
                                     ledger=negative_records.ledger, calibrators=edgar_calibrators,
                                     full_distribution=FakeFull(), on_draw=negative_records.log,
                                     on_evidence=negative_records.on_evidence, results_dir=results_dir,
@@ -455,6 +491,19 @@ def study(tmp_path_factory) -> SimpleNamespace:
                                   tuple(negative_records.log.latest()), negative_records.evidence, arm="sampling",
                                   stage="negative_control", calibrators=edgar_calibrators, expected_digest=DIGEST),
                 expected)
+    # The three analyses behind the catalogue, computed here the way the replay must: the cutoff check of each arm
+    # with stored full-run results, the mode comparison of the arm that has both calibrators with the cutoff result
+    # for logits under the identifying prompt passed in, and the repeat baseline over both arms.
+    checks = {arm: cutoff_check_from_records(plan, arm=arm, results_dir=results_dir) for arm in ARMS}
+    for check in checks.values():
+        write_cutoff_check(check, expected)
+    logits_cutoff = checks["sampling"].cell(FULL_DISTRIBUTION, RULE_PROMPT).summary.passes
+    write_comparison(mode_comparison_from_records(
+        plan, arm="sampling", calibrators_dir=calibrators_dir, results_dir=results_dir, records_dir=records_dir,
+        analysis_dir=expected, cutoff_check=logits_cutoff), expected)
+    write_baseline(repeat_baseline_from_records(plan, records_dir=records_dir), expected)
+    draw_logs = draw_log_state(records_dir)
+    assert len(draw_logs) == 3, "the probe arm's calibration, full run and negative control are recorded"
     items_path = root / "items.json"
     items_path.write_text(json.dumps({
         "schema": ITEMS_SCHEMA,
@@ -466,7 +515,7 @@ def study(tmp_path_factory) -> SimpleNamespace:
     return SimpleNamespace(root=root, plan=plan, plan_path=plan_path, edgar=edgar, edgar_dir=edgar_dir,
                            records_dir=records_dir, results_dir=results_dir, calibrators_dir=calibrators_dir,
                            expected=expected, items_path=items_path, fmp_cache=fmp_cache, fred_cache=fred_cache,
-                           full=full, negative=negative)
+                           full=full, negative=negative, draw_logs=draw_logs, logits_cutoff=logits_cutoff)
 
 
 def inputs_of(study: SimpleNamespace, **overrides) -> ReplayInputs:
@@ -528,7 +577,7 @@ def stored_json(path: Path) -> dict:
 # ---------- one command, offline, into a fresh root ----------
 
 def test_the_replay_runs_offline_in_a_fresh_process_and_writes_the_private_and_published_outputs(study, replayed):
-    """Every analysis, the negative-control report, the convergence tables and the five figures, no request."""
+    """Every analysis, the negative-control report, the convergence tables and the eight figures, no request."""
     private = sorted(path.name for path in replayed.private.iterdir())
     expected_private = sorted([
         *(f"pre-registered-{arm}-full_run.{suffix}" for arm in ("serving", "sampling") for suffix in ("json", "md")),
@@ -537,6 +586,12 @@ def test_the_replay_runs_offline_in_a_fresh_process_and_writes_the_private_and_p
         *(f"negative-control-{arm}.{suffix}" for arm in ("serving", "sampling") for suffix in ("json", "md")),
         *(f"convergence-sampling-{stage}.{suffix}" for stage in ("full_run", "negative_control")
           for suffix in ("json", "md")),
+        # The three analyses behind the catalogue, named by their own modules: the cutoff check of each arm with
+        # stored full-run results, the mode comparison of the arm with both calibrators, one repeat baseline.
+        *(path.with_suffix(suffix).name for arm in ARMS for path in [cutoff_check_path(arm)]
+          for suffix in (".json", ".md")),
+        *(comparison_path("sampling").with_suffix(suffix).name for suffix in (".json", ".md")),
+        *(baseline_path().with_suffix(suffix).name for suffix in (".json", ".md")),
     ])
     assert private == expected_private
     published = {path.name for path in replayed.published.iterdir()}
@@ -544,15 +599,35 @@ def test_the_replay_runs_offline_in_a_fresh_process_and_writes_the_private_and_p
         assert {path.name for path in figure_paths(name, replayed.published).values()} <= published
         assert {path.name for path in figure_paths(name, replayed.published).values()} == {
             f"{name}.svg", f"{name}.csv", f"{name}.md"}
+    for name in CATALOGUE_FIGURES:
+        assert {path.name for path in catalogue_figure_paths(name, replayed.published).values()} == {
+            f"{name}.svg", f"{name}.csv", f"{name}.md"} <= published
     # One SVG per figure in the one academic style: no light or dark variant, and a numbered caption.
-    assert {name for name in published if name.endswith(".svg")} == {f"{name}.svg" for name in PUBLISHED_FIGURES}
+    figures = (*PUBLISHED_FIGURES, *CATALOGUE_FIGURES)
+    assert {name for name in published if name.endswith(".svg")} == {f"{name}.svg" for name in figures}
     assert not any("-light" in name or "-dark" in name for name in published)
     assert PUBLISHED_FIGURES == ("gap", "reliability", "draws", "convergence", "draw-spread")
     assert dict(FIGURE_NUMBERS) == {"gap": 1, "reliability": 2, "draws": 3, "convergence": 4, "draw-spread": 8}
-    for name in PUBLISHED_FIGURES:
+    assert sorted({**FIGURE_NUMBERS, **CATALOGUE_NUMBERS}.values()) == list(range(1, len(figures) + 1))
+    for name in figures:
         text = (replayed.published / f"{name}.md").read_text(encoding="utf-8")
-        assert text.startswith(f"Figure {FIGURE_NUMBERS[name]}. ") and text.count(DERIVED_ONLY) == 1
-    assert {name for name in expected_private if name.endswith(".md")} <= published
+        number = {**FIGURE_NUMBERS, **CATALOGUE_NUMBERS}[name]
+        assert text.startswith(f"Figure {number}. ") and text.count(DERIVED_ONLY) == 1, name
+    # The published set is the eight figures, each with its SVG, table and caption file, and nothing else: no
+    # analysis markdown is copied beside them (owner's decision, 2026-11-11). Figure 7's table keeps its own name.
+    assert published == {f"{name}{suffix}" for name in figures for suffix in (".svg", ".csv", ".md")}
+    assert len(figures) == 8 and f"{REPEAT_BASELINE}.md" in published
+    private_markdown = {name for name in expected_private if name.endswith(".md")}
+    assert private_markdown and not (private_markdown - {f"{REPEAT_BASELINE}.md"}) & published
+    assert (replayed.published / f"{REPEAT_BASELINE}.md").read_text(encoding="utf-8").startswith("Figure 7. ")
+    assert "published_wording" not in replayed.manifest
+    catalogue = replayed.manifest["catalogue"]
+    assert catalogue["cutoff_check"] == list(ARMS) and catalogue["mode_comparison"] == ["sampling"]
+    assert catalogue["figures"] == list(CATALOGUE_FIGURES) and catalogue["figure_arm"] == "sampling"
+    # An arm without the logits mode gets no mode comparison; the manifest says so once, and it is not an error.
+    assert [(entry["analysis"], entry["arm"]) for entry in catalogue["not_written"]] == [
+        ("mode-comparison", "serving")]
+    assert "logits" in catalogue["not_written"][0]["reason"]
     assert not any(name.endswith(".json") for name in published), "the JSON documents with per-item rows stay private"
     assert replayed.manifest["plan_sha256"] == study.plan.plan_sha256
     assert replayed.manifest["probe_arm"] == "sampling" and replayed.manifest["arms"] == ["serving", "sampling"]
@@ -675,7 +750,7 @@ def test_matplotlib_is_pinned_to_the_version_the_svg_metadata_carries_and_anothe
     assert replayed.manifest["matplotlib"] == MATPLOTLIB_VERSION
     assert replayed.manifest["svg_creator"] == SVG_CREATOR
     svgs = sorted(replayed.published.glob("*.svg"))
-    assert len(svgs) == len(PUBLISHED_FIGURES)
+    assert len(svgs) == len(PUBLISHED_FIGURES) + len(CATALOGUE_FIGURES)
     for path in svgs:
         text = path.read_text(encoding="utf-8")
         assert svg_version(text) == SVG_CREATOR == check_svg_version(text, path)
@@ -739,31 +814,15 @@ def fixture_probes(study: SimpleNamespace) -> list[Probe]:
     return probes
 
 
-def test_the_published_header_is_plain_text_without_a_task_number_a_path_or_an_identifier():
-    """The header stands above every published analysis table, so it reads like the captions: what was done and
-    what stays private, with nothing of how the work is organised."""
-    from tests.scripts.finance_sim.test_figures import assert_plain_vocabulary
-
-    assert ("Replayed offline from the recorded draws and scores with no model request; the per-item rows stay "
-            "private.") in PUBLISHED_HEADER
-    assert PUBLISHED_HEADER.startswith("Sources: ") and PUBLISHED_HEADER.endswith(
-        "Derived statistics only: no reply text, no realized return and no raw licensed series.")
-    assert not re.search(r"\btasks? \d", PUBLISHED_HEADER, flags=re.IGNORECASE)
-    assert "/" not in PUBLISHED_HEADER and "\\" not in PUBLISHED_HEADER
-    assert not re.search(r"\w_\w", PUBLISHED_HEADER) and "`" not in PUBLISHED_HEADER
-    assert ".py" not in PUBLISHED_HEADER and "JSON" not in PUBLISHED_HEADER and "\n" not in PUBLISHED_HEADER
-    assert_plain_vocabulary(PUBLISHED_HEADER)
-
-
 def test_published_tables_carry_the_citations_and_only_derived_statistics(study, replayed):
     files = published_text_files(replayed.published)
-    assert len(files) == 3 * len(PUBLISHED_FIGURES) + 10
+    figures = (*PUBLISHED_FIGURES, *CATALOGUE_FIGURES)
+    assert len(files) == 3 * len(figures)
     for path in files:
+        assert path.stem in figures, path.name
         if path.suffix == ".md":
             text = path.read_text(encoding="utf-8")
             assert "Moody's" in text and "BAA10Y" in text and "Financial Modeling Prep (FMP)" in text, path.name
-            if path.stem not in PUBLISHED_FIGURES:
-                assert text.startswith(PUBLISHED_HEADER), path.name
     probes = fixture_probes(study)
     kinds = {probe.kind for probe in probes}
     assert kinds == {"value", "series", "text"}
@@ -787,6 +846,169 @@ def test_published_tables_carry_the_citations_and_only_derived_statistics(study,
     assert not any(probe.texts[0] in json.dumps(replayed.manifest) for probe in own.probes if probe.kind == "value")
     header = csv_rows(replayed.published / "draws.csv")[0]
     assert not {"correct", "outcome", "realized", "response", "response_text"} & set(header)
+
+
+#: The columns of the published figure tables that hold a reason, and the keys a published table does not carry.
+REASON_COLUMNS = ("missing", "reason", "halves")
+INTERNAL_COLUMNS = ("arm", "role")
+STORED_WORDING = ("Requirement", "serving arm", "sampling arm", "min_parsed", "in both renderings", ".json",
+                  "full-distribution host")
+
+
+def test_published_figure_tables_give_reasons_routes_and_variants_in_the_published_wording(replayed):
+    """Routed from the reviews of the figures: no stored reason, no arm or role column and no internal variant key
+    in a published figure table, in the CSV or in its markdown; the private documents keep the stored text."""
+    figures = (*PUBLISHED_FIGURES, *CATALOGUE_FIGURES)
+    reasons = set()
+    for name in figures:
+        rows = csv_rows(replayed.published / f"{name}.csv")
+        assert rows, name
+        assert not set(INTERNAL_COLUMNS) & set(rows[0]), name
+        for row in rows:
+            for column in REASON_COLUMNS:
+                if row.get(column):
+                    assert check_published_text(row[column]) == row[column], (name, column)
+                    reasons.add(row[column])
+            for column in ("variant", "variants"):
+                assert not re.search(r"\b(single|ensemble)_\w+", row.get(column, "")), (name, row[column])
+        for suffix in (".csv", ".md"):
+            text = (replayed.published / f"{name}{suffix}").read_text(encoding="utf-8")
+            for stored in STORED_WORDING:
+                assert stored not in text, (name, suffix, stored)
+    assert "route" in csv_rows(replayed.published / "gap.csv")[0]
+    assert {row["variant"] for row in csv_rows(replayed.published / "gap.csv")} == {
+        "single draw, unadjusted", "single draw, adjusted with logprobs", "single draw, adjusted with logits",
+        "ensemble, unadjusted", "ensemble, adjusted with logprobs", "ensemble, adjusted with logits"}
+    # The fixture exercises the translation: a route without logits, calibrators not fitted, an unread first reply,
+    # a k above the kept alternatives and a route without recorded draws.
+    assert {"logits are not available on this serving route: they would come from other weights than the served "
+            "model, and values from different weights are not comparable",
+            "no logprobs calibrator has been fitted on macro prompts for this serving route",
+            "the first reply could not be read", "k 100 is above the 20 alternatives kept",
+            "no draw of the full run is recorded for this serving route"} <= reasons
+    # The private analyses keep the stored reason, word for word.
+    stored = stored_json(replayed.private / "pre-registered-serving-full_run.json")
+    assert "(Requirement 9.4)" in json.dumps(stored["missing_variants"])
+
+
+def test_the_mode_comparison_of_the_replay_received_the_cutoff_result_for_logits(study, replayed):
+    """The three-answer decision needs the cutoff result (Requirement 4.6): the replay computes the cutoff check
+    first and passes the logits result under the identifying prompt into the comparison."""
+    check = stored_json(replayed.private / cutoff_check_path("sampling").name)
+    cell = next(cell for cell in check["cells"]
+                if (cell["mode"], cell["prompt_kind"]) == (FULL_DISTRIBUTION, RULE_PROMPT))
+    assert cell["summary"]["passes"] is not None, "the fixture has a cutoff check for logits"
+    comparison = stored_json(replayed.private / comparison_path("sampling").name)
+    assert comparison["cutoff_check"] is cell["summary"]["passes"] is study.logits_cutoff
+    assert "was not supplied" not in comparison["reason"]
+    assert replayed.manifest["catalogue"]["mode_comparison_cutoff_input"] == {"sampling": cell["summary"]["passes"]}
+    markdown = (replayed.private / comparison_path("sampling").with_suffix(".md").name).read_text(encoding="utf-8")
+    assert "Cutoff check for logits: not supplied" not in markdown
+    caption = (replayed.published / f"{MODE_COMPARISON}.md").read_text(encoding="utf-8").splitlines()[0]
+    assert "no cutoff check for logits was supplied" not in caption
+
+
+def test_an_arm_without_stored_results_gets_no_cutoff_check_and_the_manifest_says_why(study, tmp_path):
+    """The shape of the recorded study: the serving route's full run is an open stage without stored item results.
+    Its cutoff check is not written and not published, the manifest gives the reason, and the replay still
+    publishes the rest."""
+    results = tmp_path / "results"
+    shutil.copytree(study.results_dir, results)
+    serving = [path for path in results.rglob("*.json") if "serving" in path.relative_to(results).parts]
+    assert serving
+    for path in serving:
+        path.unlink()
+    output = replay(inputs_of(study, results_dir=results), tmp_path / "out")
+    private = {path.name for path in output.private}
+    assert cutoff_check_path("serving").name not in private and cutoff_check_path("sampling").name in private
+    assert baseline_path().name in private
+    catalogue = output.manifest["catalogue"]
+    assert catalogue["cutoff_check"] == ["sampling"]
+    missing = {(entry["analysis"], entry["arm"]): entry["reason"] for entry in catalogue["not_written"]}
+    assert set(missing) == {("cutoff-check", "serving"), ("mode-comparison", "serving")}
+    assert "no stored result" in missing[("cutoff-check", "serving")]
+    assert not (output.root / PUBLISHED_DIR / cutoff_check_path("serving").with_suffix(".md").name).exists()
+
+
+def test_a_leak_in_a_new_published_file_still_refuses_the_replay(study, replayed, tmp_path):
+    """The new files go through the same guard: a raw BAA10Y level equal to a number of the mode comparison's
+    published table refuses the replay, removes the published tree, writes no manifest and exits with code 2."""
+    name = f"{MODE_COMPARISON}.csv"
+    planted = next(float(cell) for row in csv_rows(replayed.published / name) for cell in row.values()
+                   if len(cell) >= 8 and cell.replace("-", "").replace(".", "").isdigit())
+    record = json.loads(study.items_path.read_text(encoding="utf-8"))
+    for index in range(3):
+        record["macro_items"][index]["row"]["raw"]["baa10y"] = planted
+    items_path = tmp_path / "items-planted.json"
+    items_path.write_text(json.dumps(record), encoding="utf-8")
+    out_root = tmp_path / "planted"
+    with pytest.raises(ReplayError, match="licensing probe") as refusal:
+        replay(inputs_of(study, items_path=items_path), out_root)
+    message = str(refusal.value)
+    assert f"{name}: BAA10Y raw levels (FRED, Moody's) (" in message
+    assert repr(planted) not in message
+    assert not (out_root / "docs").exists() and (out_root / PRIVATE_DIR).is_dir()
+    assert not (out_root / MANIFEST_NAME).exists()
+    args = cli_args(study, tmp_path / "planted-cli")
+    args[args.index("--items") + 1] = str(items_path)
+    assert main(args) == 2
+    assert not (tmp_path / "planted-cli" / "docs").exists() and not (tmp_path / "planted-cli" / MANIFEST_NAME).exists()
+    # The guard scans every published file, the new ones among them.
+    scanned = replayed.manifest["guard"]["files_scanned"]
+    assert scanned == len(published_text_files(replayed.published)) == len(replayed.manifest["published"])
+
+
+# ---------- private records are opened for reading only ----------
+
+def test_the_replay_leaves_every_draw_log_as_it_is(study, replayed):
+    assert draw_log_state(study.records_dir) == study.draw_logs
+
+
+def test_the_replay_reads_draw_logs_only_through_the_read_only_reader():
+    import inspect
+
+    from scripts.finance_sim import replay as module
+
+    source = inspect.getsource(module)
+    assert not re.search(r"\bDrawLog\b", source) and ".latest(" not in source and "_repaired_lines" not in source
+    assert "read_draw_log" in source
+
+
+def test_a_draw_log_without_a_final_newline_is_read_and_left_unchanged(study, replayed, tmp_path):
+    """The recording's own reader would append the newline; an analysis must not modify a private record."""
+    records = tmp_path / "records"
+    shutil.copytree(study.records_dir, records)
+    log = draw_log_path("sampling", "full_run", records)
+    data = log.read_bytes()
+    assert data.endswith(b"\n")
+    log.write_bytes(data[:-1])
+    before = draw_log_state(records)
+    output = replay(inputs_of(study, records_dir=records), tmp_path / "out")
+    assert draw_log_state(records) == before
+    hashes = file_hashes(output.root)
+    assert {name: value for name, value in hashes.items() if name != MANIFEST_NAME} == {
+        name: value for name, value in replayed.hashes.items() if name != MANIFEST_NAME}, \
+        "a complete last line without its newline is used: the outputs are those of the intact log"
+
+
+def test_a_draw_log_with_a_cut_short_last_line_refuses_the_replay_and_is_left_unchanged(study, tmp_path, capsys):
+    records = tmp_path / "records"
+    shutil.copytree(study.records_dir, records)
+    log = draw_log_path("sampling", "full_run", records)
+    with log.open("ab") as stream:
+        stream.write(b'{"key": ["macro-2016-05", "identifying", 0], "ver')
+    before = draw_log_state(records)
+    out_root = tmp_path / "out"
+    with pytest.raises(ReplayError, match="incomplete last line") as refusal:
+        replay(inputs_of(study, records_dir=records), out_root)
+    assert str(log) in str(refusal.value)
+    assert draw_log_state(records) == before
+    assert not out_root.exists(), "refused before anything is written"
+    args = cli_args(study, tmp_path / "out-cli")
+    args[args.index("--records-dir") + 1] = str(records)
+    assert main(args) == 2
+    assert "incomplete last line" in capsys.readouterr().err
+    assert draw_log_state(records) == before and not (tmp_path / "out-cli").exists()
 
 
 def test_the_licensing_guard_fails_on_a_planted_leak(study, replayed, tmp_path):

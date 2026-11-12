@@ -42,8 +42,10 @@ from scripts.finance_sim import items as items_module
 from scripts.finance_sim import run_study
 from scripts.finance_sim.calibrate import CALIBRATION_STAGE, CalibrationDraw, CalibrationError, calibrator_path
 from scripts.finance_sim.convergence import read_evidence_file
+from scripts.finance_sim.cutoff_check import cutoff_check_path
 from scripts.finance_sim.execute import ExecutionDraw, load_result, macro_items, planned_keys, result_path
 from scripts.finance_sim.figures import PUBLISHED_FIGURES
+from scripts.finance_sim.figures_catalogue import CATALOGUE_FIGURES, REPEAT_BASELINE
 from scripts.finance_sim.limits import (
     EXIT_COMPLETE,
     EXIT_INCOMPLETE,
@@ -59,6 +61,7 @@ from scripts.finance_sim.limits import (
     present_serving_arm,
     require_serving_approval,
 )
+from scripts.finance_sim.mode_comparison import comparison_path
 from scripts.finance_sim.pilot import STOP_FOR_DECISION, GateStoppedError, gate_path, load_gate
 from scripts.finance_sim.plan import load_plan
 from scripts.finance_sim.recording import (
@@ -74,6 +77,7 @@ from scripts.finance_sim.recording import (
     receipt_path,
     request_allowance,
 )
+from scripts.finance_sim.repeat_baseline import baseline_path
 from scripts.finance_sim.replay import MANIFEST_NAME, PRIVATE_DIR, PUBLISHED_DIR
 from scripts.finance_sim.run_study import EXIT_GATE_STOPPED, RUNNER_LOG, load_items
 from scripts.probe_modal_model import APPROVAL_ASSERTIONS
@@ -653,9 +657,22 @@ def test_the_replay_under_require_guard_reproduces_the_analyses_byte_for_byte(st
     for path in analyses:
         assert (private / path.name).read_bytes() == path.read_bytes(), path.name
     published = replayed.root / PUBLISHED_DIR
+    # The three analyses behind the catalogue are written beside the others, and the repeat baseline is published.
+    catalogue = replayed.manifest["catalogue"]
+    assert (private / baseline_path().name).is_file() and REPEAT_BASELINE in catalogue["figures"]
+    assert set(catalogue["figures"]) <= set(CATALOGUE_FIGURES)
+    for arm in catalogue["cutoff_check"]:
+        assert (private / cutoff_check_path(arm).name).is_file()
+    for arm in catalogue["mode_comparison"]:
+        assert (private / comparison_path(arm).name).is_file()
     # One SVG per published figure, named by the figure modules' own set: no themed variant beside it.
-    assert sorted(path.name for path in published.iterdir() if path.suffix == ".svg") == sorted(
-        f"{name}.svg" for name in PUBLISHED_FIGURES)
+    names = sorted(path.name for path in published.iterdir())
+    assert sorted(name for name in names if name.endswith(".svg")) == sorted(
+        f"{name}.svg" for name in (*PUBLISHED_FIGURES, *catalogue["figures"]))
+    assert not any("-light" in name or "-dark" in name for name in names)
+    for name in catalogue["figures"]:
+        assert {f"{name}.csv", f"{name}.md"} <= set(names)
+    assert replayed.manifest["guard"]["files_scanned"] == len(names) == len(replayed.manifest["published"])
     assert all(Path(line).is_relative_to(study.base) for line in replayed.stdout.splitlines())
 
 

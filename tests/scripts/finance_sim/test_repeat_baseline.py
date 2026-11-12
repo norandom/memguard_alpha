@@ -113,6 +113,11 @@ def build(**draws):
     return repeat_baseline(PLAN, draws, providers=PROVIDERS)
 
 
+def plan_labelled():
+    """The baseline of both arms' draws with the routes labelled by the frozen plan alone, as the records give it."""
+    return repeat_baseline(PLAN, {SAMPLING: sampling_draws(), SERVING: serving_draws()})
+
+
 @pytest.fixture(scope="module")
 def baseline():
     return build(sampling=sampling_draws(), serving=serving_draws())
@@ -162,7 +167,14 @@ def test_the_share_with_one_answer_carries_a_95_percent_wilson_interval(baseline
     assert share.interval.confidence == 0.95 and "Wilson" in share.interval.method
     full = baseline.statistic(SERVING, "share_of_prompts_with_one_answer")
     lo, hi = wilson_interval(3, 3, confidence=0.95)
-    assert (full.interval.lo, full.interval.hi) == (lo, hi) and lo < 1.0  # not degenerate at 3 of 3
+    assert full.interval.lo == lo < 1.0  # not degenerate at 3 of 3
+    # The upper bound at n of n is exactly 1 (and the lower bound at 0 of n exactly 0): no floating-point residue.
+    assert full.interval.hi == 1.0 and abs(hi - 1.0) < 1e-12
+    none = build(serving=[made for key, answers in zip(SERVING_KEYS, ((A, B, A, B), (A, B, C, C)), strict=False)
+                          for made in ensemble(SERVING, key, answers)])
+    empty = none.statistic(SERVING, "share_of_prompts_with_one_answer")
+    upper = wilson_interval(0, 2, confidence=0.95)[1]
+    assert empty.value == 0.0 and empty.interval.lo == 0.0 and empty.interval.hi == upper > 0.0
     assert baseline.statistic(SAMPLING, "prompts_analysed").interval is None
 
 
@@ -223,10 +235,34 @@ def test_the_document_names_route_and_temperature_of_each_arm(baseline):
     assert share["independent_units"] is False and share["missing"] is None
 
 
-def test_the_provider_comes_from_the_arms_profile_when_none_is_given():
-    document = repeat_baseline(PLAN, {SAMPLING: sampling_draws()}).to_dict()
-    assert document["arms"][SAMPLING]["route"]["provider"] == "llama.cpp"
-    assert document["arms"][SERVING]["route"]["provider"] == "modal"
+def test_the_route_label_comes_from_the_frozen_plan_alone_when_no_provider_is_given(monkeypatch):
+    """The replay compares bytes, so the label of a route must not follow a later edit of a provider profile: without
+    ``providers`` the route is the plan's profile id and served model, and no profile file is read."""
+    import inspect
+
+    from recall_guard.core import profiles
+    from scripts.finance_sim import repeat_baseline as module
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("the repeat baseline read a provider profile")
+
+    monkeypatch.setattr(profiles, "load_profile", forbidden)
+    assert "load_profile" not in inspect.getsource(module) and "core.profiles" not in inspect.getsource(module)
+    found = repeat_baseline(PLAN, {SAMPLING: sampling_draws()})
+    document = found.to_dict()
+    for arm in (SAMPLING, SERVING):
+        arm_plan = PLAN.arms.arms[arm]
+        assert document["arms"][arm]["route"] == {"profile_id": arm_plan.profile_id, "provider": None,
+                                                  "served_model": arm_plan.served_model}
+    assert "the serving route llamacpp-gemma3-4b (model gemma3:4b) at temperature 0.7" in (
+        found.statistic(SAMPLING, "prompts_analysed").estimand)
+    markdown = found.to_markdown()
+    assert "serving route llamacpp-gemma3-4b (model gemma3:4b), temperature 0.7" in markdown
+    assert "| llamacpp-gemma3-4b |" in markdown and "None" not in markdown and "provider" not in markdown
+    # A caller that knows the provider can still name it, as before.
+    named = repeat_baseline(PLAN, {SAMPLING: sampling_draws()}, providers=PROVIDERS).to_dict()
+    assert named["arms"][SAMPLING]["route"]["provider"] == "llama.cpp"
+    assert named["arms"][SERVING]["route"]["provider"] == "modal"
 
 
 def test_each_table_row_shows_value_interval_n_and_the_calculation(baseline):
@@ -262,7 +298,10 @@ def test_the_baseline_is_read_from_the_recorded_draws_and_written_once(baseline,
     record(records_dir, SAMPLING, sampling_draws())
     record(records_dir, SERVING, serving_draws())
     read = repeat_baseline_from_records(PLAN, records_dir=records_dir)
-    assert read.document == baseline.document
+    # Read from the records, the routes are labelled by the frozen plan alone; the statistics are the same.
+    assert read.document == plan_labelled().document != baseline.document
+    assert {arm: [row["value"] for row in entry["statistics"]] for arm, entry in read.to_dict()["arms"].items()} == {
+        arm: [row["value"] for row in entry["statistics"]] for arm, entry in baseline.to_dict()["arms"].items()}
     assert read.document.endswith("\n") and "\r" not in read.document
     assert read.document == json.dumps(read.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n"
     json_path, markdown_path = write_baseline(read, out_dir)
@@ -301,7 +340,7 @@ def test_reading_the_records_never_modifies_a_draw_log(baseline, tmp_path, endin
         assert document["arms"][arm]["incomplete_last_lines_ignored"] == ignored
         assert document["arms"][arm]["recorded_draws"] == baseline.to_dict()["arms"][arm]["recorded_draws"]
     assert ("incomplete last line" in read.to_markdown()) == bool(ignored)
-    assert (read.document == baseline.document) == (not ignored)
+    assert (read.document == plan_labelled().document) == (not ignored)
 
 
 def test_the_analysis_holds_no_write_other_than_its_own_outputs():

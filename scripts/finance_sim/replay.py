@@ -14,13 +14,39 @@ draw-spread figure, and the convergence figure: :func:`~scripts.finance_sim.figu
 frozen example rule, :func:`~scripts.finance_sim.figures_convergence.render_convergence`),
 all written into one fresh output root.
 
+The three analyses behind the catalogue follow, each computed from the private
+records and written once: the cutoff check of every arm with stored full-run
+results (:func:`~scripts.finance_sim.cutoff_check.cutoff_check_from_records`),
+then the comparison of logprobs with logits of every arm that has a calibrator
+in both modes (:func:`~scripts.finance_sim.mode_comparison.mode_comparison_from_records`,
+which receives the cutoff result for logits under the identifying prompt, so
+its answer can be concluded from data), then the repeat baseline over both arms
+(:func:`~scripts.finance_sim.repeat_baseline.repeat_baseline_from_records`,
+which reads recorded draws and so covers an open stage without stored results).
+Figures 5 to 7 are rendered from those result objects, for the probe arm
+(:mod:`scripts.finance_sim.figures_catalogue`). An analysis an arm cannot have
+(no logits mode, a calibrator not fitted, no stored result) is not written and
+not published; the manifest states it once under ``catalogue.not_written`` with
+the reason, and it is not an error. A file of missing cells for a route whose
+results were never stored would publish nothing a reader can use.
+
+Published wording. The figure tables give every reason through
+:func:`~scripts.finance_sim.published_text.published_reason` and name routes and
+variants in plain words. The analysis markdown is not published (owner's
+decision, 2026-11-11): it keeps the working vocabulary of the study and stays
+with the analysis JSON in the private directory.
+
+Private records are opened for reading only. Draw logs are read through
+:func:`~scripts.finance_sim.recording.read_draw_log`, which never repairs a
+log; a log that ends in an incomplete last line refuses the replay before
+anything is written and is left as it is.
+
 Layout under the output root (design: File Structure Plan and the Figures
 layout). The analysis JSON documents carry per-item rows and stay private, so
 they go to ``runs/finance-sim/analysis/`` with the markdown each writer puts
 beside them; the published files go to ``docs/assets/finance-sim/``: the five
-figures (one SVG in the academic style, CSV and markdown each) and one published copy of
-every analysis markdown with the sources above it (Moody's for BAA10Y, FMP for
-the prices, SEC EDGAR for the releases). The root also gets ``replay.json``,
+figures and Figures 5 to 7 (one SVG in the academic style, CSV and markdown each), and nothing else: the
+published set is the eight figures. The root also gets ``replay.json``,
 the manifest with the SHA-256 of every file, the matplotlib version and the
 example rule. The dated report of task 9.5 (``docs/results/``) cites these
 files; this module does not write it.
@@ -81,17 +107,33 @@ from pathlib import Path
 from typing import Any
 
 from scripts.finance_sim.analysis import analysis_from_records, write_analysis
-from scripts.finance_sim.calibrate import CALIBRATORS_DIR
+from scripts.finance_sim.calibrate import CALIBRATION_STAGE, CALIBRATORS_DIR, MACRO, CalibrationDraw, calibrator_path
 from scripts.finance_sim.convergence import CONVERGENCE_STAGES, convergence_from_records, write_table
+from scripts.finance_sim.cutoff_check import (
+    RULE_PROMPT,
+    CutoffCheckResult,
+    cutoff_check_from_records,
+    write_cutoff_check,
+)
 from scripts.finance_sim.ensemble_metrics import ANALYSED_STAGES, ensemble_metrics_from_records, write_metrics
-from scripts.finance_sim.execute import EXECUTION_STAGES, RESULTS_DIR, ExecutionDraw
+from scripts.finance_sim.execute import EXECUTION_STAGES, RESULTS_DIR, ExecutionDraw, planned_keys, result_path
+from scripts.finance_sim.figure_style import write_outputs
 from scripts.finance_sim.figures import (
     DEFAULT_ARMS,
-    EDGAR_SOURCE,
     FIGURE_NAMES,
-    FMP_SOURCE,
-    FRED_SOURCE,
     render_figures,
+)
+from scripts.finance_sim.figures_catalogue import (
+    CUTOFF_CHECK,
+    MODE_COMPARISON,
+    REPEAT_BASELINE,
+    catalogue_figure_texts,
+    cutoff_check_table,
+    mode_comparison_table,
+    plot_cutoff_check,
+    plot_mode_comparison,
+    plot_repeat_baseline,
+    repeat_baseline_table,
 )
 from scripts.finance_sim.figures_convergence import render_convergence
 from scripts.finance_sim.figures_draws import EXAMPLE_DEFAULT, render_draws
@@ -108,10 +150,17 @@ from scripts.finance_sim.items import (
     load_edgar_items,
 )
 from scripts.finance_sim.limits import ARMS, SAMPLING_ARM
+from scripts.finance_sim.mode_comparison import (
+    MODE_SOURCES,
+    ModeComparison,
+    mode_comparison_from_records,
+    write_comparison,
+)
 from scripts.finance_sim.negative_control import negative_control_from_records, write_report
 from scripts.finance_sim.pilot import CONFIRMATORY_STAGE
-from scripts.finance_sim.plan import StudyPlan, load_plan, require_complete
-from scripts.finance_sim.recording import RECORDS_DIR, DrawLog, draw_log_path
+from scripts.finance_sim.plan import FULL_DISTRIBUTION, StudyPlan, load_plan, require_complete
+from scripts.finance_sim.recording import RECORDS_DIR, draw_log_path, read_draw_log
+from scripts.finance_sim.repeat_baseline import RepeatBaseline, repeat_baseline_from_records, write_baseline
 
 #: The matplotlib version the published SVGs were rendered with (their ``dc:title`` metadata); a replay with
 #: another version is refused, because the glyph paths and the layout would change the bytes.
@@ -138,12 +187,6 @@ MIN_VALUE_PROBE = 8
 MIN_TEXT_PROBE = 24
 #: Consecutive values of one series probed together, and how many number tokens apart they may stand.
 SERIES_WINDOW, SERIES_SPAN = 3, 80
-#: The published copy of an analysis markdown carries this above the table. It is published text: the sources, what
-#: was done and what stays private, with no task number, script path or private path.
-PUBLISHED_HEADER = (
-    f"Sources: {FRED_SOURCE}; {FMP_SOURCE}; {EDGAR_SOURCE}. Replayed offline from the recorded draws and scores with "
-    "no model request; the per-item rows stay private. Derived statistics only: no reply text, no realized return "
-    "and no raw licensed series.")
 _SVG_CREATOR = re.compile(r"<dc:title>(Matplotlib v[^<]*)</dc:title>")
 #: A number standing on its own: not part of an identifier, a hash, a date or a longer number.
 _NUMBER = re.compile(r"(?<![0-9A-Za-z._-])-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?![0-9A-Za-z._])")
@@ -429,10 +472,38 @@ def reply_probes(plan: StudyPlan, records_dir: str | Path = RECORDS_DIR) -> list
                 continue  # a stage the arm does not run (the serving arm has no pilot)
             if not path.exists():
                 continue
-            for draw in DrawLog(path, plan=plan, loads=ExecutionDraw.from_dict).latest():
+            for draw in _read_draws(path, plan, ExecutionDraw.from_dict):
                 if draw.response is not None:
                     replies.setdefault(draw.response.content)
     return [probe for text in replies if (probe := text_probe(REPLY_LABEL, text)) is not None]
+
+
+def _read_draws(path: Path, plan: StudyPlan, loads: Any) -> list[Any]:
+    """The latest version of every draw of the log at ``path``, read without changing the file.
+
+    The recording's own reader repairs a log in place (it appends a newline or
+    truncates an incomplete last line); the replay is an analysis of private
+    records and must not be able to modify one, so it reads through
+    :func:`~scripts.finance_sim.recording.read_draw_log`. A last line without
+    its newline is used when it is complete.
+
+    Raises:
+        ReplayError: the log ends in an incomplete last line. The replay has no place to state an ignored line
+            in every output, so it refuses and leaves the log as it is.
+    """
+    reading = read_draw_log(path, plan=plan, loads=loads)
+    if reading.incomplete_last_lines:
+        raise ReplayError(f"{path} ends in an incomplete last line (a write cut short); the replay opens private "
+                          "records for reading only and repairs none, so it refuses and the log is left as it is")
+    return reading.draws
+
+
+def check_calibration_logs(plan: StudyPlan, records_dir: str | Path = RECORDS_DIR) -> None:
+    """Refuse a calibration draw log that ends in an incomplete last line (the mode comparison reads these logs)."""
+    for arm in ARMS:
+        path = draw_log_path(arm, CALIBRATION_STAGE, records_dir)
+        if path.exists():
+            _read_draws(path, plan, CalibrationDraw.from_dict)
 
 
 def number_tokens(content: str) -> tuple[str, ...]:
@@ -549,9 +620,105 @@ def fresh_root(path: str | Path) -> Path:
     return root
 
 
-def published_markdown(text: str) -> str:
-    """The published copy of an analysis markdown: the sources and the derived-only statement above it."""
-    return f"{PUBLISHED_HEADER}\n\n{text}"
+# ---------- the three analyses behind the catalogue ----------
+
+@dataclass(frozen=True)
+class CatalogueAnalyses:
+    """The cutoff checks, mode comparisons and repeat baseline one replay wrote, and what it did not write.
+
+    ``cutoff_inputs`` is, per compared arm, the cutoff result for logits under
+    the identifying prompt that its comparison received (True, False, or None
+    when that cell of the cutoff check is missing). ``not_written`` names each
+    analysis an arm cannot have, with the reason, once.
+    """
+
+    paths: tuple[Path, ...]
+    checks: Mapping[str, CutoffCheckResult]
+    comparisons: Mapping[str, ModeComparison]
+    cutoff_inputs: Mapping[str, bool | None]
+    baseline: RepeatBaseline
+    not_written: tuple[Mapping[str, str], ...]
+
+
+def _has_results(plan: StudyPlan, arm: str, results_dir: Path) -> bool:
+    """Whether a result of the arm's full run is stored (an open stage with recorded draws stores none)."""
+    return any(result_path(arm, CONFIRMATORY_STAGE, item_id, rendering, results_dir).exists()
+               for item_id, rendering in planned_keys(plan, arm, CONFIRMATORY_STAGE))
+
+
+def _no_comparison(plan: StudyPlan, arm: str, inputs: ReplayInputs, checks: Mapping[str, CutoffCheckResult]
+                   ) -> str | None:
+    """Why ``arm`` gets no comparison of logprobs with logits, or None when it has both modes and stored results."""
+    offered = plan.arms.arms[arm].estimate_sources
+    absent = [mode for mode, source in MODE_SOURCES.items() if source not in offered]
+    if absent:
+        return f"the frozen plan gives the {arm} arm no {' and no '.join(absent)} mode, so the two are not compared"
+    unfitted = [mode for mode, source in MODE_SOURCES.items()
+                if not calibrator_path(arm, source, MACRO, inputs.calibrators_dir).exists()]
+    if unfitted:
+        return f"no {' and no '.join(unfitted)} calibrator of the {arm} arm is fitted on the macro prompts"
+    if arm not in checks:
+        return f"no stored result of the {arm} arm's full run, so its cutoff check and its estimates are missing"
+    return None
+
+
+def catalogue_analyses(plan: StudyPlan, inputs: ReplayInputs, private: Path) -> CatalogueAnalyses:
+    """Write the cutoff checks, then the mode comparisons with the cutoff result, then the repeat baseline.
+
+    The convergence tables must already be in ``private``: the comparison
+    reads them. Every analysis is deterministic and written once.
+    """
+    paths: list[Path] = []
+    checks: dict[str, CutoffCheckResult] = {}
+    comparisons: dict[str, ModeComparison] = {}
+    cutoff_inputs: dict[str, bool | None] = {}
+    not_written: list[dict[str, str]] = []
+    for arm in ARMS:
+        if not _has_results(plan, arm, Path(inputs.results_dir)):
+            not_written.append({"analysis": CUTOFF_CHECK, "arm": arm,
+                                "reason": f"no stored result of the {arm} arm's full run (an open stage records "
+                                          "draws only), so there is no month estimate to compare"})
+            continue
+        checks[arm] = cutoff_check_from_records(plan, arm=arm, results_dir=inputs.results_dir)
+        paths += write_cutoff_check(checks[arm], private)
+    for arm in ARMS:
+        reason = _no_comparison(plan, arm, inputs, checks)
+        if reason is not None:
+            not_written.append({"analysis": MODE_COMPARISON, "arm": arm, "reason": reason})
+            continue
+        cutoff_inputs[arm] = checks[arm].cell(FULL_DISTRIBUTION, RULE_PROMPT).summary.passes
+        comparisons[arm] = mode_comparison_from_records(
+            plan, arm=arm, kind=MACRO, calibrators_dir=inputs.calibrators_dir, results_dir=inputs.results_dir,
+            records_dir=inputs.records_dir, analysis_dir=private, cutoff_check=cutoff_inputs[arm])
+        paths += write_comparison(comparisons[arm], private)
+    baseline = repeat_baseline_from_records(plan, records_dir=inputs.records_dir)
+    paths += write_baseline(baseline, private)
+    return CatalogueAnalyses(paths=tuple(paths), checks=checks, comparisons=comparisons, cutoff_inputs=cutoff_inputs,
+                             baseline=baseline, not_written=tuple(not_written))
+
+
+def render_catalogue(analyses: CatalogueAnalyses, out_dir: Path, *, arm: str = PROBE_ARM
+                     ) -> tuple[tuple[str, ...], tuple[Path, ...]]:
+    """Figures 5 to 7 from the result objects of ``arm`` (Figure 7 covers both arms): the names and the files.
+
+    A figure whose analysis was not written for ``arm`` is not rendered. Every
+    figure is built before any file is written.
+    """
+    texts: dict[Path, str] = {}
+    names: list[str] = []
+    comparison, check = analyses.comparisons.get(arm), analyses.checks.get(arm)
+    if comparison is not None:
+        names.append(MODE_COMPARISON)
+        texts.update(catalogue_figure_texts(MODE_COMPARISON, mode_comparison_table(comparison),
+                                            lambda: plot_mode_comparison(comparison), out_dir))
+    if check is not None:
+        names.append(CUTOFF_CHECK)
+        texts.update(catalogue_figure_texts(CUTOFF_CHECK, cutoff_check_table(check),
+                                            lambda: plot_cutoff_check(check), out_dir))
+    names.append(REPEAT_BASELINE)
+    texts.update(catalogue_figure_texts(REPEAT_BASELINE, repeat_baseline_table(analyses.baseline),
+                                        lambda: plot_repeat_baseline(analyses.baseline), out_dir))
+    return tuple(names), write_outputs(texts)
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -610,15 +777,18 @@ def check_guard_inputs(guard: GuardProbes) -> None:
 
 
 def replay(inputs: ReplayInputs, out_root: str | Path, *, require_guard: bool = False) -> ReplayOutput:
-    """Rebuild the analyses, the negative-control report, the convergence tables and the five figures offline.
+    """Rebuild the analyses, the negative-control report, the convergence tables and the eight figures offline.
 
     Order: the matplotlib pin, the licensing probes (with ``require_guard``,
     every private source must be there: :func:`check_guard_inputs`) and the
     fresh root are checked before anything is written; the private documents
     are written (both arms' analyses and ensemble metrics, both arms'
-    negative-control reports, the probe arm's convergence tables); the figures
-    and the published markdown copies follow; then every SVG's metadata is
-    checked against the pin and every published file against the probes. A
+    negative-control reports, the probe arm's convergence tables, then the
+    cutoff checks, the mode comparisons that receive the cutoff result, and
+    the repeat baseline: :func:`catalogue_analyses`); the five figures,
+    and Figures 5 to 7 (:func:`render_catalogue`) follow, and they are the
+    whole published set: no analysis markdown is copied beside them; then
+    every SVG's metadata is checked against the pin and every published file against the probes. A
     leak on a refusing label removes the published tree and refuses; the
     private documents stay for inspection. A match on an advisory label
     (:data:`WARNING_LABELS`) is recorded in the manifest under
@@ -630,6 +800,7 @@ def replay(inputs: ReplayInputs, out_root: str | Path, *, require_guard: bool = 
     plan = require_complete(inputs.plan)
     version = require_matplotlib()
     guard = replay_probes(inputs)
+    check_calibration_logs(plan, inputs.records_dir)
     if require_guard:
         check_guard_inputs(guard)
     root = fresh_root(out_root)
@@ -649,17 +820,16 @@ def replay(inputs: ReplayInputs, out_root: str | Path, *, require_guard: bool = 
             convergence_from_records(plan, arm=PROBE_ARM, stage=stage, results_dir=inputs.results_dir,
                                      records_dir=inputs.records_dir, calibrators_dir=inputs.calibrators_dir),
             private)
+    catalogue = catalogue_analyses(plan, inputs, private)
+    private_paths += catalogue.paths
     published_paths = list(render_figures(plan, arms=DEFAULT_ARMS, figures=FIGURE_NAMES, analysis_dir=private,
                                           calibrators_dir=inputs.calibrators_dir, out_dir=published))
     published_paths += render_draws(plan, arm=PROBE_ARM, stage=CONFIRMATORY_STAGE, analysis_dir=private,
                                     results_dir=inputs.results_dir, example=None, out_dir=published)
     published_paths += render_convergence(plan, arm=PROBE_ARM, stages=CONVERGENCE_STAGES, analysis_dir=private,
                                           out_dir=published)
-    for path in private_paths:
-        if path.suffix == ".md":
-            target = published / path.name
-            _write_text(target, published_markdown(path.read_text(encoding="utf-8")))
-            published_paths.append(target)
+    catalogue_figures, catalogue_paths = render_catalogue(catalogue, published)
+    published_paths += catalogue_paths
     for path in published_paths:
         if path.suffix == ".svg":
             check_svg_version(path.read_text(encoding="utf-8"), path)
@@ -676,6 +846,11 @@ def replay(inputs: ReplayInputs, out_root: str | Path, *, require_guard: bool = 
         "convergence_stages": list(CONVERGENCE_STAGES), "private_dir": PRIVATE_DIR.as_posix(),
         "published_dir": PUBLISHED_DIR.as_posix(), "private": _relative(private_paths, root),
         "published": _relative(published_paths, root),
+        "catalogue": {
+            "cutoff_check": list(catalogue.checks), "mode_comparison": list(catalogue.comparisons),
+            "mode_comparison_cutoff_input": dict(catalogue.cutoff_inputs), "repeat_baseline": list(ARMS),
+            "figures": list(catalogue_figures), "figure_arm": PROBE_ARM,
+            "not_written": [dict(entry) for entry in catalogue.not_written]},
         "guard": {"required": require_guard, "items_probed": guard.items_probed,
                   "closes_probed": guard.closes_probed, "dtb3_probed": guard.dtb3_probed,
                   "fmp_bodies": guard.fmp_bodies, "priced_symbols": len(PRICE_SYMBOLS),
@@ -717,8 +892,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     label and count and do not change the exit code.
     """
     parser = argparse.ArgumentParser(description="Offline worked-example replay (task 8.4): both pre-registered "
-                                                 "analyses, the negative-control report, the convergence tables and "
-                                                 "the five figures from recorded draws and scores; sends no request.")
+                                                 "analyses, the negative-control report, the convergence tables, "
+                                                 "the cutoff check, the mode comparison, the repeat baseline and "
+                                                 "the figures from recorded draws and scores; sends no request.")
     parser.add_argument("--plan", type=Path, required=True, help="the frozen plan.json")
     parser.add_argument("--plan-sha256", required=True, help="the plan hash the records carry")
     parser.add_argument("--out-root", type=Path, required=True,
@@ -776,7 +952,6 @@ __all__ = [
     "PRIVATE_PATHS",
     "PROBE_ARM",
     "PUBLISHED_DIR",
-    "PUBLISHED_HEADER",
     "PUBLISHED_SUFFIXES",
     "REPLAY_SCHEMA",
     "REPLY_LABEL",
@@ -804,7 +979,6 @@ __all__ = [
     "month_end_closes",
     "number_tokens",
     "partition_leaks",
-    "published_markdown",
     "replay",
     "replay_probes",
     "reply_probes",

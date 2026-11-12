@@ -136,6 +136,7 @@ from scripts.finance_sim.plan import (
     load_plan,
     variant_parts,
 )
+from scripts.finance_sim.published_text import published_reason
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -191,12 +192,14 @@ EDGAR_SOURCE = "EDGAR outlook prompts from SEC EDGAR filings"
 FMP_STUDY_SOURCE = ("the study's outcomes come from Financial Modeling Prep (FMP) end-of-day adjusted closes "
                     "(licensed, not published), and no FMP value enters this figure")
 
+#: A published table names the serving route and gives a variant by its plain label (:func:`variant_label`); the
+#: arm, its role and the variant keys of the study stay in the private documents.
 GAP_COLUMNS: tuple[str, ...] = (
-    "arm", "route", "role", "variant", "draw_mode", "adjustment", "gap", "interval_low", "interval_high", "p_raw",
+    "route", "variant", "draw_mode", "adjustment", "gap", "interval_low", "interval_high", "p_raw",
     "p_holm", "months", "pre_cutoff_months", "post_cutoff_months", "missing_months", "dropped_resamples",
     "accuracy_difference_pre_cutoff", "accuracy_difference_post_cutoff", "statuses", "missing")
 RELIABILITY_COLUMNS: tuple[str, ...] = (
-    "arm", "route", "role", "kind", "source", "variants", "status", "holdout_prompts", "holdout_draws",
+    "route", "kind", "source", "variants", "status", "holdout_prompts", "holdout_draws",
     "memorized_draws", "control_draws", "ece", "holdout_auc", "auc_interval_low", "auc_interval_high", "weak",
     "bin_low", "bin_high", "bin_count", "mean_predicted", "observed_share", "share_interval_low",
     "share_interval_high", "reason")
@@ -631,9 +634,21 @@ def _statuses(point: GapPoint) -> str:
     return "; ".join(f"{status} {count}" for status, count in point.statuses.items())
 
 
-def _variant_label(variant: str) -> str:
-    mode, adjustment = variant_parts(variant)
-    return f"{MODE_NAMES[mode]}, {ADJUSTMENT_NAMES[adjustment]}"
+def variant_label(variant: str) -> str:
+    """A variant in plain words, the one mapping every legend and every published table uses.
+
+    "single draw, unadjusted", "ensemble, adjusted with logprobs", "ensemble,
+    adjusted with logits": the draw mode, then the adjustment by its evidence
+    mode. An unknown variant is refused.
+    """
+    try:
+        mode, adjustment = variant_parts(variant)
+        return f"{MODE_NAMES[mode]}, {ADJUSTMENT_NAMES[adjustment]}"
+    except (KeyError, ValueError) as exc:
+        raise FigureError(f"unknown variant {variant!r}: {exc}") from None
+
+
+_variant_label = variant_label
 
 
 #: The variant whose gap the caption states: the ensemble without adjustment, the reference of its draw mode.
@@ -771,12 +786,12 @@ def gap_table(panels: Iterable[GapPanel]) -> FigureTable:
     for panel in panels:
         for point in panel.points:
             rows.append((
-                panel.arm, panel.route, panel.role, point.variant, point.mode, point.adjustment,
+                panel.route, variant_label(point.variant), point.mode, point.adjustment,
                 _number(point.statistic),
                 _number(point.low), _number(point.high), _number(point.p_value), _number(point.p_holm),
                 _number(point.months), _number(point.pre_cutoff_months), _number(point.post_cutoff_months),
                 _number(point.missing_months), _number(point.dropped_resamples), _number(point.pre_difference),
-                _number(point.post_difference), _statuses(point), "" if point.missing is None else _flat(point.missing)))
+                _number(point.post_difference), _statuses(point), published_reason(point.missing)))
     return FigureTable(name=GAP, caption=_gap_caption(panels), columns=GAP_COLUMNS, rows=tuple(rows),
                        notes=_gap_notes(panels), sources=(FRED_SOURCE, FMP_SOURCE))
 
@@ -1136,7 +1151,34 @@ def _reliability_notes(panels: Sequence[ReliabilityPanel]) -> tuple[str, ...]:
         detail = "; ".join(f"{_percent(confidence)} percent {kind} interval ({resamples} resamples)"
                            for confidence, resamples in settings)
         notes.append(f"The held-out AUC carries a {detail}.")
+    offset = _reliability_offset_note(panels)
+    if offset is not None:
+        notes.append(offset)
     return tuple(notes)
+
+
+def _reliability_shift(index: int, series: int) -> float:
+    """How far the markers of series ``index`` of ``series`` stand from their bin's mean predicted probability."""
+    return (index - (series - 1) / 2.0) * _RELIABILITY_DODGE
+
+
+def _reliability_offset_note(panels: Sequence[ReliabilityPanel]) -> str | None:
+    """The note that the figure offsets the markers sideways, with the size it uses; None with one drawn series."""
+    series = _series_keys(panels)
+    if len(series) < 2:
+        return None
+    names = [EVIDENCE_NAMES.get(source, source) for _, source in series]
+    end = "; the table gives the values without the offset."
+    if len(series) == len(set(names)) == len(ESTIMATE_SOURCES):
+        size = abs(_reliability_shift(0, 2))
+        return (f"In the figure the markers of the two evidence modes are offset sideways by {size:g} on the "
+                f"probability axis, {names[0]} to the left and {names[1]} to the right, so that both stay visible"
+                f"{end}")
+    routes = {arm: next(panel.route for panel in panels if panel.arm == arm) for arm, _ in series}
+    shifts = "; ".join(f"{name} on {routes[arm]} by {_reliability_shift(index, len(series)):+g}"
+                       for index, ((arm, _), name) in enumerate(zip(series, names, strict=True)))
+    return (f"In the figure the markers are offset sideways on the probability axis so that all stay visible "
+            f"({shifts}){end}")
 
 
 def _reliability_sources(panels: Sequence[ReliabilityPanel]) -> tuple[str, ...]:
@@ -1151,11 +1193,12 @@ def reliability_table(panels: Iterable[ReliabilityPanel]) -> FigureTable:
     rows = []
     for panel in panels:
         ece = "insufficient" if panel.status == INSUFFICIENT else _number(panel.ece)
-        head = (panel.arm, panel.route, panel.role, panel.kind, panel.source, "; ".join(panel.variants), panel.status,
+        head = (panel.route, panel.kind, panel.source, "; ".join(variant_label(name) for name in panel.variants),
+                panel.status,
                 _number(panel.holdout_prompts), _number(panel.holdout_draws), _number(panel.n_memorized),
                 _number(panel.n_control), ece, _number(panel.auc), _number(panel.auc_low), _number(panel.auc_high),
                 _number(panel.is_weak))
-        reason = "" if panel.reason is None else _flat(panel.reason)
+        reason = published_reason(panel.reason)
         if not panel.bins:
             rows.append((*head, "", "", "", "", "", "", "", reason))
         for bin_ in panel.bins:
@@ -1178,7 +1221,7 @@ def _draw_reliability(axes: Axes, kind: str, panels: Sequence[ReliabilityPanel],
             continue
         index = series.index((panel.arm, panel.source))
         style = {**series_style(index), "linestyle": "none"}
-        shift = (index - (len(series) - 1) / 2.0) * _RELIABILITY_DODGE
+        shift = _reliability_shift(index, len(series))
         xs = [bin_.mean_predicted + shift for bin_ in panel.bins]
         intervals = [bin_interval(bin_) for bin_ in panel.bins]
         # One capped bar per bin; the breaks keep a bar from joining the next bin.
@@ -1392,6 +1435,7 @@ __all__ = [
     "rounded",
     "route_label",
     "short_routes",
+    "variant_label",
     "write_outputs",
 ]
 

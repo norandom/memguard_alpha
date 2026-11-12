@@ -24,8 +24,9 @@ serialisation (sorted keys, values as floats). A fully recorded ensemble with
 fewer than 2 parsed draws cannot show variation and is excluded and counted
 separately.
 
-Per arm, labelled by its serving route (the arm's provider profile and that
-profile's provider, with the served model) and its frozen temperature, the
+Per arm, labelled by its serving route (the profile id and the served model of
+the frozen plan, so the label never follows a later edit of a profile file; a
+caller may name the provider beside them) and its frozen temperature, the
 analysis reports the two exclusion counts, the number of prompts analysed, the
 distribution (the number of prompts with 1, 2, 3, ... different answers), the
 median, and the share of prompts with exactly one answer with a two-sided
@@ -60,7 +61,6 @@ from statistics import median
 from typing import Any
 
 from recall_guard.core.consensus import Tail, wilson_interval
-from recall_guard.core.profiles import load_profile
 from recall_guard.core.significance import Interval, Statistic
 from scripts.finance_sim.execute import ExecutionDraw, planned_keys
 from scripts.finance_sim.limits import ARMS, RECORDS_DIR, RUNS_ROOT
@@ -116,11 +116,6 @@ def distribution_name(answers: int) -> str:
 
 # ---------- one arm ----------
 
-def _provider(profile_id: str) -> str:
-    """The provider the arm's profile names (a local package file read)."""
-    return load_profile(profile_id).model_config.provider
-
-
 def _answer(draw: ExecutionDraw) -> str | None:
     """The canonical serialisation of a parsed answer, None for a draw that did not parse."""
     parsed = draw.draw.parsed
@@ -161,7 +156,12 @@ def _independent(keys: Sequence[tuple[str, str]], planned: Sequence[tuple[str, s
     return len({item_id for item_id, _ in units}) == len(units)
 
 
-def _arm(plan: StudyPlan, arm: str, draws: Iterable[ExecutionDraw], provider: str
+def route_text(profile_id: str, provider: str | None, served_model: str) -> str:
+    """A serving route in a sentence: the plan's profile id and served model, with the provider when one is named."""
+    return f"{profile_id} ({'' if provider is None else f'{provider}, '}model {served_model})"
+
+
+def _arm(plan: StudyPlan, arm: str, draws: Iterable[ExecutionDraw], provider: str | None
          ) -> tuple[dict[str, Any], tuple[Statistic, ...]]:
     """The header and the statistics of one arm."""
     arm_plan = plan.arms.arms[arm]
@@ -169,7 +169,7 @@ def _arm(plan: StudyPlan, arm: str, draws: Iterable[ExecutionDraw], provider: st
     planned = planned_keys(plan, arm, STAGE)
     recorded = _by_prompt(arm, planned, size, temperature, draws)
     n_draws = sum(len(indexed) for indexed in recorded.values())
-    route = f"{arm_plan.profile_id} ({provider}, model {arm_plan.served_model})"
+    route = route_text(arm_plan.profile_id, provider, arm_plan.served_model)
     where = (f"the {arm} arm's {STAGE} stage on the serving route {route} at temperature {temperature:g}, "
              f"{size} planned draws per prompt")
     header = {"arm": arm, "route": {"profile_id": arm_plan.profile_id, "provider": provider,
@@ -233,6 +233,10 @@ def _arm(plan: StudyPlan, arm: str, draws: Iterable[ExecutionDraw], provider: st
             f"{'s' if answers > 1 else ''} among their parsed draws",
             {ANALYSED: n}, analysed, spread[name] if has_prompts else None, missing=absent))
     bounds = wilson_interval(one, n, confidence=CONFIDENCE, tail=Tail.TWO_SIDED)
+    if bounds is not None:
+        # The Wilson lower bound at 0 of n is exactly 0 and the upper bound at n of n exactly 1; floating point
+        # leaves a residue of about 1e-17 there, which would be reported as a nonzero bound.
+        bounds = (0.0 if one == 0 else float(bounds[0]), 1.0 if one == n else float(bounds[1]))
     statistics += [
         statistic(MEDIAN, estimands[MEDIAN],
                   f"median of the number of different answers over the {ANALYSED} prompts (the mean of the two middle "
@@ -290,8 +294,11 @@ def repeat_baseline(plan: StudyPlan, draws: Mapping[str, Iterable[ExecutionDraw]
 
     ``draws`` gives the recorded draws per arm (the latest version of each); an
     arm it does not name, or names without draws, is reported missing.
-    ``providers`` names each arm's provider; by default it is read from the
-    arm's provider profile. ``incomplete_last_lines`` gives, per arm, how many
+    ``providers`` names each arm's provider. Without it the route is labelled
+    by the frozen plan alone (profile id and served model) and no profile file
+    is read, so the outputs of one plan and one set of draws are the same
+    bytes whatever a profile file says later; the replay relies on that.
+    ``incomplete_last_lines`` gives, per arm, how many
     incomplete last lines the read-only reader of its draw log ignored (0 when
     not given); it is stated in the arm's header.
     """
@@ -306,9 +313,8 @@ def repeat_baseline(plan: StudyPlan, draws: Mapping[str, Iterable[ExecutionDraw]
     arms: dict[str, dict[str, Any]] = {}
     statistics: dict[str, tuple[Statistic, ...]] = {}
     for arm in ARMS:
-        profile_id = plan.arms.arms[arm].profile_id
-        provider = providers[arm] if providers is not None else _provider(profile_id)
-        if not isinstance(provider, str) or not provider:
+        provider = providers[arm] if providers is not None else None
+        if provider is not None and (not isinstance(provider, str) or not provider):
             raise RepeatBaselineError(f"the provider of the {arm} arm must be a non-empty string")
         header, found = _arm(plan, arm, draws.get(arm, ()), provider)
         ignored = (incomplete_last_lines or {}).get(arm, 0)
@@ -360,7 +366,8 @@ def _row(arm: Mapping[str, Any], statistic: Mapping[str, Any]) -> list[str]:
         calculation += "; prompts not independent"
     bounds = "" if interval is None else (f"{interval['lo']:.4g} to {interval['hi']:.4g} "
                                           f"({interval['confidence'] * 100:g} percent)")
-    return [arm["arm"], f"{route['profile_id']} ({route['provider']})", f"{arm['temperature']:g}", statistic["name"],
+    label = route["profile_id"] if route["provider"] is None else f"{route['profile_id']} ({route['provider']})"
+    return [arm["arm"], label, f"{arm['temperature']:g}", statistic["name"],
             "missing" if statistic["value"] is None else _number(statistic["value"]), bounds, str(statistic["n"]),
             calculation]
 
@@ -379,7 +386,8 @@ def _markdown(data: Mapping[str, Any]) -> str:
         ignored = arm["incomplete_last_lines_ignored"]
         cut = (f" Its draw log ended in {ignored} incomplete last line (a write cut short), which was ignored; the "
                "log is opened for reading only and was left as it is." if ignored else "")
-        lines.append(f"- {arm['arm']} arm: serving route {route['profile_id']} (provider {route['provider']}, model "
+        named = "" if route["provider"] is None else f"provider {route['provider']}, "
+        lines.append(f"- {arm['arm']} arm: serving route {route['profile_id']} ({named}model "
                      f"{route['served_model']}), temperature {arm['temperature']:g}, {arm['planned_draws']} planned "
                      f"draws per prompt, {arm['planned_prompts']} planned prompts, {state}.{cut}")
     lines += [
@@ -485,6 +493,7 @@ __all__ = [
     "main",
     "repeat_baseline",
     "repeat_baseline_from_records",
+    "route_text",
     "write_baseline",
 ]
 

@@ -57,6 +57,7 @@ from scripts.finance_sim.figures_catalogue import (  # noqa: E402
 )
 from scripts.finance_sim.limits import ARMS  # noqa: E402
 from scripts.finance_sim.mode_comparison import IMPROVE, LOGITS, LOGPROBS, MATCH, UNDECIDED  # noqa: E402
+from scripts.finance_sim.published_text import published_reason  # noqa: E402
 from scripts.finance_sim.repeat_baseline import (  # noqa: E402
     ANALYSED,
     NO_DRAWS,
@@ -78,8 +79,8 @@ baseline = repeat_tests.baseline
 PRECISION = ("Statistics in the caption are shown to three decimals; a nonzero value that would round to zero is "
              "shown with two significant digits.")
 SINGLY = "resampled singly (block length 1, because a group has fewer months than the plan's block length of 6)"
-NOT_INDEPENDENT = ("the two renderings of one month share the month, so the prompts are not independent and the "
-                   "interval may be too narrow")
+NOT_INDEPENDENT = ("the identifying and the anonymised prompt of one month share the month, so the prompts are not "
+                   "independent and the interval may be too narrow")
 
 AGREEMENT = ("estimate_agreement_mean_difference", "estimate_agreement_lower_limit_of_agreement",
              "estimate_agreement_upper_limit_of_agreement")
@@ -429,11 +430,18 @@ def test_the_cause_in_the_mode_comparison_caption_is_read_from_data_never_from_t
     caption = mode_comparison_table(changed).caption
     assert f"is +0.278 ({low:+.3f} to +0.411); {ending}n = " in caption
     # A reworded reason changes the note under the table and nothing in the caption.
-    reworded = replace(changed, reason="worded differently; in two parts")
-    table = mode_comparison_table(reworded)
+    other = ("the intervals of the limits of agreement cannot be computed (no month resample gave a defined limit), "
+             "so the limits cannot be checked on their interval bounds")
+    table = mode_comparison_table(replace(changed, reason=other))
     assert table.caption == caption
-    assert f"Answer of the comparison: {answer}. Reason: worded differently; in two parts." in \
-        table.to_markdown().splitlines()
+    assert f"Answer of the comparison: {answer}. Reason: {other}." in table.to_markdown().splitlines()
+    # The note gives the published sentence of the stored reason; a reason without one is refused, not published.
+    stored = ("holdout_auc_logits cannot be computed; missing: the calibrator record of the logits mode "
+              "(full_distribution)")
+    assert (f"Answer of the comparison: {answer}. Reason: the held-out AUC of logits cannot be computed; missing: "
+            "the logits calibrator.") in mode_comparison_table(replace(changed, reason=stored)).to_markdown()
+    with pytest.raises(FigureError, match="no published wording"):
+        mode_comparison_table(replace(changed, reason="worded differently; in two parts"))
 
 
 def test_a_plotted_interval_with_equal_bounds_is_named_in_the_caption(drawn):
@@ -700,9 +708,12 @@ def test_a_mode_without_a_calibrator_is_not_plotted_and_is_listed_with_its_reaso
     assert artists(figure, f"auc-{LOGITS}") == [] and artists(figure, f"auc-interval-{LOGITS}") == []
     assert len(artists(figure, f"auc-{LOGPROBS}")) == 1 and len(marks(figure)) == 2
     row = one_row(table, x=LOGITS)
-    assert (row["value"], row["interval_low"], row["plotted"], row["missing"]) == ("", "", "no", missing)
-    assert one_row(table, statistic="paired_auc_difference")["missing"] != ""
-    assert f"No mark is drawn for {LOGITS}: {missing}" in table.caption
+    assert missing == "the calibrator record of the logits mode (full_distribution)"
+    assert (row["value"], row["interval_low"], row["plotted"], row["missing"]) == ("", "", "no",
+                                                                                 "the logits calibrator")
+    assert one_row(table, statistic="paired_auc_difference")["missing"] == "the logits calibrator"
+    assert f"No mark is drawn for {LOGITS}: the logits calibrator." in table.caption
+    assert "full_distribution" not in table.to_markdown() and "full_distribution" not in table.to_csv()
     assert f"logits not computed. The paired difference, logits minus logprobs, cannot be computed; the analysis " \
            f"answers {comparison.answer}. n = " in table.caption
     (axes,) = figure.axes
@@ -716,7 +727,9 @@ def test_a_refused_comparison_gives_an_empty_panel_whose_caption_says_why(record
     assert table.caption.startswith("Figure 5. ") and "refused" in table.caption and "different weights" in \
         table.caption
     assert "n = 0 held-out prompts." in table.caption
-    assert [(row["plotted"], row["missing"]) for row in rows_of(table)] == [("no", comparison.refusal)] * 2
+    assert [(row["plotted"], row["missing"]) for row in rows_of(table)] == [
+        ("no", published_reason(comparison.refusal))] * 2
+    assert published_reason(comparison.refusal) in table.caption
     (axes,) = figure.axes
     assert axes.get_xlabel() and axes.get_ylabel() and list(axes.texts) == []
 
@@ -732,8 +745,12 @@ def test_cells_of_a_mode_the_arm_does_not_record_leave_their_panel_empty_and_are
         for name in ("mean_inside", "mean_after", "difference"):
             row = one_row(table, panel="(b) logits", series=kind, statistic=name)
             assert (row["value"], row["interval_low"], row["plotted"]) == ("", "", "no")
-            assert row["missing"] == check.cell("full_distribution", kind).statistics[name].missing
-    assert f"Panel (b) is empty: {reason}" in table.caption
+            assert row["missing"] == published_reason(
+                check.cell("full_distribution", kind).statistics[name].missing)
+    assert reason == "the serving arm records no full_distribution estimate, so no month carries one"
+    assert published_reason(reason) == "this serving route records no logits recall estimate, so no month has one"
+    assert f"Panel (b) is empty: {published_reason(reason)}." in table.caption
+    assert "serving arm" not in table.to_markdown() and "full_distribution" not in table.to_markdown()
     assert "higher for analysis months inside the training range than after the cutoff" in table.caption
     assert "not shown" not in table.caption
     assert_matches(one_row(table, panel="(a) logprobs", series="identifying", statistic="mean_inside"),
@@ -747,7 +764,9 @@ def test_a_cutoff_check_with_nothing_to_plot_gives_empty_panels_whose_caption_sa
     assert marks(figure) == [] and figure.legends == []
     assert all(axes.get_xlabel() and axes.get_ylabel() for axes in figure.axes)
     reason = check.cell("top_k", "identifying").statistics["difference"].missing
-    assert "cannot be computed and nothing is plotted" in table.caption and reason in table.caption
+    assert "cannot be computed and nothing is plotted" in table.caption
+    assert reason not in table.caption and published_reason(reason) in table.caption
+    assert "months with a logprobs recall estimate under the identifying prompt: " in table.caption
     assert all(row["plotted"] == "no" and row["missing"] for row in rows_of(table))
 
 
@@ -759,8 +778,11 @@ def test_an_arm_without_recorded_draws_leaves_its_panel_empty_and_is_listed():
     assert serving_axes.get_xlabel() and serving_axes.get_ylabel()
     rows = [row for row in rows_of(table) if row["panel"].startswith("(b) route ")]
     assert len(rows) == len(baseline.statistics["serving"])
-    assert all((row["value"], row["plotted"], row["missing"]) == ("", "no", NO_DRAWS) for row in rows)
-    assert f"is empty: {NO_DRAWS}" in table.caption and "0 prompts in panel (b)" in table.caption
+    no_draws = "no draw of the full run is recorded for this serving route"
+    assert published_reason(NO_DRAWS) == no_draws
+    assert all((row["value"], row["plotted"], row["missing"]) == ("", "no", no_draws) for row in rows)
+    assert f"is empty: {no_draws}" in table.caption and "0 prompts in panel (b)" in table.caption
+    assert NO_DRAWS not in table.to_markdown() and NO_DRAWS not in table.to_csv()
 
 
 def test_the_figures_refuse_anything_but_the_result_of_their_analysis(comparison, check, baseline):

@@ -118,10 +118,12 @@ from scripts.finance_sim.figures import (
     interval_wording,
     rounded,
     route_label,
+    variant_label,
 )
 from scripts.finance_sim.limits import ARMS, SAMPLING_ARM
 from scripts.finance_sim.pilot import CONFIRMATORY_STAGE
 from scripts.finance_sim.plan import ESTIMATE_SOURCES, NO_ADJUSTMENT, SINGLE_DRAW_INDEX, StudyPlan, load_plan
+from scripts.finance_sim.published_text import published_reason
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -145,17 +147,19 @@ SUMMARY_AXES: Mapping[str, str] = {
 NO_INTERVAL = "no interval was computed"
 #: What the caption calls the interval of the stored first-draw rate, by the method the metrics state on it.
 RATE_INTERVALS: Mapping[str, str] = MappingProxyType({WILSON_METHOD: "Wilson score"})
+#: The published tables name the serving route and give a variant by its plain label; they carry no arm and no role.
 DRAWS_COLUMNS: tuple[str, ...] = (
-    "row", "arm", "route", "role", "stage", "item_id", "rendering", "quantity", "draw_index", "value", "first_draw",
+    "row", "route", "stage", "item_id", "rendering", "quantity", "draw_index", "value", "first_draw",
     "median", "q25", "q75", "variant", "status", "first_category", "consensus_category", "first_draw_rank",
     "outside_band", "category_differs", "off", "halves", "baseline_off", "baseline_outside", "group", "n",
     "count_off", "count_outside", "count_differs", "count_no_category", "rate", "interval_low", "interval_high",
     "reason")
 #: The table of Figure 8: the example item's draws, their quartiles and the ensemble decisions.
 DRAW_SPREAD_COLUMNS: tuple[str, ...] = (
-    "row", "arm", "route", "role", "stage", "item_id", "rendering", "quantity", "draw_index", "value", "first_draw",
+    "row", "route", "stage", "item_id", "rendering", "quantity", "draw_index", "value", "first_draw",
     "median", "q25", "q75", "n", "variant", "status", "reason")
 IN_HALVES = "in the half-ensemble statistic"
+NOT_IN_HALVES = "not listed in the half-ensemble statistic"
 EXAMPLE_DEFAULT = ("the first item in plan order with a decided first draw and a consensus summary value (the plan "
                    "freezes no example item)")
 #: Figure sizes in inches (width, height): one panel each, the legend below it.
@@ -556,7 +560,7 @@ def draws_figure(plan: StudyPlan, metrics: Mapping[str, Any], results: Iterable[
             if consensus != result.variant(CONSENSUS_VARIANT).category:
                 raise FigureError(f"the stored consensus category of {item_key} does not match the ensemble metrics")
             off_share, outside_share = exchangeability_shares(values, categories, consensus, band)
-            status, unresolved = halves.get(item_key, ("not listed in the half-ensemble statistic", None))
+            status, unresolved = halves.get(item_key, (NOT_IN_HALVES, None))
             items.append(RankItem(
                 item_id=item_key[0], rendering=item_key[1], first_category=row["first_category"],
                 consensus_category=consensus, first_draw_rank=stored_rank, outside_band=row["outside_band"],
@@ -630,7 +634,12 @@ def _strips(example: ExampleItem) -> tuple[DrawStrip, ...]:
 
 
 def _head(data: DrawsFigure) -> dict[str, object]:
-    return {"arm": data.arm, "route": data.route, "role": data.role, "stage": data.stage}
+    return {"route": data.route, "stage": data.stage}
+
+
+def _published_halves(status: str) -> str:
+    """Column halves of a published table: in the statistic, not listed, or why not in the published wording."""
+    return status if status in (IN_HALVES, NOT_IN_HALVES) else published_reason(status)
 
 
 def _example_rows(data: DrawsFigure, columns: Sequence[str], strips: Sequence[DrawStrip],
@@ -642,13 +651,14 @@ def _example_rows(data: DrawsFigure, columns: Sequence[str], strips: Sequence[Dr
     for strip in strips:
         for index, value in enumerate(strip.values):
             rows.append(_row(columns, row="draw", **where, quantity=strip.quantity, draw_index=index, value=value,
-                             first_draw=index == SINGLE_DRAW_INDEX, reason=strip.reasons[index]))
+                             first_draw=index == SINGLE_DRAW_INDEX, reason=published_reason(strip.reasons[index])))
         rows.append(_row(columns, row="spread", **where, quantity=strip.quantity, median=strip.median, q25=strip.q25,
                          q75=strip.q75, n=len(strip.present),
                          first_draw_rank=example.first_rank if strip is example.summary else None))
     for mark in marks:
-        rows.append(_row(columns, row="ensemble", **where, quantity=mark.quantity, variant=mark.variant,
-                         value=mark.value, status=mark.status, reason=mark.reason,
+        rows.append(_row(columns, row="ensemble", **where, quantity=mark.quantity,
+                         variant=variant_label(mark.variant), value=mark.value, status=mark.status,
+                         reason=published_reason(mark.reason),
                          first_category=example.first_category if mark.variant == CONSENSUS_VARIANT else None,
                          consensus_category=example.consensus_category if mark.variant == CONSENSUS_VARIANT
                          else None))
@@ -677,19 +687,21 @@ def draws_table(data: DrawsFigure) -> FigureTable:
         rows.append(_row(columns, row="item", **head, item_id=item.item_id, rendering=item.rendering,
                          first_category=item.first_category, consensus_category=item.consensus_category,
                          first_draw_rank=item.first_draw_rank, outside_band=item.outside_band,
-                         category_differs=item.category_differs, off=item.off, halves=item.halves,
+                         category_differs=item.category_differs, off=item.off,
+                         halves=_published_halves(item.halves),
                          baseline_off=item.baseline_off, baseline_outside=item.baseline_outside, n=item.parsed))
     for rendering, points in rank_counts(data).items():
         for rank, count in points:
             rows.append(_row(columns, row="rank_count", **head, rendering=rendering, first_draw_rank=rank, n=count))
     for item_id, rendering, reason in data.missing_items:
-        rows.append(_row(columns, row="missing_item", **head, item_id=item_id, rendering=rendering, reason=reason))
+        rows.append(_row(columns, row="missing_item", **head, item_id=item_id, rendering=rendering,
+                         reason=published_reason(reason)))
     for rate in data.rates:
         rows.append(_row(columns, row="rate", **head, group=rate.group, n=rate.n, count_off=rate.off,
                          count_outside=rate.outside_band, count_differs=rate.category_differs,
                          count_no_category=rate.no_category, rate=rate.rate,
                          interval_low=rate.low, interval_high=rate.high, baseline_off=rate.baseline_off,
-                         baseline_outside=rate.baseline_outside, reason=rate.missing))
+                         baseline_outside=rate.baseline_outside, reason=published_reason(rate.missing)))
     return FigureTable(name=DRAWS, caption=_draws_caption(data), columns=columns, rows=tuple(rows),
                        notes=_draws_notes(data), sources=_sources(data))
 

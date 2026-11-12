@@ -41,6 +41,13 @@ bounds is named in the caption, so a bar without length is not read as a
 missing interval. A caption is built from the data of the result object, never
 from the wording of its reason; the full reason is a note under the table.
 
+Reasons: why a value is missing, why a comparison is refused and why it gave
+its answer are stored in the working vocabulary of the study. Every one of
+them is published through
+:func:`~scripts.finance_sim.published_text.published_reason`, in the table, in
+the notes and in the caption; a reason without a published wording is refused.
+The sources of the prompts are cited once under each table.
+
 What an interval is: the words of a caption follow the method the analysis
 states on the interval itself, the block length in the inputs of the statistic
 and its independence flag. A method without wording here, or a block length
@@ -73,7 +80,10 @@ from scripts.finance_sim.cutoff_check import (
 from scripts.finance_sim.figure_style import FIGURE_WIDTH_IN, caption, label_panel, panel_label, series_style
 from scripts.finance_sim.figures import (
     DERIVED_ONLY,
+    EDGAR_SOURCE,
     FIGURES_DIR,
+    FMP_STUDY_SOURCE,
+    FRED_SOURCE,
     FigureError,
     figure_rc,
     figure_svg,
@@ -82,12 +92,14 @@ from scripts.finance_sim.figures import (
 )
 from scripts.finance_sim.limits import ARMS
 from scripts.finance_sim.mode_comparison import IMPROVE, LOGITS, LOGPROBS, UNDECIDED, ModeComparison
+from scripts.finance_sim.published_text import published_reason
 from scripts.finance_sim.repeat_baseline import (
     ANALYSED,
     ONE_ANSWER_SHARE,
     WILSON_METHOD,
     RepeatBaseline,
     distribution_name,
+    route_text,
 )
 
 if TYPE_CHECKING:
@@ -168,6 +180,7 @@ class CatalogueTable:
     caption: str
     rows: tuple[tuple[object, ...], ...]
     notes: tuple[str, ...] = ()
+    sources: tuple[str, ...] = ()
 
     def to_csv(self) -> str:
         """The rows with every number at full precision, so the file holds the values of the analysis exactly."""
@@ -185,7 +198,8 @@ class CatalogueTable:
 
         lines = [self.caption, "", line(COLUMNS), "|" + "|".join("---" for _ in COLUMNS) + "|"]
         lines += [line(row) for row in self.rows]
-        return "\n".join([*lines, "", _rounding_note(self.name), *self.notes, DERIVED_ONLY]) + "\n"
+        sources = [f"Sources: {'; '.join(self.sources)}."] if self.sources else []
+        return "\n".join([*lines, "", _rounding_note(self.name), *self.notes, *sources, DERIVED_ONLY]) + "\n"
 
 
 def _row(panel: str, series: str, x: object, statistic: Statistic, *, plotted: bool) -> tuple[object, ...]:
@@ -194,7 +208,8 @@ def _row(panel: str, series: str, x: object, statistic: Statistic, *, plotted: b
     return (panel, series, x, statistic.name, statistic.value,
             None if interval is None else interval.lo, None if interval is None else interval.hi,
             None if interval is None else interval.confidence, None if test is None else test.p_value,
-            statistic.n, statistic.unit, plotted and statistic.value is not None, statistic.missing)
+            statistic.n, statistic.unit, plotted and statistic.value is not None,
+            None if statistic.missing is None else published_reason(statistic.missing))
 
 
 def _percent(confidence: float) -> str:
@@ -260,8 +275,13 @@ def _probability_axis(axes: Axes) -> None:
 
 
 def _reason(text: object) -> str:
-    """A missing reason as part of a caption sentence."""
-    return _flat(text).rstrip(".")
+    """A stored reason in its published wording, as part of a caption sentence or of a note."""
+    return published_reason(text)
+
+
+def _sources(kind: str) -> tuple[str, ...]:
+    """The citations under a table: where the prompts of ``kind`` come from, and that no price enters the figure."""
+    return (FRED_SOURCE if kind == MACRO else EDGAR_SOURCE, FMP_STUDY_SOURCE)
 
 
 def _checked(result: object, expected: type, what: str) -> Any:
@@ -356,14 +376,15 @@ def mode_comparison_table(comparison: ModeComparison) -> CatalogueTable:
     comparison = _checked(comparison, ModeComparison, "comparison")
     if comparison.refusal is not None:
         rows = tuple(("", "", mode, f"holdout_auc_{mode}", None, None, None, None, None, 0, "prompt", False,
-                      comparison.refusal) for mode in _MODES)
+                      _reason(comparison.refusal)) for mode in _MODES)
         return CatalogueTable(MODE_COMPARISON, _mode_comparison_caption(comparison), rows,
-                              ("The comparison is refused; no value is compared.",))
+                              ("The comparison is refused; no value is compared.",), _sources(comparison.kind))
     statistics = _comparison_statistics(comparison)
     rows = [_row("", "", mode, statistics[f"holdout_auc_{mode}"], plotted=True) for mode in _MODES]
     rows += [_row("", "", "", statistics[name], plotted=False) for name in ("paired_auc_difference", *_AGREEMENT)]
     note = f"Answer of the comparison: {comparison.answer}. Reason: {_reason(comparison.reason)}."
-    return CatalogueTable(MODE_COMPARISON, _mode_comparison_caption(comparison), tuple(rows), (note,))
+    return CatalogueTable(MODE_COMPARISON, _mode_comparison_caption(comparison), tuple(rows), (note,),
+                          _sources(comparison.kind))
 
 
 def plot_mode_comparison(comparison: ModeComparison) -> Figure:
@@ -529,7 +550,7 @@ def cutoff_check_table(check: CutoffCheckResult) -> CatalogueTable:
                              plotted=False))
     note = (f"The qualification rule reads the {RULE_PROMPT} prompt; the p-value of a difference is one-sided "
             "(inside above after).")
-    return CatalogueTable(CUTOFF_CHECK, _cutoff_caption(check), tuple(rows), (note,))
+    return CatalogueTable(CUTOFF_CHECK, _cutoff_caption(check), tuple(rows), (note,), _sources(MACRO))
 
 
 def plot_cutoff_check(check: CutoffCheckResult) -> Figure:
@@ -584,7 +605,7 @@ def _distribution(baseline: RepeatBaseline, arm: str) -> list[tuple[int, Statist
 
 def _route(header: Mapping[str, Any]) -> str:
     route = header["route"]
-    return f"{route['profile_id']} ({route['provider']}, model {route['served_model']})"
+    return route_text(route["profile_id"], route["provider"], route["served_model"])
 
 
 def _repeat_caption(baseline: RepeatBaseline) -> str:
@@ -619,8 +640,8 @@ def _repeat_caption(baseline: RepeatBaseline) -> str:
         else:
             everywhere = len(dependent) == sum(share.interval is not None for share in shares)
             where = "" if everywhere else f"in panel{'s' if len(dependent) > 1 else ''} {' and '.join(dependent)} "
-            narrow = (f"; {where}the two renderings of one month share the month, so the prompts are not independent "
-                      "and the interval may be too narrow")
+            narrow = (f"; {where}the identifying and the anonymised prompt of one month share the month, so the "
+                      "prompts are not independent and the interval may be too narrow")
         notes.append("The bars are counts and carry no interval; the interval of a share is a "
                      f"{_percent(max(confidences))} {kind} interval{narrow}.")
     if shares:
@@ -639,9 +660,9 @@ def repeat_baseline_table(baseline: RepeatBaseline) -> CatalogueTable:
         answers = {statistic.name: count for count, statistic in _distribution(baseline, arm)}
         rows += [_row(panel, "", answers.get(statistic.name, ""), statistic, plotted=statistic.name in answers)
                  for statistic in baseline.statistics[arm]]
-    note = ("x is the number of different answers of a plotted count. The two renderings of one month share the "
-            "month, so prompts are not independent where both are counted.")
-    return CatalogueTable(REPEAT_BASELINE, _repeat_caption(baseline), tuple(rows), (note,))
+    note = ("x is the number of different answers of a plotted count. The identifying and the anonymised prompt of "
+            "one month share the month, so prompts are not independent where both are counted.")
+    return CatalogueTable(REPEAT_BASELINE, _repeat_caption(baseline), tuple(rows), (note,), _sources(MACRO))
 
 
 def plot_repeat_baseline(baseline: RepeatBaseline) -> Figure:

@@ -100,6 +100,7 @@ from scripts.finance_sim.figures import (
 )
 from scripts.finance_sim.limits import ARMS, SAMPLING_ARM
 from scripts.finance_sim.plan import FULL_DISTRIBUTION, TOP_K, StudyPlan, load_plan
+from scripts.finance_sim.published_text import published_reason
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -134,8 +135,9 @@ SPREAD_FEATURE, NO_SPREAD_K = "min_k_pp", 1
 UNDEFINED_NOTE = ("undefined at k = 1: one alternative has no spread, so the stored value reflects only the floor "
                   "on the standard deviation; not plotted")
 ZERO_NOTE, UNPLOTTED_NOTE = "zero at every k by construction; not plotted", "not plotted"
+#: The published table names the serving route; it carries no arm and no role.
 CONVERGENCE_COLUMNS: tuple[str, ...] = (
-    "arm", "route", "role", "stage", "kind", "quantity", "evidence", "k", "n", "mean_abs_diff", "max_abs_diff",
+    "route", "stage", "kind", "quantity", "evidence", "k", "n", "mean_abs_diff", "max_abs_diff",
     "share_within", "mean_mass", "min_mass", "drawn", "missing", "note")
 #: At most four lines per panel: two stages times two statistics, series styles 0 to 3 in this order; the served
 #: markers of the stages take the next styles.
@@ -376,26 +378,26 @@ def convergence_table(stages: Iterable[ConvergenceStage], plan: StudyPlan | None
     """Figure 4's table (every stored features and mass row of each stage, missing stages with the reason), its
     caption and its notes. With ``plan`` the rows and the caption name the serving route."""
     stages = _checked_stages(stages)
-    role = None if plan is None else plan.arms.arms[stages[0].arm].role
     route = None if plan is None else route_label(plan, stages[0].arm)
     drawn = [stage for stage in stages if stage.status == DRAWN]
     zero = _zero_by_construction(drawn)
     rows = []
     for stage in stages:
-        head = {"arm": stage.arm, "route": route, "role": role, "stage": stage.stage, "kind": stage.kind}
+        head = {"route": route, "stage": stage.stage, "kind": stage.kind}
         if stage.status != DRAWN:
-            rows.append(_cells(**head, drawn=False, missing=stage.reason))
+            rows.append(_cells(**head, drawn=False, missing=published_reason(stage.reason)))
             continue
         for row in stage.features:
             rows.append(_cells(**head, quantity=row.feature, evidence=row.evidence, k=row.k, n=row.n,
                                mean_abs_diff=row.mean_abs_diff, max_abs_diff=row.max_abs_diff,
                                share_within=row.share_within,
                                drawn=row.missing_reason is None and is_plotted(row.feature, row.k),
-                               missing=row.missing_reason or row.missing, note=_feature_note(row, zero)))
+                               missing=published_reason(row.missing_reason or row.missing),
+                               note=_feature_note(row, zero)))
         for row in stage.mass:
             rows.append(_cells(**head, quantity=MASS, evidence=row.evidence, k=row.k, n=row.n_draws,
                                mean_mass=row.mean_mass, min_mass=row.min_mass, drawn=row.missing_reason is None,
-                               missing=row.missing_reason or row.missing))
+                               missing=published_reason(row.missing_reason or row.missing)))
     return FigureTable(name=CONVERGENCE, caption=_convergence_caption(stages, route), columns=CONVERGENCE_COLUMNS,
                        rows=tuple(rows), notes=_convergence_notes(drawn), sources=_convergence_sources(drawn))
 
@@ -526,6 +528,9 @@ def _convergence_notes(drawn: Sequence[ConvergenceStage]) -> tuple[str, ...]:
         f"A truncated row keeps the first k of the {'' if kept is None else f'{kept} '}alternatives stored per token "
         "and the calibrator of logits; the served row uses the route's own top alternatives through the calibrator "
         "of logprobs.",
+        # The sample size the caption states, so a reader can check it against the table.
+        "Compared: " + _listed([f"{stage.n_draws} draws of {stage.n_items} {STAGE_SHORT[stage.stage]}"
+                                for stage in drawn]) + "; n in a row is the number of draws compared at that k.",
     ]
     zero = _zero_by_construction(drawn)
     reasons = []

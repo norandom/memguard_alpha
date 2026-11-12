@@ -65,6 +65,7 @@ from scripts.finance_sim.figures import (  # noqa: E402
 )
 from scripts.finance_sim.figures_draws import (  # noqa: E402
     DRAW_SPREAD_COLUMNS,
+    DRAWS_COLUMNS,
     EXAMPLE_DEFAULT,
     SPLIT_CHECK_MIN_DRAWS,
     draw_spread_table,
@@ -80,6 +81,7 @@ from scripts.finance_sim.figures_draws import (  # noqa: E402
 )
 from scripts.finance_sim.limits import BudgetLedger, LedgerCallBudget, StudyLimits  # noqa: E402
 from scripts.finance_sim.plan import write_plan  # noqa: E402
+from scripts.finance_sim.published_text import check_published_text, published_reason  # noqa: E402
 from tests.scripts.finance_sim.test_ensemble_metrics import (  # noqa: E402
     DEF,
     FIRST_TYPES,
@@ -319,8 +321,13 @@ def test_the_draw_spread_table_lists_every_draw_and_the_ensemble_decisions(study
     assert (spread["q25"], spread["median"], spread["q75"]) == tuple(
         figures._number(value) for value in (example.summary.q25, example.summary.median, example.summary.q75))
     ensemble = {row["variant"]: row for row in rows if row["row"] == "ensemble"}
-    assert set(ensemble) == {"ensemble_none", "ensemble_top_k", "ensemble_full_distribution"}
-    assert ensemble["ensemble_none"]["value"] == figures._number(result.variant("ensemble_none").summary_value)
+    # A published table names a variant by its plain label, the words of the legends, and carries no arm or role.
+    assert set(ensemble) == {"ensemble, unadjusted", "ensemble, adjusted with logprobs",
+                             "ensemble, adjusted with logits"}
+    assert set(ensemble) == {figures.variant_label(name) for name in (
+        "ensemble_none", "ensemble_top_k", "ensemble_full_distribution")}
+    assert not {"arm", "role"} & set(DRAW_SPREAD_COLUMNS) and not {"arm", "role"} & set(DRAWS_COLUMNS)
+    assert ensemble["ensemble, unadjusted"]["value"] == figures._number(result.variant("ensemble_none").summary_value)
     # The table of the first-draw figure keeps everything it held: the example item's rows are still there.
     kinds = {row["row"] for row in csv_rows(draws_table(sampled).to_csv())}
     assert kinds == {"draw", "spread", "ensemble", "item", "rank_count", "missing_item", "rate"}
@@ -430,8 +437,9 @@ def test_an_unresolved_example_ensemble_is_not_drawn_and_the_table_gives_the_rea
     assert "the unadjusted ensemble gives no value" in table.caption
     assert "Not drawn (reason in the table): ensemble, unadjusted" in table.caption
     assert UNRESOLVED_SUMMARY not in table.caption
-    row = next(row for row in csv_rows(table.to_csv()) if row["variant"] == "ensemble_none")
-    assert row["reason"] == UNRESOLVED_SUMMARY and row["value"] == ""
+    row = next(row for row in csv_rows(table.to_csv()) if row["variant"] == "ensemble, unadjusted")
+    assert row["value"] == "" and row["reason"] == published_reason(UNRESOLVED_SUMMARY) == (
+        "the draws split into separate groups on one component, so the ensemble decision has no summary value")
     assert "spread-ensemble-ensemble_none" not in gids(plot_draw_spread(data))
     assert_journal_caption(table.caption, 8)
 
@@ -482,7 +490,11 @@ def test_items_whose_halves_are_listed_as_unresolved_are_marked_in_the_table(stu
             assert item.halves_unresolved is None  # never shown as resolved
     table = draws_table(serving)
     rows = [row for row in csv_rows(table.to_csv()) if row["row"] == "item"]
-    assert {(row["item_id"], row["rendering"]) for row in rows if UNRESOLVED_SUMMARY in row["halves"]} == unresolved
+    split = published_reason(UNRESOLVED_SUMMARY)
+    assert {(row["item_id"], row["rendering"]) for row in rows if split in row["halves"]} == unresolved
+    assert not any(UNRESOLVED_SUMMARY in row["halves"] for row in rows), "the stored wording is not published"
+    assert all(row["halves"].startswith(("in the half-ensemble statistic", "not in the half-ensemble statistic: "))
+               for row in rows if row["halves"])
     assert ("Column halves marks an item whose half-ensemble decisions were unresolved (2 items); an unmarked item "
             "is not shown as resolved.") in table.notes
     assert not any("resolved" == row["halves"] for row in rows)
@@ -635,6 +647,12 @@ def test_the_first_draw_caption_is_a_journal_caption_with_the_rate_the_sample_si
         # the confidence and the draws per ensemble are the stored metrics' own.
         rows = csv_rows(table.to_csv())
         assert len([row for row in rows if row["row"] == "missing_item"]) == len(data.missing_items)
+        # Every reason of the table is the published sentence of the stored one; none is published as stored.
+        assert [row["reason"] for row in rows if row["row"] == "missing_item"] == [
+            published_reason(reason) for _, _, reason in data.missing_items]
+        for row in rows:
+            for column in ("reason", "halves"):
+                assert check_published_text(row[column]) == row[column]
         assert_caption_numbers(table, stored=(100 * data.confidence, data.ensemble_draws, len(data.missing_items)))
         markdown = table.to_markdown()
         assert "Moody's" in markdown and "BAA10Y" in markdown and "Financial Modeling Prep (FMP)" in markdown
