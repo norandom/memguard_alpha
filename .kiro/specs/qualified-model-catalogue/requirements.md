@@ -436,3 +436,61 @@ and demos all enter the same way I do.
 14. The documentation shall describe the Front on one page: how to list the
     catalogue, select an entry, run a prompt and read the result, with the
     meaning of each status and a link to the catalogue.
+
+### Requirement 12: The two evidence modes, defined and shown side by side
+
+> Amendment 2026-11-12, proposed on the owner's instruction ("amend current
+> spec"); not approved yet. It follows the research guardrails in
+> `.kiro/steering/research-guardrails.md`.
+
+**Objective:** As a quant reader, I want the logprobs mode and the logits mode
+defined mathematically and run on the same prompt side by side, so that I can
+see what each recall estimate is, where the two are the same quantity, where
+they differ, and what the recorded data supports.
+
+#### Acceptance Criteria
+1. The Mode Note shall define, for each mode: the evidence it reads (the
+   alternatives per generated token that the route returns, or the next-token
+   vector), each feature as a formula, the calibrator, the recall estimate and
+   the correction of the answer.
+2. The Mode Note shall state for each feature whether the two modes give the
+   same value by construction, the same value in a stated limit, or different
+   values, each with its derivation.
+3. The Mode Note shall state the estimand of the recall estimate under the
+   labels the calibrators were fitted on, what that estimand is not (exposure
+   of an analysis month to training), and which analysis tests exposure.
+4. Where the Mode Note cites a statistic of the recorded data, it shall give
+   the estimand, the sample size, the unit of independence and one label:
+   established, exploratory or not interpretable.
+5. The owner shall approve the Mode Note before the Figure Specification, the
+   Notebook or any published text is built on it.
+6. The Figure Specification shall state for each published figure: the
+   question it answers about recall or about the modes, the estimand, the
+   comparison that is drawn, the one statement the caption leads with, and the
+   table columns in plain words.
+7. If a figure answers no question about recall or about the modes, then the
+   Figure Specification shall remove it from the published set or state the
+   owner's reason to keep it.
+8. The owner shall approve the Figure Specification before a figure is
+   reworked.
+9. When a person runs the Notebook, it shall send one point-in-time prompt
+   through the Front in the logprobs mode and in the logits mode and shall show
+   for each mode the raw answer, the recall estimate, the corrected answer, the
+   feature values, and the entry, mode, status and limits the answer ran under.
+10. The Notebook shall show the difference between the two modes for the
+    recall estimate and for each feature, and shall mark each difference as
+    zero by construction or as measured.
+11. Where a mode is not qualified or not tested for the entry, the Notebook
+    shall show its corrected answer marked with that status and shall not
+    present it as a qualified answer.
+12. The Notebook shall contain a mapping section that restates the Mode Note's
+    table of equalities and differences and the recorded statistics with their
+    labels, each number taken from a published table or computed in the
+    Notebook from inputs it shows.
+13. The Notebook shall run offline from fixed evidence, and shall state in its
+    output whether a result comes from fixed evidence or from a live route.
+14. A test shall execute the Notebook offline and shall check that both modes
+    return a recall estimate and a corrected answer.
+15. Every text of this requirement shall follow the research guardrails, and a
+    text published under `docs/` shall pass the structure pass and the wording
+    pass named there before publication.

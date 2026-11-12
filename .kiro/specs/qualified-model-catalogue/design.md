@@ -782,3 +782,97 @@ Modified: `recall_guard/__init__.py` (exports), `tests/test_root_exports.py`
   environment variable; records entry, mode and status in the test output.
 - Demos: the script runs with `--fixture` in a test; the notebook executes
   offline in a test.
+
+## Amendment 2026-11-12: the two evidence modes (Requirement 12)
+
+Proposed on the owner's instruction; not approved yet. The owner's finding:
+the figures and pages exist, but what each mode computes, how the modes differ
+and which result matters are not stated. This amendment puts a mathematical
+note first and builds the figure rework and a notebook on it. Rules:
+`.kiro/steering/research-guardrails.md`.
+
+### Order
+
+1. Mode Note, then the owner's approval.
+2. Figure Specification, then the owner's approval.
+3. Notebook and figure rework, independent of each other.
+4. Task 4.2 (republishing) runs after the figure rework, so that the reworked
+   figures are the ones published. Task 5.2 (methods page) takes its
+   definitions of the two modes from the approved Mode Note.
+
+### Boundary
+- **Owns**: the Mode Note, the Figure Specification, the two-mode notebook and
+  its test, the rework of the published figures to the specification.
+- **Out of boundary**: a new estimator, a new labelling of the calibrators, a
+  new run. The note describes what the code computes and what the recorded
+  data supports. A calibrator labelled by exposure (inside against after the
+  cutoff) is recorded in the note as the open research step and is not built
+  here.
+- **Allowed dependencies**: the notebook imports the package root only, as the
+  front demo does.
+- **Revalidation triggers**: a change to a feature formula, to the evidence a
+  mode reads, or to the calibrator's inputs invalidates the note and what was
+  built on it.
+
+### Component: Mode Note
+
+A working document of the spec, `modes-note.md`. Sections in this order:
+notation; evidence per mode; features (one row per feature: formula, inputs,
+value in each mode, equal by construction or not, derivation); calibrator and
+recall estimate; correction of the answer; estimand and what it is not;
+recorded statistics with labels; open step. Every statement about the code
+cites the function it was read from. No statement is taken from an earlier
+report without that check.
+
+Starting points to verify, not yet verified: the features that use only the
+logprob of the generated token are equal in both modes; a feature that needs
+the mean and variance over the vocabulary is exact only on the full vector;
+the logprobs evidence is the full vector truncated to the returned
+alternatives; each mode has its own calibrator.
+
+### Component: Figure Specification
+
+A working document of the spec, `figure-specification.md`: one section per
+published figure with the fields of Requirement 12.6, the decision of 12.7,
+and the list of table columns that still carry internal values (recorded in
+the note of task 4.1) with their plain replacement.
+
+### Component: Two-mode notebook
+
+`notebooks/recall_modes.ipynb`. It enters through `ask` twice with the same
+prompt and definition, once per mode, and tabulates the two `FrontAnswer`
+results side by side. Offline it uses the fixed-reply client and the fixed
+evidence host of the front tests.
+
+Open design question for the owner (decide before task 8.3): where the two
+calibrators of the notebook come from. The front has the caller supply the
+calibrator (Requirement 11.6), and the shipped catalogue has no qualified
+mode. Candidates: (a) fixture calibrators shipped for the worked example,
+stated as illustrative; (b) the recorded calibrators of the probe arm loaded
+from the private records by path, on the owner's machine only; (c) both, (a)
+by default and (b) by a setting.
+
+### Files
+```
+.kiro/specs/qualified-model-catalogue/modes-note.md            # Mode Note
+.kiro/specs/qualified-model-catalogue/figure-specification.md  # Figure Specification
+notebooks/recall_modes.ipynb                                   # two-mode notebook
+tests/integration/test_recall_modes_notebook.py                # executes it offline
+```
+Modified by the figure rework: the figure modules under `scripts/finance_sim/`
+and their tests.
+
+### Traceability
+
+| Requirement | Summary | Components |
+|-------------|---------|------------|
+| 12.1 to 12.5 | Definitions, equalities, estimand, labels, approval | Mode Note |
+| 12.6 to 12.8 | Question, estimand and emphasis per figure, approval | Figure Specification |
+| 12.9 to 12.14 | Both modes side by side, differences, mapping, offline test | Two-mode notebook |
+| 12.15 | Guardrails and the two passes before publication | all texts |
+
+### Testing
+- The notebook executes offline in a test; both modes return a recall estimate
+  and a corrected answer; the differences marked zero by construction are zero.
+- The reworked figures keep the replay tests of task 4.1: the published set,
+  the licensing guard, identical bytes from two fresh processes.

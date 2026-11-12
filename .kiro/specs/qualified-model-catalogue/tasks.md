@@ -198,6 +198,30 @@ records and is not part of CI; it is run locally where a task names it.
   - _Depends: 7.4_
   - _Requirements: 11.14_
 
+- [ ] 8. The two evidence modes (amendment 2026-11-12, proposed, not approved; runs before 4.2; each task ends at a stop for the owner)
+- [ ] 8.1 Mode Note
+  - Read the code of both modes and write the note: evidence per mode, each feature as a formula with its value in each mode and whether the two are equal by construction, the calibrator and the recall estimate, the correction of the answer, the estimand and what it is not, the recorded statistics with their labels, the open step
+  - Every statement about the code cites the function it was read from
+  - Done when the owner has approved the note
+  - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.15_
+- [ ] 8.2 Figure Specification
+  - For each of the eight published figures: the question, the estimand, the comparison drawn, the statement the caption leads with, the table columns in plain words; a figure without a question about recall or the modes is removed or kept with the owner's reason
+  - Done when the owner has approved the specification
+  - _Depends: 8.1_
+  - _Requirements: 12.6, 12.7, 12.8, 12.15_
+- [ ] 8.3 Two-mode notebook
+  - One prompt through the front in both modes; for each mode the raw answer, the recall estimate, the corrected answer, the feature values, the entry, mode, status and limits; the differences marked as zero by construction or as measured; the mapping section with the note's table and the recorded statistics with labels
+  - Needs the owner's decision on where the notebook's calibrators come from (design, open question)
+  - Done when a test executes the notebook offline, both modes return a recall estimate and a corrected answer, and the owner has seen it run
+  - _Depends: 8.1_
+  - _Requirements: 12.9, 12.10, 12.11, 12.12, 12.13, 12.14_
+- [ ] 8.4 Figures reworked to the specification
+  - Change the figure modules and their captions and tables to the approved specification; the replay's published set, guard and byte identity stay as tested in 4.1
+  - Done when the replay tests pass with the reworked set and the owner has seen the fixture figures
+  - _Depends: 8.2_
+  - _Requirements: 12.6, 12.7, 10.5, 10.7_
+- Order change proposed with this group: 4.2 depends on 8.4; 5.2 depends on 8.1
+
 ## Implementation Notes
 
 - 1.3: a record without any quality value is not tested even when another recorded field would fail a check (design invariant, Requirement 1.8); the checks mapping still shows the failing check as False. The cutoff check compares the inside and after means and ignores the recorded difference field; the loader (1.4) should validate that the two agree.
