@@ -203,7 +203,7 @@ explicitly. Text-only generation still supports parsing, answer ensembles and
 optional rewriting. It does not create zeros or a new estimator for MCS.
 Existing `MemoryGuardedScorer.calibrate`, `score`, `score_many`, `score_ensemble`
 and `generate_ensemble` entry points retain their contracts. See
-[scorer integration](index.md#integrate-the-scorer) and
+[scorer integration](scorer-integration.md#integrate-the-scorer) and
 [ensemble scoring](ensemble.md), including the distinction between the
 `p_memorized_point` exposure multiplier and the representative draw's score.
 
@@ -261,7 +261,7 @@ docker compose run --rm dev uv run --no-sync python scripts/run_intervention.py 
 
 `--replay` verifies the portable bundle and recomputes saved paired metrics.
 It does not query a model or refit calibration. Read the
-[dated report and exact artifacts](results/2026-10-31-completion-api-pilot.md)
+[dated report and exact artifacts](../results/2026-10-31-completion-api-pilot.md)
 for the study's protocol, denominators and uncertainty. All 16 rewrites were
 rejected, leaving zero valid rewrite pairs. On the 14 common-valid original
 single/ensemble items, both conditions were correct on 11. The NIM attempt
@@ -282,7 +282,7 @@ describes next-token-logit divergence decoding and, separately, a podcast-form
 rewriting experiment. This workflow adapts the presentation idea while retaining
 facts and verbatim quotations. It is not an equivalent implementation of the
 logit equation; ordinary completion text cannot supply that equation's inputs.
-See [divergence decoding](divergence-decoding.md) for the separate mathematical
+See [divergence decoding](../research/divergence-decoding.md) for the separate mathematical
 interface. Recall Guard's own measured effects are limited to the dated report.
 
 The application and notebook need Python 3.12 or newer and no GPU. On Windows

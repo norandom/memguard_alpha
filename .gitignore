@@ -11,11 +11,12 @@ wheels/
 
 # Environment variables
 .env
-papers/.env
+docs/papers/.env
 
 # Notebook-generated paper figures (Req 12.4 -- produced on demand by
-# notebooks/qualification.ipynb; not checked in).
+# docs/notebooks/qualification.ipynb; not checked in).
 notebooks/figures/
+docs/notebooks/figures/
 
 # Per-run output. Regenerable from ./start.sh or scripts/run_cmmd_backtest.py.
 runs/

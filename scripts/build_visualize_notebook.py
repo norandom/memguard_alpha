@@ -1,4 +1,4 @@
-"""One-shot generator for notebooks/visualize_run.ipynb.
+"""One-shot generator for docs/notebooks/visualize_run.ipynb.
 
 The notebook is a stripped-down companion to qualification.ipynb: it loads a
 completed local run directory's artifacts (`records.jsonl`, `summary.csv`, `top3.md`)
@@ -182,6 +182,6 @@ NB.metadata = {
     "language_info": {"name": "python"},
 }
 
-OUT_PATH = Path("notebooks/visualize_run.ipynb")
+OUT_PATH = Path("docs/notebooks/visualize_run.ipynb")
 nbf.write(NB, OUT_PATH)
 print(f"wrote {OUT_PATH}")

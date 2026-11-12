@@ -43,7 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PROFILE_RESOURCES = resources.files("recall_guard.core").joinpath("provider_profiles")
 #: Filesystem view of the same directory for checkouts and regular installs.
 PROFILE_DIRECTORY = Path(str(PROFILE_RESOURCES))
-#: Documented endpoint placeholder (docs/modal-provider.md); never contacted.
+#: Documented endpoint placeholder (docs/guides/modal-provider.md); never contacted.
 PLACEHOLDER_MARKER = "your-host"
 _PROFILE_ID = re.compile(r"[a-z0-9][a-z0-9.\-]*")
 _REVISION = re.compile(r"[0-9a-f]{40}")

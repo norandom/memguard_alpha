@@ -37,7 +37,7 @@ It measures normalized forecast errors and an identity-advantage cutoff contrast
 not raw price variance or repeated-answer variance. This is target screening,
 not auxiliary probability sourcing or a validated correction method.
 
-See [experiment track](../../../docs/experiment-track.md) and
+See [experiment track](../../../docs/research/experiment-track.md) and
 [S&P 500 research proposal](../../../docs/experiments/sp500-cutoff-proposal.md).
 GPT-OSS-20B remains included; Opus is completion-only with no logprob requirement
 for this measurement. Pilot budgets are proposals only. No live S&P requests

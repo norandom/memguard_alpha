@@ -62,7 +62,7 @@ Measure mitigation separately from aggregation: the next experiment crosses
 original versus mitigated generation with single versus three-draw reduction.
 Each generation condition shares its draw 0 with its ensemble. This separates an
 intervention's effect from aggregation's effect. See the
-[divergence decoding evaluation proposal](../divergence-decoding-evaluation.md).
+[divergence decoding evaluation proposal](../research/divergence-decoding-evaluation.md).
 
 ## Evidence
 

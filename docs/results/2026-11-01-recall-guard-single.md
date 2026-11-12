@@ -68,7 +68,7 @@ established access and provider-reported token evidence at that moment.
   does not replace them.
 - Neither the refresh nor the older single-answer results demonstrate that
   divergence decoding or synthetic rewriting reduces lookahead. The
-  [proposed experiment](../divergence-decoding-evaluation.md) defines that test.
+  [proposed experiment](../research/divergence-decoding-evaluation.md) defines that test.
 
 ## Evidence
 

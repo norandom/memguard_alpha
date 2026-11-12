@@ -148,7 +148,7 @@ The [Jane Street article](https://blog.janestreet.com/mitigating-memorization-in
 explores both logit steering and rewritten inputs. Recall Guard's divergence
 utility needs token-selection access; completion-only rewriting is a separate
 experimental path. Container checks do not measure either method's effect. See
-the [dated pilot](results/2026-10-31-completion-api-pilot.md) for existing evidence
+the [dated pilot](../results/2026-10-31-completion-api-pilot.md) for existing evidence
 and its limitations. Missing token evidence still means unavailable MCS.
 
 ## Reuse the same recipe in Dagger

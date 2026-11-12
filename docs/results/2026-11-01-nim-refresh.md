@@ -114,7 +114,7 @@ not this NIM model.
   change nor the follow-up supplies mitigation efficacy evidence. See the
   [single](2026-11-01-recall-guard-single.md) and
   [ensemble](2026-11-01-recall-guard-ensemble.md) summaries and the
-  [divergence decoding experiment proposal](../divergence-decoding-evaluation.md).
+  [divergence decoding experiment proposal](../research/divergence-decoding-evaluation.md).
 - Passing local tests does not accept the unfinished readiness feature or turn
   this failed eligibility check into model validation.
 

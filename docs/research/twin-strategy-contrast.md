@@ -1,6 +1,6 @@
 # The twin-strategy contrast: pricing look-ahead recall
 
-This page describes the identification strategy behind the PIT vs non-PIT comparison used in the external consumer pipeline. The [PIT architecture](pit-architecture.md) page describes the five-layer stack; this page explains the twin design that sits around it.
+This page describes the identification strategy behind the PIT vs non-PIT comparison used in the external consumer pipeline. The [PIT architecture](../guides/pit-architecture.md) page describes the five-layer stack; this page explains the twin design that sits around it.
 
 The measurement logic is useful even when the exact run artifacts live outside this repository: compare two strategies that share the same pipeline and differ mainly in whether the prompt exposes identifying context.
 

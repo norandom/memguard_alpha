@@ -175,7 +175,7 @@ def main(argv=None):
             "prompt; without a recall estimate nothing says how much of it is recall.",
             "No calibrator is fitted in this demo. A calibrator, fitted on a calibration set for the entry's "
             "model and mode and passed to ask, adds the recall estimate, and for a qualified entry and mode "
-            "the corrected answer. See docs/pit-architecture.md.")
+            "the corrected answer. See docs/guides/pit-architecture.md.")
     return 0 if result.failure is None else 1
 
 

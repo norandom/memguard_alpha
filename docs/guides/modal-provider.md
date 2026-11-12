@@ -6,14 +6,14 @@ calibration contracts. Start with the offline plan below. A working endpoint,
 valid token evidence and a useful contamination score are separate results.
 
 The deployment recipe and bounded runner are verified offline. The
-[2026-11-06 live pilot](results/2026-11-06-modal-pilot.md) verified weight staging,
+[2026-11-06 live pilot](../results/2026-11-06-modal-pilot.md) verified weight staging,
 deployment, remote expiry arming and unauthenticated HTTP 401 before readiness.
 Attempt 08 reached model readiness and authenticated generation, but strict token
 alignment failed on its one eligibility response. No measurement prompts ran;
 that historical response remains excluded from scoring. The
 runner verified model-app shutdown, and final inventory confirmed every owned
 model, expiry and diagnostic app stopped.
-The [response-handling diagnostic](results/2026-11-06-gpt-oss-response-mapping.md)
+The [response-handling diagnostic](../results/2026-11-06-gpt-oss-response-mapping.md)
 later found an adapter bug: vLLM reports full Harmony-generation
 probabilities separately from final-answer text. Use the explicit Harmony profile
 below. The mismatch was not a finding that GPT-OSS lacks usable logprobs, and
@@ -218,7 +218,7 @@ It excludes staging, builds, storage, CPU expiry control, cleanup tails, egress
 and excess CPU/RAM use. USD 5 is a target, not an exact ceiling. The total estimate
 is unknown until these additional costs are reviewed. Recheck
 [prices](https://modal.com/pricing) before approval. See the
-[receipt and cost contract](modal-cost-report.md) for accounting and reconciliation.
+[receipt and cost contract](../research/modal-cost-report.md) for accounting and reconciliation.
 
 ## Stage pinned weights separately, without a GPU
 
@@ -340,7 +340,7 @@ This mode runs `scripts/probe_modal_model.py --execute --harmony-eligibility-onl
 one eligibility request, the form used live on 2026-11-08. The full measurement
 pilot has no operator mode yet. Under `runs/container`, the receipt is also
 visible to the development container as `/outputs` for
-[billing reconciliation](modal-cost-report.md).
+[billing reconciliation](../research/modal-cost-report.md).
 
 The receipt path must be new and its parent must exist. Never resume or replay
 an existing receipt. Startup deploys the CPU expiry controller before the serving
@@ -419,7 +419,7 @@ score-semantics changes require fresh capability checks and calibration
 revalidation. Configured A100 resources are not observed hardware. Unknown/drifted
 provenance cannot establish a calibration match. The pilot performs no calibration.
 
-The [cost contract](modal-cost-report.md) distinguishes cold startup, inference
+The [cost contract](../research/modal-cost-report.md) distinguishes cold startup, inference
 wall time, failed attempts, usable measurements, estimates and observed charges.
 Eligibility is excluded from the usable measurement denominator. Unknown cost or
 zero usable measurements gives null cost per usable measurement, never a claimed

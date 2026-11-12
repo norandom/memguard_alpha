@@ -17,6 +17,11 @@ def _index() -> str:
     return (_ROOT / "docs" / "index.md").read_text(encoding="utf-8")
 
 
+def _scorer_guide() -> str:
+    """The scorer integration page; it was the landing page until the docs were sorted for adopters."""
+    return (_ROOT / "docs" / "guides" / "scorer-integration.md").read_text(encoding="utf-8")
+
+
 def test_docs_files_exist() -> None:
     assert (_ROOT / "mkdocs.yml").exists()
     assert (_ROOT / "docs" / "index.md").exists()
@@ -36,16 +41,16 @@ def test_index_has_uv_git_dependency_recipe() -> None:
     assert "uv add" in text
 
 
-def test_index_has_runnable_facade_example() -> None:
-    text = _index()
+def test_scorer_guide_has_runnable_facade_example() -> None:
+    text = _scorer_guide()
     assert "MemoryGuardedScorer.calibrate(" in text
     assert ".score(" in text
     assert "p_memorized" in text
     assert "memguard_confidence" in text
 
 
-def test_index_documents_input_responsibility_split() -> None:
-    lowered = _index().lower()
+def test_scorer_guide_documents_input_responsibility_split() -> None:
+    lowered = _scorer_guide().lower()
     assert "you provide" in lowered
     assert "recall_guard owns" in lowered
     assert "not** own" in lowered or "not own" in lowered
@@ -60,7 +65,7 @@ def test_index_cites_the_applied_ssrn_paper() -> None:
 
 def test_pit_architecture_cites_the_applied_ssrn_paper() -> None:
     """The architecture page describes the stack the paper reports on; link them."""
-    text = (_ROOT / "docs" / "pit-architecture.md").read_text(encoding="utf-8")
+    text = (_ROOT / "docs" / "guides" / "pit-architecture.md").read_text(encoding="utf-8")
     assert "abstract_id=7231358" in text
 
 
@@ -74,7 +79,7 @@ def test_readme_carries_the_applied_paper_citation() -> None:
 
 
 def _ensemble() -> str:
-    return (Path(__file__).resolve().parents[2] / "docs" / "ensemble.md").read_text(
+    return (Path(__file__).resolve().parents[2] / "docs" / "guides" / "ensemble.md").read_text(
         encoding="utf-8"
     )
 

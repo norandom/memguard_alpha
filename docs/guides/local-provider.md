@@ -5,12 +5,12 @@ Gemma 3 4B returned aligned token log probabilities through the same
 external model host, then calibrate and score through the existing scorer. Recall
 Guard adds no model SDK, GPU/NPU runtime dependency or second scoring API.
 
-The [November 5 feasibility report](results/2026-11-05-local-provider-feasibility.md)
+The [November 5 feasibility report](../results/2026-11-05-local-provider-feasibility.md)
 establishes one CPU configuration, not general Ollama compatibility or a
 memorization benefit. If a fresh response fails alignment or lacks required
 alternatives, that configuration is ineligible even when it generates readable text.
 
-The [November 6 five-model smoke](results/2026-11-06-local-model-smoke.md) observed
+The [November 6 five-model smoke](../results/2026-11-06-local-model-smoke.md) observed
 aligned logprobs and five alternatives from Phi-4 Mini, Llama 3.1 8B, Llama 3.2 3B,
 Gemma 3 4B and LLaVA on CPU. The first four matched the planned environment;
 LLaVA's context differed. GPT was excluded locally. These are feasibility results,
@@ -64,7 +64,7 @@ the response body, so an HTTP 500 can be diagnosed afterwards.
 For optional remote GPU hosting, use the [Modal operator guide](modal-provider.md).
 It starts with a verified offline plan and separates paid setup from the scoring
 library. The GPT-OSS-20B Modal pilot reached readiness; its response exposed an
-adapter mapping bug. The [follow-up diagnostic](results/2026-11-06-gpt-oss-response-mapping.md)
+adapter mapping bug. The [follow-up diagnostic](../results/2026-11-06-gpt-oss-response-mapping.md)
 records the explicit Harmony profile and same-response replay. It does not inherit
 the local CPU result or establish calibrated scoring quality.
 
@@ -99,7 +99,7 @@ Downloaded models live in the checkout's `models/` directory, excluded from Git,
 Docker build contexts and Dagger uploads. The existing Ollama store was copied
 and SHA-256 verified there on November 6, retaining its blobs and manifests.
 The original copy is still pending cleanup; see the
-[storage and sequential test receipt](results/2026-11-06-local-model-storage.md).
+[storage and sequential test receipt](../results/2026-11-06-local-model-storage.md).
 To start the optional
 host from this location, quit any existing Ollama server, then use PowerShell.
 This launches the Ollama model host natively on Windows; Recall Guard itself
@@ -446,7 +446,7 @@ intervene before token selection. Jane Street's
 [divergence-decoding approach](https://blog.janestreet.com/mitigating-memorization-in-llms/)
 steers logits during generation using two auxiliary models; returned partial
 logprobs alone do not implement it. See the separate
-[decoder contract](divergence-decoding.md) and
+[decoder contract](../research/divergence-decoding.md) and
 [frontier completion-only workflow](completion-api.md). Historical NIM attempts
 remain labeled "NIM unavailable" with HTTP 504 and unknown cause; they do not
 establish local-model limitations.

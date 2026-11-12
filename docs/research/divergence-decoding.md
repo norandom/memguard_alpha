@@ -138,6 +138,6 @@ in Jane Street's [Mitigating memorization in LLMs](https://blog.janestreet.com/m
 a greedy integration helper. Its synthetic tests do not establish the research
 result for a different model or task.
 
-The [2026-10-30 NIM measurement](results/2026-10-30-nim-measurement.md)
+The [2026-10-30 NIM measurement](../results/2026-10-30-nim-measurement.md)
 exercised the hosted scorer with divergence decoding inactive. It provides
 calibration evidence, not an estimate of this decoder's mitigation effect.

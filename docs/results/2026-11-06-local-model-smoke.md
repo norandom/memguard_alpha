@@ -67,7 +67,7 @@ budgets. Divergence decoding additionally needs a validated statistical source
 and generation-control capability; known tokenizers and observed logprobs alone
 do not establish those capabilities. See
 [Jane Street's method](https://blog.janestreet.com/mitigating-memorization-in-llms/)
-and the [evaluation scope](../divergence-decoding-evaluation.md).
+and the [evaluation scope](../research/divergence-decoding-evaluation.md).
 
 ## Evidence
 

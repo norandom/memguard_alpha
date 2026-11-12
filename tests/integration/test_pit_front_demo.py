@@ -24,7 +24,7 @@ from recall_guard import WORKED_EXAMPLE_REPLY, FixedReplies, Mode, ask, load_cat
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "examples" / "pit_front.py"
-NOTEBOOK = ROOT / "notebooks" / "pit_front.ipynb"
+NOTEBOOK = ROOT / "docs" / "notebooks" / "pit_front.ipynb"
 DEFAULT_ENTRY = "llamacpp-gemma3-4b"
 AXES = ("inflation", "growth", "credit_stress", "policy", "risk_appetite")
 FIXED_NOTICE = "invented fixed reply"

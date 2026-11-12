@@ -38,4 +38,5 @@ wheels
 .coverage.*
 htmlcov
 notebooks/figures
+docs/notebooks/figures
 data/lookaheadbench

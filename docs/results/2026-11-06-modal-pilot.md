@@ -147,7 +147,7 @@ establishes offline behavior; live readiness evidence comes from attempt 08.
 The five-model local Ollama smoke is
 [reported separately](2026-11-06-local-model-smoke.md).
 
-Operator instructions: [Modal provider](../modal-provider.md).
+Operator instructions: [Modal provider](../guides/modal-provider.md).
 Private, ignored receipts: `runs/modal-preflight/remote-staging.json`,
 `local-staging.json`, `controller-debug.json`, `pilot-2026-11-06-01.json` through
 `pilot-2026-11-06-08.json`, both CPU import checks, registered endpoint metadata

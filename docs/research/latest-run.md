@@ -14,7 +14,7 @@ Source: `runs/20260429T073229Z/summary.csv`.
 | microsoft/phi-4-mini-instruct | 0.319 (0.244–0.388) | 0.319 (0.244–0.388) | 0.855 | 48.5% | 0.000 | no | parse-unreliable; not-better-than-baseline |
 | *majority baseline* | 0.539 (0.485–0.597) | — | — | — | — | — | — |
 
-No model beat the majority baseline on this stream, so all four score 0 and none survive the gates. On this eval set (next-day ETF direction) that is not surprising; see [What this measures](index.md) in the project overview.
+No model beat the majority baseline on this stream, so all four score 0 and none survive the gates. On this eval set (next-day ETF direction) that is not surprising; see [What this measures](../index.md) in the project overview.
 
 ## `cmmd` backtest: `runs/cmmd_20260429T104542Z`
 

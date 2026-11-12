@@ -1,207 +1,55 @@
-# Integrate and verify Recall Guard
+# Recall Guard
 
-Recall Guard estimates how likely a model's answer is recalled rather than
-reasoned (`p_memorized`) and calibrates that estimate on your own corpora, so your
-application can discount recalled answers. Because serving is nondeterministic,
-the [ensemble](ensemble.md) turns many draws into one reproducible answer and
-score. It does not remove memorization; the divergence utility below is a
-separate, optional experiment. Evidence for each claim is dated in the
-[research register](research-register.md).
+Point-in-time inference from language models you host yourself, for quantitative finance research.
 
-Choose the interface that matches your runtime: a released scorer or
-mathematical interface, or the development completion workflow. The scorer
-measures contamination-related features in hosted model responses. The
-experimental divergence utility changes next-token logits inside a generation
-loop you control.
+A language model used in a simulation knows what happened after every date before its training cutoff. That is lookahead bias: a backtest can look good because the model remembers the outcome. Recall Guard runs a prompt point in time, estimates how much of the answer is recalled, and gives the analyst that estimate to correct with.
 
-| Interface | Input | Output | Runtime |
-| --- | --- | --- | --- |
-| `MemoryGuardedScorer` | Calibration corpora and prompts | Direction, `p_memorized`, discounted confidence and failure status | NVIDIA NIM with token logprobs |
-| `combine_logits` / `decode_greedy` | Compatible logits or three callbacks | Adjusted logits or generated token IDs | Caller supplied; NumPy helper runs locally |
-| `RecallWorkflow` (unreleased checkout) | Explicit completion config, evidence and feature choices | Answers, optional ensembles/rewriting, unavailable scores and failure records | Native completion clients or synchronous callbacks; [offline application and notebook](completion-api.md) |
+| The period your data describes | What the recall estimate means | What to do |
+| --- | --- | --- |
+| On or before the model's training cutoff | The model may have seen what happened next. The estimate measures how much the reply rests on that. | Use the estimate. An answer for this period needs correction. |
+| After the model's training cutoff | The model cannot have seen what happened next. An estimate above zero is noise. | Do not correct. |
 
-## Install and choose a revision
+Recall Guard is not a forecaster. It measures recall and reports it. How the estimate enters an analysis is the analyst's decision.
 
-Use Python >=3.12. For a released scorer in a uv-managed project:
+## Start here
 
-```text
-uv add "recall-guard @ git+https://github.com/norandom/recall_guard.git@v0.5.0"
-```
+1. Install:
 
-The divergence helper is included in v0.5.0. Pin a release or commit to keep
-your integration reproducible. The default runtime dependencies are NumPy, scikit-learn, Rich, PyYAML,
-requests and python-dotenv. Extras: `backtest` and `docs`.
+    ```text
+    uv add "recall-guard @ git+https://github.com/norandom/recall_guard.git@v0.6.0"
+    ```
 
-Every release is archived on Zenodo. The [all-versions DOI](https://doi.org/10.5281/zenodo.21557232)
-resolves to the release archive; [v0.4.1](https://doi.org/10.5281/zenodo.21806959)
-identifies that version.
+2. Run the [usage notebook](notebooks/recall_adjusted_answers.ipynb). It asks one point-in-time prompt in both evidence modes, offline first and then against live local models.
+3. Read the [use cases](use-cases.md) for macro timeline analysis, factor investment research and portfolio optimization.
 
-## Integrate the scorer
-
-Prepare two UTF-8 JSONL files with a `prompt` field on each row. Use prompts from
-before the model's documented cutoff for the in-sample corpus and after it for
-the out-of-sample control. Match domain and format where possible. These dates
-are exposure labels, not proof of memorization.
+## The call
 
 ```python
-import json
-import os
-from pathlib import Path
+from recall_guard import Mode, ask, offline_example, worked_example
 
-from recall_guard import MemoryGuardedScorer
+prompt, definition = worked_example()   # a point-in-time macro prompt and how its reply is read
+example = offline_example()             # invented entry, calibrators and replies
 
-
-def load_prompts(corpus_path: Path) -> list[str]:
-    return [
-        json.loads(line)["prompt"]
-        for line in corpus_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-
-
-scorer = MemoryGuardedScorer.calibrate(
-    api_key=os.environ["NVIDIA_API_KEY"],
-    model="openai/gpt-oss-20b",
-    is_memorized=load_prompts(Path("data/calibration/is_memorized.jsonl")),
-    oos_control=load_prompts(Path("data/calibration/oos_control.jsonl")),
-)
-print(scorer.holdout_auc, scorer.is_weak)
-
-guarded = scorer.score("Direction and confidence for your evaluation prompt")
-if not guarded.parse_ok:
-    print("Scoring failed:", guarded.fail_reason)
-elif scorer.is_weak:
-    print("Calibration is weak; review the corpora before using this score.")
-else:
-    print(guarded.signal, guarded.p_memorized, guarded.memguard_confidence)
+result = ask(prompt, definition, **example.arguments(Mode.LOGPROBS))
+print(result.answer, result.p_memorized, result.corrected)
 ```
 
-This example makes live calls and requires `NVIDIA_API_KEY`. Calibration is the
-expensive setup step. `score_many(prompts)` preserves input order while making
-parallel calls. `ConfigurationError` signals missing or rejected credentials;
-runtime and parsing failures are exposed in result records.
+`ask` returns the model's answer, the recall estimate and the answer corrected by it, together with the status of the model and route it ran on. On your own model you pass a catalogue entry and a calibrator fitted on that model.
 
-The score path computes MIA features from token log probabilities, standardizes
-them against the control baseline, and applies the per-model MCS classifier.
-`memguard_confidence` is `raw_confidence * (1 - p_memorized)`. Held-out AUC
-measures separation of the calibration labels; it does not establish that the
-probabilities are ground-truth memorization rates.
+## Where things are
 
-## Integrate divergence decoding
-
-Start with the [offline callback example](divergence-decoding.md). It shows the
-array axis, declared vocabulary identity, complete prefix contract and stopping
-behavior. Three callbacks must return logits for the same token-ID meanings.
-The decoder validates declarations but cannot verify the actual tokenizer or
-training history.
-
-The equation is inspired by Jane Street's
-[Mitigating memorization in LLMs](https://blog.janestreet.com/mitigating-memorization-in-llms/).
-Our helper implements the mathematical operation and a greedy loop. Its tests
-establish correctness; empirical mitigation and calibrated scoring require
-separate work. The NVIDIA client receives completed responses and cannot apply
-this adjustment retroactively.
-
-## What recall_guard needs vs. what you own
-
-| You provide | recall_guard owns |
+| Section | What it holds |
 | --- | --- |
-| NVIDIA key, supported model and calibration prompts | Hosted calls, parsing, MIA features and the calibrated scorer |
-| Compatible callbacks and vocabulary declarations | Logits validation, the equation and greedy token selection |
-| Your evaluation task and fallback policy | Failure records and documented result semantics |
+| [Use cases](use-cases.md) | What the repository provides for each of the three research uses |
+| Notebooks | The usage notebook and the earlier walkthroughs |
+| Guides | [Point-in-time architecture](guides/pit-architecture.md), [ensembles](guides/ensemble.md), [local models](guides/local-provider.md), [rented GPUs](guides/modal-provider.md), [the scorer](guides/scorer-integration.md), [completion APIs](guides/completion-api.md), [development setup](guides/development.md) |
+| Research | The [research report](research-report.md), the [register](research-register.md) of every dated result, and the experiments |
+| API reference | Generated from the code |
 
-Recall Guard does not own prompt construction, as-of data selection, local model
-hosting or portfolio allocation. For ensembles, read the
-[ensemble contract](ensemble.md) before using the exposure multiplier.
-[Point-in-time architecture](pit-architecture.md) explains the surrounding data
-discipline.
+## What is established
 
-## Run the repository workflows
+- The recall estimate separates prompts that identify a period from prompts that do not, on held-out prompts of the finance simulation.
+- It is not yet shown to separate months inside the training range from months after the cutoff. No model and route in the shipped catalogue is qualified, so `ask` returns the answer and the estimate for them and withholds the corrected answer.
+- The controls reduce and measure recall. They do not prove that lookahead has been removed.
 
-From a development checkout, run these in the development container (required
-on Windows; see [the Docker guide](development.md)). For hosted runs, set
-`NVIDIA_API_KEY`; the portfolio workflow also needs `FMP_API_KEY`. Keep both in
-the root `.env`; the image excludes that file, so pass each variable by name and
-Compose reads its value from `.env`:
-
-```text
-docker compose run --rm dev uv run --no-sync python harness.py --help
-docker compose run --rm -e NVIDIA_API_KEY dev uv run --no-sync python harness.py --eval-set data/eval/etf_portfolio.jsonl --is-memorized data/calibration/is_memorized.jsonl --oos-control data/calibration/oos_control.jsonl --cutoffs data/cutoffs.yaml --shortlist openai/gpt-oss-20b --min-call-interval 1.5 --out-dir /outputs/harness
-docker compose run --rm -e NVIDIA_API_KEY -e FMP_API_KEY dev uv run --no-sync python scripts/run_cmmd_backtest.py --run-dir /outputs/cmmd
-```
-
-On Linux and macOS, the same commands also run directly with
-`uv run --env-file .env python ...`.
-
-The harness writes `records.jsonl`, `summary.csv`, `top3.md` and
-`manifest.json` under the selected run directory. The manifest records input
-hashes and settings. The portfolio workflow adds IS/OOS gap reports, feature
-effect sizes, prices and portfolio artifacts. It requires the backtest
-dependencies, which the checkout's development group includes.
-
-Use [the benchmark page](benchmark.md) to interpret metric names and
-[latest run results](latest-run.md) for the published artifacts. The bash
-`start.sh` wrapper supplies a one-model default and other defaults; the
-Python command above is a smaller explicit run.
-
-## Windows and development
-
-The core library and decoder use plain Python/NumPy. No tensor framework or GPU
-is required by the package. Any real-model callback you supply has its own
-runtime requirements. On Windows, run the package, examples and measurements in
-Linux containers. The test suite, ruff and the architecture check also run
-natively with `uv` from PowerShell; a few tests that need Linux-only tooling
-skip there. Linux and macOS can run everything directly.
-
-```text
-docker compose build dev
-docker compose run --rm dev uv run --no-sync pytest -q
-docker compose run --rm dev uv run --no-sync ruff check .
-docker compose run --rm dev uv run --no-sync python scripts/check_architecture.py
-docker compose run --rm dev uv build --out-dir /outputs/dist
-docker compose run --rm dev uv run --no-sync mkdocs build --strict --site-dir /outputs/site
-```
-
-The test suite is offline. Live scoring and data refresh are separate operations.
-The gap-report script uses explicit UTF-8, so its Unicode reports
-do not depend on the Windows locale. Architecture diagnostics use forward
-slashes consistently. Request pacing waits against the actual previous
-admission time, which prevents delayed wakeups from compressing later requests;
-the network call runs outside that lock.
-
-For maintenance, keep core primitives below MIA/dataset/portfolio, with harness
-orchestration above them. Use idiomatic Python and NumPy with names that describe
-the current value: `main_logits`, `adjusted_logits`, `prefix_token_ids` and
-`generation_step`. State array axes and shapes at interfaces. DataFrames should
-have meaningful column/index names, documented row grain and units, and
-intentional alignment when combined. Avoid abstraction unless it makes a real
-contract easier to understand. Ruff and the repository's architecture checker
-are the project gates; Sentrux is not required.
-
-## Evidence and published results
-
-The [2026-10-30 NIM measurement](results/2026-10-30-nim-measurement.md)
-reports fresh MCS calibration and all 330 evaluation records for
-`openai/gpt-oss-20b`. It also distinguishes the scorer's confidence discount
-from the unmeasured mitigation effect of divergence decoding.
-
-[Computational Global Macro with AI for Risk and Portfolio Management](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358)
-describes an example consumer of this package's confidence discount. Its
-portfolio performance is not an acceptance test for Recall Guard.
-
-Evaluate your own corpora and task before relying on the scores. If source,
-format or period differences explain the classifier's separation, revise the
-calibration data. For divergence decoding, if the model's useful behavior
-deteriorates without independent evidence of reduced recall, the intervention
-has not shown its intended benefit.
-
-## Hosted access preflight
-
-Calibration now makes one authenticated generation probe per requested model
-before scheduling corpus calls. A public model-catalog response does not prove
-inference authorization. An HTTP 401 or 403 stops setup with an access error;
-update the local key or its inference permissions before retrying. The current
-CLI default has no reference model; request one explicitly with
-`--reference-model` if it is available and suitable. On 2026-10-30,
-`openai/gpt-oss-20b` was the only catalog model already covered by this
-repository's cutoff registry. Historical IDs remain for interpreting older runs.
+The applied results are published as *Computational Global Macro with AI for Risk and Portfolio Management* (Marius Ciepluch, SSRN working paper 7231358, 2026): <https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7231358>.

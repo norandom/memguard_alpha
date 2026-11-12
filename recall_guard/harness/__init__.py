@@ -26,7 +26,7 @@ runner entry point from the package root::
         run, build_parser,
     )
 
-The notebook in ``notebooks/qualification.ipynb`` consumes this surface
+The notebook in ``docs/notebooks/qualification.ipynb`` consumes this surface
 verbatim; any drift here breaks ``tests/harness/test_notebook.py``'s
 "public API imports succeed" smoke test (Req 12.1).
 """

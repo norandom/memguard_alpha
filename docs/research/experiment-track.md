@@ -22,22 +22,22 @@ successful calculation or a changed answer does not settle all three.
 | Completion-sample workaround, Nov 1 | Eight Opus answers reweighted using synthetic auxiliary counts | Eligibility plus eight answers used nine requests; all eight answers A; zero effect | This tested a workaround, not published token-level divergence decoding. Discard it as evidence for or against divergence feasibility; retain the receipt. |
 | Statistical sourcing, Nov 1 | Four 2019 FOMC statements versus those four plus four from 2020; 12 diagnostic prompts | Both fully in-vocabulary rate probes shifted toward later wording beyond an equal-token old-only control; all sham differences zero | A real lexical reference signature exists. Unknown-token, wording and corpus-composition effects limit interpretation. No target model ran. |
 
-The [November 5 S&P 500 pilot](results/2026-11-05-sp500-pilot.md) adds 16/16 usable
+The [November 5 S&P 500 pilot](../results/2026-11-05-sp500-pilot.md) adds 16/16 usable
 Opus continuations, 8/8 direct-recall abstentions and a cutoff contrast of +0.03566.
 NIM returned 504 at eligibility after 302 seconds. Opus mechanics worked, but the
 combined coverage gate failed. No divergence correction was applied.
-The [follow-up diagnostic](results/2026-11-05-nim-request-diagnostic.md) verified
+The [follow-up diagnostic](../results/2026-11-05-nim-request-diagnostic.md) verified
 the outgoing API key and reproduced HTTP 504 in two direct requests using NVIDIA's
 example, outside Recall Guard. This narrows the investigation without proving
 general model unavailability or a credential problem.
 
-Evidence: [NIM baseline](results/2026-10-30-nim-measurement.md),
-[single-answer view](results/2026-11-01-recall-guard-single.md),
-[ensemble view](results/2026-11-01-recall-guard-ensemble.md),
-[completion pilot](results/2026-10-31-completion-api-pilot.md),
-[NIM refresh](results/2026-11-01-nim-refresh.md),
-[completion-reweighting prototype](results/2026-11-01-anthropic-reweighting-prototype.md),
-[dated-source prototype](results/2026-11-01-fomc-statistical-signature.md).
+Evidence: [NIM baseline](../results/2026-10-30-nim-measurement.md),
+[single-answer view](../results/2026-11-01-recall-guard-single.md),
+[ensemble view](../results/2026-11-01-recall-guard-ensemble.md),
+[completion pilot](../results/2026-10-31-completion-api-pilot.md),
+[NIM refresh](../results/2026-11-01-nim-refresh.md),
+[completion-reweighting prototype](../results/2026-11-01-anthropic-reweighting-prototype.md),
+[dated-source prototype](../results/2026-11-01-fomc-statistical-signature.md).
 
 ## Why the source prototype is progress, with limits
 
@@ -77,7 +77,7 @@ The user's time-series proposal gives us numerical ground truth and many dated
 items. We can ask whether a model reconstructs old prices or predicts historical
 returns unusually well when it can identify the series and date.
 
-The [S&P 500 proposal](experiments/sp500-cutoff-proposal.md) separates direct
+The [S&P 500 proposal](../experiments/sp500-cutoff-proposal.md) separates direct
 close recall from one-step continuation. Its main diagnostic compares identified
 and anonymized versions of the same numeric window, then compares that advantage
 before and after each model's documented cutoff.
@@ -89,7 +89,7 @@ correction. Those remain separate implementation questions.
 
 ## Evidence that would change the decision
 
-The [November 5 preparation](experiments/2026-11-05-sp500-pilot.md) now freezes
+The [November 5 preparation](../experiments/2026-11-05-sp500-pilot.md) now freezes
 16 dates and 48 prompts from a local FRED snapshot, with verified offline scoring.
 The approved live cap was 50 requests including eligibility. The completed run
 used 26: 25 successful Opus calls and one NIM 504. Opus's small positive contrast

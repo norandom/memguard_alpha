@@ -111,7 +111,7 @@ opposite relationship. `alpha` controls the adjustment; zero preserves the
 main vector. Greedy selection can therefore choose a different next token.
 For example, main logits `[2, 0, 0]`, older logits `[0, 3, 0]` and newer
 logits `[0, 0, 0]` produce `[2, 3, 0]` at `alpha=1`: the selected token
-changes from ID 0 to ID 1. The [executable example](../divergence-decoding.md#runnable-example)
+changes from ID 0 to ID 1. The [executable example](../research/divergence-decoding.md#runnable-example)
 checks this behavior.
 
 Jane Street reported reduced pre-cutoff cricket performance with preserved

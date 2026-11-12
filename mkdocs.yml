@@ -1,13 +1,16 @@
 site_name: recall_guard
-site_description: Measured inference-without-recall — per-prompt contamination scoring for LLM outputs.
+site_description: Point-in-time inference from self-hosted language models for quantitative finance research, without lookahead bias.
 repo_url: https://github.com/norandom/recall_guard
 # Warnings (incl. unresolved references) are fatal, so a broken API reference fails
 # the build rather than publishing a broken page (Req 8.5).
 strict: true
 # The reference generator is a build script, not a doc page — keep it out of site/.
+# The papers folder holds third-party papers for reference; they are not pages of this site.
 exclude_docs: |
   gen_ref_pages.py
   gen_benchmark_page.py
+  papers/
+  notebooks/figures/
 
 theme:
   name: material
@@ -56,47 +59,57 @@ plugins:
 
 nav:
   - Home: index.md
-  - "Recall-adjusted answers in two modes (notebook)": notebooks/recall_adjusted_answers.ipynb
+  - Use cases: use-cases.md
+  - Notebooks:
+    - Recall-adjusted answers in two modes: notebooks/recall_adjusted_answers.ipynb
+    - Point-in-time prompt through the front: notebooks/pit_front.ipynb
+    - Measurement flow: notebooks/flow.ipynb
+    - Model qualification: notebooks/qualification.ipynb
+    - Completion workflow: notebooks/completion_workflow.ipynb
+    - Visualize a run: notebooks/visualize_run.ipynb
+  - Guides:
+    - Point-in-time architecture: guides/pit-architecture.md
+    - Ensemble consensus: guides/ensemble.md
+    - Local models: guides/local-provider.md
+    - Rented GPUs on Modal: guides/modal-provider.md
+    - Scorer integration: guides/scorer-integration.md
+    - Completion APIs: guides/completion-api.md
+    - Docker and development: guides/development.md
   - Research:
     - Research report: research-report.md
     - Research register: research-register.md
     - All reports: results/index.md
     - Report template: results/template.md
+    - Dated reports:
+        - "2026-10-30 GPT-OSS-20B calibration and ETF evaluation on NIM": results/2026-10-30-nim-measurement.md
+        - "2026-10-31 Completion API pilot - rewrite mitigation and three-draw ensemble with Opus": results/2026-10-31-completion-api-pilot.md
+        - "2026-11-01 Anthropic completion-reweighting prototype": results/2026-11-01-anthropic-reweighting-prototype.md
+        - "2026-11-01 FOMC statistical source - older/newer lexical signature": results/2026-11-01-fomc-statistical-signature.md
+        - "2026-11-01 NIM refresh of GPT-OSS-20B calibration and ensembles": results/2026-11-01-nim-refresh.md
+        - "2026-11-01 Lookahead evidence with ensembles": results/2026-11-01-recall-guard-ensemble.md
+        - "2026-11-01 Lookahead evidence without ensembles": results/2026-11-01-recall-guard-single.md
+        - "2026-11-05 Local provider feasibility": results/2026-11-05-local-provider-feasibility.md
+        - "2026-11-05 NIM request diagnostic - API key attachment and the 504 outside Recall Guard": results/2026-11-05-nim-request-diagnostic.md
+        - "2026-11-05 S&P 500 identity pilot, pre versus post cutoff": results/2026-11-05-sp500-pilot.md
+        - "2026-11-06 GPT-OSS response handling retest - reasoning and final tokens were mixed": results/2026-11-06-gpt-oss-response-mapping.md
+        - "2026-11-06 Five local models - aligned logprob smoke test": results/2026-11-06-local-model-smoke.md
+        - "2026-11-06 Local model storage and sequential probes": results/2026-11-06-local-model-storage.md
+        - "2026-11-06 Modal GPT-OSS-20B evidence pilot": results/2026-11-06-modal-pilot.md
+        - "2026-11-08 Gemma 3 4B document likelihood from full logits": results/2026-11-08-gemma3-document-likelihood.md
+        - "2026-11-08 Gemma 4 E4B document likelihood on the NPU": results/2026-11-08-gemma4-document-likelihood-npu.md
+        - "2026-11-08 Phase A - single-draw calibration on held-out data": results/2026-11-08-phase-a-single-draw.md
+        - "2026-11-08 Phi-4 Mini disqualified from the Phase A model set": results/2026-11-08-phi4-mini-disqualified.md
+        - "2026-11-11 Memorization-adjusted finance simulation - Gemma 3 4B, probe arm complete, serving arm stopped": results/2026-11-11-memorization-adjusted-finance-sim.md
     - Research notes:
       - "2026-11-09 Logits identify a model as much as they measure it": research-notes/2026-11-09-logits-fingerprinting.md
-    - Dated reports:
-      - "2026-10-30 GPT-OSS-20B calibration and ETF evaluation on NIM": results/2026-10-30-nim-measurement.md
-      - "2026-10-31 Completion API pilot - rewrite mitigation and three-draw ensemble with Opus": results/2026-10-31-completion-api-pilot.md
-      - "2026-11-01 Anthropic completion-reweighting prototype": results/2026-11-01-anthropic-reweighting-prototype.md
-      - "2026-11-01 FOMC statistical source - older/newer lexical signature": results/2026-11-01-fomc-statistical-signature.md
-      - "2026-11-01 NIM refresh of GPT-OSS-20B calibration and ensembles": results/2026-11-01-nim-refresh.md
-      - "2026-11-01 Lookahead evidence with ensembles": results/2026-11-01-recall-guard-ensemble.md
-      - "2026-11-01 Lookahead evidence without ensembles": results/2026-11-01-recall-guard-single.md
-      - "2026-11-05 Local provider feasibility": results/2026-11-05-local-provider-feasibility.md
-      - "2026-11-05 NIM request diagnostic - API key attachment and the 504 outside Recall Guard": results/2026-11-05-nim-request-diagnostic.md
-      - "2026-11-05 S&P 500 identity pilot, pre versus post cutoff": results/2026-11-05-sp500-pilot.md
-      - "2026-11-06 GPT-OSS response handling retest - reasoning and final tokens were mixed": results/2026-11-06-gpt-oss-response-mapping.md
-      - "2026-11-06 Five local models - aligned logprob smoke test": results/2026-11-06-local-model-smoke.md
-      - "2026-11-06 Local model storage and sequential probes": results/2026-11-06-local-model-storage.md
-      - "2026-11-06 Modal GPT-OSS-20B evidence pilot": results/2026-11-06-modal-pilot.md
-      - "2026-11-08 Gemma 3 4B document likelihood from full logits": results/2026-11-08-gemma3-document-likelihood.md
-      - "2026-11-08 Gemma 4 E4B document likelihood on the NPU": results/2026-11-08-gemma4-document-likelihood-npu.md
-      - "2026-11-08 Phase A - single-draw calibration on held-out data": results/2026-11-08-phase-a-single-draw.md
-      - "2026-11-08 Phi-4 Mini disqualified from the Phase A model set": results/2026-11-08-phi4-mini-disqualified.md
-      - "2026-11-11 Memorization-adjusted finance simulation - Gemma 3 4B, probe arm complete, serving arm stopped": results/2026-11-11-memorization-adjusted-finance-sim.md
-  - Docker and development: development.md
-  - PIT architecture: pit-architecture.md
-  - Ensemble consensus: ensemble.md
-  - Completion API integration: completion-api.md
-  - Local model integration: local-provider.md
-  - Optional Modal hosting: modal-provider.md
-  - Modal pilot cost accounting: modal-cost-report.md
-  - Divergence decoding: divergence-decoding.md
-  - Mitigation evaluation proposal: divergence-decoding-evaluation.md
-  - Experiment track: experiment-track.md
-  - S&P 500 measurement proposal: experiments/sp500-cutoff-proposal.md
-  - Prepared S&P 500 pilot (2026-11-05): experiments/2026-11-05-sp500-pilot.md
-  - Twin-strategy contrast: twin-strategy-contrast.md
-  - Benchmark: benchmark.md
-  - Latest run results: latest-run.md
+    - Experiments:
+      - Experiment track: research/experiment-track.md
+      - Twin-strategy contrast: research/twin-strategy-contrast.md
+      - Divergence decoding: research/divergence-decoding.md
+      - Mitigation evaluation proposal: research/divergence-decoding-evaluation.md
+      - S&P 500 measurement proposal: experiments/sp500-cutoff-proposal.md
+      - Prepared S&P 500 pilot (2026-11-05): experiments/2026-11-05-sp500-pilot.md
+    - Benchmark: benchmark.md
+    - Latest run results: research/latest-run.md
+    - Modal pilot cost accounting: research/modal-cost-report.md
   - API reference: reference/

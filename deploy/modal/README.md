@@ -1,9 +1,9 @@
 # Optional Modal deployment tooling
 
-Use the [operator guide](../../docs/modal-provider.md) for the verified offline
+Use the [operator guide](../../docs/guides/modal-provider.md) for the verified offline
 plan, isolated install, account/budget prerequisites, manual CPU-only weight
 staging strategy, approval record, bounded start/stop and recovery instructions.
-The [cost contract](../../docs/modal-cost-report.md) defines receipt fields and
+The [cost contract](../../docs/research/modal-cost-report.md) defines receipt fields and
 later local billing reconciliation.
 
 `serve.py` supplies lazy authenticated vLLM and CPU expiry recipes. Importing it

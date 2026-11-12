@@ -21,7 +21,7 @@ from recall_guard.core.request_control import CallBudget
 
 ROOT = Path(__file__).resolve().parents[2]
 APPLICATION = ROOT / "examples" / "completion_workflow.py"
-NOTEBOOK = ROOT / "notebooks" / "completion_workflow.ipynb"
+NOTEBOOK = ROOT / "docs" / "notebooks" / "completion_workflow.ipynb"
 HTTP_GUARD = """
 import http.client
 import requests

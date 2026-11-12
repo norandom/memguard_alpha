@@ -91,7 +91,7 @@ incomplete downloads; the later feasibility receipt governs the call results.
 - [Machine inventory](https://github.com/norandom/recall_guard/blob/main/.kiro/specs/local-ai-provider/inventory-receipt.md)
 - [NPU prerequisite receipt](https://github.com/norandom/recall_guard/blob/main/.kiro/specs/local-ai-provider/npu-setup-receipt.json)
 
-Use the [local integration guide](../local-provider.md) to run the offline example
+Use the [local integration guide](../guides/local-provider.md) to run the offline example
 and prepare a separate frozen corpus and budget. No larger live batch follows
 from these results. Historical [NIM diagnostics](2026-11-05-nim-request-diagnostic.md)
 remain "NIM unavailable" (HTTP 504, cause unknown). Opus and other frontier

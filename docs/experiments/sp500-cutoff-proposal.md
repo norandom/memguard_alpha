@@ -171,4 +171,4 @@ assumed to correct daily index values.
 The immediate sequence is: validate this measurement, establish whether there is
 a repeatable unwanted signal, then evaluate an explicitly specified intervention.
 If no useful signal appears, record that outcome before building mitigation
-infrastructure. See the [experiment track](../experiment-track.md).
+infrastructure. See the [experiment track](../research/experiment-track.md).

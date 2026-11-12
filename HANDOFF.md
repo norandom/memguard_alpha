@@ -24,7 +24,7 @@ No GPT-OSS measurements ran. The unused 24 requests were not transferred.
 
 Read [results](docs/results/2026-11-05-sp500-pilot.md), the
 [aggregate receipt](docs/results/2026-11-05-sp500-pilot.json), and the
-[experiment track](docs/experiment-track.md).
+[experiment track](docs/research/experiment-track.md).
 
 Opus: 16/16 continuation answers parsed, 8/8 direct-recall abstentions. Four usable
 pairs per cohort; cutoff contrast +0.0356553. Both pre-cutoff arms performed worse

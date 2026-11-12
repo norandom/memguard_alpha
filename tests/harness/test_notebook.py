@@ -26,7 +26,7 @@ from pathlib import Path
 import nbformat
 import pytest
 
-NOTEBOOK = Path(__file__).resolve().parents[2] / "notebooks" / "qualification.ipynb"
+NOTEBOOK = Path(__file__).resolve().parents[2] / "docs" / "notebooks" / "qualification.ipynb"
 
 
 # -- Req 12.1: public API re-exports succeed from package roots ----------------

@@ -24,7 +24,7 @@ discount recalled answers. Two properties matter:
   and by expected calibration error (ECE).
 
 Serving is nondeterministic even at temperature 0, so one call can return a
-different answer and score than the next. The [ensemble](ensemble.md) addresses
+different answer and score than the next. The [ensemble](guides/ensemble.md) addresses
 this by reducing many draws to one consensus answer and one point estimate.
 Removing memorization from a model (rewriting, divergence decoding) is a
 separate, optional track.

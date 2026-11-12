@@ -84,9 +84,9 @@ packages = ["recall_guard"]
 line-length = 120
 target-version = "py312"
 extend-exclude = [
-    "notebooks",
+    "docs/notebooks",
     "data",
-    "papers",
+    "docs/papers",
     "runs",
     "ci",                 # self-contained Dagger module (own pyproject; vendors the SDK)
     "site",               # mkdocs build output

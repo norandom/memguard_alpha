@@ -16,7 +16,7 @@ does `p_memorized` rank memorized text above unseen text (discrimination), and d
 its probabilities match observed frequencies (calibration)?
 
 Serving stacks are nondeterministic even at temperature 0, so one call can return
-a different answer and score than the next. The [ensemble](ensemble.md) gives the
+a different answer and score than the next. The [ensemble](guides/ensemble.md) gives the
 calibrated model's answer with less of that nondeterminism: it draws the same
 prompt many times and reduces the draws to one consensus answer and one point
 estimate. Phase A measures single draws; Phase B measures whether the ensemble
