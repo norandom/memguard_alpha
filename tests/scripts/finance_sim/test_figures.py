@@ -299,19 +299,13 @@ def assert_notes(table) -> None:
         assert_plain_vocabulary(note)
 
 
-def assert_academic_figure(figure, *, panels: int) -> None:
-    """The figure as a journal prints it (Requirements 8.1, 8.2, 8.4, 8.6 of the qualified-model-catalogue spec).
+def _assert_layout(figure, panels: int) -> None:
+    """Labels, panel letters, the legend and the room each takes, measured from the drawn figure.
 
-    Both axes of every drawn panel carry a label, there is no figure title and
-    no panel title, no text sits inside a plot area (a multi-panel figure's
-    "(a)", "(b)" labels sit above their panel), every text is black, a
-    legend names the series, and no label uses the study's bookkeeping words.
+    Called inside ``matplotlib.rc_context(figures.figure_rc())``: a text extent is measured with the renderer
+    the process's rcParams name (``savefig.format``), so outside that context a test that ran earlier and left
+    a paper style behind would make the measurement differ from the layout the figure was given.
     """
-    assert figure.get_suptitle() == ""
-    # Measured as published: saving freezes the layout the plot function arrived at (no further layout pass here).
-    assert_academic_svg(figure_svg(figure))
-    with matplotlib.rc_context(figures.figure_rc()):  # measured under the figure's own rcParams
-        figure.draw_without_rendering()
     drawn = [axes for axes in figure.axes if axes.axison]
     assert len(drawn) == panels
     for index, axes in enumerate(drawn):
@@ -347,6 +341,22 @@ def assert_academic_figure(figure, *, panels: int) -> None:
         assert page.x0 <= box.x0 and box.x1 <= page.x1 and page.y0 <= box.y0 and box.y1 <= page.y1, (index, box)
         for other in boxes[index + 1:]:
             assert not box.overlaps(other), (index, box, other)
+
+
+def assert_academic_figure(figure, *, panels: int) -> None:
+    """The figure as a journal prints it (Requirements 8.1, 8.2, 8.4, 8.6 of the qualified-model-catalogue spec).
+
+    Both axes of every drawn panel carry a label, there is no figure title and
+    no panel title, no text sits inside a plot area (a multi-panel figure's
+    "(a)", "(b)" labels sit above their panel), every text is black, a
+    legend names the series, and no label uses the study's bookkeeping words.
+    """
+    assert figure.get_suptitle() == ""
+    # Measured as published: saving freezes the layout the plot function arrived at (no further layout pass here).
+    assert_academic_svg(figure_svg(figure))
+    with matplotlib.rc_context(figures.figure_rc()):  # measured under the figure's own rcParams
+        figure.draw_without_rendering()
+        _assert_layout(figure, panels)
     for text in figure.findobj(Text):
         if text.get_text().strip() and text.get_visible():
             assert to_rgb(text.get_color()) == (0.0, 0.0, 0.0), text.get_text()
